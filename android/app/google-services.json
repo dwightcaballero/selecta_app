@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "731338785867",
+    "project_id": "selectaapp",
+    "storage_bucket": "selectaapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:731338785867:android:81cc63e865752ca73b79ce",
+        "android_client_info": {
+          "package_name": "com.example.flutter_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBANsl70LvRJ4jTemR-O9nUK1yBM7HIoSg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
