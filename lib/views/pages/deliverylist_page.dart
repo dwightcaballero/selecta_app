@@ -6,6 +6,7 @@ import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/views/pages/delivery_page.dart';
+import 'package:flutter_app/views/pages/returnlist_page.dart';
 
 class DeliveryListPage extends StatefulWidget {
   const DeliveryListPage({super.key});
@@ -18,9 +19,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   final DeliveryService db = DeliveryService();
   DateTime _selectedDate = DateTime.now();
   bool isDealer = false;
+  int? returnedDeliveryCount;
 
   @override
-  Widget build(BuildContext context) { 
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: KForms.appbar('List of Deliveries'),
       body: SingleChildScrollView(
@@ -29,19 +31,23 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-
-              KForms.datePicker('Delivery Date', _selectedDate, onChangeDate, isEnabled: isDealer),
-              _deliveryListView()
-              
+              KForms.datePicker(
+                'Delivery Date',
+                _selectedDate,
+                onChangeDate,
+                isEnabled: isDealer,
+              ),
+              _returnedTransactions(),
+              _deliveryListView(),
             ],
           ),
         ),
       ),
 
-      floatingActionButton: isDealer? floatingActionAddButton() : null
+      floatingActionButton: isDealer ? floatingActionAddButton() : null,
     );
   }
-  
+
   @override
   void initState() {
     super.initState();
@@ -50,32 +56,64 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   void prefetchData() async {
     isDealer = await KVariables.getIsDealer();
+    returnedDeliveryCount = await db.getCountReturnedDeliveriesOnOtherDays();
     setState(() {});
   }
 
   void onChangeDate() async {
     final DateTime? dateTime = await showDatePicker(
-      context: context, 
+      context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2000), 
-      lastDate: DateTime(3000));
-      
-    if (dateTime != null){
+      firstDate: DateTime(2000),
+      lastDate: DateTime(3000),
+    );
+
+    if (dateTime != null) {
       setState(() {
         _selectedDate = dateTime;
       });
     }
   }
 
-  Widget floatingActionAddButton(){
+  Widget floatingActionAddButton() {
     return FloatingActionButton(
-      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) {return DeliveryUpdatePage(deliveryID: '', delivery: Delivery.empty(),);},)),
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) {
+            return DeliveryUpdatePage(
+              deliveryID: '',
+              delivery: Delivery.empty(),
+            );
+          },
+        ),
+      ),
       backgroundColor: Theme.of(context).colorScheme.primary,
-      child: Icon(Icons.add, color: Colors.white,),
+      child: Icon(Icons.add, color: Colors.white),
     );
   }
 
-  Widget _deliveryListView(){
+  Widget _returnedTransactions() {
+    if (returnedDeliveryCount == null || returnedDeliveryCount == 0) {
+      return SizedBox.shrink();
+    }
+
+    return TextButton(
+      onPressed: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => ReturnlistPage()),
+        );
+        prefetchData();
+      },
+      child: Text(
+        '* There is/are $returnedDeliveryCount returned transaction/s on previous dates. Click here to reschedule.',
+        style: KTextStyle.descriptionRedTextStyle,
+      ),
+    );
+  }
+
+  Widget _deliveryListView() {
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.80,
       width: MediaQuery.sizeOf(context).width,
@@ -84,7 +122,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
         stream: db.getListDeliveryFilter(_selectedDate),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
           List listDelivery = snapshot.data?.docs ?? [];
-          if (listDelivery.isEmpty) return Center(child: Text("Please add a delivery record!"),);
+          if (listDelivery.isEmpty) {
+            return Center(child: Text("Please add a delivery record!"));
+          }
 
           return ListView.builder(
             padding: EdgeInsets.only(bottom: 80),
@@ -93,38 +133,66 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
               Delivery delivery = listDelivery[index].data();
               String deliveryID = listDelivery[index].id;
 
-              return 
-                InkWell(
-                  onTap: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) {
-                      return DeliveryUpdatePage(deliveryID: deliveryID, delivery: delivery);
-                    },));
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.only(top: 5.0),
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20.0),
-                        child: Row(
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(delivery.storeName, style: KTextStyle.titleTextStyle,),
-                                Text(Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount), style: KTextStyle.descriptionTextStyle,),
-                              ],
+              return InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) {
+                        return DeliveryUpdatePage(
+                          deliveryID: deliveryID,
+                          delivery: delivery,
+                        );
+                      },
+                    ),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.only(top: 5.0),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Row(
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                delivery.storeName,
+                                style: KTextStyle.titleTextStyle,
+                              ),
+                              Text(
+                                Helperfunctions.formatDoubleAmountForDisplay(
+                                  delivery.orderAmount,
+                                ),
+                                style: KTextStyle.descriptionTextStyle,
+                              ),
+                            ],
+                          ),
+                          Spacer(),
+                          if (delivery.transactionStatus ==
+                              DeliveryStatus.pending) ...[
+                            Icon(
+                              Icons.pending_actions_rounded,
+                              color: Colors.orange,
+                              size: 35,
                             ),
-                            Spacer(),
-                            if (delivery.transactionStatus == DeliveryStatus.pending)...[Icon(Icons.pending_actions_rounded, color: Colors.orange, size: 35,),],
-                            if (delivery.transactionStatus == DeliveryStatus.delivered)...[Icon(Icons.check, color: Colors.green, size: 40,),],
-                            if (delivery.transactionStatus == DeliveryStatus.returned)...[Icon(Icons.close, color: Colors.red, size: 40,),],
                           ],
-                        ),
+                          if (delivery.transactionStatus ==
+                              DeliveryStatus.delivered) ...[
+                            Icon(Icons.check, color: Colors.green, size: 40),
+                          ],
+                          if (delivery.transactionStatus ==
+                              DeliveryStatus.returned) ...[
+                            Icon(Icons.close, color: Colors.red, size: 40),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                );
+                ),
+              );
             },
           );
         },

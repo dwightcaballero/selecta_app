@@ -8,22 +8,26 @@ class HapiStoreService {
   final _firestore = FirebaseFirestore.instance;
   late final CollectionReference _hapistoresRef;
 
-  HapiStoreService(){
-    _hapistoresRef = _firestore.collection(HAPISTORE_COLLECTION_REF).withConverter<Hapistore>(
-      fromFirestore: (snapshots, _) => Hapistore.fromJson(snapshots.data()!), 
-      toFirestore: (hapistore, _) => hapistore.toJson());
+  HapiStoreService() {
+    _hapistoresRef = _firestore
+        .collection(HAPISTORE_COLLECTION_REF)
+        .withConverter<Hapistore>(
+          fromFirestore: (snapshots, _) =>
+              Hapistore.fromJson(snapshots.data()!),
+          toFirestore: (hapistore, _) => hapistore.toJson(),
+        );
   }
 
-  Stream<QuerySnapshot> getListHapiStores(){
+  Stream<QuerySnapshot> getListHapiStores() {
     return _hapistoresRef.orderBy('storeName').snapshots();
   }
 
-  Stream<QuerySnapshot> getListHapiStoreSearch(String searchKeyword){
+  Stream<QuerySnapshot> getListHapiStoreSearch(String searchKeyword) {
     return _hapistoresRef
-          .orderBy('storeName')
-          .where('storeName', isGreaterThanOrEqualTo: searchKeyword)
-          .where('storeName', isLessThanOrEqualTo: '$searchKeyword\uf8ff')
-          .snapshots();
+        .orderBy('storeName')
+        .where('storeName', isGreaterThanOrEqualTo: searchKeyword)
+        .where('storeName', isLessThanOrEqualTo: '$searchKeyword\uf8ff')
+        .snapshots();
   }
 
   Future<String> getContactByStoreName(String storeName) async {
@@ -34,28 +38,29 @@ class HapiStoreService {
           .limit(1)
           .get();
 
-      if (querySnapshot.docs.isNotEmpty){
-        var result = querySnapshot.docs.map((doc) {return Hapistore.fromJson(doc.data() as Map<String, dynamic>);}).first;
+      if (querySnapshot.docs.isNotEmpty) {
+        var result = querySnapshot.docs.map((doc) {
+          return Hapistore.fromJson(doc.data() as Map<String, dynamic>);
+        }).first;
         return result.storeContact;
       }
 
       return '';
-
     } catch (e) {
       print("Error fetching user: $e");
       return '';
     }
   }
 
-  void addHapiStore (Hapistore hapistore){
+  void addHapiStore(Hapistore hapistore) {
     _hapistoresRef.add(hapistore);
-  } 
+  }
 
-  void updateHapiStore (String hapiStoreID, Hapistore hapistore){
+  void updateHapiStore(String hapiStoreID, Hapistore hapistore) {
     _hapistoresRef.doc(hapiStoreID).update(hapistore.toJson());
   }
 
-  void deleteHapiStore (String hapiStoreID){
+  void deleteHapiStore(String hapiStoreID) {
     _hapistoresRef.doc(hapiStoreID).delete();
   }
 }

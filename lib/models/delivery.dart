@@ -5,7 +5,7 @@ class Delivery {
   String remarks;
   String transactionStatus;
   String imagePath;
-  
+
   double orderAmount;
   double cashAmount;
   double onlineAmount;
@@ -38,62 +38,67 @@ class Delivery {
   });
 
   static Delivery empty() => Delivery(
-    storeName: '', 
-    remarks: '', 
-    transactionStatus: '', 
+    storeName: '',
+    remarks: '',
+    transactionStatus: '',
     imagePath: '',
-    orderAmount: 0, 
-    returnAmount: 0, 
-    creditAmount: 0, 
-    cashAmount: 0, 
+    orderAmount: 0,
+    returnAmount: 0,
+    creditAmount: 0,
+    cashAmount: 0,
     onlineAmount: 0,
     deliveryDate: null,
     creditStatus: '',
     createdBy: '',
     lastUpdatedBy: '',
-    createdDate: Timestamp.now(), 
-    lastupdatedDate: Timestamp.now());
+    createdDate: Timestamp.now(),
+    lastupdatedDate: Timestamp.now(),
+  );
 
-  Delivery.fromJson(Map<String, Object?> json) 
-  : this(
-      storeName: json['storeName']! as String,
-      remarks: json['remarks']! as String,
-      transactionStatus: json['transactionStatus']! as String,
-      imagePath: json['imagePath'] == null? '' : json['imagePath']! as String,
-      orderAmount: json['orderAmount']! as double,
-      returnAmount: json['returnAmount']! as double,
-      creditAmount: json['creditAmount']! as double,
-      cashAmount: json['cashAmount']! as double,
-      onlineAmount: json['onlineAmount']! as double,
-      deliveryDate: json['deliveryDate'] as Timestamp?,
-      creditStatus: json['creditStatus'] as String,
-      createdBy: json['createdBy']! as String,
-      lastUpdatedBy: json['lastUpdatedBy']! as String,
-      createdDate: json['createdDate']! as Timestamp,
-      lastupdatedDate: json['lastupdatedDate']! as Timestamp,
-    );
+  Delivery.fromJson(Map<String, Object?> json)
+    : this(
+        storeName: json['storeName']! as String,
+        remarks: json['remarks']! as String,
+        transactionStatus: json['transactionStatus']! as String,
+        imagePath: json['imagePath'] == null
+            ? ''
+            : json['imagePath']! as String,
+        orderAmount: json['orderAmount']! as double,
+        returnAmount: json['returnAmount']! as double,
+        creditAmount: json['creditAmount']! as double,
+        cashAmount: json['cashAmount']! as double,
+        onlineAmount: json['onlineAmount']! as double,
+        deliveryDate: json['deliveryDate'] as Timestamp?,
+        creditStatus: json['creditStatus'] as String,
+        createdBy: json['createdBy']! as String,
+        lastUpdatedBy: json['lastUpdatedBy']! as String,
+        createdDate: json['createdDate']! as Timestamp,
+        lastupdatedDate: json['lastupdatedDate']! as Timestamp,
+      );
 
-  factory Delivery.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document){
-    if (document.data() != null){
+  factory Delivery.fromSnapshot(
+    DocumentSnapshot<Map<String, dynamic>> document,
+  ) {
+    if (document.data() != null) {
       final data = document.data();
       return Delivery(
-        storeName: data?['storeName'], 
-        remarks: data?['remarks'], 
-        transactionStatus: data?['transactionStatus'], 
-        imagePath: data?['imagePath'], 
-        orderAmount: data?['orderAmount'], 
-        returnAmount: data?['returnAmount'], 
-        creditAmount: data?['creditAmount'], 
-        cashAmount: data?['cashAmount'], 
-        onlineAmount: data?['onlineAmount'], 
+        storeName: data?['storeName'],
+        remarks: data?['remarks'],
+        transactionStatus: data?['transactionStatus'],
+        imagePath: data?['imagePath'],
+        orderAmount: data?['orderAmount'],
+        returnAmount: data?['returnAmount'],
+        creditAmount: data?['creditAmount'],
+        cashAmount: data?['cashAmount'],
+        onlineAmount: data?['onlineAmount'],
         deliveryDate: data?['deliveryDate'],
         creditStatus: data?['creditStatus'],
         createdBy: data?['createdBy'],
         lastUpdatedBy: data?['lastUpdatedBy'],
         createdDate: data?['createdDate'],
-        lastupdatedDate: data?['lastupdatedDate']);
-    }
-    else{
+        lastupdatedDate: data?['lastupdatedDate'],
+      );
+    } else {
       return Delivery.empty();
     }
   }
@@ -104,7 +109,7 @@ class Delivery {
     String? transactionStatus,
     String? imagePath,
     double? orderAmount,
-    double? deliveryAmount, 
+    double? deliveryAmount,
     double? returnAmount,
     double? creditAmount,
     String? creditStatus,
@@ -118,24 +123,25 @@ class Delivery {
     Timestamp? lastupdatedDate,
   }) {
     return Delivery(
-      storeName: storeName ?? this.storeName, 
-      remarks: remarks ?? this.remarks, 
-      transactionStatus: transactionStatus ?? this.transactionStatus, 
-      imagePath: imagePath ?? this.imagePath, 
-      orderAmount: orderAmount ?? this.orderAmount, 
-      returnAmount: returnAmount ?? this.returnAmount, 
-      creditAmount: creditAmount ?? this.creditAmount, 
-      cashAmount: cashAmount ?? this.cashAmount, 
-      onlineAmount: onlineAmount ?? this.onlineAmount, 
+      storeName: storeName ?? this.storeName,
+      remarks: remarks ?? this.remarks,
+      transactionStatus: transactionStatus ?? this.transactionStatus,
+      imagePath: imagePath ?? this.imagePath,
+      orderAmount: orderAmount ?? this.orderAmount,
+      returnAmount: returnAmount ?? this.returnAmount,
+      creditAmount: creditAmount ?? this.creditAmount,
+      cashAmount: cashAmount ?? this.cashAmount,
+      onlineAmount: onlineAmount ?? this.onlineAmount,
       deliveryDate: deliveryDate ?? this.deliveryDate,
       creditStatus: creditStatus ?? this.creditStatus,
       createdBy: createdBy ?? this.createdBy,
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
-      lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate);
+      lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
+    );
   }
 
-  Map<String,Object?> toJson(){
+  Map<String, Object?> toJson() {
     return {
       'storeName': storeName,
       'remarks': remarks,
@@ -156,7 +162,7 @@ class Delivery {
   }
 }
 
-class DeliveryModelString{
+class DeliveryModelString {
   static String storeName = 'storeName';
   static String remarks = 'remarks';
   static String transactionStatus = 'transactionStatus';

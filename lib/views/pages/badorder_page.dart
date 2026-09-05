@@ -29,13 +29,16 @@ class _BadOrderPageState extends State<BadOrderPage> {
   TextEditingController txtAmount = TextEditingController();
   final TextEditingController dropDownController = TextEditingController();
 
-  @override @override
+  @override
+  @override
   void initState() {
     super.initState();
-    
-    if (widget.recID.isNotEmpty){
+
+    if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.badorder.description;
-      txtAmount.text = Helperfunctions.formatDoubleAmountForDisplay(widget.badorder.badorderAmount);
+      txtAmount.text = Helperfunctions.formatDoubleAmountForDisplay(
+        widget.badorder.badorderAmount,
+      );
       _selectedDate = widget.badorder.badorderDate.toDate();
       dropDownController.text = widget.badorder.hapistore;
     }
@@ -63,27 +66,66 @@ class _BadOrderPageState extends State<BadOrderPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 20,
               children: [
-          
                 hapistoreDropdown(),
-                KForms.txtFormMoney('Bad Order Amount', txtAmount, (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller)),
-                KForms.datePicker('Bad Order Date', _selectedDate, onChangeDate),
+                KForms.txtFormMoney(
+                  'Bad Order Amount',
+                  txtAmount,
+                  (bool hasFocus, TextEditingController controller) =>
+                      onFocusChange(hasFocus, controller),
+                ),
+                KForms.datePicker(
+                  'Bad Order Date',
+                  _selectedDate,
+                  onChangeDate,
+                ),
                 KForms.txtAreaFormString('Description', txtDescription),
 
-                // If user opens an existing record, 
-                if (widget.recID.isNotEmpty)...[
-                  KForms.lastUpdatedByDetails(widget.badorder.createdBy, widget.badorder.createdDate,widget.badorder.lastUpdatedBy, widget.badorder.lastupdatedDate),
+                // If user opens an existing record,
+                if (widget.recID.isNotEmpty) ...[
+                  KForms.lastUpdatedByDetails(
+                    widget.badorder.createdBy,
+                    widget.badorder.createdDate,
+                    widget.badorder.lastUpdatedBy,
+                    widget.badorder.lastupdatedDate,
+                  ),
                   Column(
                     spacing: 5,
                     children: [
-                      KForms.regularButton('Delete', KButtonStyle.delete, () => KForms.alertDialogConfirm(ConfirmTitle.delete, ConfirmMessage.delete, context, onDelete)),
-                      KForms.regularButton('Update', KButtonStyle.save, () => KForms.alertDialogConfirm(ConfirmTitle.update, ConfirmMessage.update, context, onUpdate))
+                      KForms.regularButton(
+                        'Delete',
+                        KButtonStyle.delete,
+                        () => KForms.alertDialogConfirm(
+                          ConfirmTitle.delete,
+                          ConfirmMessage.delete,
+                          context,
+                          onDelete,
+                        ),
+                      ),
+                      KForms.regularButton(
+                        'Update',
+                        KButtonStyle.save,
+                        () => KForms.alertDialogConfirm(
+                          ConfirmTitle.update,
+                          ConfirmMessage.update,
+                          context,
+                          onUpdate,
+                        ),
+                      ),
                     ],
-                  )
+                  ),
                 ]
-            
                 // If user creates a new record, show save button
-                else...[
-                  KForms.regularButton('Save', KButtonStyle.save, () => KForms.alertDialogConfirm(ConfirmTitle.save, ConfirmMessage.save, context, onSave))
+                else ...[
+                  KForms.regularButton(
+                    'Save',
+                    KButtonStyle.save,
+                    () => KForms.alertDialogConfirm(
+                      ConfirmTitle.save,
+                      ConfirmMessage.save,
+                      context,
+                      onSave,
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -93,61 +135,74 @@ class _BadOrderPageState extends State<BadOrderPage> {
     );
   }
 
-  void onSave(){
-    if (_formKey.currentState!.validate()){
+  void onSave() {
+    if (_formKey.currentState!.validate()) {
       BadOrder newRecord = BadOrder(
-        description: txtDescription.text, 
-        hapistore: dropDownController.text, 
-        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text), 
+        description: txtDescription.text,
+        hapistore: dropDownController.text,
+        badorderAmount: Helperfunctions.formatStringAmountToDouble(
+          txtAmount.text,
+        ),
         badorderDate: Timestamp.fromDate(_selectedDate),
         createdBy: authService.value.currentUser!.displayName!,
         lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: Timestamp.now(), 
-        lastupdatedDate: Timestamp.now()
+        createdDate: Timestamp.now(),
+        lastupdatedDate: Timestamp.now(),
       );
       db.addBadOrder(newRecord);
-      ShowMessage.success(context, 'Successfully created a new bad order record!\n[${dropDownController.text}]');
+      ShowMessage.success(
+        context,
+        'Successfully created a new bad order record!\n[${dropDownController.text}]',
+      );
       Navigator.pop(context); // go back to previous page
-    }
-    else{
+    } else {
       ShowMessage.error(context, 'Please fill up the required fields');
     }
   }
 
-  void onDelete(){
+  void onDelete() {
     db.deleteBadOrder(widget.recID);
-    ShowMessage.success(context, 'Successfully deleted bad order record!\n[${widget.badorder.hapistore}]');
+    ShowMessage.success(
+      context,
+      'Successfully deleted bad order record!\n[${widget.badorder.hapistore}]',
+    );
     Navigator.pop(context); // go back to previous page
   }
 
-  void onUpdate(){
-    if (_formKey.currentState!.validate()){
+  void onUpdate() {
+    if (_formKey.currentState!.validate()) {
       BadOrder newRecord = widget.badorder.copyWith(
-        description: txtDescription.text, 
-        hapistore: dropDownController.text, 
-        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text), 
+        description: txtDescription.text,
+        hapistore: dropDownController.text,
+        badorderAmount: Helperfunctions.formatStringAmountToDouble(
+          txtAmount.text,
+        ),
         badorderDate: Timestamp.fromDate(_selectedDate),
         createdBy: widget.badorder.createdBy,
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: widget.badorder.createdDate,
-        lastupdatedDate: Timestamp.now());
+        lastupdatedDate: Timestamp.now(),
+      );
       db.updateBadOrder(widget.recID, newRecord);
-      ShowMessage.success(context, 'Successfully updated the bad order record!\n[${dropDownController.text }]');
+      ShowMessage.success(
+        context,
+        'Successfully updated the bad order record!\n[${dropDownController.text}]',
+      );
       Navigator.pop(context); // go back to previous page
-    }
-    else{
+    } else {
       ShowMessage.error(context, 'Please fill up the required fields');
     }
   }
 
   void onChangeDate() async {
     final DateTime? dateTime = await showDatePicker(
-      context: context, 
+      context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2000), 
-      lastDate: DateTime(3000));
-      
-    if (dateTime != null){
+      firstDate: DateTime(2000),
+      lastDate: DateTime(3000),
+    );
+
+    if (dateTime != null) {
       setState(() {
         _selectedDate = dateTime;
       });
@@ -155,30 +210,45 @@ class _BadOrderPageState extends State<BadOrderPage> {
   }
 
   void onFocusChange(bool hasFocus, TextEditingController controller) {
-    if (controller.text.isNotEmpty){
-      if (!hasFocus){
-        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text) );
-      }
-      else{
-       setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
+    if (controller.text.isNotEmpty) {
+      if (!hasFocus) {
+        setState(
+          () => controller.text = Helperfunctions.formatStringAmountForDisplay(
+            controller.text,
+          ),
+        );
+      } else {
+        setState(
+          () => controller.text = Helperfunctions.formatStringAmountForEditing(
+            controller.text,
+          ),
+        );
       }
     }
   }
 
-  Widget hapistoreDropdown(){
+  Widget hapistoreDropdown() {
     return StreamBuilder(
-      stream: dbHS.getListHapiStores(), 
+      stream: dbHS.getListHapiStores(),
       builder: (BuildContext context, AsyncSnapshot snapshot) {
         final listHapiStore = snapshot.data?.docs ?? [];
         List<DropdownMenuEntry<String>> listDropdownItems = [];
-        for (int i = 0; i < listHapiStore.length; i++){
+        for (int i = 0; i < listHapiStore.length; i++) {
           Hapistore hapistore = listHapiStore[i].data();
-          listDropdownItems.add(DropdownMenuEntry(value: hapistore.storeName, label: hapistore.storeName));
+          listDropdownItems.add(
+            DropdownMenuEntry(
+              value: hapistore.storeName,
+              label: hapistore.storeName,
+            ),
+          );
         }
 
-        return KForms.dropdown('Hapi Store', listDropdownItems, dropDownController);
+        return KForms.dropdown(
+          'Hapi Store',
+          listDropdownItems,
+          dropDownController,
+        );
       },
     );
   }
-
 }

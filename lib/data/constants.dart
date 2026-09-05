@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
 
-class KConstants{
+class KConstants {
   static const themeModeKey = 'themeModeKey';
 }
 
-class KTextStyle{
+class KTextStyle {
   static const titleTextStyle = TextStyle(
     color: Colors.blue,
     fontSize: 18,
     fontWeight: FontWeight.bold,
   );
 
-  static const descriptionTextStyle = TextStyle(
-    fontSize: 16,
-  );
+  static const descriptionTextStyle = TextStyle(fontSize: 16);
 
   static const descriptionRedTextStyle = TextStyle(
     fontSize: 16,
@@ -36,12 +34,24 @@ class KTextStyle{
   );
 }
 
-class KButtonStyle{
-  static final save = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0), backgroundColor: Colors.green[300]);
-  static final delete = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0), backgroundColor: Colors.red[300]);
-  static final normal = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0),);
-  static final alertYes = FilledButton.styleFrom(backgroundColor: Colors.green[300]);
-  static final alertNo = FilledButton.styleFrom(backgroundColor: Colors.red[300]);
+class KButtonStyle {
+  static final save = FilledButton.styleFrom(
+    minimumSize: Size(double.infinity, 50.0),
+    backgroundColor: Colors.green[300],
+  );
+  static final delete = FilledButton.styleFrom(
+    minimumSize: Size(double.infinity, 50.0),
+    backgroundColor: Colors.red[300],
+  );
+  static final normal = FilledButton.styleFrom(
+    minimumSize: Size(double.infinity, 50.0),
+  );
+  static final alertYes = FilledButton.styleFrom(
+    backgroundColor: Colors.green[300],
+  );
+  static final alertNo = FilledButton.styleFrom(
+    backgroundColor: Colors.red[300],
+  );
 }
 
 class DeliveryStatus {
@@ -50,7 +60,7 @@ class DeliveryStatus {
   static const returned = "Returned";
 }
 
-class CreditStatus{
+class CreditStatus {
   static const paid = "Paid";
   static const unpaid = "Unpaid";
 }
@@ -74,6 +84,12 @@ class BusinessRole {
 
 class SharedPrefKeys {
   static const role = 'role';
+}
+
+class LogAction {
+  static const create = "Create";
+  static const update = "Update";
+  static const delete = "Delete";
 }
 
 // ₱

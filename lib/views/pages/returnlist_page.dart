@@ -1,74 +1,76 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/forms.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/expenses.dart';
-import 'package:flutter_app/services/expenses_services.dart';
-import 'package:flutter_app/views/pages/expenses_page.dart';
+import 'package:flutter_app/models/delivery.dart';
+import 'package:flutter_app/services/delivery_service.dart';
+import 'package:flutter_app/views/pages/return_page.dart';
 import 'package:flutter_app/views/widgets/container_widget.dart';
 
-class ExpenselistPage extends StatefulWidget {
-  const ExpenselistPage({super.key});
+class ReturnlistPage extends StatefulWidget {
+  const ReturnlistPage({super.key});
 
   @override
-  State<ExpenselistPage> createState() => _ExpenselistPageState();
+  State<ReturnlistPage> createState() => _ReturnlistPageState();
 }
 
-class _ExpenselistPageState extends State<ExpenselistPage> {
-  final ExpensesService db = ExpensesService();
+class _ReturnlistPageState extends State<ReturnlistPage> {
+  final DeliveryService db = DeliveryService();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: KForms.appbar('List of Expenses'),
+      appBar: KForms.appbar('List of Returns'),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
-            children: [_expensesListView()],
+            children: [_returnListView()],
           ),
         ),
       ),
-      floatingActionButton: floatingAddButton(),
     );
   }
 
-  Widget _expensesListView() {
+  Widget _returnListView() {
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.80,
       width: MediaQuery.sizeOf(context).width,
 
       child: StreamBuilder(
-        stream: db.getListExpenses(),
+        stream: db.getListDeliveryWithReturnStatus(),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
-          if (snapshot.hasError)
+          if (snapshot.hasError) {
             return const Center(child: Text('Something went wrong'));
-          if (snapshot.connectionState == ConnectionState.waiting)
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: Text("Loading..."));
-          if (snapshot.data!.docs.isEmpty)
+          }
+          if (snapshot.data!.docs.isEmpty) {
             return const Center(child: Text("No results found"));
+          }
 
-          List listExpenses = snapshot.data?.docs;
+          List listReturns = snapshot.data?.docs;
 
           return ListView.builder(
             padding: EdgeInsets.only(bottom: 80),
-            itemCount: listExpenses.length,
+            itemCount: listReturns.length,
             itemBuilder: (context, index) {
-              Expenses expenses = listExpenses[index].data();
-              String expensesID = listExpenses[index].id;
+              Delivery delivery = listReturns[index].data();
+              String deliveryID = listReturns[index].id;
 
               return InkWell(
                 onTap: () => Helperfunctions.navigateTo(
                   context,
-                  ExpensesPage(recID: expensesID, expense: expenses),
+                  ReturnPage(recID: deliveryID, delivery: delivery),
                 ),
                 child: ContainerWidget(
-                  title: expenses.description,
+                  title: delivery.storeName,
                   description1: Helperfunctions.formatTimestampForDisplay(
-                    expenses.expenseDate,
+                    delivery.lastupdatedDate,
                   ),
                   description2: Helperfunctions.formatDoubleAmountForDisplay(
-                    expenses.expenseAmount,
+                    delivery.orderAmount,
                   ),
                 ),
               );
@@ -76,17 +78,6 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
           );
         },
       ),
-    );
-  }
-
-  Widget floatingAddButton() {
-    return FloatingActionButton(
-      onPressed: () => Helperfunctions.navigateTo(
-        context,
-        ExpensesPage(recID: '', expense: Expenses.empty()),
-      ),
-      backgroundColor: Theme.of(context).colorScheme.primary,
-      child: Icon(Icons.add, color: Colors.white),
     );
   }
 }

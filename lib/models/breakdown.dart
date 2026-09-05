@@ -7,7 +7,7 @@ class Breakdown {
   double breakdownAmount;
   double expectedAmount;
   double discrepancy;
-  
+
   int cent;
   int b1000;
   int b500;
@@ -68,36 +68,39 @@ class Breakdown {
 
     createdBy: '',
     lastUpdatedBy: '',
-    createdDate: Timestamp.now(), 
-    lastupdatedDate: Timestamp.now());
+    createdDate: Timestamp.now(),
+    lastupdatedDate: Timestamp.now(),
+  );
 
-  Breakdown.fromJson(Map<String, Object?> json) 
-  : this(
-      breakdownDate: json['breakdownDate']! as Timestamp,
-      bankDepositAmount: json['bankDepositAmount']! as double,
-      breakdownAmount: json['breakdownAmount']! as double,
-      expectedAmount: json['expectedAmount']! as double,
-      discrepancy: json['discrepancy']! as double,
-      cent: json['cent']! as int,
-      b1000: json['b1000']! as int,
-      b500: json['b500']! as int,
-      b200: json['b200']! as int,
-      b100: json['b100']! as int,
-      b50: json['b50']! as int, 
-      b20: json['b20']! as int,
-      c20: json['c20']! as int,
-      c10: json['c10']! as int,
-      c5: json['c5']! as int,
-      c1: json['c1']! as int,
+  Breakdown.fromJson(Map<String, Object?> json)
+    : this(
+        breakdownDate: json['breakdownDate']! as Timestamp,
+        bankDepositAmount: json['bankDepositAmount']! as double,
+        breakdownAmount: json['breakdownAmount']! as double,
+        expectedAmount: json['expectedAmount']! as double,
+        discrepancy: json['discrepancy']! as double,
+        cent: json['cent']! as int,
+        b1000: json['b1000']! as int,
+        b500: json['b500']! as int,
+        b200: json['b200']! as int,
+        b100: json['b100']! as int,
+        b50: json['b50']! as int,
+        b20: json['b20']! as int,
+        c20: json['c20']! as int,
+        c10: json['c10']! as int,
+        c5: json['c5']! as int,
+        c1: json['c1']! as int,
 
-      createdBy: json['createdBy']! as String,
-      lastUpdatedBy: json['lastUpdatedBy']! as String,
-      createdDate: json['createdDate']! as Timestamp,
-      lastupdatedDate: json['lastupdatedDate']! as Timestamp,
-    );
+        createdBy: json['createdBy']! as String,
+        lastUpdatedBy: json['lastUpdatedBy']! as String,
+        createdDate: json['createdDate']! as Timestamp,
+        lastupdatedDate: json['lastupdatedDate']! as Timestamp,
+      );
 
-  factory Breakdown.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document){
-    if (document.data() != null){
+  factory Breakdown.fromSnapshot(
+    DocumentSnapshot<Map<String, dynamic>> document,
+  ) {
+    if (document.data() != null) {
       final data = document.data();
       return Breakdown(
         breakdownDate: data?['breakdownDate'],
@@ -110,7 +113,7 @@ class Breakdown {
         b500: data?['b500'],
         b200: data?['b200'],
         b100: data?['b100'],
-        b50: data?['b50'], 
+        b50: data?['b50'],
         b20: data?['b20'],
         c20: data?['c20'],
         c10: data?['c10'],
@@ -120,9 +123,9 @@ class Breakdown {
         createdBy: data?['createdBy'],
         lastUpdatedBy: data?['lastUpdatedBy'],
         createdDate: data?['createdDate'],
-        lastupdatedDate: data?['lastupdatedDate']);
-    }
-    else{
+        lastupdatedDate: data?['lastupdatedDate'],
+      );
+    } else {
       return Breakdown.empty();
     }
   }
@@ -172,10 +175,11 @@ class Breakdown {
       createdBy: createdBy ?? this.createdBy,
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
-      lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate);
+      lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
+    );
   }
 
-  Map<String,Object?> toJson(){
+  Map<String, Object?> toJson() {
     return {
       'breakdownDate': breakdownDate,
       'bankDepositAmount': bankDepositAmount,
@@ -194,7 +198,7 @@ class Breakdown {
       'c10': c10,
       'c5': c5,
       'c1': c1,
-      
+
       'createdBy': createdBy,
       'lastUpdatedBy': lastUpdatedBy,
       'createdDate': createdDate,

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/constants.dart';
@@ -27,55 +29,83 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       appBar: KForms.appbar('Login'),
       body: isLoading
-      ? KForms.loadingScreen
-      : Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                spacing: 10,
-                children: [
-                  KForms.txtFormEmail('Email', txtEmail),
-                  KForms.txtFormPassword('Password', txtPassword, _isObscured, () => setState(() {_isObscured = !_isObscured;})),
-                  KForms.regularButton('Login', KButtonStyle.normal, onSignIn)
-                ],
+          ? KForms.loadingScreen
+          : Center(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 10,
+                      children: [
+                        KForms.txtFormEmail('Email', txtEmail),
+                        KForms.txtFormPassword(
+                          'Password',
+                          txtPassword,
+                          _isObscured,
+                          () => setState(() {
+                            _isObscured = !_isObscured;
+                          }),
+                        ),
+                        KForms.regularButton(
+                          'Login',
+                          KButtonStyle.normal,
+                          onSignIn,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ),
     );
   }
 
   void onSignIn() async {
-    if (_formKey.currentState!.validate()){
+    if (_formKey.currentState!.validate()) {
       setState(() => isLoading = true);
       try {
         // sign in with user credentials
-        await authService.value.signIn(email: txtEmail.text, password: txtPassword.text);
+        await authService.value.signIn(
+          email: txtEmail.text,
+          password: txtPassword.text,
+        );
 
         // update username based on credentials
         UserService db = UserService();
         var record = await db.getUserByEmail(txtEmail.text);
         if (record != null) {
-          await authService.value.updateUsername(username: '[${record.role}] ${record.username}');
+          await authService.value.updateUsername(
+            username: '[${record.role}] ${record.username}',
+          );
 
-          // save the user role in shared preferences cache
+          // save the user data in shared preferences cache
           final SharedPreferences prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('isDealer', record.role == BusinessRole.dealer? true : false );
+
+          // 1. Convert object to Map, then to JSON String
+          String jsonString = jsonEncode(record.toJson());
+
+          // 2. Save the string using a unique key
+          await prefs.setString('user_data', jsonString);
         }
 
-        if (mounted){
+        if (mounted) {
           ShowMessage.success(context, 'Successfully logged in!');
-          Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const HomePage()),(Route<dynamic> route) => false,); // This removes all previous routes
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const HomePage()),
+            (Route<dynamic> route) => false,
+          ); // This removes all previous routes
         }
       } on FirebaseAuthException catch (e) {
-        if (mounted) ShowMessage.error(context, e.message ?? 'Login: No message from FirebaseAuthException');
+        if (mounted)
+          ShowMessage.error(
+            context,
+            e.message ?? 'Login: No message from FirebaseAuthException',
+          );
       }
-      
+
       setState(() => isLoading = false);
     }
   }

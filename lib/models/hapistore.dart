@@ -8,24 +8,30 @@ class Hapistore {
   Hapistore({
     required this.storeName,
     required this.storeAddress,
-    required this.storeContact
+    required this.storeContact,
   });
 
-  static Hapistore empty() => Hapistore(storeName: '', storeAddress: '', storeContact: '');
+  static Hapistore empty() =>
+      Hapistore(storeName: '', storeAddress: '', storeContact: '');
 
-  Hapistore.fromJson(Map<String, Object?> json) 
-  : this(
-      storeName: json['storeName']! as String,
-      storeAddress: json['storeAddress']! as String,
-      storeContact: json['storeContact']! as String,
-    );
+  Hapistore.fromJson(Map<String, Object?> json)
+    : this(
+        storeName: json['storeName']! as String,
+        storeAddress: json['storeAddress']! as String,
+        storeContact: json['storeContact']! as String,
+      );
 
-  factory Hapistore.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document){
-    if (document.data() != null){
+  factory Hapistore.fromSnapshot(
+    DocumentSnapshot<Map<String, dynamic>> document,
+  ) {
+    if (document.data() != null) {
       final data = document.data();
-      return Hapistore(storeName: data?['storeName'], storeAddress: data?['storeAddress'], storeContact: data?['storeContact']);
-    }
-    else{
+      return Hapistore(
+        storeName: data?['storeName'],
+        storeAddress: data?['storeAddress'],
+        storeContact: data?['storeContact'],
+      );
+    } else {
       return Hapistore.empty();
     }
   }
@@ -39,10 +45,11 @@ class Hapistore {
     return Hapistore(
       storeName: storeName ?? this.storeName,
       storeAddress: storeAddress ?? this.storeAddress,
-      storeContact: storeContact ?? this.storeContact);
+      storeContact: storeContact ?? this.storeContact,
+    );
   }
 
-  Map<String,Object?> toJson(){
+  Map<String, Object?> toJson() {
     return {
       'storeName': storeName,
       'storeAddress': storeAddress,
