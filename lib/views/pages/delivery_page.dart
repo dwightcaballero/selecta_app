@@ -15,8 +15,8 @@ import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:another_telephony/telephony.dart';
 
-class DeliveryUpdatePage extends StatefulWidget {
-  const DeliveryUpdatePage({
+class DeliveryPage extends StatefulWidget {
+  const DeliveryPage({
     super.key,
     required this.deliveryID,
     required this.delivery,
@@ -26,10 +26,10 @@ class DeliveryUpdatePage extends StatefulWidget {
   final Delivery delivery;
 
   @override
-  State<DeliveryUpdatePage> createState() => _DeliveryPageState();
+  State<DeliveryPage> createState() => _DeliveryPageState();
 }
 
-class _DeliveryPageState extends State<DeliveryUpdatePage> {
+class _DeliveryPageState extends State<DeliveryPage> {
   final DeliveryService db = DeliveryService();
   TextEditingController txtOrderAmount = TextEditingController();
   TextEditingController txtCashAmount = TextEditingController();

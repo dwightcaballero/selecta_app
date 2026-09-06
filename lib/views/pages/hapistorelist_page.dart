@@ -30,18 +30,15 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
           padding: const EdgeInsets.all(20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              _searchBar(),
-              _hapiStoreListView()
-            ],
+            children: [_searchBar(), _hapiStoreListView()],
           ),
         ),
       ),
-      floatingActionButton: _isDealer ? floatingAddButton() : null
+      floatingActionButton: _isDealer ? floatingAddButton() : null,
     );
   }
 
-  Widget _searchBar(){
+  Widget _searchBar() {
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: TextField(
@@ -49,9 +46,7 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
         decoration: InputDecoration(
           hintText: 'Search by Store Name...',
           prefixIcon: const Icon(Icons.search),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10.0),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.0)),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear),
@@ -73,7 +68,7 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
     );
   }
 
-  Widget _hapiStoreListView(){
+  Widget _hapiStoreListView() {
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.80,
       width: MediaQuery.sizeOf(context).width,
@@ -81,10 +76,15 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
       child: StreamBuilder(
         stream: db.getListHapiStoreSearch(_searchQuery),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
-          
-          if (snapshot.hasError) return const Center(child: Text('Something went wrong'));
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: Text("Loading..."));
-          if (snapshot.data!.docs.isEmpty)return const Center(child: Text("No results found"));
+          if (snapshot.hasError) {
+            return const Center(child: Text('Something went wrong'));
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: Text("Loading..."));
+          }
+          if (snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text("No results found"));
+          }
 
           List listHapiStore = snapshot.data?.docs;
 
@@ -95,21 +95,28 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
               Hapistore hapistore = listHapiStore[index].data();
               String hapistoreID = listHapiStore[index].id;
 
-              return 
-                InkWell(
-                  onTap: () {
-                    _isDealer
-                    ? Navigator.push(context, MaterialPageRoute(builder: (context) {
-                      return HapiStorePage(hapiStoreID: hapistoreID, hapistore: hapistore);
-                    },))
-                    : null;
-                  },
-                  child: ContainerWidget(
-                    title: hapistore.storeName, 
-                    description1: hapistore.storeContact,
-                    description2: hapistore.storeAddress,
-                  ),
-                );
+              return InkWell(
+                onTap: () {
+                  _isDealer
+                      ? Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) {
+                              return HapiStorePage(
+                                hapiStoreID: hapistoreID,
+                                hapistore: hapistore,
+                              );
+                            },
+                          ),
+                        )
+                      : null;
+                },
+                child: ContainerWidget(
+                  title: hapistore.storeName,
+                  description1: hapistore.storeContact,
+                  description2: hapistore.storeAddress,
+                ),
+              );
             },
           );
         },
@@ -117,16 +124,23 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
     );
   }
 
-  Widget floatingAddButton(){
+  Widget floatingAddButton() {
     return FloatingActionButton(
       onPressed: () {
-        Navigator.push(context, MaterialPageRoute(builder: (context) {
-                    return HapiStorePage(hapiStoreID: '', hapistore: Hapistore.empty());
-                  },));
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) {
+              return HapiStorePage(
+                hapiStoreID: '',
+                hapistore: Hapistore.empty(),
+              );
+            },
+          ),
+        );
       },
       backgroundColor: Theme.of(context).colorScheme.primary,
-      child: Icon(Icons.add, color: Colors.white,
-      ),
+      child: Icon(Icons.add, color: Colors.white),
     );
   }
 
@@ -144,7 +158,7 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
     _isDealer = await KVariables.getIsDealer();
     setState(() {});
   }
- 
+
   @override
   void initState() {
     super.initState();

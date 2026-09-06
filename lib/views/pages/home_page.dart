@@ -14,6 +14,7 @@ import 'package:flutter_app/views/pages/badorderlist_page.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:flutter_app/views/pages/others/settings_page.dart';
 import 'package:flutter_app/views/pages/returnlist_page.dart';
+import 'package:flutter_app/views/pages/transactionlist_page.dart';
 import 'package:flutter_app/views/pages/transactionlog_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 
@@ -71,6 +72,7 @@ class _HomePageState extends State<HomePage> {
                   homeMenu(Icons.home, 'Bad Orders', BadOrderlistPage()),
                   homeMenu(Icons.home, 'Expenses', ExpenselistPage()),
                   homeMenu(Icons.home, 'End of Day Report', EndofdayPage()),
+                  homeMenu(Icons.home, 'Transactions', TransactionListPage()),
 
                   Divider(),
 

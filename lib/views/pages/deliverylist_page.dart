@@ -81,10 +81,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
         context,
         MaterialPageRoute(
           builder: (context) {
-            return DeliveryUpdatePage(
-              deliveryID: '',
-              delivery: Delivery.empty(),
-            );
+            return DeliveryPage(deliveryID: '', delivery: Delivery.empty());
           },
         ),
       ),
@@ -119,7 +116,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       width: MediaQuery.sizeOf(context).width,
 
       child: StreamBuilder(
-        stream: db.getListDeliveryFilter(_selectedDate),
+        stream: db.getListDeliveryByDate(_selectedDate),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
           List listDelivery = snapshot.data?.docs ?? [];
           if (listDelivery.isEmpty) {
@@ -139,7 +136,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                     context,
                     MaterialPageRoute(
                       builder: (context) {
-                        return DeliveryUpdatePage(
+                        return DeliveryPage(
                           deliveryID: deliveryID,
                           delivery: delivery,
                         );

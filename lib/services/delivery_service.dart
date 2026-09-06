@@ -22,7 +22,7 @@ class DeliveryService {
     return _ordersRef.orderBy(DeliveryModelString.createdDate).snapshots();
   }
 
-  Stream<QuerySnapshot> getListDeliveryFilter(DateTime deliveryDate) {
+  Stream<QuerySnapshot> getListDeliveryByDate(DateTime deliveryDate) {
     final startOfDay = DateTime(
       deliveryDate.year,
       deliveryDate.month,
@@ -51,6 +51,13 @@ class DeliveryService {
           DeliveryModelString.deliveryDate,
           isLessThanOrEqualTo: Timestamp.fromDate(endOfDay),
         )
+        .snapshots();
+  }
+
+  Stream<QuerySnapshot> getListDeliveryByStoreName(String storeName) {
+    return _ordersRef
+        .where(DeliveryModelString.storeName, isEqualTo: storeName)
+        .orderBy(DeliveryModelString.deliveryDate, descending: true)
         .snapshots();
   }
 
