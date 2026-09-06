@@ -25,13 +25,13 @@ class UserService {
           .limit(1)
           .get();
 
-      if (querySnapshot.docs.isNotEmpty)
+      if (querySnapshot.docs.isNotEmpty) {
         return querySnapshot.docs.map((doc) {
           return Users.fromJson(doc.data() as Map<String, dynamic>);
         }).first;
+      }
       return null; // No user found
     } catch (e) {
-      print("Error fetching user: $e");
       return null;
     }
   }

@@ -99,11 +99,12 @@ class _LoginPageState extends State<LoginPage> {
           ); // This removes all previous routes
         }
       } on FirebaseAuthException catch (e) {
-        if (mounted)
+        if (mounted) {
           ShowMessage.error(
             context,
             e.message ?? 'Login: No message from FirebaseAuthException',
           );
+        }
       }
 
       setState(() => isLoading = false);

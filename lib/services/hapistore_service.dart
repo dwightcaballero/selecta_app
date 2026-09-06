@@ -47,7 +47,6 @@ class HapiStoreService {
 
       return '';
     } catch (e) {
-      print("Error fetching user: $e");
       return '';
     }
   }

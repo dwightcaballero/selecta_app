@@ -41,12 +41,15 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
       child: StreamBuilder(
         stream: db.getListExpenses(),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
-          if (snapshot.hasError)
+          if (snapshot.hasError) {
             return const Center(child: Text('Something went wrong'));
-          if (snapshot.connectionState == ConnectionState.waiting)
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: Text("Loading..."));
-          if (snapshot.data!.docs.isEmpty)
+          }
+          if (snapshot.data!.docs.isEmpty) {
             return const Center(child: Text("No results found"));
+          }
 
           List listExpenses = snapshot.data?.docs;
 

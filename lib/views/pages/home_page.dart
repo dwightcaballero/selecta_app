@@ -5,7 +5,6 @@ import 'package:flutter_app/data/forms.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/views/pages/1test_page.dart';
 import 'package:flutter_app/views/pages/creditlist_page.dart';
 import 'package:flutter_app/views/pages/deliverylist_page.dart';
 import 'package:flutter_app/views/pages/endofday_page.dart';
@@ -82,7 +81,6 @@ class _HomePageState extends State<HomePage> {
                   Divider(),
 
                   //homeMenu(Icons.settings_sharp, 'Settings', SettingsPage()),
-                  homeMenu(Icons.info_outline, 'Test', TestPage()),
                   homeMenu(
                     Icons.logout_sharp,
                     'Logout',
