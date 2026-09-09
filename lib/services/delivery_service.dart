@@ -23,34 +23,14 @@ class DeliveryService {
   }
 
   Stream<QuerySnapshot> getListDeliveryByDate(DateTime deliveryDate) {
-    final startOfDay = DateTime(
-      deliveryDate.year,
-      deliveryDate.month,
-      deliveryDate.day,
-      0,
-      0,
-      0,
-    );
+    final startOfDay = DateTime(deliveryDate.year, deliveryDate.month, deliveryDate.day, 0, 0, 0);
 
-    final endOfDay = DateTime(
-      deliveryDate.year,
-      deliveryDate.month,
-      deliveryDate.day,
-      23,
-      59,
-      59,
-    );
+    final endOfDay = DateTime(deliveryDate.year, deliveryDate.month, deliveryDate.day, 23, 59, 59);
 
     return _ordersRef
         .orderBy(DeliveryModelString.createdDate)
-        .where(
-          DeliveryModelString.deliveryDate,
-          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-        )
-        .where(
-          DeliveryModelString.deliveryDate,
-          isLessThanOrEqualTo: Timestamp.fromDate(endOfDay),
-        )
+        .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where(DeliveryModelString.deliveryDate, isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
         .snapshots();
   }
 
@@ -73,10 +53,7 @@ class DeliveryService {
     try {
       var snapshot = await FirebaseFirestore.instance
           .collection(DELIVERY_COLLECTION_REF)
-          .where(
-            DeliveryModelString.creditStatus,
-            isEqualTo: CreditStatus.unpaid,
-          )
+          .where(DeliveryModelString.creditStatus, isEqualTo: CreditStatus.unpaid)
           .where(DeliveryModelString.creditAmount, isGreaterThan: 0)
           .orderBy(DeliveryModelString.deliveryDate, descending: true)
           .count()
@@ -100,21 +77,11 @@ class DeliveryService {
 
   Future<int?> getCountReturnedDeliveriesOnOtherDays() async {
     var currentDate = DateTime.now();
-    final startOfDay = DateTime(
-      currentDate.year,
-      currentDate.month,
-      currentDate.day,
-      0,
-      0,
-      0,
-    );
+    final startOfDay = DateTime(currentDate.year, currentDate.month, currentDate.day, 0, 0, 0);
 
     var snapshot = await FirebaseFirestore.instance
         .collection(DELIVERY_COLLECTION_REF)
-        .where(
-          DeliveryModelString.transactionStatus,
-          isEqualTo: DeliveryStatus.returned,
-        )
+        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned)
         .where(DeliveryModelString.lastupdatedDate, isLessThan: startOfDay)
         .count()
         .get();
@@ -124,12 +91,25 @@ class DeliveryService {
 
   Stream<QuerySnapshot> getListDeliveryWithReturnStatus() {
     return _ordersRef
-        .where(
-          DeliveryModelString.transactionStatus,
-          isEqualTo: DeliveryStatus.returned,
-        )
+        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned)
         .orderBy(DeliveryModelString.deliveryDate, descending: true)
         .snapshots();
+  }
+
+  // Get list delivery within the month of the current year
+  Future<List<Delivery>> getListDeliveryWithinCurrentMonth() async {
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+
+    var snapshot = await FirebaseFirestore.instance
+        .collection(DELIVERY_COLLECTION_REF)
+        .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: startOfMonth)
+        .where(DeliveryModelString.deliveryDate, isLessThan: endOfMonth)
+        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.delivered)
+        .get();
+
+    return snapshot.docs.map((doc) => Delivery.fromJson(doc.data())).toList();
   }
 
   void addDelivery(Delivery delivery) {

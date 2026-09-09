@@ -229,7 +229,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
 
   Widget hapistoreDropdown() {
     return StreamBuilder(
-      stream: dbHS.getListHapiStores(),
+      stream: dbHS.getListHapiStoresAsStream(),
       builder: (BuildContext context, AsyncSnapshot snapshot) {
         final listHapiStore = snapshot.data?.docs ?? [];
         List<DropdownMenuEntry<String>> listDropdownItems = [];

@@ -7,13 +7,11 @@ import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
-   // 1. Ensure Flutter framework is fully bootstrapped
+  // 1. Ensure Flutter framework is fully bootstrapped
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // 2. Initialize Firebase with platform-specific options
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const MyApp());
 }
@@ -41,14 +39,14 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
-      valueListenable:  isDarkModeNotifier,
+      valueListenable: isDarkModeNotifier,
       builder: (BuildContext context, bool isDarkMode, Widget? child) {
         return MaterialApp(
-          debugShowCheckedModeBanner: false, 
+          debugShowCheckedModeBanner: false,
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(
               seedColor: Colors.lightBlue,
-              brightness: isDarkMode? Brightness.dark : Brightness.light
+              brightness: isDarkMode ? Brightness.dark : Brightness.light,
             ),
           ),
           home: AuthPage(),

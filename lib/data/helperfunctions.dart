@@ -36,9 +36,7 @@ class Helperfunctions {
 
   static Decimal formatStringAmountToDecimal(String stringAmount) {
     String cleanAmount = stringAmount.replaceAll(RegExp(r'[^0-9.]'), '');
-    Decimal finalAmount = Decimal.parse(
-      cleanAmount.isEmpty ? '0' : cleanAmount,
-    );
+    Decimal finalAmount = Decimal.parse(cleanAmount.isEmpty ? '0' : cleanAmount);
 
     return finalAmount;
   }
@@ -62,19 +60,17 @@ class Helperfunctions {
     Navigator.push(context, MaterialPageRoute(builder: (context) => nextPage));
   }
 
-  static Future<void> deleteImage(
-    BuildContext context,
-    String firestoreURL,
-  ) async {
+  static Future<void> navigateThenWait(BuildContext context, dynamic nextPage) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (context2) => nextPage));
+  }
+
+  static Future<void> deleteImage(BuildContext context, String firestoreURL) async {
     try {
       Reference storageRef = FirebaseStorage.instance.refFromURL(firestoreURL);
       await storageRef.delete();
     } on FirebaseException catch (e) {
       if (context.mounted) {
-        ShowMessage.error(
-          context,
-          e.message ?? 'There was an error upon deleting an image.',
-        );
+        ShowMessage.error(context, e.message ?? 'There was an error upon deleting an image.');
       }
     }
   }
@@ -128,28 +124,19 @@ class Helperfunctions {
       return await storageRef.child(filePath).getDownloadURL();
     } on FirebaseException catch (e) {
       if (context.mounted) {
-        ShowMessage.error(
-          context,
-          e.message ?? 'There was an error upon uploading an image.',
-        );
+        ShowMessage.error(context, e.message ?? 'There was an error upon uploading an image.');
       }
     }
 
     return '';
   }
 
-  static Future<String> getImageURL(
-    BuildContext context,
-    String filePath,
-  ) async {
+  static Future<String> getImageURL(BuildContext context, String filePath) async {
     try {
       return await FirebaseStorage.instance.ref(filePath).getDownloadURL();
     } on FirebaseException catch (e) {
       if (context.mounted) {
-        ShowMessage.error(
-          context,
-          e.message ?? 'There was an error retrieving image data.',
-        );
+        ShowMessage.error(context, e.message ?? 'There was an error retrieving image data.');
       }
     }
 
@@ -160,23 +147,55 @@ class Helperfunctions {
     return filepath.split('/').last;
   }
 
-  static Future<void> logTransaction(
-    String message,
-    String details,
-    String logAction,
-  ) async {
+  static Future<void> logTransaction(String message, String details, String logAction) async {
     Users? user = await KVariables.getUser();
-    TransactionLog log = TransactionLog(
-      dealerName: user?.dealerName ?? '',
-      loggedBy: user?.username ?? '',
-      loggedRole: user?.role ?? '',
-      logAction: logAction,
-      loggedDate: Timestamp.now(),
-      message: message,
-      details: details,
-    );
+    TransactionLog log;
+    if (user != null) {
+      log = TransactionLog(
+        dealerName: user.dealerName,
+        loggedBy: user.username,
+        loggedRole: user.role,
+        logAction: logAction,
+        loggedDate: Timestamp.now(),
+        message: message,
+        details: details,
+      );
+    } else {
+      log = TransactionLog(
+        dealerName: '',
+        loggedBy: '',
+        loggedRole: '',
+        logAction: logAction,
+        loggedDate: Timestamp.now(),
+        message: message,
+        details: details,
+      );
+    }
 
     final TransactionLogService db = TransactionLogService();
     db.addLog(log);
+  }
+
+  static void showLoadingDialog({required BuildContext context, required bool showLoading}) {
+    if (showLoading) {
+      showDialog(
+        context: context,
+        barrierDismissible: false, // Prevents closing by tapping outside the dialog
+        builder: (BuildContext context2) {
+          return PopScope(
+            canPop: false, // Prevents closing via the physical back button (Flutter 3.12+)
+            child: AlertDialog(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [SizedBox(height: 20), CircularProgressIndicator(), SizedBox(height: 20), Text("Loading...")],
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
   }
 }

@@ -12,13 +12,12 @@ class HapiStoreService {
     _hapistoresRef = _firestore
         .collection(HAPISTORE_COLLECTION_REF)
         .withConverter<Hapistore>(
-          fromFirestore: (snapshots, _) =>
-              Hapistore.fromJson(snapshots.data()!),
+          fromFirestore: (snapshots, _) => Hapistore.fromJson(snapshots.data()!),
           toFirestore: (hapistore, _) => hapistore.toJson(),
         );
   }
 
-  Stream<QuerySnapshot> getListHapiStores() {
+  Stream<QuerySnapshot> getListHapiStoresAsStream() {
     return _hapistoresRef.orderBy('storeName').snapshots();
   }
 
@@ -49,6 +48,12 @@ class HapiStoreService {
     } catch (e) {
       return '';
     }
+  }
+
+  // Get list hapi stores as a Future (not stream)
+  Future<List<Hapistore>> getListHapiStores() async {
+    var snapshot = await FirebaseFirestore.instance.collection(HAPISTORE_COLLECTION_REF).orderBy('storeName').get();
+    return snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
   }
 
   void addHapiStore(Hapistore hapistore) {

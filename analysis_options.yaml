@@ -35,3 +35,10 @@ linter:
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
+
+# Source - https://stackoverflow.com/a/69394840
+# Posted by alireza easazade, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-09-07, License - CC BY-SA 4.0
+
+formatter:  
+  page_width: 120

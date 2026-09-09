@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/models/breakdown.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/endofday.dart';
+import 'package:flutter_app/dto/endofday.dart';
 import 'package:flutter_app/services/badorder_service.dart';
 import 'package:flutter_app/services/breakdown_service.dart';
 import 'package:flutter_app/services/delivery_service.dart';
@@ -12,35 +12,49 @@ class EndofdayServices {
   Future<EndOfDayData> getListDeliveryForEndOfDay(DateTime deliveryDate) async {
     // check dates
     final startOfDay = DateTime(
-      deliveryDate.year, 
-      deliveryDate.month, 
-      deliveryDate.day, 
-      0, 0, 0
+      deliveryDate.year,
+      deliveryDate.month,
+      deliveryDate.day,
+      0,
+      0,
+      0,
     );
-    
+
     final endOfDay = DateTime(
-      deliveryDate.year, 
-      deliveryDate.month, 
-      deliveryDate.day, 
-      23, 59, 59
+      deliveryDate.year,
+      deliveryDate.month,
+      deliveryDate.day,
+      23,
+      59,
+      59,
     );
 
     EndOfDayData endofday = EndOfDayData.empty();
-    QuerySnapshot snapshot = await FirebaseFirestore.instance.collection(DELIVERY_COLLECTION_REF)
-      .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-      .where(DeliveryModelString.deliveryDate, isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
-      .get();
+    QuerySnapshot snapshot = await FirebaseFirestore.instance
+        .collection(DELIVERY_COLLECTION_REF)
+        .where(
+          DeliveryModelString.deliveryDate,
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+        )
+        .where(
+          DeliveryModelString.deliveryDate,
+          isLessThanOrEqualTo: Timestamp.fromDate(endOfDay),
+        )
+        .get();
 
     // Loop through the snapshot query objects
-    for (var doc in snapshot.docs) { 
+    for (var doc in snapshot.docs) {
       Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-      
+
       endofday.totalorderamount += data[DeliveryModelString.orderAmount];
       endofday.cashamount += data[DeliveryModelString.cashAmount];
       endofday.onlineamount += data[DeliveryModelString.onlineAmount];
       endofday.creditamount += data[DeliveryModelString.creditAmount];
       endofday.returnedAmount += data[DeliveryModelString.returnAmount];
-      endofday.totaldeliveredamount += data[DeliveryModelString.cashAmount] +data[DeliveryModelString.onlineAmount] + data[DeliveryModelString.creditAmount];
+      endofday.totaldeliveredamount +=
+          data[DeliveryModelString.cashAmount] +
+          data[DeliveryModelString.onlineAmount] +
+          data[DeliveryModelString.creditAmount];
       endofday.totaldelivery += 1;
 
       switch (data[DeliveryModelString.transactionStatus]) {
@@ -58,21 +72,24 @@ class EndofdayServices {
     }
 
     BadOrderService dbBO = BadOrderService();
-    endofday.badorderAmount = await dbBO.getTotalBadOrderForSpecificDay(deliveryDate) ?? 0;
+    endofday.badorderAmount =
+        await dbBO.getTotalBadOrderForSpecificDay(deliveryDate) ?? 0;
 
     ExpensesService dbXP = ExpensesService();
-    endofday.expenseAmount = await dbXP.getTotalExpensesForEndOfDay(deliveryDate) ?? 0;
+    endofday.expenseAmount =
+        await dbXP.getTotalExpensesForEndOfDay(deliveryDate) ?? 0;
 
     BreakdownService dbBD = BreakdownService();
     Breakdown? breakdown = await dbBD.getDocumentsBySpecificDate(deliveryDate);
 
-    if (breakdown != null){
+    if (breakdown != null) {
       endofday.actualcashonhand = breakdown.breakdownAmount;
       endofday.discrepancy = breakdown.discrepancy;
       endofday.bankdeposit = breakdown.bankDepositAmount;
     }
 
-    endofday.expectedcashonhand = endofday.cashamount - endofday.badorderAmount - endofday.expenseAmount;
+    endofday.expectedcashonhand =
+        endofday.cashamount - endofday.badorderAmount - endofday.expenseAmount;
 
     return endofday;
   }

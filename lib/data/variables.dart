@@ -17,8 +17,7 @@ class KVariables {
     }
 
     // 2. Decode the string to a Map
-    Map<String, dynamic> userMap =
-        jsonDecode(jsonString) as Map<String, dynamic>;
+    Map<String, dynamic> userMap = jsonDecode(jsonString) as Map<String, dynamic>;
 
     // 3. Convert Map back into the UserModel object
     var user = Users.fromJson(userMap);
@@ -36,8 +35,7 @@ class KVariables {
     }
 
     // 2. Decode the string to a Map
-    Map<String, dynamic> userMap =
-        jsonDecode(jsonString) as Map<String, dynamic>;
+    Map<String, dynamic> userMap = jsonDecode(jsonString) as Map<String, dynamic>;
 
     // 3. Convert Map back into the UserModel object
     return Users.fromJson(userMap);

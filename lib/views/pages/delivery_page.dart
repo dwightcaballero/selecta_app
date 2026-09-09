@@ -16,11 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:another_telephony/telephony.dart';
 
 class DeliveryPage extends StatefulWidget {
-  const DeliveryPage({
-    super.key,
-    required this.deliveryID,
-    required this.delivery,
-  });
+  const DeliveryPage({super.key, required this.deliveryID, required this.delivery});
 
   final String deliveryID;
   final Delivery delivery;
@@ -73,8 +69,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       KForms.txtFormMoney(
                         'Order Amount',
                         txtOrderAmount,
-                        (bool hasFocus, TextEditingController controller) =>
-                            onFocusChange(hasFocus, controller),
+                        (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
                         isEnabled: isDealer,
                       ),
                       KForms.documentScanner(
@@ -88,27 +83,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
                       // If creating a new delivery record
                       if (widget.deliveryID.isEmpty) ...[
-                        KForms.datePicker(
-                          'Delivery Date',
-                          _selectedDate,
-                          onChangeDate,
-                        ),
-                        KForms.switchYesNo(
-                          'Send Text Message?',
-                          sendText,
-                          () => setState(() => sendText = !sendText),
-                        ),
-                        if (sendText)
-                          KForms.txtAreaFormSMS('Text Message', txtSMS),
+                        KForms.datePicker('Delivery Date', _selectedDate, onChangeDate),
+                        KForms.switchYesNo('Send Text Message?', sendText, () => setState(() => sendText = !sendText)),
+                        if (sendText) KForms.txtAreaFormSMS('Text Message', txtSMS),
                         KForms.regularButton(
                           'Save',
                           KButtonStyle.save,
-                          () => KForms.alertDialogConfirm(
-                            ConfirmTitle.save,
-                            ConfirmMessage.save,
-                            context,
-                            onSave,
-                          ),
+                          () => KForms.alertDialogConfirm(ConfirmTitle.save, ConfirmMessage.save, context, onSave),
                         ),
                       ]
                       // if updating an existing delivery record
@@ -120,42 +101,35 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           onSelected: () => setState(() {}),
                         ),
 
-                        if (dropdownStatus.text ==
-                            DeliveryStatus.delivered) ...[
+                        if (dropdownStatus.text == DeliveryStatus.delivered) ...[
                           KForms.txtFormMoney(
                             'Cash Amount',
                             txtCashAmount,
-                            (bool hasFocus, TextEditingController controller) =>
-                                onFocusChange(hasFocus, controller),
+                            (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
                             isRequired: false,
                           ),
                           KForms.txtFormMoney(
                             'Online Amount',
                             txtOnlineAmount,
-                            (bool hasFocus, TextEditingController controller) =>
-                                onFocusChange(hasFocus, controller),
+                            (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
                             isRequired: false,
                           ),
                           KForms.txtFormMoney(
                             'Credit Amount',
                             txtCreditAmount,
-                            (bool hasFocus, TextEditingController controller) =>
-                                onFocusChange(hasFocus, controller),
+                            (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
                             isRequired: false,
                           ),
                           KForms.txtFormMoney(
                             'Return Amount',
                             txtReturnAmount,
-                            (bool hasFocus, TextEditingController controller) =>
-                                onFocusChange(hasFocus, controller),
+                            (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
                             isRequired: false,
                           ),
 
                           KForms.lefRightLabel(
                             'Discrepancy',
-                            Helperfunctions.formatDoubleAmountForDisplay(
-                              discrepancy,
-                            ),
+                            Helperfunctions.formatDoubleAmountForDisplay(discrepancy),
                             rightLabelColor: Colors.red,
                           ),
                         ],
@@ -166,11 +140,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
                             'Remarks',
                             txtRemarks,
                             isRequired:
-                                (dropdownStatus.text ==
-                                    DeliveryStatus.returned ||
-                                (dropdownStatus.text ==
-                                        DeliveryStatus.delivered &&
-                                    txtReturnAmount.text.isNotEmpty)),
+                                (dropdownStatus.text == DeliveryStatus.returned ||
+                                (dropdownStatus.text == DeliveryStatus.delivered && txtReturnAmount.text.isNotEmpty)),
                           ),
                         ],
 
@@ -231,9 +202,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         remarks: '',
         transactionStatus: DeliveryStatus.pending,
         imagePath: imageFilePath,
-        orderAmount: Helperfunctions.formatStringAmountToDouble(
-          txtOrderAmount.text,
-        ),
+        orderAmount: Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text),
         returnAmount: 0,
         creditAmount: 0,
         cashAmount: 0,
@@ -249,7 +218,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
       // log transaction
       await Helperfunctions.logTransaction(
-        '[CREATE] ${dropdownHapiStore.text}',
+        dropdownHapiStore.text,
         'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(newRecord.orderAmount)}',
         LogAction.create,
       );
@@ -257,29 +226,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
       // send text message to the store if user opted to send a text message
       if (sendText) {
         final dbHs = HapiStoreService();
-        String storeContact = await dbHs.getContactByStoreName(
-          dropdownHapiStore.text,
-        );
+        String storeContact = await dbHs.getContactByStoreName(dropdownHapiStore.text);
         storeContact = storeContact.replaceFirst('09', '+639');
 
         final Telephony telephony = Telephony.instance;
-        bool? permissionsGranted =
-            await telephony.requestPhoneAndSmsPermissions;
+        bool? permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
 
         if (permissionsGranted ?? false) {
-          telephony.sendSms(
-            to: storeContact,
-            message: txtSMS.text,
-            isMultipart: true,
-          );
+          telephony.sendSms(to: storeContact, message: txtSMS.text, isMultipart: true);
         }
       }
 
       if (mounted) {
-        ShowMessage.success(
-          context,
-          'Successfully created a new delivery record!\n[${dropdownHapiStore.text}]',
-        );
+        ShowMessage.success(context, 'Successfully created a new delivery record!\n[${dropdownHapiStore.text}]');
         Navigator.pop(context); // go back to previous page
       }
 
@@ -312,18 +271,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
       networkImagePath = widget.delivery.imagePath;
 
       listDropdownStatus = [
-        DropdownMenuEntry(
-          label: DeliveryStatus.pending,
-          value: DeliveryStatus.pending,
-        ),
-        DropdownMenuEntry(
-          label: DeliveryStatus.delivered,
-          value: DeliveryStatus.delivered,
-        ),
-        DropdownMenuEntry(
-          label: DeliveryStatus.returned,
-          value: DeliveryStatus.returned,
-        ),
+        DropdownMenuEntry(label: DeliveryStatus.pending, value: DeliveryStatus.pending),
+        DropdownMenuEntry(label: DeliveryStatus.delivered, value: DeliveryStatus.delivered),
+        DropdownMenuEntry(label: DeliveryStatus.returned, value: DeliveryStatus.returned),
       ];
 
       dropdownHapiStore.text = widget.delivery.storeName;
@@ -331,29 +281,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
       txtRemarks.text = widget.delivery.remarks;
       txtOrderAmount.text = widget.delivery.orderAmount == 0
           ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(
-              widget.delivery.orderAmount,
-            );
+          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount);
       txtCashAmount.text = widget.delivery.cashAmount == 0
           ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(
-              widget.delivery.cashAmount,
-            );
+          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.cashAmount);
       txtOnlineAmount.text = widget.delivery.onlineAmount == 0
           ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(
-              widget.delivery.onlineAmount,
-            );
+          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.onlineAmount);
       txtCreditAmount.text = widget.delivery.creditAmount == 0
           ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(
-              widget.delivery.creditAmount,
-            );
+          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount);
       txtReturnAmount.text = widget.delivery.returnAmount == 0
           ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(
-              widget.delivery.returnAmount,
-            );
+          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount);
 
       computeDiscrepancy();
 
@@ -385,30 +325,18 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   List<String> validate() {
     List<String> listError = [];
-    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(
-      txtCashAmount.text,
-    );
-    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(
-      txtOnlineAmount.text,
-    );
-    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(
-      txtCreditAmount.text,
-    );
-    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(
-      txtReturnAmount.text,
-    );
+    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
+    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
+    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
+    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
 
-    Decimal totalAmount =
-        cashAmount + onlineAmount + creditAmount + returnAmount;
+    Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmount;
     Decimal orderAmount = Decimal.parse(widget.delivery.orderAmount.toString());
 
-    if (dropdownStatus.text == DeliveryStatus.delivered &&
-        totalAmount != orderAmount) {
+    if (dropdownStatus.text == DeliveryStatus.delivered && totalAmount != orderAmount) {
       listError.add('Total amount does not match the order amount!');
     }
-    if ((returnAmount != Decimal.zero ||
-            dropdownStatus.text == DeliveryStatus.returned) &&
-        txtRemarks.text.isEmpty) {
+    if ((returnAmount != Decimal.zero || dropdownStatus.text == DeliveryStatus.returned) && txtRemarks.text.isEmpty) {
       listError.add('Please enter a remark for return details!');
     }
 
@@ -428,24 +356,15 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
       switch (dropdownStatus.text) {
         case DeliveryStatus.pending:
-          widget.delivery.orderAmount =
-              Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text);
+          widget.delivery.orderAmount = Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text);
           remark = '';
           break;
 
         case DeliveryStatus.delivered:
-          returnAmount = Helperfunctions.formatStringAmountToDouble(
-            txtReturnAmount.text,
-          );
-          creditAmount = Helperfunctions.formatStringAmountToDouble(
-            txtCreditAmount.text,
-          );
-          onlineAmount = Helperfunctions.formatStringAmountToDouble(
-            txtOnlineAmount.text,
-          );
-          cashAmount = Helperfunctions.formatStringAmountToDouble(
-            txtCashAmount.text,
-          );
+          returnAmount = Helperfunctions.formatStringAmountToDouble(txtReturnAmount.text);
+          creditAmount = Helperfunctions.formatStringAmountToDouble(txtCreditAmount.text);
+          onlineAmount = Helperfunctions.formatStringAmountToDouble(txtOnlineAmount.text);
+          cashAmount = Helperfunctions.formatStringAmountToDouble(txtCashAmount.text);
           break;
 
         case DeliveryStatus.returned:
@@ -482,16 +401,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
       // log transaction
       await Helperfunctions.logTransaction(
-        '[UPDATE] ${dropdownHapiStore.text}',
+        dropdownHapiStore.text,
         'Status: ${updatedDelivery.transactionStatus}\nOrder Amount: ${Helperfunctions.formatDoubleAmountForDisplay(updatedDelivery.orderAmount)}',
         LogAction.update,
       );
 
       if (mounted) {
-        ShowMessage.success(
-          context,
-          'Successfully updated delivery record!\n[${widget.delivery.storeName}]',
-        );
+        ShowMessage.success(context, 'Successfully updated delivery record!\n[${widget.delivery.storeName}]');
         Navigator.pop(context); // go back to previous page
       }
 
@@ -510,16 +426,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
     // log transaction
     await Helperfunctions.logTransaction(
-      '[DELETE] ${dropdownHapiStore.text}',
+      dropdownHapiStore.text,
       'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount)}',
       LogAction.delete,
     );
 
     if (mounted) {
-      ShowMessage.success(
-        context,
-        'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]',
-      );
+      ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]');
       Navigator.pop(context); // go back to previous page
     }
 
@@ -530,18 +443,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
     if (controller.text.isNotEmpty) {
       if (!hasFocus) {
         computeDiscrepancy();
-        setState(
-          () => controller.text = Helperfunctions.formatStringAmountForDisplay(
-            controller.text,
-          ),
-        );
+        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
         composeSMS();
       } else {
-        setState(
-          () => controller.text = Helperfunctions.formatStringAmountForEditing(
-            controller.text,
-          ),
-        );
+        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
       }
     } else {
       if (!hasFocus) {
@@ -551,21 +456,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void computeDiscrepancy() {
-    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(
-      txtCashAmount.text,
-    );
-    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(
-      txtOnlineAmount.text,
-    );
-    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(
-      txtCreditAmount.text,
-    );
-    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(
-      txtReturnAmount.text,
-    );
+    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
+    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
+    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
+    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
 
-    Decimal totalAmount =
-        cashAmount + onlineAmount + creditAmount + returnAmount;
+    Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmount;
     Decimal orderAmount = Decimal.parse(widget.delivery.orderAmount.toString());
 
     discrepancy = (totalAmount - orderAmount).toDouble();
@@ -576,18 +472,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
   Widget hapistoreDropdown() {
     final HapiStoreService dbHS = HapiStoreService();
     return StreamBuilder(
-      stream: dbHS.getListHapiStores(),
+      stream: dbHS.getListHapiStoresAsStream(),
       builder: (BuildContext context, AsyncSnapshot snapshot) {
         final listHapiStore = snapshot.data?.docs ?? [];
         List<DropdownMenuEntry<String>> listDropdownItems = [];
         for (int i = 0; i < listHapiStore.length; i++) {
           Hapistore hapistore = listHapiStore[i].data();
-          listDropdownItems.add(
-            DropdownMenuEntry(
-              value: hapistore.storeName,
-              label: hapistore.storeName,
-            ),
-          );
+          listDropdownItems.add(DropdownMenuEntry(value: hapistore.storeName, label: hapistore.storeName));
         }
 
         return KForms.dropdown(
