@@ -55,7 +55,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     return Scaffold(
       appBar: KForms.appbar('Delivery'),
       body: isLoading
-          ? KForms.loadingScreen
+          ? KForms.loadingScreen()
           : Padding(
               padding: const EdgeInsets.all(20.0),
               child: SingleChildScrollView(
@@ -72,14 +72,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
                         isEnabled: isDealer,
                       ),
-                      KForms.documentScanner(
-                        'Receipt',
-                        context,
-                        image,
-                        networkImagePath,
-                        scanDocs,
-                        isEnabled: isDealer,
-                      ),
+                      KForms.documentScanner('Receipt', context, image, networkImagePath, scanDocs, isEnabled: isDealer),
 
                       // If creating a new delivery record
                       if (widget.deliveryID.isEmpty) ...[
@@ -94,12 +87,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       ]
                       // if updating an existing delivery record
                       else ...[
-                        KForms.dropdown(
-                          'Delivery Status',
-                          listDropdownStatus,
-                          dropdownStatus,
-                          onSelected: () => setState(() {}),
-                        ),
+                        KForms.dropdown('Delivery Status', listDropdownStatus, dropdownStatus, onSelected: () => setState(() {})),
 
                         if (dropdownStatus.text == DeliveryStatus.delivered) ...[
                           KForms.txtFormMoney(
@@ -127,15 +115,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                             isRequired: false,
                           ),
 
-                          KForms.lefRightLabel(
-                            'Discrepancy',
-                            Helperfunctions.formatDoubleAmountForDisplay(discrepancy),
-                            rightLabelColor: Colors.red,
-                          ),
+                          KForms.lefRightLabel('Discrepancy', Helperfunctions.formatDoubleAmountForDisplay(discrepancy), rightLabelColor: Colors.red),
                         ],
 
-                        if (dropdownStatus.text == DeliveryStatus.delivered ||
-                            dropdownStatus.text == DeliveryStatus.returned) ...[
+                        if (dropdownStatus.text == DeliveryStatus.delivered || dropdownStatus.text == DeliveryStatus.returned) ...[
                           KForms.txtAreaFormString(
                             'Remarks',
                             txtRemarks,
@@ -159,22 +142,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
                               KForms.regularButton(
                                 'Delete',
                                 KButtonStyle.delete,
-                                () => KForms.alertDialogConfirm(
-                                  ConfirmTitle.delete,
-                                  ConfirmMessage.delete,
-                                  context,
-                                  onDelete,
-                                ),
+                                () => KForms.alertDialogConfirm(ConfirmTitle.delete, ConfirmMessage.delete, context, onDelete),
                               ),
                             KForms.regularButton(
                               'Update',
                               KButtonStyle.save,
-                              () => KForms.alertDialogConfirm(
-                                ConfirmTitle.update,
-                                ConfirmMessage.update,
-                                context,
-                                onUpdate,
-                              ),
+                              () => KForms.alertDialogConfirm(ConfirmTitle.update, ConfirmMessage.update, context, onUpdate),
                             ),
                           ],
                         ),
@@ -225,8 +198,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
       // send text message to the store if user opted to send a text message
       if (sendText) {
-        final dbHs = HapiStoreService();
-        String storeContact = await dbHs.getContactByStoreName(dropdownHapiStore.text);
+        String storeContact = await HapiStoreService.getContactByStoreName(dropdownHapiStore.text);
         storeContact = storeContact.replaceFirst('09', '+639');
 
         final Telephony telephony = Telephony.instance;
@@ -279,21 +251,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
       dropdownHapiStore.text = widget.delivery.storeName;
       dropdownStatus.text = widget.delivery.transactionStatus;
       txtRemarks.text = widget.delivery.remarks;
-      txtOrderAmount.text = widget.delivery.orderAmount == 0
-          ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount);
-      txtCashAmount.text = widget.delivery.cashAmount == 0
-          ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.cashAmount);
-      txtOnlineAmount.text = widget.delivery.onlineAmount == 0
-          ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.onlineAmount);
-      txtCreditAmount.text = widget.delivery.creditAmount == 0
-          ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount);
-      txtReturnAmount.text = widget.delivery.returnAmount == 0
-          ? ''
-          : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount);
+      txtOrderAmount.text = widget.delivery.orderAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount);
+      txtCashAmount.text = widget.delivery.cashAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.cashAmount);
+      txtOnlineAmount.text = widget.delivery.onlineAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.onlineAmount);
+      txtCreditAmount.text = widget.delivery.creditAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount);
+      txtReturnAmount.text = widget.delivery.returnAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount);
 
       computeDiscrepancy();
 
@@ -374,12 +336,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       }
 
       // update image data
-      String imageFilePath = await Helperfunctions.updateImage(
-        context,
-        image,
-        networkImagePath,
-        widget.delivery.imagePath,
-      );
+      String imageFilePath = await Helperfunctions.updateImage(context, image, networkImagePath, widget.delivery.imagePath);
 
       Delivery updatedDelivery = widget.delivery.copyWith(
         storeName: dropdownHapiStore.text,
@@ -481,13 +438,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           listDropdownItems.add(DropdownMenuEntry(value: hapistore.storeName, label: hapistore.storeName));
         }
 
-        return KForms.dropdown(
-          'Hapi Store',
-          listDropdownItems,
-          dropdownHapiStore,
-          isenabled: isDealer,
-          onSelected: () => composeSMS(),
-        );
+        return KForms.dropdown('Hapi Store', listDropdownItems, dropdownHapiStore, isenabled: isDealer, onSelected: () => composeSMS());
       },
     );
   }

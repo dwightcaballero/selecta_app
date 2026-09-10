@@ -7,13 +7,14 @@ import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/views/pages/buyinglist_page.dart';
+import 'package:flutter_app/views/pages/kpi/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/creditlist_page.dart';
 import 'package:flutter_app/views/pages/deliverylist_page.dart';
 import 'package:flutter_app/views/pages/endofday_page.dart';
 import 'package:flutter_app/views/pages/expenselist_page.dart';
 import 'package:flutter_app/views/pages/hapistorelist_page.dart';
 import 'package:flutter_app/views/pages/badorderlist_page.dart';
+import 'package:flutter_app/views/pages/kpi/thruput_page.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:flutter_app/views/pages/others/settings_page.dart';
 import 'package:flutter_app/views/pages/returnlist_page.dart';
@@ -57,7 +58,7 @@ class _HomePageState extends State<HomePage> {
             drawerMenu(Icons.home, 'Bad Orders', BadOrderlistPage()),
             drawerMenu(Icons.home, 'Expenses', ExpenselistPage()),
             drawerMenu(Icons.home, 'End of Day Report', EndofdayPage()),
-            drawerMenu(Icons.home, 'Transactions', TransactionListPage()),
+            drawerMenu(Icons.home, 'Transactions', TransactionListPage(storeName: '')),
 
             Divider(),
 
@@ -83,7 +84,7 @@ class _HomePageState extends State<HomePage> {
                 spacing: 10,
                 children: [
                   dashboardItem(dashBoardSales(), nextPage: BuyinglistPage()),
-                  dashboardItem(dashBoardThruput(), nextPage: BuyinglistPage()),
+                  dashboardItem(dashBoardThruput(), nextPage: ThruputPage(dashboardDTO: dashboardDTO)),
                 ],
               ),
               Row(
@@ -116,19 +117,23 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> syncDashboard() async {
-    setState(() {
-      isSyncing = true;
-      dashboardDTO = DashboardDTO.empty();
-      Helperfunctions.showLoadingDialog(context: context, showLoading: true);
-    });
+    if (mounted) {
+      setState(() {
+        isSyncing = true;
+        dashboardDTO = DashboardDTO.empty();
+        Helperfunctions.showLoadingDialog(context: context, showLoading: true);
+      });
+    }
 
     dashboardDTO = await DashboardController.getLatestDashboardData();
     lastSyncDateTime = await DashboardController.getLastSync();
 
-    setState(() {
-      isSyncing = false;
-      Helperfunctions.showLoadingDialog(context: context, showLoading: false);
-    });
+    if (mounted) {
+      setState(() {
+        isSyncing = false;
+        Helperfunctions.showLoadingDialog(context: context, showLoading: false);
+      });
+    }
   }
 
   void onLogout() {

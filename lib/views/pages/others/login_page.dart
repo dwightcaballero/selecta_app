@@ -29,7 +29,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       appBar: KForms.appbar('Login'),
       body: isLoading
-          ? KForms.loadingScreen
+          ? KForms.loadingScreen()
           : Center(
               child: SingleChildScrollView(
                 child: Padding(
@@ -49,11 +49,7 @@ class _LoginPageState extends State<LoginPage> {
                             _isObscured = !_isObscured;
                           }),
                         ),
-                        KForms.regularButton(
-                          'Login',
-                          KButtonStyle.normal,
-                          onSignIn,
-                        ),
+                        KForms.regularButton('Login', KButtonStyle.normal, onSignIn),
                       ],
                     ),
                   ),
@@ -68,18 +64,13 @@ class _LoginPageState extends State<LoginPage> {
       setState(() => isLoading = true);
       try {
         // sign in with user credentials
-        await authService.value.signIn(
-          email: txtEmail.text,
-          password: txtPassword.text,
-        );
+        await authService.value.signIn(email: txtEmail.text, password: txtPassword.text);
 
         // update username based on credentials
         UserService db = UserService();
         var record = await db.getUserByEmail(txtEmail.text);
         if (record != null) {
-          await authService.value.updateUsername(
-            username: '[${record.role}] ${record.username}',
-          );
+          await authService.value.updateUsername(username: '[${record.role}] ${record.username}');
 
           // save the user data in shared preferences cache
           final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -100,10 +91,7 @@ class _LoginPageState extends State<LoginPage> {
         }
       } on FirebaseAuthException catch (e) {
         if (mounted) {
-          ShowMessage.error(
-            context,
-            e.message ?? 'Login: No message from FirebaseAuthException',
-          );
+          ShowMessage.error(context, e.message ?? 'Login: No message from FirebaseAuthException');
         }
       }
 

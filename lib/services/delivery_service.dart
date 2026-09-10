@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
 
 // ignore: constant_identifier_names
@@ -18,13 +19,24 @@ class DeliveryService {
         );
   }
 
+  void addDelivery(Delivery delivery) {
+    _ordersRef.add(delivery);
+  }
+
+  void updateDelivery(String deliveryID, Delivery delivery) {
+    _ordersRef.doc(deliveryID).update(delivery.toJson());
+  }
+
+  void deleteDelivery(String deliveryID) {
+    _ordersRef.doc(deliveryID).delete();
+  }
+
   Stream<QuerySnapshot> getListDelivery() {
     return _ordersRef.orderBy(DeliveryModelString.createdDate).snapshots();
   }
 
   Stream<QuerySnapshot> getListDeliveryByDate(DateTime deliveryDate) {
     final startOfDay = DateTime(deliveryDate.year, deliveryDate.month, deliveryDate.day, 0, 0, 0);
-
     final endOfDay = DateTime(deliveryDate.year, deliveryDate.month, deliveryDate.day, 23, 59, 59);
 
     return _ordersRef
@@ -34,9 +46,29 @@ class DeliveryService {
         .snapshots();
   }
 
-  Stream<QuerySnapshot> getListDeliveryByStoreName(String storeName) {
+  Stream<QuerySnapshot> getListDeliveryByStoreNameAndDateRange(String storeName, String monthsBefore) {
+    DateTime now = DateTime.now();
+    DateTime endofday = KVariables.lastDayOfTheMonth();
+    DateTime startOfDay = now;
+
+    switch (monthsBefore) {
+      case MonthsAgo.months1:
+        startOfDay = KVariables.firstDayOfTheMonth();
+        break;
+      case MonthsAgo.months3:
+        startOfDay = DateTime(now.year, now.month - 3, 0);
+        break;
+      case MonthsAgo.months6:
+        startOfDay = DateTime(now.year, now.month - 6, 0);
+        break;
+      default:
+    }
+
     return _ordersRef
         .where(DeliveryModelString.storeName, isEqualTo: storeName)
+        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.delivered)
+        .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: startOfDay)
+        .where(DeliveryModelString.deliveryDate, isLessThan: endofday)
         .orderBy(DeliveryModelString.deliveryDate, descending: true)
         .snapshots();
   }
@@ -49,7 +81,14 @@ class DeliveryService {
         .snapshots();
   }
 
-  Future<int?> getCountDeliveryWithCreditNotYetPaid() async {
+  Stream<QuerySnapshot> getListDeliveryWithReturnStatus() {
+    return _ordersRef
+        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned)
+        .orderBy(DeliveryModelString.deliveryDate, descending: true)
+        .snapshots();
+  }
+
+  static Future<int?> getCountDeliveryWithCreditNotYetPaid() async {
     try {
       var snapshot = await FirebaseFirestore.instance
           .collection(DELIVERY_COLLECTION_REF)
@@ -65,7 +104,7 @@ class DeliveryService {
     }
   }
 
-  Future<int?> getCountDeliveriesByStatus(String status) async {
+  static Future<int?> getCountDeliveriesByStatus(String status) async {
     var snapshot = await FirebaseFirestore.instance
         .collection(DELIVERY_COLLECTION_REF)
         .where(DeliveryModelString.transactionStatus, isEqualTo: status)
@@ -75,7 +114,7 @@ class DeliveryService {
     return snapshot.count;
   }
 
-  Future<int?> getCountReturnedDeliveriesOnOtherDays() async {
+  static Future<int?> getCountReturnedDeliveriesOnOtherDays() async {
     var currentDate = DateTime.now();
     final startOfDay = DateTime(currentDate.year, currentDate.month, currentDate.day, 0, 0, 0);
 
@@ -89,15 +128,8 @@ class DeliveryService {
     return snapshot.count;
   }
 
-  Stream<QuerySnapshot> getListDeliveryWithReturnStatus() {
-    return _ordersRef
-        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned)
-        .orderBy(DeliveryModelString.deliveryDate, descending: true)
-        .snapshots();
-  }
-
   // Get list delivery within the month of the current year
-  Future<List<Delivery>> getListDeliveryWithinCurrentMonth() async {
+  static Future<List<Delivery>> getListDeliveryWithinCurrentMonth() async {
     final now = DateTime.now();
     final startOfMonth = DateTime(now.year, now.month, 1);
     final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
@@ -110,17 +142,5 @@ class DeliveryService {
         .get();
 
     return snapshot.docs.map((doc) => Delivery.fromJson(doc.data())).toList();
-  }
-
-  void addDelivery(Delivery delivery) {
-    _ordersRef.add(delivery);
-  }
-
-  void updateDelivery(String deliveryID, Delivery delivery) {
-    _ordersRef.doc(deliveryID).update(delivery.toJson());
-  }
-
-  void deleteDelivery(String deliveryID) {
-    _ordersRef.doc(deliveryID).delete();
   }
 }

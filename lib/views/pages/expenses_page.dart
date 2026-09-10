@@ -31,7 +31,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
     return Scaffold(
       appBar: KForms.appbar('Expenses'),
       body: isLoading
-          ? KForms.loadingScreen
+          ? KForms.loadingScreen()
           : Form(
               key: _formKey,
               child: SingleChildScrollView(
@@ -45,14 +45,9 @@ class _ExpensesPageState extends State<ExpensesPage> {
                       KForms.txtFormMoney(
                         'Cash Amount',
                         txtAmount,
-                        (bool hasFocus, TextEditingController controller) =>
-                            onFocusChange(hasFocus, controller),
+                        (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
                       ),
-                      KForms.datePicker(
-                        'Expense Date',
-                        _selectedDate,
-                        onChangeDate,
-                      ),
+                      KForms.datePicker('Expense Date', _selectedDate, onChangeDate),
 
                       // If user opens an existing store, show update and delete button
                       if (widget.recID.isNotEmpty) ...[
@@ -69,22 +64,12 @@ class _ExpensesPageState extends State<ExpensesPage> {
                             KForms.regularButton(
                               'Delete',
                               KButtonStyle.delete,
-                              () => KForms.alertDialogConfirm(
-                                ConfirmTitle.delete,
-                                ConfirmMessage.delete,
-                                context,
-                                onDelete,
-                              ),
+                              () => KForms.alertDialogConfirm(ConfirmTitle.delete, ConfirmMessage.delete, context, onDelete),
                             ),
                             KForms.regularButton(
                               'Update',
                               KButtonStyle.save,
-                              () => KForms.alertDialogConfirm(
-                                ConfirmTitle.update,
-                                ConfirmMessage.update,
-                                context,
-                                onUpdate,
-                              ),
+                              () => KForms.alertDialogConfirm(ConfirmTitle.update, ConfirmMessage.update, context, onUpdate),
                             ),
                           ],
                         ),
@@ -94,12 +79,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                         KForms.regularButton(
                           'Save',
                           KButtonStyle.save,
-                          () => KForms.alertDialogConfirm(
-                            ConfirmTitle.save,
-                            ConfirmMessage.save,
-                            context,
-                            onSave,
-                          ),
+                          () => KForms.alertDialogConfirm(ConfirmTitle.save, ConfirmMessage.save, context, onSave),
                         ),
                       ],
                     ],
@@ -117,9 +97,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
       // save expense record
       Expenses newRecord = Expenses(
         description: txtDescription.text,
-        expenseAmount: Helperfunctions.formatStringAmountToDouble(
-          txtAmount.text,
-        ),
+        expenseAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
         expenseDate: Timestamp.fromDate(_selectedDate),
         createdBy: authService.value.currentUser!.displayName!,
         lastUpdatedBy: authService.value.currentUser!.displayName!,
@@ -129,10 +107,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
       db.addExpenses(newRecord);
 
       if (mounted) {
-        ShowMessage.success(
-          context,
-          'Successfully created a new expenses record!\n[${txtDescription.text}]',
-        );
+        ShowMessage.success(context, 'Successfully created a new expenses record!\n[${txtDescription.text}]');
         Navigator.pop(context); // go back to previous page
       }
       setState(() => isLoading = true);
@@ -148,9 +123,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
       // update record
       Expenses expenses = widget.expense.copyWith(
         description: txtDescription.text,
-        expenseAmount: Helperfunctions.formatStringAmountToDouble(
-          txtAmount.text,
-        ),
+        expenseAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
         expenseDate: Timestamp.fromDate(_selectedDate),
         createdBy: widget.expense.createdBy,
         lastUpdatedBy: authService.value.currentUser!.displayName!,
@@ -162,10 +135,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
       setState(() => isLoading = false);
 
       if (mounted) {
-        ShowMessage.success(
-          context,
-          'Successfully updated the expenses record!\n[${expenses.description}]',
-        );
+        ShowMessage.success(context, 'Successfully updated the expenses record!\n[${expenses.description}]');
         Navigator.pop(context); // go back to previous page
       }
     } else {
@@ -179,10 +149,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
     setState(() => isLoading = false);
 
     if (mounted) {
-      ShowMessage.success(
-        context,
-        'Successfully deleted expenses record!\n[${widget.expense.description}]',
-      );
+      ShowMessage.success(context, 'Successfully deleted expenses record!\n[${widget.expense.description}]');
       Navigator.pop(context); // go back to previous page
     }
   }
@@ -205,17 +172,9 @@ class _ExpensesPageState extends State<ExpensesPage> {
   void onFocusChange(bool hasFocus, TextEditingController controller) {
     if (controller.text.isNotEmpty) {
       if (!hasFocus) {
-        setState(
-          () => controller.text = Helperfunctions.formatStringAmountForDisplay(
-            controller.text,
-          ),
-        );
+        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
       } else {
-        setState(
-          () => controller.text = Helperfunctions.formatStringAmountForEditing(
-            controller.text,
-          ),
-        );
+        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
       }
     }
   }
@@ -225,9 +184,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
 
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.expense.description;
-      txtAmount.text = Helperfunctions.formatDoubleAmountForDisplay(
-        widget.expense.expenseAmount,
-      );
+      txtAmount.text = Helperfunctions.formatDoubleAmountForDisplay(widget.expense.expenseAmount);
       _selectedDate = widget.expense.expenseDate.toDate();
     }
 

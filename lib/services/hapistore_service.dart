@@ -17,6 +17,18 @@ class HapiStoreService {
         );
   }
 
+  void addHapiStore(Hapistore hapistore) {
+    _hapistoresRef.add(hapistore);
+  }
+
+  void updateHapiStore(String hapiStoreID, Hapistore hapistore) {
+    _hapistoresRef.doc(hapiStoreID).update(hapistore.toJson());
+  }
+
+  void deleteHapiStore(String hapiStoreID) {
+    _hapistoresRef.doc(hapiStoreID).delete();
+  }
+
   Stream<QuerySnapshot> getListHapiStoresAsStream() {
     return _hapistoresRef.orderBy('storeName').snapshots();
   }
@@ -29,7 +41,7 @@ class HapiStoreService {
         .snapshots();
   }
 
-  Future<String> getContactByStoreName(String storeName) async {
+  static Future<String> getContactByStoreName(String storeName) async {
     try {
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection(HAPISTORE_COLLECTION_REF)
@@ -51,20 +63,8 @@ class HapiStoreService {
   }
 
   // Get list hapi stores as a Future (not stream)
-  Future<List<Hapistore>> getListHapiStores() async {
+  static Future<List<Hapistore>> getListHapiStores() async {
     var snapshot = await FirebaseFirestore.instance.collection(HAPISTORE_COLLECTION_REF).orderBy('storeName').get();
     return snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
-  }
-
-  void addHapiStore(Hapistore hapistore) {
-    _hapistoresRef.add(hapistore);
-  }
-
-  void updateHapiStore(String hapiStoreID, Hapistore hapistore) {
-    _hapistoresRef.doc(hapiStoreID).update(hapistore.toJson());
-  }
-
-  void deleteHapiStore(String hapiStoreID) {
-    _hapistoresRef.doc(hapiStoreID).delete();
   }
 }

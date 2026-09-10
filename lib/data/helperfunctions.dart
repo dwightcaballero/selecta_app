@@ -75,12 +75,7 @@ class Helperfunctions {
     }
   }
 
-  static Future<String> updateImage(
-    BuildContext context,
-    File? image,
-    String networkImagePath,
-    String savedURLfromDatabase,
-  ) async {
+  static Future<String> updateImage(BuildContext context, File? image, String networkImagePath, String savedURLfromDatabase) async {
     String imageFilePath = '';
 
     // check if there is an existing image saved in the database

@@ -28,10 +28,7 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [_searchBar(), _hapiStoreListView()],
-          ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [_searchBar(), _hapiStoreListView()]),
         ),
       ),
       floatingActionButton: _isDealer ? floatingAddButton() : null,
@@ -102,20 +99,13 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
                           context,
                           MaterialPageRoute(
                             builder: (context) {
-                              return HapiStorePage(
-                                hapiStoreID: hapistoreID,
-                                hapistore: hapistore,
-                              );
+                              return HapiStorePage(hapiStoreID: hapistoreID, hapistore: hapistore);
                             },
                           ),
                         )
                       : null;
                 },
-                child: ContainerWidget(
-                  title: hapistore.storeName,
-                  description1: hapistore.storeContact,
-                  description2: hapistore.storeAddress,
-                ),
+                child: ContainerWidget(title: hapistore.storeName, description1: hapistore.storeContact, description2: hapistore.storeAddress),
               );
             },
           );
@@ -131,10 +121,7 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
           context,
           MaterialPageRoute(
             builder: (context) {
-              return HapiStorePage(
-                hapiStoreID: '',
-                hapistore: Hapistore.empty(),
-              );
+              return HapiStorePage(hapiStoreID: '', hapistore: Hapistore.empty());
             },
           ),
         );

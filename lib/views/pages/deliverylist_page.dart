@@ -31,12 +31,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              KForms.datePicker(
-                'Delivery Date',
-                _selectedDate,
-                onChangeDate,
-                isEnabled: isDealer,
-              ),
+              KForms.datePicker('Delivery Date', _selectedDate, onChangeDate, isEnabled: isDealer),
               _returnedTransactions(),
               _deliveryListView(),
             ],
@@ -56,7 +51,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   void prefetchData() async {
     isDealer = await KVariables.getIsDealer();
-    returnedDeliveryCount = await db.getCountReturnedDeliveriesOnOtherDays();
+    returnedDeliveryCount = await DeliveryService.getCountReturnedDeliveriesOnOtherDays();
     setState(() {});
   }
 
@@ -97,10 +92,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
     return TextButton(
       onPressed: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => ReturnlistPage()),
-        );
+        await Navigator.push(context, MaterialPageRoute(builder: (context) => ReturnlistPage()));
         prefetchData();
       },
       child: Text(
@@ -136,10 +128,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                     context,
                     MaterialPageRoute(
                       builder: (context) {
-                        return DeliveryPage(
-                          deliveryID: deliveryID,
-                          delivery: delivery,
-                        );
+                        return DeliveryPage(deliveryID: deliveryID, delivery: delivery);
                       },
                     ),
                   );
@@ -155,35 +144,16 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                delivery.storeName,
-                                style: KTextStyle.titleTextStyle,
-                              ),
-                              Text(
-                                Helperfunctions.formatDoubleAmountForDisplay(
-                                  delivery.orderAmount,
-                                ),
-                                style: KTextStyle.descriptionTextStyle,
-                              ),
+                              Text(delivery.storeName, style: KTextStyle.titleTextStyle),
+                              Text(Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount), style: KTextStyle.descriptionTextStyle),
                             ],
                           ),
                           Spacer(),
-                          if (delivery.transactionStatus ==
-                              DeliveryStatus.pending) ...[
-                            Icon(
-                              Icons.pending_actions_rounded,
-                              color: Colors.orange,
-                              size: 35,
-                            ),
+                          if (delivery.transactionStatus == DeliveryStatus.pending) ...[
+                            Icon(Icons.pending_actions_rounded, color: Colors.orange, size: 35),
                           ],
-                          if (delivery.transactionStatus ==
-                              DeliveryStatus.delivered) ...[
-                            Icon(Icons.check, color: Colors.green, size: 40),
-                          ],
-                          if (delivery.transactionStatus ==
-                              DeliveryStatus.returned) ...[
-                            Icon(Icons.close, color: Colors.red, size: 40),
-                          ],
+                          if (delivery.transactionStatus == DeliveryStatus.delivered) ...[Icon(Icons.check, color: Colors.green, size: 40)],
+                          if (delivery.transactionStatus == DeliveryStatus.returned) ...[Icon(Icons.close, color: Colors.red, size: 40)],
                         ],
                       ),
                     ),

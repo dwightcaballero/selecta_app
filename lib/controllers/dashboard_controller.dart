@@ -12,20 +12,18 @@ class DashboardController {
     // Initialize Components
     var dashboardDTO = DashboardDTO.empty();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    DeliveryService dbDelivery = DeliveryService();
 
     // SAVE: last sync date and time
     await prefs.setString('last_sync_time', DateTime.now().toIso8601String());
 
     // DASHBOARD: notifications
-    dashboardDTO.unpaidCreditCount = await dbDelivery.getCountDeliveryWithCreditNotYetPaid() ?? 0;
-    dashboardDTO.pendingDeliveryCount = await dbDelivery.getCountDeliveriesByStatus(DeliveryStatus.pending) ?? 0;
-    dashboardDTO.returnedDeliveryCount = await dbDelivery.getCountDeliveriesByStatus(DeliveryStatus.returned) ?? 0;
+    dashboardDTO.unpaidCreditCount = await DeliveryService.getCountDeliveryWithCreditNotYetPaid() ?? 0;
+    dashboardDTO.pendingDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending) ?? 0;
+    dashboardDTO.returnedDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.returned) ?? 0;
 
     // DASHBOARD: buying and non Buying
-    var listStores = await HapiStoreService().getListHapiStores();
-    var listDelivery = await DeliveryService().getListDeliveryWithinCurrentMonth();
-    double totalBuyingSales = 0;
+    var listStores = await HapiStoreService.getListHapiStores();
+    var listDelivery = await DeliveryService.getListDeliveryWithinCurrentMonth();
 
     // For each store, check if there are delivered transactions in order to determine if they are buying or not
     for (var store in listStores) {
@@ -34,17 +32,18 @@ class DashboardController {
       // If there are delivered transactions, compute the total delivered amount of all transactions for thruput computation
       if (listTransactions.isNotEmpty) {
         for (var delivery in listTransactions) {
-          totalBuyingSales += delivery.cashAmount + delivery.onlineAmount + delivery.creditAmount;
+          dashboardDTO.totalBuyingSales += delivery.cashAmount + delivery.onlineAmount + delivery.creditAmount;
         }
 
         dashboardDTO.buyingCount += 1;
+        dashboardDTO.totaltransactionCount += listTransactions.length;
       } else {
         dashboardDTO.nonBuyingCount += 1;
       }
     }
 
     // DASHBOARD: thruput of buying stores
-    dashboardDTO.buyingThruput = totalBuyingSales / dashboardDTO.buyingCount;
+    dashboardDTO.buyingThruput = dashboardDTO.totalBuyingSales / dashboardDTO.buyingCount;
 
     // SAVE: dashboard data
     String jsonString = jsonEncode(dashboardDTO.toJson());

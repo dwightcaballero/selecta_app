@@ -7,11 +7,13 @@ class ContainerWidget extends StatelessWidget {
     required this.title,
     required this.description1,
     required this.description2,
+    this.icon = const Icon(Icons.info_outline_rounded),
   });
 
   final String title;
   final String description1;
   final String description2;
+  final Icon icon;
 
   @override
   Widget build(BuildContext context) {
@@ -26,13 +28,13 @@ class ContainerWidget extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: KTextStyle.titleTextStyle,),
-                  Text(description1, style: KTextStyle.descriptionTextStyle,),
-                  if (description2.isNotEmpty)...[Text(description2, style: KTextStyle.descriptionTextStyle,),]
+                  Text(title, style: KTextStyle.titleTextStyle),
+                  Text(description1, style: KTextStyle.descriptionTextStyle),
+                  if (description2.isNotEmpty) ...[Text(description2, style: KTextStyle.descriptionTextStyle)],
                 ],
               ),
               Spacer(),
-              Icon(Icons.info_outline_rounded, size: 30,),
+              icon,
             ],
           ),
         ),

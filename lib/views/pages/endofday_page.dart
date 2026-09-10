@@ -33,7 +33,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
     return Scaffold(
       appBar: KForms.appbar('End of Day Report'),
       body: _isLoading
-          ? KForms.loadingScreen
+          ? KForms.loadingScreen()
           : SingleChildScrollView(
               child: Padding(
                 padding: EdgeInsets.all(20),

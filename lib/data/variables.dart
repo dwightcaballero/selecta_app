@@ -42,4 +42,25 @@ class KVariables {
   }
 
   static final formkey = GlobalKey<FormState>();
+
+  static DateTime firstDayOfTheMonth() {
+    DateTime now = DateTime.now();
+    // Gets the 1st day of the current month at 12:00 AM (00:00:00)
+    DateTime firstDayOfMonth = DateTime(now.year, now.month, 1);
+    return firstDayOfMonth;
+  }
+
+  static DateTime lastDayOfTheMonth() {
+    final now = DateTime.now();
+    final lastMomentOfMonth = DateTime(
+      now.year,
+      now.month + 1,
+      0, // Rolls back to the last day of the target month
+      23, // Hour
+      59, // Minute
+      59, // Second
+      999, // Millisecond
+    );
+    return lastMomentOfMonth;
+  }
 }

@@ -234,7 +234,15 @@ class KForms {
     );
   }
 
-  static Center loadingScreen = Center(child: CircularProgressIndicator());
+  static Center loadingScreen() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [CircularProgressIndicator(), SizedBox(height: 20), Text("Loading...")],
+      ),
+    );
+  }
 
   static FilledButton regularButton(String title, ButtonStyle style, VoidCallback onPressed) {
     return FilledButton(onPressed: onPressed, style: style, child: Text(title));

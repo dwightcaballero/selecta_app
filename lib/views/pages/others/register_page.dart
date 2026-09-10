@@ -36,7 +36,7 @@ class _RegisterPageState extends State<RegisterPage> {
     return Scaffold(
       appBar: KForms.appbar('Register'),
       body: _isLoading
-          ? KForms.loadingScreen
+          ? KForms.loadingScreen()
           : Center(
               child: SingleChildScrollView(
                 child: Form(
@@ -58,20 +58,11 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                         KForms.txtFormString('Username', txtUsername),
                         KForms.txtFormString('Dealer Name', txtDealerName),
-                        KForms.dropdown(
-                          'Role',
-                          dropdownItems,
-                          dropdowncontroller,
-                        ),
+                        KForms.dropdown('Role', dropdownItems, dropdowncontroller),
                         KForms.regularButton(
                           'Register',
                           KButtonStyle.save,
-                          () => KForms.alertDialogConfirm(
-                            ConfirmTitle.save,
-                            ConfirmMessage.save,
-                            context,
-                            onRegister,
-                          ),
+                          () => KForms.alertDialogConfirm(ConfirmTitle.save, ConfirmMessage.save, context, onRegister),
                         ),
                       ],
                     ),
@@ -88,15 +79,10 @@ class _RegisterPageState extends State<RegisterPage> {
 
       // check if dealer name exists in the database
       DealerService dbDealer = DealerService();
-      Dealer? existingDealer = await dbDealer.getDealerByName(
-        txtDealerName.text,
-      );
+      Dealer? existingDealer = await dbDealer.getDealerByName(txtDealerName.text);
       if (existingDealer == null) {
         if (mounted) {
-          ShowMessage.error(
-            context,
-            'Dealer name doesn\'t exist in the database. Please contact your administrator.',
-          );
+          ShowMessage.error(context, 'Dealer name doesn\'t exist in the database. Please contact your administrator.');
         }
         setState(() => _isLoading = false);
         return;
@@ -104,37 +90,21 @@ class _RegisterPageState extends State<RegisterPage> {
 
       try {
         // create auth record
-        await authService.value.createAccount(
-          email: txtEmail.text,
-          password: txtPassword.text,
-        );
+        await authService.value.createAccount(email: txtEmail.text, password: txtPassword.text);
 
         // sign in with user credentials
-        await authService.value.signIn(
-          email: txtEmail.text,
-          password: txtPassword.text,
-        );
+        await authService.value.signIn(email: txtEmail.text, password: txtPassword.text);
 
         // create user record
-        Users newRecord = Users(
-          email: txtEmail.text,
-          username: txtUsername.text,
-          role: dropdowncontroller.text,
-          dealerName: txtDealerName.text,
-        );
+        Users newRecord = Users(email: txtEmail.text, username: txtUsername.text, role: dropdowncontroller.text, dealerName: txtDealerName.text);
         db.addUser(newRecord);
 
         // update username based on credentials
-        await authService.value.updateUsername(
-          username: '[${dropdowncontroller.text}] ${txtUsername.text}',
-        );
+        await authService.value.updateUsername(username: '[${dropdowncontroller.text}] ${txtUsername.text}');
 
         // sign out and sign in again in order for the username to be updated
         await authService.value.signOut();
-        await authService.value.signIn(
-          email: txtEmail.text,
-          password: txtPassword.text,
-        );
+        await authService.value.signIn(email: txtEmail.text, password: txtPassword.text);
 
         // save the user role in shared preferences cache
         // save the user data in shared preferences cache
@@ -147,10 +117,7 @@ class _RegisterPageState extends State<RegisterPage> {
         await prefs.setString('user_data', jsonString);
       } on FirebaseAuthException catch (e) {
         if (mounted) {
-          ShowMessage.error(
-            context,
-            e.message ?? 'There was an error upon creating an account',
-          );
+          ShowMessage.error(context, e.message ?? 'There was an error upon creating an account');
         }
         setState(() => _isLoading = false);
         return;
@@ -158,10 +125,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
       if (mounted) {
         Navigator.pop(context); // go back to previous page
-        ShowMessage.success(
-          context,
-          "Successfully created an account [${txtUsername.text}]",
-        );
+        ShowMessage.success(context, "Successfully created an account [${txtUsername.text}]");
       }
     } else {
       ShowMessage.error(context, 'Please fill up the required fields');
@@ -172,15 +136,8 @@ class _RegisterPageState extends State<RegisterPage> {
   void initState() {
     super.initState();
 
-    dropdownItems.add(
-      DropdownMenuEntry(value: BusinessRole.dealer, label: BusinessRole.dealer),
-    );
-    dropdownItems.add(
-      DropdownMenuEntry(
-        value: BusinessRole.salesman,
-        label: BusinessRole.salesman,
-      ),
-    );
+    dropdownItems.add(DropdownMenuEntry(value: BusinessRole.dealer, label: BusinessRole.dealer));
+    dropdownItems.add(DropdownMenuEntry(value: BusinessRole.salesman, label: BusinessRole.salesman));
   }
 
   @override

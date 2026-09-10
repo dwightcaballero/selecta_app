@@ -5,53 +5,25 @@ class KConstants {
 }
 
 class KTextStyle {
-  static const titleTextStyle = TextStyle(
-    color: Colors.blue,
-    fontSize: 18,
-    fontWeight: FontWeight.bold,
-  );
+  static const titleTextStyle = TextStyle(color: Colors.blue, fontSize: 18, fontWeight: FontWeight.bold);
 
   static const descriptionTextStyle = TextStyle(fontSize: 16);
 
-  static const descriptionRedTextStyle = TextStyle(
-    fontSize: 16,
-    color: Colors.red,
-  );
+  static const descriptionRedTextStyle = TextStyle(fontSize: 16, color: Colors.red);
 
-  static const descriptionGreenTextStyle = TextStyle(
-    fontSize: 16,
-    color: Colors.green,
-  );
+  static const descriptionGreenTextStyle = TextStyle(fontSize: 16, color: Colors.green);
 
-  static const descriptionOrangeTextStyle = TextStyle(
-    fontSize: 16,
-    color: Colors.orange,
-  );
+  static const descriptionOrangeTextStyle = TextStyle(fontSize: 16, color: Colors.orange);
 
-  static const descriptionTextStyleWithColor = TextStyle(
-    fontSize: 16,
-    color: Colors.orange,
-  );
+  static const descriptionTextStyleWithColor = TextStyle(fontSize: 16, color: Colors.orange);
 }
 
 class KButtonStyle {
-  static final save = FilledButton.styleFrom(
-    minimumSize: Size(double.infinity, 50.0),
-    backgroundColor: Colors.green[300],
-  );
-  static final delete = FilledButton.styleFrom(
-    minimumSize: Size(double.infinity, 50.0),
-    backgroundColor: Colors.red[300],
-  );
-  static final normal = FilledButton.styleFrom(
-    minimumSize: Size(double.infinity, 50.0),
-  );
-  static final alertYes = FilledButton.styleFrom(
-    backgroundColor: Colors.green[300],
-  );
-  static final alertNo = FilledButton.styleFrom(
-    backgroundColor: Colors.red[300],
-  );
+  static final save = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0), backgroundColor: Colors.green[300]);
+  static final delete = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0), backgroundColor: Colors.red[300]);
+  static final normal = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0));
+  static final alertYes = FilledButton.styleFrom(backgroundColor: Colors.green[300]);
+  static final alertNo = FilledButton.styleFrom(backgroundColor: Colors.red[300]);
 }
 
 class DeliveryStatus {
@@ -90,6 +62,12 @@ class LogAction {
   static const create = "Create";
   static const update = "Update";
   static const delete = "Delete";
+}
+
+class MonthsAgo {
+  static const months1 = "This Month";
+  static const months3 = "Past 3 Months";
+  static const months6 = "Past 6 Months";
 }
 
 // ₱

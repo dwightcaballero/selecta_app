@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/forms.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/delivery.dart';
@@ -6,9 +7,11 @@ import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/views/pages/delivery_page.dart';
 import 'package:flutter_app/views/widgets/container_widget.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
+import 'package:intl/intl.dart';
 
 class TransactionListPage extends StatefulWidget {
-  const TransactionListPage({super.key});
+  const TransactionListPage({super.key, required this.storeName});
+  final String storeName;
 
   @override
   State<TransactionListPage> createState() => _TransactionListPageState();
@@ -17,6 +20,26 @@ class TransactionListPage extends StatefulWidget {
 class _TransactionListPageState extends State<TransactionListPage> {
   DeliveryService db = DeliveryService();
   TextEditingController dropdownHapiStore = TextEditingController();
+  TextEditingController dropdownMonthsAgo = TextEditingController();
+  final List<DropdownMenuEntry<String>> listDropdownMonthsAgo = [
+    DropdownMenuEntry(value: MonthsAgo.months1, label: MonthsAgo.months1),
+    DropdownMenuEntry(value: MonthsAgo.months3, label: MonthsAgo.months3),
+    DropdownMenuEntry(value: MonthsAgo.months6, label: MonthsAgo.months6),
+  ];
+
+  @override
+  void dispose() {
+    dropdownHapiStore.dispose();
+    dropdownMonthsAgo.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    dropdownHapiStore.text = widget.storeName;
+    dropdownMonthsAgo.text = MonthsAgo.months1;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,10 +52,8 @@ class _TransactionListPageState extends State<TransactionListPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             spacing: 10,
             children: [
-              hapistoreDropdown(
-                dropdownHapiStore,
-                onChanged: () => setState(() {}),
-              ),
+              hapistoreDropdown(dropdownHapiStore, onChanged: () => setState(() {})),
+              KForms.dropdown('Month', listDropdownMonthsAgo, dropdownMonthsAgo, onSelected: () => setState(() {})),
               _transactionListView(),
             ],
           ),
@@ -47,7 +68,7 @@ class _TransactionListPageState extends State<TransactionListPage> {
       width: MediaQuery.sizeOf(context).width,
 
       child: StreamBuilder(
-        stream: db.getListDeliveryByStoreName(dropdownHapiStore.text),
+        stream: db.getListDeliveryByStoreNameAndDateRange(dropdownHapiStore.text, dropdownMonthsAgo.text),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
           if (snapshot.hasError) {
             return const Center(child: Text('Something went wrong'));
@@ -74,22 +95,15 @@ class _TransactionListPageState extends State<TransactionListPage> {
                     context,
                     MaterialPageRoute(
                       builder: (context) {
-                        return DeliveryPage(
-                          deliveryID: deliveryID,
-                          delivery: delivery,
-                        );
+                        return DeliveryPage(deliveryID: deliveryID, delivery: delivery);
                       },
                     ),
                   );
                 },
                 child: ContainerWidget(
-                  title: Helperfunctions.formatTimestampForDisplay(
-                    delivery.deliveryDate!,
-                  ),
+                  title: DateFormat('MMMM dd, yyyy').format(delivery.deliveryDate!.toDate()),
                   description1: delivery.transactionStatus,
-                  description2: Helperfunctions.formatDoubleAmountForDisplay(
-                    delivery.orderAmount,
-                  ),
+                  description2: Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
                 ),
               );
             },
