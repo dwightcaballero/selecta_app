@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/views/pages/imageviewer_page.dart';
+import 'package:flutter_app/views/widgets/imageviewer_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';

@@ -272,7 +272,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget dashBoardThruput() {
+    double buyingThruput = 0;
     double thruputTarget = 8000;
+
+    if (dashboardDto != null) {
+      buyingThruput = dashboardDto!.buyingThruput;
+    }
 
     return Column(
       spacing: 5,
@@ -280,14 +285,10 @@ class _HomePageState extends State<HomePage> {
         KForms.textTitle('Thruput'),
         KForms.pieChart(
           listData: [
-            PieChartSectionData(value: dashboardDto!.buyingThruput, color: Colors.green, showTitle: false),
-            PieChartSectionData(
-              value: thruputTarget - dashboardDto!.buyingThruput,
-              color: Colors.red,
-              showTitle: false,
-            ),
+            PieChartSectionData(value: buyingThruput, color: Colors.green, showTitle: false),
+            PieChartSectionData(value: thruputTarget - buyingThruput, color: Colors.red, showTitle: false),
           ],
-          title: NumberFormat('0.00%').format(dashboardDto!.buyingThruput / thruputTarget),
+          title: NumberFormat('0.00%').format(buyingThruput / thruputTarget),
         ),
         Divider(),
         Column(
@@ -296,14 +297,14 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Text('Actual: ', style: TextStyle(color: Colors.green)),
                 Spacer(),
-                Text(Helperfunctions.formatDoubleAmountForDisplay(dashboardDto!.buyingThruput)),
+                Text(Helperfunctions.formatDoubleAmountForDisplay(buyingThruput)),
               ],
             ),
             Row(
               children: [
                 Text('Missing: ', style: TextStyle(color: Colors.red)),
                 Spacer(),
-                Text(Helperfunctions.formatDoubleAmountForDisplay(thruputTarget - dashboardDto!.buyingThruput)),
+                Text(Helperfunctions.formatDoubleAmountForDisplay(thruputTarget - buyingThruput)),
               ],
             ),
             Row(
@@ -320,7 +321,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget dashboardBuying() {
-    int buyingTarget = dashboardDto!.buyingCount + dashboardDto!.nonBuyingCount;
+    double buyingTarget = 0;
+    double buyingCount = 0;
+    double nonBuyingCount = 0;
+
+    if (dashboardDto != null) {
+      buyingTarget = (dashboardDto!.buyingCount + dashboardDto!.nonBuyingCount).toDouble();
+      buyingCount = dashboardDto!.buyingCount.toDouble();
+      nonBuyingCount = dashboardDto!.nonBuyingCount.toDouble();
+    }
 
     // for UI loading purposes
     if (isSyncing) {
@@ -334,10 +343,10 @@ class _HomePageState extends State<HomePage> {
         KForms.textTitle('Buying'),
         KForms.pieChart(
           listData: [
-            PieChartSectionData(value: dashboardDto!.buyingCount.toDouble(), color: Colors.green, showTitle: false),
-            PieChartSectionData(value: dashboardDto!.nonBuyingCount.toDouble(), color: Colors.red, showTitle: false),
+            PieChartSectionData(value: buyingCount, color: Colors.green, showTitle: false),
+            PieChartSectionData(value: nonBuyingCount, color: Colors.red, showTitle: false),
           ],
-          title: NumberFormat('0.00%').format(dashboardDto!.buyingCount / buyingTarget.toDouble()),
+          title: NumberFormat('0.00%').format(buyingCount / buyingTarget),
         ),
         Divider(),
         Column(
@@ -346,21 +355,21 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Text('Buying: ', style: TextStyle(color: Colors.green)),
                 Spacer(),
-                Text('${dashboardDto!.buyingCount}'),
+                Text('$buyingCount'),
               ],
             ),
             Row(
               children: [
                 Text('Non Buying: ', style: TextStyle(color: Colors.red)),
                 Spacer(),
-                Text('${dashboardDto!.nonBuyingCount}'),
+                Text('$nonBuyingCount'),
               ],
             ),
             Row(
               children: [
                 Text('Total: ', style: TextStyle(color: Colors.black)),
                 Spacer(),
-                Text('${dashboardDto!.nonBuyingCount + dashboardDto!.buyingCount} '),
+                Text('$buyingTarget '),
               ],
             ),
           ],
