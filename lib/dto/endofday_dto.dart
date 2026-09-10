@@ -1,4 +1,4 @@
-class EndOfDayData {
+class EndOfDayDTO {
   int totaldelivery = 0;
   int pendingstatus = 0;
   int deliveredstatus = 0;
@@ -18,7 +18,7 @@ class EndOfDayData {
   double discrepancy = 0;
   double bankdeposit = 0;
 
-  EndOfDayData({
+  EndOfDayDTO({
     required this.totaldelivery,
     required this.pendingstatus,
     required this.deliveredstatus,
@@ -37,7 +37,7 @@ class EndOfDayData {
     required this.bankdeposit,
   });
 
-  static EndOfDayData empty() => EndOfDayData(
+  static EndOfDayDTO empty() => EndOfDayDTO(
     totaldelivery: 0,
     pendingstatus: 0,
     deliveredstatus: 0,

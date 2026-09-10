@@ -1,14 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/controllers/dashboard_controller.dart';
 import 'package:flutter_app/data/forms.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/services/home_service.dart';
 import 'package:flutter_app/views/pages/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/creditlist_page.dart';
 import 'package:flutter_app/views/pages/deliverylist_page.dart';
@@ -32,15 +30,9 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  DeliveryService dbDelivery = DeliveryService();
-  HomeService homeService = HomeService();
-  DashboardDto? dashboardDto;
-  int? pendingDeliveryCount;
-  int? unpaidCreditCount;
-  int? returnedDeliveryCount;
+  DashboardDTO dashboardDTO = DashboardDTO.empty();
+  String lastSyncDateTime = '';
   bool isDealer = false;
-  String? lastSyncDateTime;
-  bool isFirstLoad = false;
   bool isSyncing = false;
 
   @override
@@ -51,113 +43,92 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return isFirstLoad
-        ? Center(child: CircularProgressIndicator())
-        : Scaffold(
-            appBar: KForms.appbar('Home'),
-            drawer: Drawer(
-              child: ListView(
-                padding: EdgeInsets.zero,
+    return Scaffold(
+      appBar: KForms.appbar('Home'),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            drawerHeader(),
+
+            drawerMenu(Icons.home, 'Deliveries', DeliveryListPage(), notifyCount: dashboardDTO.pendingDeliveryCount),
+            drawerMenu(Icons.home, 'Credit', CreditlistPage(), notifyCount: dashboardDTO.unpaidCreditCount),
+            drawerMenu(Icons.home, 'Return', ReturnlistPage(), notifyCount: dashboardDTO.returnedDeliveryCount),
+            drawerMenu(Icons.home, 'Bad Orders', BadOrderlistPage()),
+            drawerMenu(Icons.home, 'Expenses', ExpenselistPage()),
+            drawerMenu(Icons.home, 'End of Day Report', EndofdayPage()),
+            drawerMenu(Icons.home, 'Transactions', TransactionListPage()),
+
+            Divider(),
+
+            drawerMenu(Icons.home, 'Logs', TransactionLogPage()),
+            drawerMenu(Icons.home, 'Hapi Stores', HapiStoreListPage()),
+            //homeMenu(Icons.home, 'Products', SettingsPage()), // route to product page
+
+            Divider(),
+
+            //homeMenu(Icons.settings_sharp, 'Settings', SettingsPage()),
+            drawerMenu(Icons.logout_sharp, 'Logout', SettingsPage(), isLogout: true),
+          ],
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.only(left: 20, right: 20),
+          child: Column(
+            spacing: 20,
+            children: [
+              dashboardLastSync(),
+              Row(
+                spacing: 10,
                 children: [
-                  drawerHeader(),
-
-                  homeMenu(Icons.home, 'Deliveries', DeliveryListPage(), notifyCount: pendingDeliveryCount),
-                  homeMenu(Icons.home, 'Credit', CreditlistPage(), notifyCount: unpaidCreditCount),
-                  homeMenu(Icons.home, 'Return', ReturnlistPage(), notifyCount: returnedDeliveryCount),
-                  homeMenu(Icons.home, 'Bad Orders', BadOrderlistPage()),
-                  homeMenu(Icons.home, 'Expenses', ExpenselistPage()),
-                  homeMenu(Icons.home, 'End of Day Report', EndofdayPage()),
-                  homeMenu(Icons.home, 'Transactions', TransactionListPage()),
-
-                  Divider(),
-
-                  homeMenu(Icons.home, 'Logs', TransactionLogPage()),
-                  homeMenu(Icons.home, 'Hapi Stores', HapiStoreListPage()),
-                  //homeMenu(Icons.home, 'Products', SettingsPage()), // route to product page
-
-                  Divider(),
-
-                  //homeMenu(Icons.settings_sharp, 'Settings', SettingsPage()),
-                  homeMenu(Icons.logout_sharp, 'Logout', SettingsPage(), isLogout: true),
+                  dashboardItem(dashBoardSales(), nextPage: BuyinglistPage()),
+                  dashboardItem(dashBoardThruput(), nextPage: BuyinglistPage()),
                 ],
               ),
-            ),
-            body: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 20, right: 20),
-                child: Column(
-                  spacing: 20,
-                  children: [
-                    dashboardLastSync(),
-                    Row(
-                      spacing: 10,
-                      children: [
-                        dashboardItem(dashBoardSales(), nextPage: BuyinglistPage()),
-                        dashboardItem(dashBoardThruput(), nextPage: BuyinglistPage()),
-                      ],
-                    ),
-                    Row(
-                      spacing: 10,
-                      children: [
-                        dashboardItem(dashboardBuying(), nextPage: BuyinglistPage()),
-                        dashboardItem(dashboardScanning(), nextPage: BuyinglistPage()),
-                      ],
-                    ),
-                    Row(
-                      spacing: 10,
-                      children: [
-                        dashboardItem(dashBoardCOTC(), nextPage: BuyinglistPage()),
-                        dashboardItem(dashBoardExpansion(), nextPage: BuyinglistPage()),
-                      ],
-                    ),
-                  ],
-                ),
+              Row(
+                spacing: 10,
+                children: [
+                  dashboardItem(dashboardBuying(), nextPage: BuyinglistPage()),
+                  dashboardItem(dashboardScanning(), nextPage: BuyinglistPage()),
+                ],
               ),
-            ),
-          );
+              Row(
+                spacing: 10,
+                children: [
+                  dashboardItem(dashBoardCOTC(), nextPage: BuyinglistPage()),
+                  dashboardItem(dashBoardExpansion(), nextPage: BuyinglistPage()),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void prefetchData() async {
-    setState(() => isFirstLoad = true);
-
-    dashboardDto = await homeService.getDataFromSharedPrefs();
-    lastSyncDateTime = await HomeService.getLastSyncDateTime();
-
-    setState(() => isFirstLoad = false);
-  }
-
-  Future<void> syncData() async {
-    isSyncing = true;
-    dashboardDto = DashboardDto.empty();
-    setState(() => Helperfunctions.showLoadingDialog(context: context, showLoading: true));
-
-    // Update last sync time
-    await homeService.saveLastSyncDateTime();
-    lastSyncDateTime = await HomeService.getLastSyncDateTime();
-
-    unpaidCreditCount = await dbDelivery.getCountDeliveryWithCreditNotYetPaid();
-    pendingDeliveryCount = await dbDelivery.getCountDeliveriesByStatus(DeliveryStatus.pending);
-    returnedDeliveryCount = await dbDelivery.getCountDeliveriesByStatus(DeliveryStatus.returned);
+    // Check if the user is a dealer
     isDealer = await KVariables.getIsDealer();
 
-    // DASHBOARD: Buying - Check for buying and non buying hapi stores.
-    var listStores = await homeService.getListOfBuyingAndNonBuyingStores();
-    var listBuyingStores = listStores.where((store) => store.isBuying!);
-    dashboardDto!.buyingCount = listBuyingStores.length;
-    dashboardDto!.nonBuyingCount = listStores.length - dashboardDto!.buyingCount;
+    // Sync DashBoard
+    syncDashboard();
+  }
 
-    // DASHBOARD: Thruput of buying stores
-    double totalAmount = 0;
-    for (var buying in listBuyingStores) {
-      totalAmount += buying.deliveredAmount!;
-    }
-    dashboardDto!.buyingThruput = totalAmount / listBuyingStores.length;
+  Future<void> syncDashboard() async {
+    setState(() {
+      isSyncing = true;
+      dashboardDTO = DashboardDTO.empty();
+      Helperfunctions.showLoadingDialog(context: context, showLoading: true);
+    });
 
-    // save the dashboardDto to shared preferences
-    await homeService.saveDataToSharedPrefs(dashboardDto!);
+    dashboardDTO = await DashboardController.getLatestDashboardData();
+    lastSyncDateTime = await DashboardController.getLastSync();
 
-    setState(() => Helperfunctions.showLoadingDialog(context: context, showLoading: false));
-    isSyncing = false;
+    setState(() {
+      isSyncing = false;
+      Helperfunctions.showLoadingDialog(context: context, showLoading: false);
+    });
   }
 
   void onLogout() {
@@ -182,7 +153,7 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  ListTile homeMenu(IconData icon, String title, Widget nextPage, {int? notifyCount, bool isLogout = false}) {
+  ListTile drawerMenu(IconData icon, String title, Widget nextPage, {int? notifyCount, bool isLogout = false}) {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
@@ -192,7 +163,7 @@ class _HomePageState extends State<HomePage> {
           onLogout();
         } else {
           await Navigator.push(context, MaterialPageRoute(builder: (context) => nextPage));
-          syncData();
+          syncDashboard();
         }
       },
       trailing: notifyCount == null || notifyCount == 0
@@ -237,16 +208,9 @@ class _HomePageState extends State<HomePage> {
         child: InkWell(
           onTap: () async {
             await Helperfunctions.navigateThenWait(context, nextPage);
-            syncData();
+            syncDashboard();
           },
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: dashboardDto != null
-                ? dashboardContent
-                : Center(
-                    child: Text('Please sync data', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-          ),
+          child: Padding(padding: const EdgeInsets.all(8.0), child: dashboardContent),
         ),
       ),
     );
@@ -256,11 +220,11 @@ class _HomePageState extends State<HomePage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        KForms.textDescriptionString('$lastSyncDateTime'),
+        KForms.textDescriptionString(lastSyncDateTime),
         IconButton(
           icon: Icon(Icons.refresh),
           onPressed: () {
-            syncData();
+            syncDashboard();
           },
         ),
       ],
@@ -275,8 +239,9 @@ class _HomePageState extends State<HomePage> {
     double buyingThruput = 0;
     double thruputTarget = 8000;
 
-    if (dashboardDto != null) {
-      buyingThruput = dashboardDto!.buyingThruput;
+    // for UI loading purposes
+    if (!isSyncing) {
+      buyingThruput = dashboardDTO.buyingThruput;
     }
 
     return Column(
@@ -325,16 +290,14 @@ class _HomePageState extends State<HomePage> {
     double buyingCount = 0;
     double nonBuyingCount = 0;
 
-    if (dashboardDto != null) {
-      buyingTarget = (dashboardDto!.buyingCount + dashboardDto!.nonBuyingCount).toDouble();
-      buyingCount = dashboardDto!.buyingCount.toDouble();
-      nonBuyingCount = dashboardDto!.nonBuyingCount.toDouble();
-    }
-
-    // for UI loading purposes
     if (isSyncing) {
-      dashboardDto!.nonBuyingCount = 1; // for UI purposes
+      // for UI loading purposes
+      nonBuyingCount = 1;
       buyingTarget = 1;
+    } else {
+      buyingTarget = (dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount).toDouble();
+      buyingCount = dashboardDTO.buyingCount.toDouble();
+      nonBuyingCount = dashboardDTO.nonBuyingCount.toDouble();
     }
 
     return Column(

@@ -37,12 +37,7 @@ class KForms {
     return Text(DateFormat('E, d MMM yyyy, hh:mm a').format(date), style: KTextStyle.descriptionTextStyle);
   }
 
-  static TextFormField txtFormString(
-    String label,
-    TextEditingController controller, {
-    bool isRequired = true,
-    bool isenabled = true,
-  }) {
+  static TextFormField txtFormString(String label, TextEditingController controller, {bool isRequired = true, bool isenabled = true}) {
     return TextFormField(
       controller: controller,
       enabled: isenabled,
@@ -60,12 +55,7 @@ class KForms {
 
   static InputDecorator txtFieldTitleLabel(String label, String text) {
     return InputDecorator(
-      decoration: InputDecoration(
-        labelText: label,
-        enabled: false,
-        contentPadding: EdgeInsets.all(15),
-        border: OutlineInputBorder(),
-      ),
+      decoration: InputDecoration(labelText: label, enabled: false, contentPadding: EdgeInsets.all(15), border: OutlineInputBorder()),
       child: Text(text, style: KTextStyle.descriptionTextStyle),
     );
   }
@@ -92,12 +82,7 @@ class KForms {
     );
   }
 
-  static TextFormField txtFormNumber(
-    String label,
-    TextEditingController controller, {
-    bool isRequired = true,
-    VoidCallback? onEditingComplete,
-  }) {
+  static TextFormField txtFormNumber(String label, TextEditingController controller, {bool isRequired = true, VoidCallback? onEditingComplete}) {
     return TextFormField(
       controller: controller,
       keyboardType: TextInputType.number,
@@ -217,22 +202,14 @@ class KForms {
     );
   }
 
-  static TextFormField txtFormPassword(
-    String label,
-    TextEditingController controller,
-    bool isObscured,
-    VoidCallback? onEyePressed,
-  ) {
+  static TextFormField txtFormPassword(String label, TextEditingController controller, bool isObscured, VoidCallback? onEyePressed) {
     return TextFormField(
       controller: controller,
       obscureText: isObscured,
       decoration: InputDecoration(
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
         labelText: label,
-        suffixIcon: IconButton(
-          icon: Icon(isObscured ? Icons.visibility_off : Icons.visibility),
-          onPressed: onEyePressed,
-        ),
+        suffixIcon: IconButton(icon: Icon(isObscured ? Icons.visibility_off : Icons.visibility), onPressed: onEyePressed),
       ),
       autovalidateMode: AutovalidateMode.onUnfocus,
       validator: (value) {
@@ -250,11 +227,7 @@ class KForms {
       // 3. Use flexibleSpace to build the gradient layer
       flexibleSpace: Container(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: <Color>[Colors.blue, Colors.purple[200]!],
-          ),
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: <Color>[Colors.blue, Colors.purple[200]!]),
         ),
       ),
       title: Text(title),
@@ -267,12 +240,7 @@ class KForms {
     return FilledButton(onPressed: onPressed, style: style, child: Text(title));
   }
 
-  static InputDecorator datePicker(
-    String label,
-    DateTime selectedDate,
-    VoidCallback onChangeDate, {
-    bool isEnabled = true,
-  }) {
+  static InputDecorator datePicker(String label, DateTime selectedDate, VoidCallback onChangeDate, {bool isEnabled = true}) {
     return InputDecorator(
       decoration: InputDecoration(
         labelText: label,
@@ -354,12 +322,7 @@ class KForms {
     );
   }
 
-  static Row lefRightLabel(
-    String leftLabel,
-    String rightLabel, {
-    Color rightLabelColor = Colors.black,
-    bool withLeftIndent = false,
-  }) {
+  static Row lefRightLabel(String leftLabel, String rightLabel, {Color rightLabelColor = Colors.black, bool withLeftIndent = false}) {
     return Row(
       children: [
         if (withLeftIndent) SizedBox(width: 50.0),
@@ -370,12 +333,7 @@ class KForms {
     );
   }
 
-  static Column lastUpdatedByDetails(
-    String createdBy,
-    Timestamp createdDate,
-    String lastUpdatedBy,
-    Timestamp lastUpdatedDate,
-  ) {
+  static Column lastUpdatedByDetails(String createdBy, Timestamp createdDate, String lastUpdatedBy, Timestamp lastUpdatedDate) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -389,12 +347,7 @@ class KForms {
     );
   }
 
-  static Row imagePicker(
-    BuildContext context,
-    File? image,
-    String networkImagePath,
-    Function(ImageSource? source) pickImage,
-  ) {
+  static Row imagePicker(BuildContext context, File? image, String networkImagePath, Function(ImageSource? source) pickImage) {
     bool hasImageData = (image != null || networkImagePath.isNotEmpty);
 
     return Row(
@@ -409,10 +362,7 @@ class KForms {
           ),
           child: hasImageData
               ? InkWell(
-                  onTap: () => Helperfunctions.navigateTo(
-                    context,
-                    ImageViewerPage(image: image, networkImagePath: networkImagePath),
-                  ),
+                  onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: image != null
@@ -436,16 +386,8 @@ class KForms {
             mainAxisSize: MainAxisSize.min, // Shrinks column vertical height to fit buttons
             crossAxisAlignment: CrossAxisAlignment.stretch, // Makes buttons fill column width
             children: [
-              FilledButton.icon(
-                onPressed: () => pickImage(ImageSource.camera),
-                icon: Icon(Icons.camera_alt),
-                label: const Text('Open camera'),
-              ),
-              FilledButton.icon(
-                onPressed: () => pickImage(ImageSource.gallery),
-                icon: Icon(Icons.image_search),
-                label: const Text('Open Gallery'),
-              ),
+              FilledButton.icon(onPressed: () => pickImage(ImageSource.camera), icon: Icon(Icons.camera_alt), label: const Text('Open camera')),
+              FilledButton.icon(onPressed: () => pickImage(ImageSource.gallery), icon: Icon(Icons.image_search), label: const Text('Open Gallery')),
               FilledButton.icon(
                 onPressed: image == null && networkImagePath.isEmpty ? null : () => pickImage(null),
                 style: FilledButton.styleFrom(backgroundColor: Colors.red[300]),
@@ -481,10 +423,7 @@ class KForms {
           ),
           child: hasImageData
               ? InkWell(
-                  onTap: () => Helperfunctions.navigateTo(
-                    context,
-                    ImageViewerPage(image: image, networkImagePath: networkImagePath),
-                  ),
+                  onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: image != null
@@ -561,7 +500,7 @@ class KForms {
         AspectRatio(
           aspectRatio: 1,
           child: PieChart(
-            duration: Duration(milliseconds: 1000),
+            duration: Duration(milliseconds: 500),
             curve: Curves.easeInOutQuint,
             PieChartData(sections: listData),
           ),
