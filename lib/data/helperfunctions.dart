@@ -10,6 +10,7 @@ import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/transactionlog_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:lottie/lottie.dart';
 
 class Helperfunctions {
   static String formatStringAmountForDisplay(String stringAmount) {
@@ -171,7 +172,7 @@ class Helperfunctions {
     db.addLog(log);
   }
 
-  static void showLoadingDialog({required BuildContext context, required bool showLoading}) {
+  static Future<void> showLoading({required BuildContext context, required bool showLoading}) async {
     if (showLoading) {
       showDialog(
         context: context,
@@ -180,17 +181,18 @@ class Helperfunctions {
           return PopScope(
             canPop: false, // Prevents closing via the physical back button (Flutter 3.12+)
             child: AlertDialog(
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [SizedBox(height: 20), CircularProgressIndicator(), SizedBox(height: 20), Text("Loading...")],
-              ),
+              backgroundColor: Colors.transparent, // Makes the card invisible
+              elevation: 0, // Removes the shadow drop
+              surfaceTintColor: Colors.transparent, // Removes the Material 3 tint overlay
+              content: Lottie.asset('assets/lotties/loading.json', width: 150, height: 150),
             ),
           );
         },
       );
     } else {
-      Navigator.of(context, rootNavigator: true).pop();
+      await Future.delayed(const Duration(milliseconds: 300), () {
+        if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      });
     }
   }
 }

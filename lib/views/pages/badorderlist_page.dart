@@ -6,14 +6,9 @@ import 'package:flutter_app/services/badorder_service.dart';
 import 'package:flutter_app/views/pages/badorder_page.dart';
 import 'package:flutter_app/views/widgets/container_widget.dart';
 
-class BadOrderlistPage extends StatefulWidget {
-  const BadOrderlistPage({super.key});
+class BadOrderlistPage extends StatelessWidget {
+  BadOrderlistPage({super.key});
 
-  @override
-  State<BadOrderlistPage> createState() => _BadOrderlistPageState();
-}
-
-class _BadOrderlistPageState extends State<BadOrderlistPage> {
   final BadOrderService db = BadOrderService();
 
   @override
@@ -24,28 +19,23 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                _badorderListView()
-              ],
-            ),
+            child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [_badorderListView(context)]),
           ),
         ),
       ),
-      floatingActionButton: floatingActionAddButton()
+      floatingActionButton: floatingActionAddButton(context),
     );
   }
 
-  Widget floatingActionAddButton(){
+  Widget floatingActionAddButton(BuildContext context) {
     return FloatingActionButton(
-      onPressed: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: '', badorder: BadOrder.empty() )),
+      onPressed: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: '', badorder: BadOrder.empty())),
       backgroundColor: Theme.of(context).colorScheme.primary,
-      child: Icon(Icons.add, color: Colors.white,
-      ));
+      child: Icon(Icons.add, color: Colors.white),
+    );
   }
 
-  Widget _badorderListView(){
+  Widget _badorderListView(BuildContext context) {
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.80,
       width: MediaQuery.sizeOf(context).width,
@@ -53,10 +43,9 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
       child: StreamBuilder(
         stream: db.getListBadOrder(),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
-          
           if (snapshot.hasError) return const Center(child: Text('Something went wrong'));
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: Text("Loading..."));
-          if (snapshot.data!.docs.isEmpty)return const Center(child: Text("No results found"));
+          if (snapshot.data!.docs.isEmpty) return const Center(child: Text("No results found"));
 
           List listBadOrder = snapshot.data?.docs;
 
@@ -67,15 +56,14 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
               BadOrder badorder = listBadOrder[index].data();
               String badorderID = listBadOrder[index].id;
 
-              return 
-                InkWell(
-                  onTap: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: badorderID, badorder: badorder)),
-                  child: ContainerWidget(
-                    title: badorder.hapistore,
-                    description1: Helperfunctions.formatTimestampForDisplay(badorder.badorderDate),
-                    description2: Helperfunctions.formatDoubleAmountForDisplay(badorder.badorderAmount),
-                  ),
-                );
+              return InkWell(
+                onTap: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: badorderID, badorder: badorder)),
+                child: ContainerWidget(
+                  title: badorder.hapistore,
+                  description1: Helperfunctions.formatTimestampForDisplay(badorder.badorderDate),
+                  description2: Helperfunctions.formatDoubleAmountForDisplay(badorder.badorderAmount),
+                ),
+              );
             },
           );
         },

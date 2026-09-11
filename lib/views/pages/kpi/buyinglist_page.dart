@@ -23,19 +23,20 @@ class _BuyinglistPageState extends State<BuyinglistPage> {
   List<KPIBuying> listBuying = [];
   List<KPIBuying> listNonBuying = [];
   String appbarTitle = '';
-  bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    prefetchData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      prefetchData();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: KForms.appbar(appbarTitle),
-      body: isLoading ? KForms.loadingScreen() : Padding(padding: const EdgeInsets.all(20.0), child: _screens[_currentIndex]),
+      body: Padding(padding: const EdgeInsets.all(20.0), child: _screens[_currentIndex]),
 
       // 4. Implement the NavigationBar
       bottomNavigationBar: NavigationBar(
@@ -58,8 +59,7 @@ class _BuyinglistPageState extends State<BuyinglistPage> {
   }
 
   void prefetchData() async {
-    setState(() => isLoading = true);
-
+    showLoading(true);
     // Get list of buying and non buying stores
     List<KPIBuying> buying = [];
     List<KPIBuying> nonBuying = [];
@@ -67,8 +67,7 @@ class _BuyinglistPageState extends State<BuyinglistPage> {
     listBuying = buying;
     listNonBuying = nonBuying;
     appbarTitle = 'KPI - Buying (${listBuying.length})';
-
-    setState(() => isLoading = false);
+    showLoading(false);
   }
 
   Widget _screenList(List<KPIBuying> listStore, Icon icon) {
@@ -93,5 +92,10 @@ class _BuyinglistPageState extends State<BuyinglistPage> {
         },
       ),
     );
+  }
+
+  void showLoading(bool showLoading) async {
+    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
+    if (!showLoading) setState(() {});
   }
 }

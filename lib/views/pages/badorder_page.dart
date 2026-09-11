@@ -30,18 +30,19 @@ class _BadOrderPageState extends State<BadOrderPage> {
   final TextEditingController dropDownController = TextEditingController();
 
   @override
-  @override
   void initState() {
     super.initState();
+    prefetchData();
+  }
 
+  void prefetchData() {
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.badorder.description;
-      txtAmount.text = Helperfunctions.formatDoubleAmountForDisplay(
-        widget.badorder.badorderAmount,
-      );
+      txtAmount.text = Helperfunctions.formatDoubleAmountForDisplay(widget.badorder.badorderAmount);
       _selectedDate = widget.badorder.badorderDate.toDate();
       dropDownController.text = widget.badorder.hapistore;
     }
+    setState(() {});
   }
 
   @override
@@ -70,14 +71,9 @@ class _BadOrderPageState extends State<BadOrderPage> {
                 KForms.txtFormMoney(
                   'Bad Order Amount',
                   txtAmount,
-                  (bool hasFocus, TextEditingController controller) =>
-                      onFocusChange(hasFocus, controller),
+                  (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
                 ),
-                KForms.datePicker(
-                  'Bad Order Date',
-                  _selectedDate,
-                  onChangeDate,
-                ),
+                KForms.datePicker('Bad Order Date', _selectedDate, onChangeDate),
                 KForms.txtAreaFormString('Description', txtDescription),
 
                 // If user opens an existing record,
@@ -94,22 +90,12 @@ class _BadOrderPageState extends State<BadOrderPage> {
                       KForms.regularButton(
                         'Delete',
                         KButtonStyle.delete,
-                        () => KForms.alertDialogConfirm(
-                          ConfirmTitle.delete,
-                          ConfirmMessage.delete,
-                          context,
-                          onDelete,
-                        ),
+                        () => KForms.alertDialogConfirm(ConfirmTitle.delete, ConfirmMessage.delete, context, onDelete),
                       ),
                       KForms.regularButton(
                         'Update',
                         KButtonStyle.save,
-                        () => KForms.alertDialogConfirm(
-                          ConfirmTitle.update,
-                          ConfirmMessage.update,
-                          context,
-                          onUpdate,
-                        ),
+                        () => KForms.alertDialogConfirm(ConfirmTitle.update, ConfirmMessage.update, context, onUpdate),
                       ),
                     ],
                   ),
@@ -119,12 +105,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
                   KForms.regularButton(
                     'Save',
                     KButtonStyle.save,
-                    () => KForms.alertDialogConfirm(
-                      ConfirmTitle.save,
-                      ConfirmMessage.save,
-                      context,
-                      onSave,
-                    ),
+                    () => KForms.alertDialogConfirm(ConfirmTitle.save, ConfirmMessage.save, context, onSave),
                   ),
                 ],
               ],
@@ -140,9 +121,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
       BadOrder newRecord = BadOrder(
         description: txtDescription.text,
         hapistore: dropDownController.text,
-        badorderAmount: Helperfunctions.formatStringAmountToDouble(
-          txtAmount.text,
-        ),
+        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
         badorderDate: Timestamp.fromDate(_selectedDate),
         createdBy: authService.value.currentUser!.displayName!,
         lastUpdatedBy: authService.value.currentUser!.displayName!,
@@ -150,10 +129,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
         lastupdatedDate: Timestamp.now(),
       );
       db.addBadOrder(newRecord);
-      ShowMessage.success(
-        context,
-        'Successfully created a new bad order record!\n[${dropDownController.text}]',
-      );
+      ShowMessage.success(context, 'Successfully created a new bad order record!\n[${dropDownController.text}]');
       Navigator.pop(context); // go back to previous page
     } else {
       ShowMessage.error(context, 'Please fill up the required fields');
@@ -162,10 +138,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
 
   void onDelete() {
     db.deleteBadOrder(widget.recID);
-    ShowMessage.success(
-      context,
-      'Successfully deleted bad order record!\n[${widget.badorder.hapistore}]',
-    );
+    ShowMessage.success(context, 'Successfully deleted bad order record!\n[${widget.badorder.hapistore}]');
     Navigator.pop(context); // go back to previous page
   }
 
@@ -174,9 +147,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
       BadOrder newRecord = widget.badorder.copyWith(
         description: txtDescription.text,
         hapistore: dropDownController.text,
-        badorderAmount: Helperfunctions.formatStringAmountToDouble(
-          txtAmount.text,
-        ),
+        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
         badorderDate: Timestamp.fromDate(_selectedDate),
         createdBy: widget.badorder.createdBy,
         lastUpdatedBy: authService.value.currentUser!.displayName!,
@@ -184,10 +155,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
         lastupdatedDate: Timestamp.now(),
       );
       db.updateBadOrder(widget.recID, newRecord);
-      ShowMessage.success(
-        context,
-        'Successfully updated the bad order record!\n[${dropDownController.text}]',
-      );
+      ShowMessage.success(context, 'Successfully updated the bad order record!\n[${dropDownController.text}]');
       Navigator.pop(context); // go back to previous page
     } else {
       ShowMessage.error(context, 'Please fill up the required fields');
@@ -212,17 +180,9 @@ class _BadOrderPageState extends State<BadOrderPage> {
   void onFocusChange(bool hasFocus, TextEditingController controller) {
     if (controller.text.isNotEmpty) {
       if (!hasFocus) {
-        setState(
-          () => controller.text = Helperfunctions.formatStringAmountForDisplay(
-            controller.text,
-          ),
-        );
+        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
       } else {
-        setState(
-          () => controller.text = Helperfunctions.formatStringAmountForEditing(
-            controller.text,
-          ),
-        );
+        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
       }
     }
   }
@@ -235,19 +195,10 @@ class _BadOrderPageState extends State<BadOrderPage> {
         List<DropdownMenuEntry<String>> listDropdownItems = [];
         for (int i = 0; i < listHapiStore.length; i++) {
           Hapistore hapistore = listHapiStore[i].data();
-          listDropdownItems.add(
-            DropdownMenuEntry(
-              value: hapistore.storeName,
-              label: hapistore.storeName,
-            ),
-          );
+          listDropdownItems.add(DropdownMenuEntry(value: hapistore.storeName, label: hapistore.storeName));
         }
 
-        return KForms.dropdown(
-          'Hapi Store',
-          listDropdownItems,
-          dropDownController,
-        );
+        return KForms.dropdown('Hapi Store', listDropdownItems, dropDownController);
       },
     );
   }

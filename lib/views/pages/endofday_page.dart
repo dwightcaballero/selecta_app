@@ -25,86 +25,81 @@ class _EndofdayPageState extends State<EndofdayPage> {
   EndOfDayDTO endOfDayData = EndOfDayDTO.empty();
   Breakdown? breakdown = Breakdown.empty();
   String breakdownID = '';
-  bool _isLoading = true;
   bool _isDealer = true;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: KForms.appbar('End of Day Report'),
-      body: _isLoading
-          ? KForms.loadingScreen()
-          : SingleChildScrollView(
-              child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Column(
-                  spacing: 20,
-                  children: [
-                    KForms.datePicker('Delivery Date', _selectedDate, onChangeDate, isEnabled: _isDealer),
-                    KForms.lefRightLabel('Total no. of Deliveries : ', endOfDayData.totaldelivery.toString()),
-                    KForms.lefRightLabel('Pending : ', endOfDayData.pendingstatus.toString(), withLeftIndent: true),
-                    KForms.lefRightLabel('Delivered : ', endOfDayData.deliveredstatus.toString(), withLeftIndent: true),
-                    KForms.lefRightLabel('Returned : ', endOfDayData.returnedstatus.toString(), withLeftIndent: true),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            spacing: 20,
+            children: [
+              KForms.datePicker('Delivery Date', _selectedDate, onChangeDate, isEnabled: _isDealer),
+              KForms.lefRightLabel('Total no. of Deliveries : ', endOfDayData.totaldelivery.toString()),
+              KForms.lefRightLabel('Pending : ', endOfDayData.pendingstatus.toString(), withLeftIndent: true),
+              KForms.lefRightLabel('Delivered : ', endOfDayData.deliveredstatus.toString(), withLeftIndent: true),
+              KForms.lefRightLabel('Returned : ', endOfDayData.returnedstatus.toString(), withLeftIndent: true),
 
-                    Divider(),
+              Divider(),
 
-                    KForms.lefRightLabel('Total Order Amount : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.totalorderamount)),
-                    KForms.lefRightLabel(
-                      'Total Delivered Amount : ',
-                      Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.totaldeliveredamount),
-                    ),
-                    KForms.lefRightLabel('Cash : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.cashamount), withLeftIndent: true),
-                    KForms.lefRightLabel('Online : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.onlineamount), withLeftIndent: true),
-                    KForms.lefRightLabel(
-                      'Credit : ',
-                      Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.creditamount),
-                      withLeftIndent: true,
-                      rightLabelColor: Colors.orange,
-                    ),
-                    KForms.lefRightLabel(
-                      'Total Returned Amount : ',
-                      Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.returnedAmount),
-                      rightLabelColor: Colors.red,
-                    ),
-                    KForms.lefRightLabel(
-                      'Total Bad Order Amount : ',
-                      Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.badorderAmount),
-                      rightLabelColor: Colors.red,
-                    ),
-                    KForms.lefRightLabel(
-                      'Total Expense Amount : ',
-                      Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.expenseAmount),
-                      rightLabelColor: Colors.red,
-                    ),
-                    KForms.lefRightLabel('Expected Cash-On-Hand : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.expectedcashonhand)),
-
-                    if (endOfDayData.actualcashonhand != 0) ...[
-                      Divider(),
-                      KForms.lefRightLabel('Salesman Cash-On-Hand : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.actualcashonhand)),
-                      KForms.lefRightLabel(
-                        'Discrepancy : ',
-                        Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.discrepancy),
-                        rightLabelColor: Colors.red,
-                      ),
-                      KForms.lefRightLabel('Bank Deposit : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.bankdeposit)),
-                    ],
-
-                    KForms.regularButton('View Cash Breakdown', KButtonStyle.normal, validateBeforeBreakdown),
-                  ],
-                ),
+              KForms.lefRightLabel('Total Order Amount : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.totalorderamount)),
+              KForms.lefRightLabel('Total Delivered Amount : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.totaldeliveredamount)),
+              KForms.lefRightLabel('Cash : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.cashamount), withLeftIndent: true),
+              KForms.lefRightLabel('Online : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.onlineamount), withLeftIndent: true),
+              KForms.lefRightLabel(
+                'Credit : ',
+                Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.creditamount),
+                withLeftIndent: true,
+                rightLabelColor: Colors.orange,
               ),
-            ),
+              KForms.lefRightLabel(
+                'Total Returned Amount : ',
+                Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.returnedAmount),
+                rightLabelColor: Colors.red,
+              ),
+              KForms.lefRightLabel(
+                'Total Bad Order Amount : ',
+                Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.badorderAmount),
+                rightLabelColor: Colors.red,
+              ),
+              KForms.lefRightLabel(
+                'Total Expense Amount : ',
+                Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.expenseAmount),
+                rightLabelColor: Colors.red,
+              ),
+              KForms.lefRightLabel('Expected Cash-On-Hand : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.expectedcashonhand)),
+
+              if (endOfDayData.actualcashonhand != 0) ...[
+                Divider(),
+                KForms.lefRightLabel('Salesman Cash-On-Hand : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.actualcashonhand)),
+                KForms.lefRightLabel(
+                  'Discrepancy : ',
+                  Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.discrepancy),
+                  rightLabelColor: Colors.red,
+                ),
+                KForms.lefRightLabel('Bank Deposit : ', Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.bankdeposit)),
+              ],
+
+              KForms.regularButton('View Cash Breakdown', KButtonStyle.normal, validateBeforeBreakdown),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   @override
   void initState() {
     super.initState();
-    fetchInitialData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      getData();
+    });
   }
 
   void onChangeDate() async {
-    setState(() => _isLoading = true);
     final DateTime? dateTime = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
@@ -114,15 +109,12 @@ class _EndofdayPageState extends State<EndofdayPage> {
 
     if (dateTime != null) {
       _selectedDate = dateTime;
-      fetchInitialData();
-    } else {
-      setState(() => _isLoading = false);
+      getData();
     }
   }
 
-  void fetchInitialData() async {
-    setState(() => _isLoading = true);
-
+  void getData() async {
+    showLoading(true);
     _isDealer = await KVariables.getIsDealer();
     endOfDayData = await db.getListDeliveryForEndOfDay(_selectedDate);
     breakdown = await dbBS.getDocumentsBySpecificDate(_selectedDate) ?? Breakdown.empty();
@@ -131,7 +123,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
     breakdown!.breakdownDate = Timestamp.fromDate(_selectedDate);
     breakdown!.expectedAmount = endOfDayData.expectedcashonhand;
 
-    setState(() => _isLoading = false);
+    showLoading(false);
   }
 
   void validateBeforeBreakdown() async {
@@ -144,7 +136,12 @@ class _EndofdayPageState extends State<EndofdayPage> {
           builder: (context) => BreakdownPage(breakdown: breakdown!, breakdownID: breakdownID),
         ),
       );
-      fetchInitialData();
+      getData();
     }
+  }
+
+  void showLoading(bool showLoading) async {
+    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
+    if (!showLoading) setState(() {});
   }
 }

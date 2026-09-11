@@ -39,7 +39,9 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    prefetchData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      prefetchData();
+    });
   }
 
   @override
@@ -117,29 +119,23 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> syncDashboard() async {
-    if (mounted) {
-      setState(() {
-        isSyncing = true;
-        dashboardDTO = DashboardDTO.empty();
-        Helperfunctions.showLoadingDialog(context: context, showLoading: true);
-      });
-    }
+    showLoading(true);
+    setState(() {
+      isSyncing = true;
+      dashboardDTO = DashboardDTO.empty();
+    });
 
     dashboardDTO = await DashboardController.getLatestDashboardData();
     lastSyncDateTime = await DashboardController.getLastSync();
 
-    if (mounted) {
-      setState(() {
-        isSyncing = false;
-        Helperfunctions.showLoadingDialog(context: context, showLoading: false);
-      });
-    }
+    isSyncing = false;
+    showLoading(false);
   }
 
   void onLogout() {
     KForms.alertDialogConfirm('Logout', 'Are you sure you want to log out?', context, () async {
       try {
-        setState(() => Helperfunctions.showLoadingDialog(context: context, showLoading: true));
+        showLoading(true);
         await authService.value.signOut();
 
         if (mounted) {
@@ -153,7 +149,7 @@ class _HomePageState extends State<HomePage> {
         if (mounted) {
           ShowMessage.error(context, e.message ?? 'There was a problem upon signing out');
         }
-        setState(() => Helperfunctions.showLoadingDialog(context: context, showLoading: false));
+        showLoading(false);
       }
     });
   }
@@ -356,5 +352,10 @@ class _HomePageState extends State<HomePage> {
 
   Widget dashBoardExpansion() {
     return Column(spacing: 5, children: [KForms.textTitle('Expansion')]);
+  }
+
+  void showLoading(bool showLoading) async {
+    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
+    if (!showLoading) setState(() {});
   }
 }

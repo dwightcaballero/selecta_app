@@ -10,6 +10,7 @@ import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:lottie/lottie.dart';
 import 'package:toggle_switch/toggle_switch.dart';
 
 class KForms {
@@ -236,11 +237,7 @@ class KForms {
 
   static Center loadingScreen() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [CircularProgressIndicator(), SizedBox(height: 20), Text("Loading...")],
-      ),
+      child: Padding(padding: const EdgeInsets.only(right: 30.0), child: Lottie.asset('assets/lotties/delivery.json')),
     );
   }
 

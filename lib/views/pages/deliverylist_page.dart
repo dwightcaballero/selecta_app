@@ -64,22 +64,25 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     );
 
     if (dateTime != null) {
-      setState(() {
-        _selectedDate = dateTime;
-      });
+      showLoading(true);
+      _selectedDate = dateTime;
+      showLoading(false);
     }
   }
 
   Widget floatingActionAddButton() {
     return FloatingActionButton(
-      onPressed: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) {
-            return DeliveryPage(deliveryID: '', delivery: Delivery.empty());
-          },
-        ),
-      ),
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) {
+              return DeliveryPage(deliveryID: '', delivery: Delivery.empty());
+            },
+          ),
+        );
+      },
+
       backgroundColor: Theme.of(context).colorScheme.primary,
       child: Icon(Icons.add, color: Colors.white),
     );
@@ -165,5 +168,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
         },
       ),
     );
+  }
+
+  void showLoading(bool showLoading) async {
+    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
+    if (!showLoading) setState(() {});
   }
 }

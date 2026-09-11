@@ -45,7 +45,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
   final _formkey = KVariables.formkey;
   File? image;
   final picker = ImagePicker();
-  bool isLoading = false;
   String networkImagePath = '';
   bool sendText = false;
   String simDetails = '';
@@ -54,116 +53,112 @@ class _DeliveryPageState extends State<DeliveryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: KForms.appbar('Delivery'),
-      body: isLoading
-          ? KForms.loadingScreen()
-          : Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: SingleChildScrollView(
-                child: Form(
-                  key: _formkey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: 20,
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formkey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 20,
+              children: [
+                hapistoreDropdown(),
+                KForms.txtFormMoney(
+                  'Order Amount',
+                  txtOrderAmount,
+                  (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
+                  isEnabled: isDealer,
+                ),
+                KForms.documentScanner('Receipt', context, image, networkImagePath, scanDocs, isEnabled: isDealer),
+
+                // If creating a new delivery record
+                if (widget.deliveryID.isEmpty) ...[
+                  KForms.datePicker('Delivery Date', _selectedDate, onChangeDate),
+                  KForms.switchYesNo('Send Text Message?', sendText, () => setState(() => sendText = !sendText)),
+                  if (sendText) KForms.txtAreaFormSMS('Text Message', txtSMS),
+                  KForms.regularButton(
+                    'Save',
+                    KButtonStyle.save,
+                    () => KForms.alertDialogConfirm(ConfirmTitle.save, ConfirmMessage.save, context, onSave),
+                  ),
+                ]
+                // if updating an existing delivery record
+                else ...[
+                  KForms.dropdown('Delivery Status', listDropdownStatus, dropdownStatus, onSelected: () => setState(() {})),
+
+                  if (dropdownStatus.text == DeliveryStatus.delivered) ...[
+                    KForms.txtFormMoney(
+                      'Cash Amount',
+                      txtCashAmount,
+                      (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
+                      isRequired: false,
+                    ),
+                    KForms.txtFormMoney(
+                      'Online Amount',
+                      txtOnlineAmount,
+                      (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
+                      isRequired: false,
+                    ),
+                    KForms.txtFormMoney(
+                      'Credit Amount',
+                      txtCreditAmount,
+                      (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
+                      isRequired: false,
+                    ),
+                    KForms.txtFormMoney(
+                      'Return Amount',
+                      txtReturnAmount,
+                      (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
+                      isRequired: false,
+                    ),
+
+                    KForms.lefRightLabel('Discrepancy', Helperfunctions.formatDoubleAmountForDisplay(discrepancy), rightLabelColor: Colors.red),
+                  ],
+
+                  if (dropdownStatus.text == DeliveryStatus.delivered || dropdownStatus.text == DeliveryStatus.returned) ...[
+                    KForms.txtAreaFormString(
+                      'Remarks',
+                      txtRemarks,
+                      isRequired:
+                          (dropdownStatus.text == DeliveryStatus.returned ||
+                          (dropdownStatus.text == DeliveryStatus.delivered && txtReturnAmount.text.isNotEmpty)),
+                    ),
+                  ],
+
+                  KForms.lastUpdatedByDetails(
+                    widget.delivery.createdBy,
+                    widget.delivery.createdDate,
+                    widget.delivery.lastUpdatedBy,
+                    widget.delivery.lastupdatedDate,
+                  ),
+
+                  Column(
+                    spacing: 5,
                     children: [
-                      hapistoreDropdown(),
-                      KForms.txtFormMoney(
-                        'Order Amount',
-                        txtOrderAmount,
-                        (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
-                        isEnabled: isDealer,
-                      ),
-                      KForms.documentScanner('Receipt', context, image, networkImagePath, scanDocs, isEnabled: isDealer),
-
-                      // If creating a new delivery record
-                      if (widget.deliveryID.isEmpty) ...[
-                        KForms.datePicker('Delivery Date', _selectedDate, onChangeDate),
-                        KForms.switchYesNo('Send Text Message?', sendText, () => setState(() => sendText = !sendText)),
-                        if (sendText) KForms.txtAreaFormSMS('Text Message', txtSMS),
+                      if (isDealer)
                         KForms.regularButton(
-                          'Save',
-                          KButtonStyle.save,
-                          () => KForms.alertDialogConfirm(ConfirmTitle.save, ConfirmMessage.save, context, onSave),
+                          'Delete',
+                          KButtonStyle.delete,
+                          () => KForms.alertDialogConfirm(ConfirmTitle.delete, ConfirmMessage.delete, context, onDelete),
                         ),
-                      ]
-                      // if updating an existing delivery record
-                      else ...[
-                        KForms.dropdown('Delivery Status', listDropdownStatus, dropdownStatus, onSelected: () => setState(() {})),
-
-                        if (dropdownStatus.text == DeliveryStatus.delivered) ...[
-                          KForms.txtFormMoney(
-                            'Cash Amount',
-                            txtCashAmount,
-                            (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
-                            isRequired: false,
-                          ),
-                          KForms.txtFormMoney(
-                            'Online Amount',
-                            txtOnlineAmount,
-                            (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
-                            isRequired: false,
-                          ),
-                          KForms.txtFormMoney(
-                            'Credit Amount',
-                            txtCreditAmount,
-                            (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
-                            isRequired: false,
-                          ),
-                          KForms.txtFormMoney(
-                            'Return Amount',
-                            txtReturnAmount,
-                            (bool hasFocus, TextEditingController controller) => onFocusChange(hasFocus, controller),
-                            isRequired: false,
-                          ),
-
-                          KForms.lefRightLabel('Discrepancy', Helperfunctions.formatDoubleAmountForDisplay(discrepancy), rightLabelColor: Colors.red),
-                        ],
-
-                        if (dropdownStatus.text == DeliveryStatus.delivered || dropdownStatus.text == DeliveryStatus.returned) ...[
-                          KForms.txtAreaFormString(
-                            'Remarks',
-                            txtRemarks,
-                            isRequired:
-                                (dropdownStatus.text == DeliveryStatus.returned ||
-                                (dropdownStatus.text == DeliveryStatus.delivered && txtReturnAmount.text.isNotEmpty)),
-                          ),
-                        ],
-
-                        KForms.lastUpdatedByDetails(
-                          widget.delivery.createdBy,
-                          widget.delivery.createdDate,
-                          widget.delivery.lastUpdatedBy,
-                          widget.delivery.lastupdatedDate,
-                        ),
-
-                        Column(
-                          spacing: 5,
-                          children: [
-                            if (isDealer)
-                              KForms.regularButton(
-                                'Delete',
-                                KButtonStyle.delete,
-                                () => KForms.alertDialogConfirm(ConfirmTitle.delete, ConfirmMessage.delete, context, onDelete),
-                              ),
-                            KForms.regularButton(
-                              'Update',
-                              KButtonStyle.save,
-                              () => KForms.alertDialogConfirm(ConfirmTitle.update, ConfirmMessage.update, context, onUpdate),
-                            ),
-                          ],
-                        ),
-                      ],
+                      KForms.regularButton(
+                        'Update',
+                        KButtonStyle.save,
+                        () => KForms.alertDialogConfirm(ConfirmTitle.update, ConfirmMessage.update, context, onUpdate),
+                      ),
                     ],
                   ),
-                ),
-              ),
+                ],
+              ],
             ),
+          ),
+        ),
+      ),
     );
   }
 
   void onSave() async {
     if (_formkey.currentState!.validate()) {
-      showLoading(true);
-
       // save image
       String imageFilePath = '';
       if (image != null) {
@@ -214,7 +209,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         Navigator.pop(context); // go back to previous page
       }
 
-      showLoading(false);
+      setState(() {});
     } else {
       ShowMessage.error(context, 'Please fill up the required fields');
     }
@@ -237,8 +232,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   void prefetchData() async {
     if (widget.deliveryID.isNotEmpty) {
-      setState(() => isLoading = true);
-
       isDealer = await KVariables.getIsDealer();
       networkImagePath = widget.delivery.imagePath;
 
@@ -258,11 +251,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
       txtReturnAmount.text = widget.delivery.returnAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount);
 
       computeDiscrepancy();
-
-      setState(() => isLoading = false);
     } else {
       composeSMS();
     }
+
+    setState(() {});
   }
 
   @override
@@ -308,8 +301,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
   void onUpdate() async {
     var listError = validate();
     if (listError.isEmpty) {
-      showLoading(true);
-
       double returnAmount = 0;
       double creditAmount = 0;
       double onlineAmount = 0;
@@ -368,14 +359,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
         Navigator.pop(context); // go back to previous page
       }
 
-      showLoading(false);
+      setState(() {});
     } else {
-      ShowMessage.listError(context, listError);
+      if (mounted) ShowMessage.listError(context, listError);
     }
   }
 
   void onDelete() async {
-    showLoading(true);
     if (widget.delivery.imagePath.isNotEmpty) {
       await Helperfunctions.deleteImage(context, widget.delivery.imagePath);
     }
@@ -393,7 +383,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       Navigator.pop(context); // go back to previous page
     }
 
-    showLoading(false);
+    setState(() {});
   }
 
   void onFocusChange(bool hasFocus, TextEditingController controller) {
@@ -441,12 +431,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
         return KForms.dropdown('Hapi Store', listDropdownItems, dropdownHapiStore, isenabled: isDealer, onSelected: () => composeSMS());
       },
     );
-  }
-
-  void showLoading(bool showLoading) {
-    setState(() {
-      isLoading = showLoading;
-    });
   }
 
   void scanDocs(File? scannedImage) {
