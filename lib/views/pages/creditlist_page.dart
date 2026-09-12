@@ -24,10 +24,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [_creditListView()],
-          ),
+          child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [_creditListView()]),
         ),
       ),
     );
@@ -67,10 +64,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
                           context,
                           MaterialPageRoute(
                             builder: (context) {
-                              return CreditPage(
-                                recID: deliveryID,
-                                delivery: delivery,
-                              );
+                              return CreditPage(recID: deliveryID, delivery: delivery);
                             },
                           ),
                         )
@@ -88,29 +82,13 @@ class _CreditlistPageState extends State<CreditlistPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               KForms.textTitle(delivery.storeName),
-                              KForms.textDescriptionTimestampDateOnly(
-                                delivery.deliveryDate!,
-                              ),
-                              KForms.textDescriptionAmount(
-                                delivery.creditAmount,
-                              ),
+                              KForms.textDescriptionTimestampDateOnly(delivery.deliveryDate!),
+                              KForms.textDescriptionAmount(delivery.creditAmount),
                             ],
                           ),
                           Spacer(),
-                          if (delivery.creditStatus == CreditStatus.unpaid) ...[
-                            Icon(
-                              Icons.close_sharp,
-                              color: Colors.red,
-                              size: 40,
-                            ),
-                          ],
-                          if (delivery.creditStatus == CreditStatus.paid) ...[
-                            Icon(
-                              Icons.check_sharp,
-                              color: Colors.green,
-                              size: 40,
-                            ),
-                          ],
+                          if (delivery.creditStatus == CreditStatus.unpaid) ...[Icon(Icons.close_sharp, color: Colors.red, size: 40)],
+                          if (delivery.creditStatus == CreditStatus.paid) ...[Icon(Icons.check_sharp, color: Colors.green, size: 40)],
                         ],
                       ),
                     ),

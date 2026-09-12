@@ -10,6 +10,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_database
   firebase_storage
   flutter_doc_scanner
+  gal
   permission_handler_windows
 )
 

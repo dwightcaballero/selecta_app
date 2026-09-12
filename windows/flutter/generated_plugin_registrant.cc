@@ -13,6 +13,7 @@
 #include <firebase_database/firebase_database_plugin_c_api.h>
 #include <firebase_storage/firebase_storage_plugin_c_api.h>
 #include <flutter_doc_scanner/flutter_doc_scanner_plugin_c_api.h>
+#include <gal/gal_plugin_c_api.h>
 #include <permission_handler_windows/permission_handler_windows_plugin.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
@@ -30,6 +31,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("FirebaseStoragePluginCApi"));
   FlutterDocScannerPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterDocScannerPluginCApi"));
+  GalPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("GalPluginCApi"));
   PermissionHandlerWindowsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("PermissionHandlerWindowsPlugin"));
 }

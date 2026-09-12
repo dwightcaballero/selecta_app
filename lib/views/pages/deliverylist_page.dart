@@ -17,31 +17,10 @@ class DeliveryListPage extends StatefulWidget {
 
 class _DeliveryListPageState extends State<DeliveryListPage> {
   final DeliveryService db = DeliveryService();
-  DateTime _selectedDate = DateTime.now();
   bool isDealer = false;
   int? returnedDeliveryCount;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: KForms.appbar('List of Deliveries'),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              KForms.datePicker('Delivery Date', _selectedDate, onChangeDate, isEnabled: isDealer),
-              _returnedTransactions(),
-              _deliveryListView(),
-            ],
-          ),
-        ),
-      ),
-
-      floatingActionButton: isDealer ? floatingActionAddButton() : null,
-    );
-  }
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
@@ -86,6 +65,11 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       backgroundColor: Theme.of(context).colorScheme.primary,
       child: Icon(Icons.add, color: Colors.white),
     );
+  }
+
+  void showLoading(bool showLoading) async {
+    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
+    if (!showLoading) setState(() {});
   }
 
   Widget _returnedTransactions() {
@@ -170,8 +154,25 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     );
   }
 
-  void showLoading(bool showLoading) async {
-    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
-    if (!showLoading) setState(() {});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: KForms.appbar('List of Deliveries'),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              KForms.datePicker('Delivery Date', _selectedDate, onChangeDate, isEnabled: isDealer),
+              _returnedTransactions(),
+              _deliveryListView(),
+            ],
+          ),
+        ),
+      ),
+
+      floatingActionButton: isDealer ? floatingActionAddButton() : null,
+    );
   }
 }

@@ -17,10 +17,7 @@ class _ResetpasswordPageState extends State<ResetpasswordPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        title: Text('Reset Password'),
-      ),
+      appBar: AppBar(backgroundColor: Colors.blue, title: Text('Reset Password')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
@@ -31,14 +28,12 @@ class _ResetpasswordPageState extends State<ResetpasswordPage> {
               TextField(
                 decoration: InputDecoration(
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  hintText: "Email"),
+                  hintText: "Email",
+                ),
                 controller: textEditingControllerEmail,
                 onEditingComplete: () => setState(() {}),
               ),
-              if (errormessage.isNotEmpty)...[
-                SizedBox(height: 10),
-                Text('* $errormessage', style: TextStyle(color: Colors.red),),
-              ],
+              if (errormessage.isNotEmpty) ...[SizedBox(height: 10), Text('* $errormessage', style: TextStyle(color: Colors.red))],
               Spacer(),
               FilledButton(
                 onPressed: () => resetPassword(),
@@ -54,7 +49,7 @@ class _ResetpasswordPageState extends State<ResetpasswordPage> {
 
   void resetPassword() async {
     String err = validateInput();
-    if (err.isEmpty){
+    if (err.isEmpty) {
       try {
         await authService.value.resetPassword(email: textEditingControllerEmail.text);
         setState(() {
@@ -66,20 +61,18 @@ class _ResetpasswordPageState extends State<ResetpasswordPage> {
           errormessage = e.message ?? 'Something went wrong.';
         });
       }
-    }
-    else{
+    } else {
       setState(() {
         errormessage = err;
       });
     }
-    
   }
 
-  void checkEmail(){
+  void checkEmail() {
     ShowMessage.success(context, 'Please check your email');
   }
 
-  String validateInput(){
+  String validateInput() {
     if (textEditingControllerEmail.text.isEmpty) return 'Email should not be blank!';
     return '';
   }

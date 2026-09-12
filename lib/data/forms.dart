@@ -220,7 +220,7 @@ class KForms {
     );
   }
 
-  static AppBar appbar(String title) {
+  static AppBar appbar(String title, {List<Widget>? actions}) {
     return AppBar(
       backgroundColor: Colors.transparent,
       // 2. Remove default shadows if you want a flat premium look
@@ -231,7 +231,8 @@ class KForms {
           gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: <Color>[Colors.blue, Colors.purple[200]!]),
         ),
       ),
-      title: Text(title),
+      title: Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
+      actions: actions ?? [],
     );
   }
 
@@ -372,13 +373,16 @@ class KForms {
                     borderRadius: BorderRadius.circular(8),
                     child: image != null
                         ? Image.file(image, fit: BoxFit.cover)
-                        : Image.network(
-                            networkImagePath,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return const Center(child: CircularProgressIndicator());
-                            },
+                        : Hero(
+                            tag: networkImagePath,
+                            child: Image.network(
+                              networkImagePath,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return const Center(child: CircularProgressIndicator());
+                              },
+                            ),
                           ),
                   ),
                 )
