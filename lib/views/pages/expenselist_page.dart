@@ -79,7 +79,7 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
                         itemCount: filteredDocs.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final expense = filteredDocs[index].data() as Expenses;
                           final expenseID = filteredDocs[index].id;

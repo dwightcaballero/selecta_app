@@ -187,7 +187,7 @@ class _TransactionListPageState extends State<TransactionListPage> {
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
                 itemCount: allDocs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final delivery = allDocs[index].data() as Delivery;
                   final deliveryID = allDocs[index].id;

@@ -72,7 +72,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                         itemCount: filteredDocs.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final delivery = filteredDocs[index].data() as Delivery;
                           final deliveryID = filteredDocs[index].id;
@@ -88,7 +88,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   }
 
   Widget _buildSummaryCard({required double totalAmount, required int totalCount}) {
-    final colorScheme = Theme.of(context).colorScheme;
+    Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
       padding: const EdgeInsets.all(16),

@@ -81,7 +81,7 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
                         itemCount: filteredDocs.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final badorder = filteredDocs[index].data() as BadOrder;
                           final badorderID = filteredDocs[index].id;
