@@ -111,6 +111,8 @@ class KForms {
     Function(bool hasFocus, TextEditingController controller) onFocusChange, {
     bool isRequired = true,
     isEnabled = true,
+    Widget? prefixIcon,
+    String prefixText = '₱ ',
   }) {
     return Focus(
       onFocusChange: (hasFocus) => onFocusChange(hasFocus, controller),
@@ -121,6 +123,9 @@ class KForms {
         decoration: InputDecoration(
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
           labelText: label,
+          prefixIcon: prefixIcon,
+          prefixText: prefixText,
+          prefixStyle: const TextStyle(fontWeight: FontWeight.bold),
         ),
         autovalidateMode: AutovalidateMode.onUnfocus,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -142,7 +147,7 @@ class KForms {
     );
   }
 
-  static TextFormField txtAreaFormString(String label, TextEditingController controller, {bool isRequired = true}) {
+  static TextFormField txtAreaFormString(String label, TextEditingController controller, {bool isRequired = true, Widget? prefixIcon}) {
     return TextFormField(
       controller: controller,
       keyboardType: TextInputType.multiline,
@@ -152,6 +157,7 @@ class KForms {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
         alignLabelWithHint: true,
         labelText: label,
+        prefixIcon: prefixIcon,
       ),
       autovalidateMode: AutovalidateMode.onUnfocus,
       validator: (value) {
@@ -410,7 +416,7 @@ class KForms {
     );
   }
 
-  static Row documentScanner(
+  static Widget documentScanner(
     String title,
     BuildContext context,
     File? image,
@@ -420,85 +426,120 @@ class KForms {
   }) {
     bool hasImageData = (image != null || networkImagePath.isNotEmpty);
 
-    return Row(
-      spacing: 20,
-      children: [
-        Container(
-          width: 170,
-          height: 170,
+    Future<void> startScan() async {
+      ImageScanResult? scannedData;
+      try {
+        scannedData = await FlutterDocScanner().getScannedDocumentAsImages(page: 1);
+      } on PlatformException catch (e) {
+        scannedData = null;
+        if (context.mounted) {
+          ShowMessage.error(context, e.message ?? 'There was an error upon scanning a document');
+        }
+      }
+
+      if (scannedData != null && scannedData.images.isNotEmpty) {
+        String filepath = scannedData.images.first.replaceFirst('file://', '');
+        scanDocs(File(filepath.toString()));
+      }
+    }
+
+    if (!hasImageData) {
+      return InkWell(
+        onTap: isEnabled ? startScan : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey),
-            borderRadius: BorderRadius.circular(8),
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300, width: 1.5, strokeAlign: BorderSide.strokeAlignCenter),
           ),
-          child: hasImageData
-              ? InkWell(
-                  onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: image != null
-                        ? Image.file(image, fit: BoxFit.cover)
-                        : Image.network(
-                            networkImagePath,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return const Center(child: CircularProgressIndicator());
-                            },
-                          ),
-                  ),
-                )
-              : const Icon(Icons.image, size: 50, color: Colors.grey),
-        ),
-
-        Expanded(
           child: Column(
-            spacing: 5,
-            mainAxisSize: MainAxisSize.min, // Shrinks column vertical height to fit buttons
-            crossAxisAlignment: CrossAxisAlignment.stretch, // Makes buttons fill column width
+            mainAxisSize: MainAxisSize.min,
             children: [
-              KForms.textTitle(title),
-              Divider(),
-              FilledButton.icon(
-                onPressed: !isEnabled
-                    ? null
-                    : () async {
-                        ImageScanResult? scannedData;
-                        try {
-                          scannedData = await FlutterDocScanner().getScannedDocumentAsImages(page: 1);
-                        } on PlatformException catch (e) {
-                          scannedData = null;
-                          if (context.mounted) {
-                            ShowMessage.error(context, e.message ?? 'There was an error upon scanning a document');
-                          }
-                        }
-
-                        if (scannedData != null) {
-                          String filepath = scannedData.images.first.replaceFirst('file://', '');
-                          scanDocs(File(filepath.toString()));
-                        } else {
-                          scanDocs(null);
-                        }
-                      },
-                style: FilledButton.styleFrom(minimumSize: Size(double.infinity, 50)),
-                icon: Icon(Icons.document_scanner),
-                label: const Text('Scan Document', textAlign: TextAlign.center),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), shape: BoxShape.circle),
+                child: const Icon(Icons.document_scanner_outlined, size: 36, color: Colors.blue),
               ),
-              FilledButton.icon(
-                onPressed: image == null && networkImagePath.isEmpty && isEnabled
-                    ? null
-                    : () {
-                        image = null;
-                        networkImagePath = '';
-                        scanDocs(null);
-                      },
-                style: FilledButton.styleFrom(backgroundColor: Colors.red[300], minimumSize: Size(double.infinity, 50)),
-                icon: Icon(Icons.close),
-                label: const Text('Remove Document', textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              const Text(
+                'Tap to scan or attach receipt',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Scan your receipt document for order verification',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
               ),
             ],
           ),
         ),
-      ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              height: 200,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.black12,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: image != null
+                  ? Image.file(image, fit: BoxFit.cover)
+                  : Image.network(
+                      networkImagePath,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator());
+                      },
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            alignment: WrapAlignment.spaceEvenly,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
+                icon: const Icon(Icons.fullscreen, size: 18),
+                label: const Text('View Fullscreen'),
+              ),
+              if (isEnabled) ...[
+                OutlinedButton.icon(onPressed: startScan, icon: const Icon(Icons.replay, size: 18), label: const Text('Retake / Replace')),
+                OutlinedButton.icon(
+                  onPressed: () => scanDocs(null),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade300),
+                  ),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Delete Receipt'),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
     );
   }
 

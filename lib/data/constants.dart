@@ -5,7 +5,7 @@ class KConstants {
 }
 
 class KTextStyle {
-  static const titleTextStyle = TextStyle(color: Colors.blue, fontSize: 18, fontWeight: FontWeight.bold);
+  static const titleTextStyle = TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold);
 
   static const descriptionTextStyle = TextStyle(fontSize: 16);
 
