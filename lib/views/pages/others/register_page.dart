@@ -7,6 +7,7 @@ import 'package:flutter_app/models/users.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/dealer_service.dart';
 import 'package:flutter_app/services/user_services.dart';
+import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/snackbar_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -351,12 +352,8 @@ class _RegisterPageState extends State<RegisterPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create account'),
-        backgroundColor: Color.alphaBlend(Colors.black.withValues(alpha: 0.12), theme.colorScheme.primary),
-        foregroundColor: theme.colorScheme.onPrimary,
-        elevation: 0,
-      ),
+      // In Register Page:
+      appBar: const CustomAppbar(title: 'Create Account', subtitle: 'Start your journey'),
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/views/pages/others/login_page.dart';
 import 'package:flutter_app/views/pages/others/register_page.dart';
+import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
@@ -11,11 +12,7 @@ class WelcomePage extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Color.alphaBlend(Colors.black.withValues(alpha: 0.12), theme.colorScheme.primary),
-        foregroundColor: theme.colorScheme.onPrimary,
-        elevation: 0,
-      ),
+      appBar: const CustomAppbar(title: '', showBackButton: false),
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(

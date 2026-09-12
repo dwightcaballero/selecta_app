@@ -21,6 +21,7 @@ import 'package:flutter_app/views/pages/returnlist_page.dart';
 import 'package:flutter_app/views/pages/transactionlist_page.dart';
 import 'package:flutter_app/views/pages/transactionlog_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
+import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class HomePage extends StatefulWidget {
@@ -36,8 +37,11 @@ class _HomePageState extends State<HomePage> {
   bool isSyncing = false;
   String lastSyncDateTime = '';
 
-  static const Color _pageBackground = Color(0xFFF5F7FB);
+  static const Color _pageBackground = Color(0xFFF8FAFC);
   static const Color _primaryColor = Color(0xFF2563EB);
+  static const Color _surfaceColor = Colors.white;
+  static const Color _textPrimary = Color(0xFF0F172A);
+  static const Color _textSecondary = Color(0xFF64748B);
 
   @override
   void initState() {
@@ -56,27 +60,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> syncDashboard() async {
-    //showLoading(true);
-
-    if (!mounted) return;
-
-    setState(() {
-      isSyncing = true;
-      dashboardDTO = DashboardDTO.empty();
-    });
+    isSyncing = true;
+    dashboardDTO = DashboardDTO.empty();
+    setState(() {});
 
     dashboardDTO = await DashboardController.getLatestDashboardData();
     lastSyncDateTime = await DashboardController.getLastSync();
 
     isSyncing = false;
-    if (mounted) setState(() {});
-    //showLoading(false);
+    setState(() {});
   }
 
   void onLogout() {
     KForms.alertDialogConfirm('Logout', 'Are you sure you want to log out?', context, () async {
       try {
-        showLoading(true);
+        setState(() {});
         await authService.value.signOut();
 
         if (mounted) {
@@ -90,17 +88,22 @@ class _HomePageState extends State<HomePage> {
         if (mounted) {
           ShowMessage.error(context, e.message ?? 'There was a problem upon signing out');
         }
-        showLoading(false);
+        setState(() {});
       }
     });
   }
 
   ListTile drawerMenu(IconData icon, String title, Widget nextPage, {int? notifyCount, bool isLogout = false}) {
     return ListTile(
-      leading: Icon(icon),
-      title: Text(title),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+      leading: Icon(icon, color: isLogout ? Colors.redAccent : const Color(0xFF334155), size: 22),
+      title: Text(
+        title,
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isLogout ? Colors.redAccent : const Color(0xFF1E293B)),
+      ),
       onTap: () async {
-        Navigator.pop(context); // close the drawer
+        Navigator.pop(context);
         if (isLogout) {
           onLogout();
         } else {
@@ -108,42 +111,54 @@ class _HomePageState extends State<HomePage> {
           syncDashboard();
         }
       },
-      trailing: notifyCount == null || notifyCount == 0
+      trailing: (notifyCount == null || notifyCount == 0)
           ? null
-          : ClipOval(
-              child: Container(
-                color: Colors.red,
-                width: 20,
-                height: 20,
-                child: Center(
-                  child: Text(notifyCount.toString(), style: TextStyle(color: Colors.white, fontSize: 12)),
-                ),
+          : Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: Colors.red.shade500, borderRadius: BorderRadius.circular(20)),
+              child: Text(
+                notifyCount.toString(),
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
               ),
             ),
     );
   }
 
   Widget drawerHeader() {
-    return UserAccountsDrawerHeader(
-      accountName: Text(authService.value.currentUser!.displayName ?? ''),
-      accountEmail: Text(authService.value.currentUser!.email!),
-      currentAccountPicture: CircleAvatar(
-        child: ClipOval(child: Image.asset('assets/images/profile.jpg', width: 90, height: 90, fit: BoxFit.cover)),
-      ),
-      decoration: BoxDecoration(
-        color: Colors.blue,
-        image: DecorationImage(image: AssetImage('assets/images/profilebackground.jpg'), fit: BoxFit.cover),
+    final user = authService.value.currentUser;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 50, 20, 24),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.6), width: 2),
+            ),
+            child: const CircleAvatar(
+              radius: 30,
+              backgroundColor: Colors.white24,
+              child: Icon(Icons.person, size: 36, color: Colors.white),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            user?.displayName ?? 'User',
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(user?.email ?? '', style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13)),
+        ],
       ),
     );
   }
 
-  Widget dashboardItem(
-    Widget dashboardContent, {
-    required Widget nextPage,
-    required IconData icon,
-    String? tooltip,
-    Color accentColor = _primaryColor,
-  }) {
+  Widget dashboardItem(Widget dashboardContent, {required Widget nextPage, required IconData icon, String? tooltip}) {
+    var accentColor = _primaryColor;
     return Expanded(
       child: Semantics(
         button: true,
@@ -234,21 +249,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget dashboardLastSync() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        KForms.textDescriptionString(lastSyncDateTime),
-        IconButton(
-          icon: Icon(Icons.refresh),
-          onPressed: () {
-            syncDashboard();
-          },
-        ),
-      ],
-    );
-  }
-
   Widget dashBoardSales() {
     return Column(
       spacing: 5,
@@ -266,7 +266,12 @@ class _HomePageState extends State<HomePage> {
       buyingThruput = dashboardDTO.buyingThruput;
     }
 
+    final missingThruput = (thruputTarget - buyingThruput).clamp(0.0, double.infinity);
     final percentage = thruputTarget == 0 ? 0 : buyingThruput / thruputTarget;
+
+    // Ensure non-zero positive values for pie chart to prevent fl_chart crash
+    final double actualValue = buyingThruput <= 0 && missingThruput <= 0 ? 1 : buyingThruput;
+    final double missingValue = buyingThruput <= 0 && missingThruput <= 0 ? 0 : missingThruput;
 
     return Column(
       spacing: 5,
@@ -275,8 +280,8 @@ class _HomePageState extends State<HomePage> {
         Text('Thruput', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         KForms.pieChart(
           listData: [
-            PieChartSectionData(value: buyingThruput, color: Colors.green, showTitle: false),
-            PieChartSectionData(value: thruputTarget - buyingThruput, color: Colors.red, showTitle: false),
+            PieChartSectionData(value: actualValue, color: Colors.green, showTitle: false),
+            PieChartSectionData(value: missingValue, color: Colors.red, showTitle: false),
           ],
           title: NumberFormat('0.00%').format(percentage),
         ),
@@ -294,7 +299,7 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Text('Missing: ', style: TextStyle(color: Colors.red)),
                 Spacer(),
-                Text(Helperfunctions.formatDoubleAmountForDisplay(thruputTarget - buyingThruput)),
+                Text(Helperfunctions.formatDoubleAmountForDisplay(missingThruput)),
               ],
             ),
             Row(
@@ -326,15 +331,18 @@ class _HomePageState extends State<HomePage> {
     }
 
     final percentage = buyingTarget == 0 ? 0 : buyingCount / buyingTarget;
+    final double chartBuying = (buyingCount <= 0 && nonBuyingCount <= 0) ? 1 : buyingCount;
+    final double chartNonBuying = (buyingCount <= 0 && nonBuyingCount <= 0) ? 0 : nonBuyingCount;
 
     return Column(
       spacing: 5,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        KForms.textTitle('Buying'),
+        Text('Buying', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         KForms.pieChart(
           listData: [
-            PieChartSectionData(value: buyingCount, color: Colors.green, showTitle: false),
-            PieChartSectionData(value: nonBuyingCount, color: Colors.red, showTitle: false),
+            PieChartSectionData(value: chartBuying, color: Colors.green, showTitle: false),
+            PieChartSectionData(value: chartNonBuying, color: Colors.red, showTitle: false),
           ],
           title: NumberFormat('0.00%').format(percentage),
         ),
@@ -392,19 +400,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void showLoading(bool showLoading) async {
-    if (mounted) {
-      await Helperfunctions.showLoading(context: context, showLoading: showLoading);
-      if (!showLoading) setState(() {});
-    }
-  }
-
   BoxDecoration _cardDecoration({Color? accentColor}) {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(24),
-      border: Border(top: BorderSide(color: accentColor ?? _primaryColor, width: 4)),
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 18, offset: const Offset(0, 8))],
+      color: _surfaceColor,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+      boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withValues(alpha: 0.04), blurRadius: 14, offset: const Offset(0, 4))],
     );
   }
 
@@ -417,9 +418,9 @@ class _HomePageState extends State<HomePage> {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Color(0xFF172033)),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: _textPrimary),
               ),
-              if (subtitle != null) ...[const SizedBox(height: 3), Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 13))],
+              if (subtitle != null) ...[const SizedBox(height: 2), Text(subtitle, style: const TextStyle(color: _textSecondary, fontSize: 12))],
             ],
           ),
         ),
@@ -427,53 +428,10 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _welcomeHeader() {
-    final user = authService.value.currentUser;
-    final name = user?.displayName?.trim();
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF2563EB), Color(0xFF4F46E5)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [BoxShadow(color: _primaryColor.withValues(alpha: 0.25), blurRadius: 18, offset: const Offset(0, 8))],
-      ),
-      child: Row(
-        children: [
-          const CircleAvatar(
-            radius: 27,
-            backgroundColor: Colors.white24,
-            child: Icon(Icons.person_outline, color: Colors.white, size: 30),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Welcome back${name == null || name.isEmpty ? '' : ','}', style: const TextStyle(color: Colors.white70, fontSize: 14)),
-                Text(
-                  name?.isNotEmpty == true ? name! : 'User',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Refresh dashboard',
-            onPressed: isSyncing ? null : syncDashboard,
-            icon: const Icon(Icons.sync, color: Colors.white),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: KForms.appbar('Dashboard'),
+      appBar: const CustomAppbar(title: 'Dashboard', subtitle: 'Selecta Management', showBackButton: false),
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -507,9 +465,6 @@ class _HomePageState extends State<HomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _welcomeHeader(),
-                const SizedBox(height: 24),
-
                 _sectionTitle('Quick access', subtitle: 'Monitor your pending activities'),
                 const SizedBox(height: 12),
 
@@ -560,19 +515,12 @@ class _HomePageState extends State<HomePage> {
                   spacing: 10,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    dashboardItem(
-                      dashBoardSales(),
-                      nextPage: BuyinglistPage(),
-                      icon: Icons.point_of_sale_outlined,
-                      tooltip: 'Open sales',
-                      accentColor: Colors.indigo,
-                    ),
+                    dashboardItem(dashBoardSales(), nextPage: BuyinglistPage(), icon: Icons.point_of_sale_outlined, tooltip: 'Open sales'),
                     dashboardItem(
                       dashBoardThruput(),
                       nextPage: ThruputPage(dashboardDTO: dashboardDTO),
                       icon: Icons.speed_outlined,
                       tooltip: 'Open throughput',
-                      accentColor: Colors.green,
                     ),
                   ],
                 ),
@@ -583,20 +531,8 @@ class _HomePageState extends State<HomePage> {
                   spacing: 10,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    dashboardItem(
-                      dashboardBuying(),
-                      nextPage: BuyinglistPage(),
-                      icon: Icons.shopping_cart_outlined,
-                      tooltip: 'Open buying',
-                      accentColor: Colors.orange,
-                    ),
-                    dashboardItem(
-                      dashboardScanning(),
-                      nextPage: BuyinglistPage(),
-                      icon: Icons.qr_code_scanner_outlined,
-                      tooltip: 'Open scanning',
-                      accentColor: Colors.teal,
-                    ),
+                    dashboardItem(dashboardBuying(), nextPage: BuyinglistPage(), icon: Icons.shopping_cart_outlined, tooltip: 'Open buying'),
+                    dashboardItem(dashboardScanning(), nextPage: BuyinglistPage(), icon: Icons.qr_code_scanner_outlined, tooltip: 'Open scanning'),
                   ],
                 ),
 
@@ -606,20 +542,8 @@ class _HomePageState extends State<HomePage> {
                   spacing: 10,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    dashboardItem(
-                      dashBoardCOTC(),
-                      nextPage: BuyinglistPage(),
-                      icon: Icons.storefront_outlined,
-                      tooltip: 'Open COTC',
-                      accentColor: Colors.purple,
-                    ),
-                    dashboardItem(
-                      dashBoardExpansion(),
-                      nextPage: BuyinglistPage(),
-                      icon: Icons.trending_up_outlined,
-                      tooltip: 'Open expansion',
-                      accentColor: Colors.red,
-                    ),
+                    dashboardItem(dashBoardCOTC(), nextPage: BuyinglistPage(), icon: Icons.storefront_outlined, tooltip: 'Open COTC'),
+                    dashboardItem(dashBoardExpansion(), nextPage: BuyinglistPage(), icon: Icons.trending_up_outlined, tooltip: 'Open expansion'),
                   ],
                 ),
               ],

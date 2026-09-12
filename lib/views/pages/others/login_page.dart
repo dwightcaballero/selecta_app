@@ -6,6 +6,7 @@ import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/user_services.dart';
 import 'package:flutter_app/views/pages/home_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
+import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/snackbar_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -50,7 +51,7 @@ class _LoginPageState extends State<LoginPage> {
       UserService db = UserService();
       var record = await db.getUserByEmail(_emailController.text);
       if (record != null) {
-        await authService.value.updateUsername(username: '[${record.role}] ${record.username}');
+        await authService.value.updateUsername(username: record.username);
 
         // save the user data in shared preferences cache
         final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -89,12 +90,7 @@ class _LoginPageState extends State<LoginPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Color.alphaBlend(Colors.black.withValues(alpha: 0.12), theme.colorScheme.primary),
-        foregroundColor: theme.colorScheme.onPrimary,
-        elevation: 0,
-        title: const Text('Login'),
-      ),
+      appBar: const CustomAppbar(title: 'Sign In', subtitle: 'Access your Selecta account'),
       body: Container(
         width: double.infinity,
         decoration: const BoxDecoration(
