@@ -47,6 +47,9 @@ class DashboardController {
     // DASHBOARD: thruput of buying stores
     dashboardDTO.buyingThruput = dashboardDTO.totalBuyingSales / dashboardDTO.buyingCount;
 
+    // DASHBOARD: total invoice amount for the current month
+    dashboardDTO.totalInvoiceAmount = await PurchaseOrderService.getTotalInvoiceAmountForCurrentMonth();
+
     // SAVE: dashboard data
     String jsonString = jsonEncode(dashboardDTO.toJson());
     await prefs.setString('dashboard_DTO', jsonString);

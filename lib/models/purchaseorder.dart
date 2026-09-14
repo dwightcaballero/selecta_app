@@ -12,6 +12,7 @@ class Purchaseorder {
     required this.createdDate,
     required this.lastupdatedDate,
     required this.invoiceAmount,
+    required this.invoiceDate,
     this.imagePath = '',
   });
 
@@ -27,6 +28,7 @@ class Purchaseorder {
         createdDate: json['createdDate']! as Timestamp,
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
         invoiceAmount: json['invoiceAmount']! as double,
+        invoiceDate: json['invoiceDate']! as Timestamp,
         imagePath: json['imagePath'] as String? ?? '',
       );
 
@@ -44,6 +46,7 @@ class Purchaseorder {
         createdDate: data?['createdDate'],
         lastupdatedDate: data?['lastupdatedDate'],
         invoiceAmount: data?['invoiceAmount'],
+        invoiceDate: data?['invoiceDate'],
         imagePath: data?['imagePath'] ?? '',
       );
     } else {
@@ -62,6 +65,7 @@ class Purchaseorder {
   double orderAmount;
   Timestamp orderDate;
   double overpayment;
+  Timestamp invoiceDate;
 
   static Purchaseorder empty() => Purchaseorder(
     invoiceNumber: '',
@@ -74,6 +78,7 @@ class Purchaseorder {
     createdDate: Timestamp.now(),
     lastupdatedDate: Timestamp.now(),
     invoiceAmount: 0.0,
+    invoiceDate: Timestamp.now(),
     imagePath: '',
   );
 
@@ -83,7 +88,7 @@ class Purchaseorder {
     Timestamp? orderDate,
     double? overpayment,
     bool? isSettled,
-    double? finalAmount,
+    Timestamp? invoiceDate,
     String? createdBy,
     String? lastUpdatedBy,
     Timestamp? createdDate,
@@ -102,6 +107,7 @@ class Purchaseorder {
       createdDate: createdDate ?? this.createdDate,
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
       invoiceAmount: invoiceAmount ?? this.invoiceAmount,
+      invoiceDate: invoiceDate ?? this.invoiceDate,
       imagePath: imagePath ?? this.imagePath,
     );
   }
@@ -118,6 +124,7 @@ class Purchaseorder {
       'createdDate': createdDate,
       'lastupdatedDate': lastupdatedDate,
       'invoiceAmount': invoiceAmount,
+      'invoiceDate': invoiceDate,
       'imagePath': imagePath,
     };
   }

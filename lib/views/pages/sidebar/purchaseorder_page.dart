@@ -36,6 +36,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   final _formKey = GlobalKey<FormState>();
   File? _pickedImage;
   final ImagePicker _picker = ImagePicker();
+  DateTime _selectedInvoiceDate = DateTime.now();
   DateTime _selectedOrderDate = DateTime.now();
 
   @override
@@ -99,6 +100,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         lastupdatedDate: Timestamp.now(),
         invoiceAmount: 0,
         imagePath: imageFilePath,
+        invoiceDate: Timestamp.fromDate(_selectedInvoiceDate),
       );
 
       db.addPurchaseorder(newPurchaseorder);
@@ -117,7 +119,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
       // Validate invoice amount should not be greater than order amount
       if (invoiceAmount > widget.purchaseorder.orderAmount) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Invoice amount cannot be greater than order amount.')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Invoice amount cannot be greater than order amount.'), backgroundColor: Colors.red));
         return;
       }
       String imageFilePath = await Helperfunctions.updateImage(context, _pickedImage, networkImagePath, widget.purchaseorder.imagePath);
@@ -134,6 +138,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         lastupdatedDate: Timestamp.now(),
         invoiceAmount: invoiceAmount,
         imagePath: imageFilePath,
+        invoiceDate: Timestamp.fromDate(_selectedInvoiceDate),
       );
 
       db.updatePurchaseorder(widget.purchaseorderID, updatedPurchaseorder);
@@ -162,6 +167,14 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
     if (dateTime != null) {
       setState(() => _selectedOrderDate = dateTime);
+    }
+  }
+
+  Future<void> onChangeInvoiceDate() async {
+    final dateTime = await showDatePicker(context: context, initialDate: _selectedInvoiceDate, firstDate: DateTime(2000), lastDate: DateTime(3000));
+
+    if (dateTime != null) {
+      setState(() => _selectedInvoiceDate = dateTime);
     }
   }
 
@@ -287,6 +300,36 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
   }
 
+  Widget _buildInvoiceDateField() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onChangeInvoiceDate,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: colorScheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today_outlined, size: 20, color: colorScheme.primary),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Invoice Date', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                Text(Helperfunctions.formatDateForDisplay(_selectedInvoiceDate), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const Spacer(),
+            Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.primary),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildOrderDetailsCard() {
     return _buildSectionCard(
       title: 'Order Information',
@@ -310,7 +353,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       child: Column(
         spacing: 16,
         children: [
-          if (!isNewRecord)
+          if (!isNewRecord) ...[
+            _buildInvoiceDateField(),
             TextFormField(
               controller: orderNumberController,
               decoration: _inputDecoration(label: 'Invoice Reference Number', icon: Icons.tag_outlined, hintText: 'e.g. HM30471505'),
@@ -318,6 +362,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               validator: (value) => value == null || value.trim().isEmpty ? 'Invoice reference number should not be blank' : null,
               autovalidateMode: AutovalidateMode.onUnfocus,
             ),
+          ],
           _buildMoneyField(
             label: 'Invoice Amount',
             enabled: widget.purchaseorder.isSettled == null || widget.purchaseorder.isSettled == false,

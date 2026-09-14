@@ -42,4 +42,42 @@ class PurchaseOrderService {
 
     return snapshot.count;
   }
+
+  static Future<double> getTotalInvoiceAmountForCurrentMonth() async {
+    var now = DateTime.now();
+    var firstDayOfMonth = DateTime(now.year, now.month, 1);
+    var lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+
+    var snapshot = await FirebaseFirestore.instance
+        .collection(PURCHASEORDER_COLLECTION_REF)
+        .where('invoiceDate', isGreaterThanOrEqualTo: firstDayOfMonth)
+        .where('invoiceDate', isLessThanOrEqualTo: lastDayOfMonth)
+        .get();
+
+    double total = 0;
+    for (var doc in snapshot.docs) {
+      total += (doc.data()['invoiceAmount'] ?? 0).toDouble();
+    }
+
+    return total;
+  }
+
+  static Future<List<Purchaseorder>> getPurchaseOrdersForCurrentMonth() async {
+    var now = DateTime.now();
+    var firstDayOfMonth = DateTime(now.year, now.month, 1);
+    var lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+
+    var snapshot = await FirebaseFirestore.instance
+        .collection(PURCHASEORDER_COLLECTION_REF)
+        .where('invoiceDate', isGreaterThanOrEqualTo: firstDayOfMonth)
+        .where('invoiceDate', isLessThanOrEqualTo: lastDayOfMonth)
+        .get();
+
+    List<Purchaseorder> purchaseorders = [];
+    for (var doc in snapshot.docs) {
+      purchaseorders.add(Purchaseorder.fromJson(doc.data()));
+    }
+
+    return purchaseorders;
+  }
 }
