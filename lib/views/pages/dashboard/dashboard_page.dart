@@ -6,6 +6,7 @@ import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
+import 'package:flutter_app/views/pages/dashboard/overpaymentlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/creditlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
@@ -149,29 +150,47 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildQuickAccessGrid() {
-    return Row(
-      spacing: 10,
+    return Column(
       children: [
-        _buildQuickAccessCard(
-          label: 'Deliveries',
-          icon: Icons.local_shipping_outlined,
-          count: dashboardDTO.pendingDeliveryCount,
-          color: Colors.blue,
-          nextPage: const DeliveryListPage(),
+        Row(
+          spacing: 10,
+          children: [
+            _buildQuickAccessCard(
+              label: 'Deliveries',
+              icon: Icons.local_shipping_outlined,
+              count: dashboardDTO.pendingDeliveryCount,
+              color: Colors.blue,
+              nextPage: const DeliveryListPage(),
+            ),
+            _buildQuickAccessCard(
+              label: 'Credit',
+              icon: Icons.credit_card_outlined,
+              count: dashboardDTO.unpaidCreditCount,
+              color: Colors.red,
+              nextPage: const CreditlistPage(),
+            ),
+            _buildQuickAccessCard(
+              label: 'Returns',
+              icon: Icons.assignment_return_outlined,
+              count: dashboardDTO.returnedDeliveryCount,
+              color: Colors.purple,
+              nextPage: const ReturnlistPage(),
+            ),
+          ],
         ),
-        _buildQuickAccessCard(
-          label: 'Credit',
-          icon: Icons.credit_card_outlined,
-          count: dashboardDTO.unpaidCreditCount,
-          color: Colors.orange,
-          nextPage: const CreditlistPage(),
-        ),
-        _buildQuickAccessCard(
-          label: 'Returns',
-          icon: Icons.assignment_return_outlined,
-          count: dashboardDTO.returnedDeliveryCount,
-          color: Colors.purple,
-          nextPage: const ReturnlistPage(),
+        Row(
+          spacing: 10,
+          children: [
+            _buildQuickAccessCard(
+              label: 'Overpayment',
+              icon: Icons.money_off_csred_outlined,
+              count: dashboardDTO.overpaymentCount,
+              color: Colors.orange,
+              nextPage: const OverpaymentlistPage(),
+            ),
+            _buildQuickAccessCard(label: 'TBA', icon: Icons.question_mark_outlined, count: 0, color: Colors.green, nextPage: const CreditlistPage()),
+            _buildQuickAccessCard(label: 'TBA', icon: Icons.question_mark_outlined, count: 0, color: Colors.yellow, nextPage: const ReturnlistPage()),
+          ],
         ),
       ],
     );

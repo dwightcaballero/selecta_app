@@ -88,16 +88,16 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       }
 
       final newPurchaseorder = Purchaseorder(
-        invoiceNumber: orderNumberController.text,
-        orderAmount: double.tryParse(orderAmountController.text) ?? 0.0,
+        invoiceNumber: '',
+        orderAmount: Helperfunctions.formatStringAmountToDouble(orderAmountController.text),
         orderDate: Timestamp.fromDate(_selectedOrderDate),
-        overpayment: double.tryParse(overpaymentController.text) ?? 0.0,
+        overpayment: 0,
         isSettled: null,
         createdBy: authService.value.currentUser!.displayName!,
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: Timestamp.now(),
         lastupdatedDate: Timestamp.now(),
-        invoiceAmount: double.tryParse(invoiceAmountController.text) ?? 0.0,
+        invoiceAmount: 0,
         imagePath: imageFilePath,
       );
 
@@ -112,23 +112,22 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
   void onUpdate() async {
     if (_formKey.currentState!.validate()) {
-      double invoiceAmount = double.tryParse(invoiceAmountController.text) ?? 0.0;
-      double orderAmount = double.tryParse(orderAmountController.text) ?? 0.0;
+      double invoiceAmount = Helperfunctions.formatStringAmountToDouble(invoiceAmountController.text);
+      double overpayment = widget.purchaseorder.orderAmount - invoiceAmount;
 
       // Validate invoice amount should not be greater than order amount
-      if (invoiceAmount > orderAmount) {
+      if (invoiceAmount > widget.purchaseorder.orderAmount) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Invoice amount cannot be greater than order amount.')));
         return;
       }
-
       String imageFilePath = await Helperfunctions.updateImage(context, _pickedImage, networkImagePath, widget.purchaseorder.imagePath);
 
       final updatedPurchaseorder = Purchaseorder(
         invoiceNumber: orderNumberController.text.toUpperCase(),
-        orderAmount: orderAmount,
+        orderAmount: widget.purchaseorder.orderAmount,
         orderDate: Timestamp.fromDate(_selectedOrderDate),
-        overpayment: double.tryParse(overpaymentController.text) ?? 0.0,
-        isSettled: widget.purchaseorder.isSettled,
+        overpayment: overpayment,
+        isSettled: overpayment > 0 ? false : null,
         createdBy: widget.purchaseorder.createdBy,
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: widget.purchaseorder.createdDate,
@@ -233,6 +232,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     required IconData icon,
     bool enabled = true,
     ValueChanged<String>? onChanged,
+    bool validate = true,
   }) {
     return Focus(
       onFocusChange: enabled ? (hasFocus) => onFocusChange(hasFocus, controller) : null,
@@ -247,10 +247,12 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           prefixStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
         ),
         autovalidateMode: AutovalidateMode.onUnfocus,
-        validator: (value) {
-          if (Helperfunctions.formatStringAmountToDouble(controller.text) <= 0) return '$label should be greater than 0';
-          return null;
-        },
+        validator: validate
+            ? (value) {
+                if (Helperfunctions.formatStringAmountToDouble(controller.text) <= 0) return '$label should be greater than 0';
+                return null;
+              }
+            : null,
       ),
     );
   }
@@ -318,6 +320,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             ),
           _buildMoneyField(
             label: 'Invoice Amount',
+            enabled: widget.purchaseorder.isSettled == null || widget.purchaseorder.isSettled == false,
             controller: invoiceAmountController,
             icon: Icons.receipt_outlined,
             onChanged: (_) {
@@ -325,7 +328,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   ((double.tryParse(invoiceAmountController.text) ?? 0.0) - (double.tryParse(orderAmountController.text) ?? 0.0)).toString();
             },
           ),
-          _buildMoneyField(label: 'Overpayment', controller: overpaymentController, icon: Icons.account_balance_wallet_outlined, enabled: false),
+          _buildMoneyField(
+            label: 'Overpayment',
+            controller: overpaymentController,
+            icon: Icons.account_balance_wallet_outlined,
+            enabled: false,
+            validate: false,
+          ),
           if (widget.purchaseorder.isSettled != null && widget.purchaseorder.isSettled == false)
             Container(
               width: double.infinity,
@@ -341,6 +350,25 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text('This overpayment is not yet settled.', style: TextStyle(color: colorScheme.error, fontSize: 13)),
+                  ),
+                ],
+              ),
+            ),
+          if (widget.purchaseorder.isSettled != null && widget.purchaseorder.isSettled == true)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.green, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('This overpayment has been settled.', style: TextStyle(color: colorScheme.primary, fontSize: 13)),
                   ),
                 ],
               ),

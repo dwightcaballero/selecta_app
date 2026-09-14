@@ -5,9 +5,6 @@ import 'package:flutter_app/models/purchaseorder.dart';
 const String PURCHASEORDER_COLLECTION_REF = 'purchaseorders';
 
 class PurchaseOrderService {
-  final _firestore = FirebaseFirestore.instance;
-  late final CollectionReference _purchaseordersRef;
-
   PurchaseOrderService() {
     _purchaseordersRef = _firestore
         .collection(PURCHASEORDER_COLLECTION_REF)
@@ -16,6 +13,9 @@ class PurchaseOrderService {
           toFirestore: (purchaseorder, _) => purchaseorder.toJson(),
         );
   }
+
+  final _firestore = FirebaseFirestore.instance;
+  late final CollectionReference _purchaseordersRef;
 
   void addPurchaseorder(Purchaseorder purchaseorder) {
     _purchaseordersRef.add(purchaseorder);
@@ -31,5 +31,15 @@ class PurchaseOrderService {
 
   Stream<QuerySnapshot> getListPurchaseordersAsStream() {
     return _purchaseordersRef.orderBy('orderDate', descending: true).snapshots();
+  }
+
+  Stream<QuerySnapshot> getListPurchaseOrdersNotYetSettled() {
+    return _purchaseordersRef.where('isSettled', isEqualTo: false).orderBy('orderDate', descending: true).snapshots();
+  }
+
+  static Future<int?> getCountDeliveriesNotYetSettled() async {
+    var snapshot = await FirebaseFirestore.instance.collection(PURCHASEORDER_COLLECTION_REF).where('isSettled', isEqualTo: false).count().get();
+
+    return snapshot.count;
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:flutter_app/services/purchaseorder_service.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,6 +21,7 @@ class DashboardController {
     dashboardDTO.unpaidCreditCount = await DeliveryService.getCountDeliveryWithCreditNotYetPaid() ?? 0;
     dashboardDTO.pendingDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending) ?? 0;
     dashboardDTO.returnedDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.returned) ?? 0;
+    dashboardDTO.overpaymentCount = await PurchaseOrderService.getCountDeliveriesNotYetSettled() ?? 0;
 
     // DASHBOARD: buying and non Buying
     var listStores = await HapiStoreService.getListHapiStores();
