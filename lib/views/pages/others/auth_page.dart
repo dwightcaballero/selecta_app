@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/views/pages/dashboard/dashboard_page.dart';
+import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/others/loading_page.dart';
 import 'package:flutter_app/views/pages/others/welcome_page.dart';
 

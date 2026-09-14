@@ -16,6 +16,7 @@ void main() {
       lastupdatedDate: Timestamp.fromDate(DateTime(2026, 9, 14)),
       invoiceAmount: 260.0,
       imagePath: 'https://example.com/invoice.jpg',
+      invoiceDate: Timestamp.fromDate(DateTime(2026, 9, 14)),
     );
 
     expect(order.imagePath, 'https://example.com/invoice.jpg');

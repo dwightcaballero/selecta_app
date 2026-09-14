@@ -266,7 +266,7 @@ class _DashboardPageState extends State<DashboardPage> {
           children: [
             Expanded(child: _buildThruputCard()),
             Expanded(
-              child: _buildBlankCard(title: 'Store Scanning', icon: Icons.qr_code_scanner_outlined),
+              child: _buildBlankCard(title: 'Placement', icon: Icons.grid_view_outlined),
             ),
           ],
         ),
@@ -275,7 +275,7 @@ class _DashboardPageState extends State<DashboardPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: _buildBlankCard(title: 'Placement', icon: Icons.grid_view_outlined),
+              child: _buildBlankCard(title: 'Store Scanning', icon: Icons.qr_code_scanner_outlined),
             ),
             Expanded(
               child: _buildBlankCard(title: 'Expansion', icon: Icons.trending_up_outlined),

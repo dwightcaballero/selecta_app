@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/user_services.dart';
-import 'package:flutter_app/views/pages/dashboard/dashboard_page.dart';
+import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/snackbar_widget.dart';
