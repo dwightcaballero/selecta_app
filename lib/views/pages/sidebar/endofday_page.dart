@@ -6,7 +6,7 @@ import 'package:flutter_app/dto/endofday_dto.dart';
 import 'package:flutter_app/models/breakdown.dart';
 import 'package:flutter_app/services/breakdown_service.dart';
 import 'package:flutter_app/services/endofday_services.dart';
-import 'package:flutter_app/views/pages/breakdown_page.dart';
+import 'package:flutter_app/views/pages/sidebar/breakdown_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
@@ -19,13 +19,14 @@ class EndofdayPage extends StatefulWidget {
 }
 
 class _EndofdayPageState extends State<EndofdayPage> {
-  DateTime _selectedDate = DateTime.now();
+  Breakdown? breakdown = Breakdown.empty();
+  String breakdownID = '';
   final EndofdayServices db = EndofdayServices();
   final BreakdownService dbBS = BreakdownService();
   EndOfDayDTO endOfDayData = EndOfDayDTO.empty();
-  Breakdown? breakdown = Breakdown.empty();
-  String breakdownID = '';
+
   bool _isDealer = true;
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void initState() {
@@ -35,38 +36,50 @@ class _EndofdayPageState extends State<EndofdayPage> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'End of Day Report', subtitle: DateFormat('EEEE, d MMM yyyy').format(_selectedDate)),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 16,
-          children: [
-            // 1. Date Navigation Header
-            _buildDateNavigator(),
-
-            // 2. Pending Status Warning (if any)
-            if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
-
-            // 3. Delivery Volume & Status Grid
-            _buildDeliveryStatusGrid(),
-
-            // 4. Sales & Collections Card
-            _buildSalesAndCollectionsCard(),
-
-            // 5. Deductions & Returns Card
-            _buildDeductionsCard(),
-
-            // 6. Cash Reconciliation Summary Card
-            _buildCashReconciliationCard(),
-          ],
-        ),
-      ),
+  void onChangeDate() async {
+    final DateTime? dateTime = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(3000),
     );
+
+    if (dateTime != null) {
+      _selectedDate = dateTime;
+      getData();
+    }
+  }
+
+  void getData() async {
+    showLoading(true);
+    _isDealer = await KVariables.getIsDealer();
+    endOfDayData = await db.getListDeliveryForEndOfDay(_selectedDate);
+    breakdown = await dbBS.getDocumentsBySpecificDate(_selectedDate) ?? Breakdown.empty();
+    breakdownID = await dbBS.getIDofBreakdown(_selectedDate);
+
+    breakdown!.breakdownDate = Timestamp.fromDate(_selectedDate);
+    breakdown!.expectedAmount = endOfDayData.expectedcashonhand;
+
+    showLoading(false);
+  }
+
+  void validateBeforeBreakdown() async {
+    if (endOfDayData.pendingstatus > 0) {
+      ShowMessage.error(context, 'There should be no transaction that is pending for delivery');
+    } else {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => BreakdownPage(breakdown: breakdown!, breakdownID: breakdownID),
+        ),
+      );
+      getData();
+    }
+  }
+
+  void showLoading(bool showLoading) async {
+    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
+    if (!showLoading) setState(() {});
   }
 
   Widget _buildDateNavigator() {
@@ -370,49 +383,37 @@ class _EndofdayPageState extends State<EndofdayPage> {
     getData();
   }
 
-  void onChangeDate() async {
-    final DateTime? dateTime = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(3000),
-    );
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(title: 'End of Day Report', subtitle: DateFormat('EEEE, d MMM yyyy').format(_selectedDate)),
+      bottomNavigationBar: _buildStickyBottomBar(),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: [
+            // 1. Date Navigation Header
+            _buildDateNavigator(),
 
-    if (dateTime != null) {
-      _selectedDate = dateTime;
-      getData();
-    }
-  }
+            // 2. Pending Status Warning (if any)
+            if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
 
-  void getData() async {
-    showLoading(true);
-    _isDealer = await KVariables.getIsDealer();
-    endOfDayData = await db.getListDeliveryForEndOfDay(_selectedDate);
-    breakdown = await dbBS.getDocumentsBySpecificDate(_selectedDate) ?? Breakdown.empty();
-    breakdownID = await dbBS.getIDofBreakdown(_selectedDate);
+            // 3. Delivery Volume & Status Grid
+            _buildDeliveryStatusGrid(),
 
-    breakdown!.breakdownDate = Timestamp.fromDate(_selectedDate);
-    breakdown!.expectedAmount = endOfDayData.expectedcashonhand;
+            // 4. Sales & Collections Card
+            _buildSalesAndCollectionsCard(),
 
-    showLoading(false);
-  }
+            // 5. Deductions & Returns Card
+            _buildDeductionsCard(),
 
-  void validateBeforeBreakdown() async {
-    if (endOfDayData.pendingstatus > 0) {
-      ShowMessage.error(context, 'There should be no transaction that is pending for delivery');
-    } else {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => BreakdownPage(breakdown: breakdown!, breakdownID: breakdownID),
+            // 6. Cash Reconciliation Summary Card
+            _buildCashReconciliationCard(),
+          ],
         ),
-      );
-      getData();
-    }
-  }
-
-  void showLoading(bool showLoading) async {
-    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
-    if (!showLoading) setState(() {});
+      ),
+    );
   }
 }

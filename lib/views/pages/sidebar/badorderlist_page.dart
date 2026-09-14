@@ -1,30 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/views/pages/credit_page.dart';
+import 'package:flutter_app/models/badorder.dart';
+import 'package:flutter_app/services/badorder_service.dart';
+import 'package:flutter_app/views/pages/sidebar/badorder_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
-class CreditlistPage extends StatefulWidget {
-  const CreditlistPage({super.key});
+class BadOrderlistPage extends StatefulWidget {
+  const BadOrderlistPage({super.key});
 
   @override
-  State<CreditlistPage> createState() => _CreditlistPageState();
+  State<BadOrderlistPage> createState() => _BadOrderlistPageState();
 }
 
-class _CreditlistPageState extends State<CreditlistPage> {
-  final DeliveryService db = DeliveryService();
+class _BadOrderlistPageState extends State<BadOrderlistPage> {
+  final BadOrderService db = BadOrderService();
+
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  bool isDealer = true;
-
-  @override
-  void initState() {
-    super.initState();
-    prefetchData();
-  }
 
   @override
   void dispose() {
@@ -32,85 +25,14 @@ class _CreditlistPageState extends State<CreditlistPage> {
     super.dispose();
   }
 
-  void prefetchData() async {
-    isDealer = await KVariables.getIsDealer();
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Credit List', subtitle: 'Unpaid Store Accounts'),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: db.getListDeliveryWithCredit(),
-        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-          if (snapshot.hasError) {
-            return _buildErrorState();
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final allDocs = snapshot.data?.docs ?? [];
-          if (allDocs.isEmpty) {
-            return _buildEmptyState();
-          }
-
-          // Calculate total outstanding amount
-          double totalCredit = 0;
-          final List<QueryDocumentSnapshot> filteredDocs = [];
-
-          for (var doc in allDocs) {
-            final delivery = doc.data() as Delivery;
-            totalCredit += delivery.creditAmount;
-            if (_searchQuery.isEmpty || delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase())) {
-              filteredDocs.add(doc);
-            }
-          }
-
-          return Column(
-            children: [
-              // 1. Total Outstanding Summary Header
-              _buildSummaryCard(totalCredit: totalCredit, totalAccounts: allDocs.length),
-
-              // 2. Search Bar
-              _buildSearchBar(),
-
-              // 3. Filtered Credits List
-              Expanded(
-                child: filteredDocs.isEmpty
-                    ? _buildNoSearchResultsState()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                        itemCount: filteredDocs.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final delivery = filteredDocs[index].data() as Delivery;
-                          final deliveryID = filteredDocs[index].id;
-                          return _buildCreditCard(deliveryID: deliveryID, delivery: delivery);
-                        },
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSummaryCard({required double totalCredit, required int totalAccounts}) {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildSummaryCard({required double totalAmount, required int totalCount}) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: LinearGradient(colors: [Colors.red.shade700, Colors.deepOrange.shade600], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: colorScheme.primary.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.red.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -119,24 +41,24 @@ class _CreditlistPageState extends State<CreditlistPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Total Outstanding Credit',
+                'Total Bad Order Amount',
                 style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 4),
               Text(
-                Helperfunctions.formatDoubleAmountForDisplay(totalCredit),
+                Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
                 style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
             child: Column(
               children: [
-                const Text('Stores', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                const Text('Records', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 Text(
-                  '$totalAccounts',
+                  '$totalCount',
                   style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -155,7 +77,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
         controller: _searchController,
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
         decoration: InputDecoration(
-          hintText: 'Search by store name...',
+          hintText: 'Search by store name or description...',
           hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
           prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
           suffixIcon: _searchQuery.isNotEmpty
@@ -183,7 +105,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
     );
   }
 
-  Widget _buildCreditCard({required String deliveryID, required Delivery delivery}) {
+  Widget _buildBadOrderCard({required String badorderID, required BadOrder badorder}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
@@ -195,14 +117,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: isDealer
-            ? () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CreditPage(recID: deliveryID, delivery: delivery),
-                ),
-              )
-            : null,
+        onTap: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: badorderID, badorder: badorder)),
         child: Padding(
           padding: const EdgeInsets.all(14.0),
           child: Row(
@@ -210,8 +125,8 @@ class _CreditlistPageState extends State<CreditlistPage> {
               Container(
                 width: 44,
                 height: 44,
-                decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.credit_card_outlined, color: Colors.purple, size: 22),
+                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.remove_shopping_cart_outlined, color: Colors.red, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -219,18 +134,27 @@ class _CreditlistPageState extends State<CreditlistPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      delivery.storeName,
+                      badorder.hapistore,
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (badorder.description.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        badorder.description,
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Row(
                       children: [
                         Icon(Icons.calendar_month_outlined, size: 14, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
                         Text(
-                          delivery.deliveryDate != null ? Helperfunctions.formatDateForDisplay(delivery.deliveryDate!.toDate()) : 'No Date',
+                          Helperfunctions.formatTimestampForDisplay(badorder.badorderDate),
                           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                         ),
                       ],
@@ -243,21 +167,22 @@ class _CreditlistPageState extends State<CreditlistPage> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(delivery.creditAmount),
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple),
+                    Helperfunctions.formatDoubleAmountForDisplay(badorder.badorderAmount),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red),
                   ),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
                     child: const Text(
-                      'Unpaid',
+                      'Bad Order',
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red),
                     ),
                   ),
                 ],
               ),
-              if (isDealer) ...[const SizedBox(width: 6), Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant)],
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
             ],
           ),
         ),
@@ -278,10 +203,10 @@ class _CreditlistPageState extends State<CreditlistPage> {
               child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 50),
             ),
             const SizedBox(height: 16),
-            const Text('All Credits Settled!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('No Bad Orders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             const Text(
-              'There are no pending or unpaid credits recorded.',
+              'No damaged or expired goods recorded yet.',
               style: TextStyle(fontSize: 13, color: Colors.black54),
               textAlign: TextAlign.center,
             ),
@@ -300,7 +225,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
           children: [
             const Icon(Icons.search_off_rounded, size: 48, color: Colors.grey),
             const SizedBox(height: 12),
-            Text('No stores matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('No records matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -314,8 +239,80 @@ class _CreditlistPageState extends State<CreditlistPage> {
         children: [
           Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
           SizedBox(height: 8),
-          Text('Unable to load credit list'),
+          Text('Unable to load bad orders'),
         ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const CustomAppbar(title: 'Bad Orders', subtitle: 'Damaged & Expired Products'),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: '', badorder: BadOrder.empty())),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          'Add Record',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: db.getListBadOrder(),
+        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
+          if (snapshot.hasError) {
+            return _buildErrorState();
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final allDocs = snapshot.data?.docs ?? [];
+          if (allDocs.isEmpty) {
+            return _buildEmptyState();
+          }
+
+          // Calculate total losses and filter list
+          double totalBadOrderAmount = 0;
+          final List<QueryDocumentSnapshot> filteredDocs = [];
+
+          for (var doc in allDocs) {
+            final badorder = doc.data() as BadOrder;
+            totalBadOrderAmount += badorder.badorderAmount;
+            if (_searchQuery.isEmpty ||
+                badorder.hapistore.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                badorder.description.toLowerCase().contains(_searchQuery.toLowerCase())) {
+              filteredDocs.add(doc);
+            }
+          }
+
+          return Column(
+            children: [
+              // 1. KPI Summary Header
+              _buildSummaryCard(totalAmount: totalBadOrderAmount, totalCount: allDocs.length),
+
+              // 2. Search Bar
+              _buildSearchBar(),
+
+              // 3. Bad Orders List
+              Expanded(
+                child: filteredDocs.isEmpty
+                    ? _buildNoSearchResultsState()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                        itemCount: filteredDocs.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final badorder = filteredDocs[index].data() as BadOrder;
+                          final badorderID = filteredDocs[index].id;
+                          return _buildBadOrderCard(badorderID: badorderID, badorder: badorder);
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -6,30 +6,31 @@ import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/views/pages/badorderlist_page.dart';
-import 'package:flutter_app/views/pages/creditlist_page.dart';
-import 'package:flutter_app/views/pages/deliverylist_page.dart';
-import 'package:flutter_app/views/pages/endofday_page.dart';
-import 'package:flutter_app/views/pages/expenselist_page.dart';
-import 'package:flutter_app/views/pages/hapistorelist_page.dart';
-import 'package:flutter_app/views/pages/kpi/buyinglist_page.dart';
-import 'package:flutter_app/views/pages/kpi/thruput_page.dart';
+import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/creditlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
+import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/hapistorelist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/thruput_page.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
-import 'package:flutter_app/views/pages/returnlist_page.dart';
-import 'package:flutter_app/views/pages/transactionlist_page.dart';
-import 'package:flutter_app/views/pages/transactionlog_page.dart';
+import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/purchaseorderlist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/transactionlog_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+class DashboardPage extends StatefulWidget {
+  const DashboardPage({super.key});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _DashboardPageState extends State<DashboardPage> {
   DashboardDTO dashboardDTO = DashboardDTO.empty();
   bool isDealer = false;
   bool isSyncing = false;
@@ -88,57 +89,6 @@ class _HomePageState extends State<HomePage> {
         }
       }
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Dashboard',
-        subtitle: 'Selecta Operations',
-        showBackButton: false,
-        leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: const Icon(Icons.menu_rounded, color: Colors.white),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
-            tooltip: 'Open Menu',
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: isSyncing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.sync_rounded, color: Colors.white),
-            onPressed: isSyncing ? null : syncDashboard,
-            tooltip: 'Sync Dashboard',
-          ),
-        ],
-      ),
-      drawer: _buildDrawer(),
-      body: RefreshIndicator(
-        onRefresh: syncDashboard,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 16,
-            children: [
-              // 1. User Welcome & Last Sync Banner
-              _buildWelcomeBanner(),
-
-              // 2. Quick Access Section
-              _buildSectionHeader('Quick Access', 'Pending deliveries, credits, and returns'),
-              _buildQuickAccessGrid(),
-
-              // 3. Operational Metrics / KPI Section
-              _buildSectionHeader('Performance KPIs', 'Sales, throughput, and store coverage'),
-              _buildKpiGrid(),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildWelcomeBanner() {
@@ -513,6 +463,7 @@ class _HomePageState extends State<HomePage> {
           ),
 
           // Drawer Navigation Items
+          _buildDrawerItem(Icons.assignment_outlined, 'Purchase Orders', PurchaseorderlistPage()),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
@@ -547,6 +498,57 @@ class _HomePageState extends State<HomePage> {
           syncDashboard();
         }
       },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(
+        title: 'Dashboard',
+        subtitle: 'Selecta Operations',
+        showBackButton: false,
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu_rounded, color: Colors.white),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+            tooltip: 'Open Menu',
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: isSyncing
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.sync_rounded, color: Colors.white),
+            onPressed: isSyncing ? null : syncDashboard,
+            tooltip: 'Sync Dashboard',
+          ),
+        ],
+      ),
+      drawer: _buildDrawer(),
+      body: RefreshIndicator(
+        onRefresh: syncDashboard,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 16,
+            children: [
+              // 1. User Welcome & Last Sync Banner
+              _buildWelcomeBanner(),
+
+              // 2. Quick Access Section
+              _buildSectionHeader('Quick Access', 'Pending deliveries, credits, and returns'),
+              _buildQuickAccessGrid(),
+
+              // 3. Operational Metrics / KPI Section
+              _buildSectionHeader('Performance KPIs', 'Sales, throughput, and store coverage'),
+              _buildKpiGrid(),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

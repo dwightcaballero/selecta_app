@@ -15,6 +15,7 @@ class TransactionLogPage extends StatefulWidget {
 
 class _TransactionLogPageState extends State<TransactionLogPage> {
   final TransactionLogService db = TransactionLogService();
+
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedActionFilter = 'All';
@@ -23,22 +24,6 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Audit Logs', subtitle: 'System Activity & Changes'),
-      body: Column(
-        children: [
-          // 1. Search Bar & Action Filter Chips
-          _buildFilterHeader(),
-
-          // 2. Logs Stream List
-          Expanded(child: _buildLogsList()),
-        ],
-      ),
-    );
   }
 
   Widget _buildFilterHeader() {
@@ -313,6 +298,22 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
           Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
           SizedBox(height: 8),
           Text('Unable to load audit logs'),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const CustomAppbar(title: 'Audit Logs', subtitle: 'System Activity & Changes'),
+      body: Column(
+        children: [
+          // 1. Search Bar & Action Filter Chips
+          _buildFilterHeader(),
+
+          // 2. Logs Stream List
+          Expanded(child: _buildLogsList()),
         ],
       ),
     );

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
-import 'package:flutter_app/views/pages/hapistore_page.dart';
+import 'package:flutter_app/views/pages/sidebar/hapistore_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
 class HapiStoreListPage extends StatefulWidget {
@@ -16,22 +16,23 @@ class HapiStoreListPage extends StatefulWidget {
 
 class _HapiStoreListPageState extends State<HapiStoreListPage> {
   final HapiStoreService db = HapiStoreService();
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
+
   Timer? _debounceTimer;
   bool _isDealer = true;
-
-  @override
-  void initState() {
-    super.initState();
-    prefetchData();
-  }
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void dispose() {
     _searchController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    prefetchData();
   }
 
   void prefetchData() async {
@@ -46,40 +47,6 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
         _searchQuery = text.trim().toUpperCase();
       });
     });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Hapi Stores', subtitle: 'Store Directory & Contacts'),
-      floatingActionButton: _isDealer
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => HapiStorePage(hapiStoreID: '', hapistore: Hapistore.empty()),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                'Add Store',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: Theme.of(context).colorScheme.primary,
-            )
-          : null,
-      body: Column(
-        children: [
-          // 1. Search Bar
-          _buildSearchBar(),
-
-          // 2. Stores Stream List
-          Expanded(child: _buildStoreListView()),
-        ],
-      ),
-    );
   }
 
   Widget _buildSearchBar() {
@@ -282,6 +249,40 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
           Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
           SizedBox(height: 8),
           Text('Unable to load stores list'),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const CustomAppbar(title: 'Hapi Stores', subtitle: 'Store Directory & Contacts'),
+      floatingActionButton: _isDealer
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HapiStorePage(hapiStoreID: '', hapistore: Hapistore.empty()),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text(
+                'Add Store',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+            )
+          : null,
+      body: Column(
+        children: [
+          // 1. Search Bar
+          _buildSearchBar(),
+
+          // 2. Stores Stream List
+          Expanded(child: _buildStoreListView()),
         ],
       ),
     );

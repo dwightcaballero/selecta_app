@@ -12,8 +12,8 @@ import 'package:intl/intl.dart';
 class CreditPage extends StatefulWidget {
   const CreditPage({super.key, required this.recID, required this.delivery});
 
-  final String recID;
   final Delivery delivery;
+  final String recID;
 
   @override
   State<CreditPage> createState() => _CreditPageState();
@@ -21,6 +21,7 @@ class CreditPage extends StatefulWidget {
 
 class _CreditPageState extends State<CreditPage> {
   final DeliveryService db = DeliveryService();
+
   late String _selectedStatus;
 
   @override
@@ -29,29 +30,26 @@ class _CreditPageState extends State<CreditPage> {
     _selectedStatus = widget.delivery.creditStatus.isNotEmpty ? widget.delivery.creditStatus : CreditStatus.unpaid;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Credit Settlement', subtitle: widget.delivery.storeName),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 16,
-          children: [
-            // 1. Credit Overview Card
-            _buildCreditOverviewCard(),
-
-            // 2. Status Selector Card
-            _buildStatusCard(),
-
-            // 3. Audit History Card
-            _buildAuditCard(),
-          ],
-        ),
-      ),
+  void onUpdate() {
+    Delivery updatedDelivery = widget.delivery.copyWith(
+      storeName: widget.delivery.storeName,
+      remarks: widget.delivery.remarks,
+      transactionStatus: widget.delivery.transactionStatus,
+      orderAmount: widget.delivery.orderAmount,
+      returnAmount: widget.delivery.returnAmount,
+      creditAmount: widget.delivery.creditAmount,
+      cashAmount: widget.delivery.cashAmount,
+      onlineAmount: widget.delivery.onlineAmount,
+      deliveryDate: widget.delivery.deliveryDate,
+      creditStatus: _selectedStatus,
+      createdBy: widget.delivery.createdBy,
+      lastUpdatedBy: authService.value.currentUser!.displayName!,
+      createdDate: widget.delivery.createdDate,
+      lastupdatedDate: Timestamp.now(),
     );
+    db.updateDelivery(widget.recID, updatedDelivery);
+    ShowMessage.success(context, 'Successfully updated the credit status!\n[${updatedDelivery.storeName}]');
+    Navigator.pop(context);
   }
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
@@ -309,25 +307,28 @@ class _CreditPageState extends State<CreditPage> {
     );
   }
 
-  void onUpdate() {
-    Delivery updatedDelivery = widget.delivery.copyWith(
-      storeName: widget.delivery.storeName,
-      remarks: widget.delivery.remarks,
-      transactionStatus: widget.delivery.transactionStatus,
-      orderAmount: widget.delivery.orderAmount,
-      returnAmount: widget.delivery.returnAmount,
-      creditAmount: widget.delivery.creditAmount,
-      cashAmount: widget.delivery.cashAmount,
-      onlineAmount: widget.delivery.onlineAmount,
-      deliveryDate: widget.delivery.deliveryDate,
-      creditStatus: _selectedStatus,
-      createdBy: widget.delivery.createdBy,
-      lastUpdatedBy: authService.value.currentUser!.displayName!,
-      createdDate: widget.delivery.createdDate,
-      lastupdatedDate: Timestamp.now(),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(title: 'Credit Settlement', subtitle: widget.delivery.storeName),
+      bottomNavigationBar: _buildStickyBottomBar(),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: [
+            // 1. Credit Overview Card
+            _buildCreditOverviewCard(),
+
+            // 2. Status Selector Card
+            _buildStatusCard(),
+
+            // 3. Audit History Card
+            _buildAuditCard(),
+          ],
+        ),
+      ),
     );
-    db.updateDelivery(widget.recID, updatedDelivery);
-    ShowMessage.success(context, 'Successfully updated the credit status!\n[${updatedDelivery.storeName}]');
-    Navigator.pop(context);
   }
 }

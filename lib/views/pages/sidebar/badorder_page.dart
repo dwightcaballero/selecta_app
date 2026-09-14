@@ -15,8 +15,8 @@ import 'package:intl/intl.dart';
 class BadOrderPage extends StatefulWidget {
   const BadOrderPage({super.key, required this.recID, required this.badorder});
 
-  final String recID;
   final BadOrder badorder;
+  final String recID;
 
   @override
   State<BadOrderPage> createState() => _BadOrderPageState();
@@ -25,12 +25,20 @@ class BadOrderPage extends StatefulWidget {
 class _BadOrderPageState extends State<BadOrderPage> {
   final BadOrderService db = BadOrderService();
   final HapiStoreService dbHS = HapiStoreService();
-  final _formKey = GlobalKey<FormState>();
-
-  DateTime _selectedDate = DateTime.now();
-  final TextEditingController txtDescription = TextEditingController();
-  final TextEditingController txtAmount = TextEditingController();
   final TextEditingController dropDownController = TextEditingController();
+  final TextEditingController txtAmount = TextEditingController();
+  final TextEditingController txtDescription = TextEditingController();
+
+  final _formKey = GlobalKey<FormState>();
+  DateTime _selectedDate = DateTime.now();
+
+  @override
+  void dispose() {
+    txtDescription.dispose();
+    txtAmount.dispose();
+    dropDownController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -47,40 +55,75 @@ class _BadOrderPageState extends State<BadOrderPage> {
     }
   }
 
-  @override
-  void dispose() {
-    txtDescription.dispose();
-    txtAmount.dispose();
-    dropDownController.dispose();
-    super.dispose();
+  void onSave() {
+    if (_formKey.currentState!.validate()) {
+      BadOrder newRecord = BadOrder(
+        description: txtDescription.text,
+        hapistore: dropDownController.text,
+        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
+        badorderDate: Timestamp.fromDate(_selectedDate),
+        createdBy: authService.value.currentUser!.displayName!,
+        lastUpdatedBy: authService.value.currentUser!.displayName!,
+        createdDate: Timestamp.now(),
+        lastupdatedDate: Timestamp.now(),
+      );
+      db.addBadOrder(newRecord);
+      ShowMessage.success(context, 'Successfully created bad order record for [${dropDownController.text}]!');
+      Navigator.pop(context);
+    } else {
+      ShowMessage.error(context, 'Please fill up all required fields');
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Bad Order', subtitle: widget.recID.isEmpty ? 'New Record' : widget.badorder.hapistore),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 16,
-            children: [
-              // 1. Incident Details Card
-              _buildIncidentDetailsCard(),
+  void onDelete() {
+    db.deleteBadOrder(widget.recID);
+    ShowMessage.success(context, 'Successfully deleted bad order record for [${widget.badorder.hapistore}]!');
+    Navigator.pop(context);
+  }
 
-              // 2. Damage Description Card
-              _buildDescriptionCard(),
+  void onUpdate() {
+    if (_formKey.currentState!.validate()) {
+      BadOrder newRecord = widget.badorder.copyWith(
+        description: txtDescription.text,
+        hapistore: dropDownController.text,
+        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
+        badorderDate: Timestamp.fromDate(_selectedDate),
+        createdBy: widget.badorder.createdBy,
+        lastUpdatedBy: authService.value.currentUser!.displayName!,
+        createdDate: widget.badorder.createdDate,
+        lastupdatedDate: Timestamp.now(),
+      );
+      db.updateBadOrder(widget.recID, newRecord);
+      ShowMessage.success(context, 'Successfully updated bad order record for [${dropDownController.text}]!');
+      Navigator.pop(context);
+    } else {
+      ShowMessage.error(context, 'Please fill up all required fields');
+    }
+  }
 
-              // 3. Audit & History Card (if updating)
-              if (widget.recID.isNotEmpty) _buildAuditCard(),
-            ],
-          ),
-        ),
-      ),
+  void onChangeDate() async {
+    final DateTime? dateTime = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(3000),
     );
+
+    if (dateTime != null) {
+      setState(() {
+        _selectedDate = dateTime;
+      });
+    }
+  }
+
+  void onFocusChange(bool hasFocus, TextEditingController controller) {
+    if (controller.text.isNotEmpty) {
+      if (!hasFocus) {
+        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
+      } else {
+        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
+      }
+    }
   }
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
@@ -395,74 +438,31 @@ class _BadOrderPageState extends State<BadOrderPage> {
     );
   }
 
-  void onSave() {
-    if (_formKey.currentState!.validate()) {
-      BadOrder newRecord = BadOrder(
-        description: txtDescription.text,
-        hapistore: dropDownController.text,
-        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
-        badorderDate: Timestamp.fromDate(_selectedDate),
-        createdBy: authService.value.currentUser!.displayName!,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: Timestamp.now(),
-        lastupdatedDate: Timestamp.now(),
-      );
-      db.addBadOrder(newRecord);
-      ShowMessage.success(context, 'Successfully created bad order record for [${dropDownController.text}]!');
-      Navigator.pop(context);
-    } else {
-      ShowMessage.error(context, 'Please fill up all required fields');
-    }
-  }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(title: 'Bad Order', subtitle: widget.recID.isEmpty ? 'New Record' : widget.badorder.hapistore),
+      bottomNavigationBar: _buildStickyBottomBar(),
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 16,
+            children: [
+              // 1. Incident Details Card
+              _buildIncidentDetailsCard(),
 
-  void onDelete() {
-    db.deleteBadOrder(widget.recID);
-    ShowMessage.success(context, 'Successfully deleted bad order record for [${widget.badorder.hapistore}]!');
-    Navigator.pop(context);
-  }
+              // 2. Damage Description Card
+              _buildDescriptionCard(),
 
-  void onUpdate() {
-    if (_formKey.currentState!.validate()) {
-      BadOrder newRecord = widget.badorder.copyWith(
-        description: txtDescription.text,
-        hapistore: dropDownController.text,
-        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
-        badorderDate: Timestamp.fromDate(_selectedDate),
-        createdBy: widget.badorder.createdBy,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: widget.badorder.createdDate,
-        lastupdatedDate: Timestamp.now(),
-      );
-      db.updateBadOrder(widget.recID, newRecord);
-      ShowMessage.success(context, 'Successfully updated bad order record for [${dropDownController.text}]!');
-      Navigator.pop(context);
-    } else {
-      ShowMessage.error(context, 'Please fill up all required fields');
-    }
-  }
-
-  void onChangeDate() async {
-    final DateTime? dateTime = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(3000),
+              // 3. Audit & History Card (if updating)
+              if (widget.recID.isNotEmpty) _buildAuditCard(),
+            ],
+          ),
+        ),
+      ),
     );
-
-    if (dateTime != null) {
-      setState(() {
-        _selectedDate = dateTime;
-      });
-    }
-  }
-
-  void onFocusChange(bool hasFocus, TextEditingController controller) {
-    if (controller.text.isNotEmpty) {
-      if (!hasFocus) {
-        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
-      } else {
-        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
-      }
-    }
   }
 }

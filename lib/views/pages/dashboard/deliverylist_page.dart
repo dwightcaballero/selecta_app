@@ -4,8 +4,8 @@ import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/views/pages/delivery_page.dart';
-import 'package:flutter_app/views/pages/returnlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/delivery_page.dart';
+import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 

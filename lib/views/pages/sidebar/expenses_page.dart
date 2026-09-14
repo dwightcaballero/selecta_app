@@ -13,8 +13,8 @@ import 'package:intl/intl.dart';
 class ExpensesPage extends StatefulWidget {
   const ExpensesPage({super.key, required this.recID, required this.expense});
 
-  final String recID;
   final Expenses expense;
+  final String recID;
 
   @override
   State<ExpensesPage> createState() => _ExpensesPageState();
@@ -22,11 +22,18 @@ class ExpensesPage extends StatefulWidget {
 
 class _ExpensesPageState extends State<ExpensesPage> {
   final ExpensesService db = ExpensesService();
-  final _formKey = GlobalKey<FormState>();
-
-  DateTime _selectedDate = DateTime.now();
-  final TextEditingController txtDescription = TextEditingController();
   final TextEditingController txtAmount = TextEditingController();
+  final TextEditingController txtDescription = TextEditingController();
+
+  final _formKey = GlobalKey<FormState>();
+  DateTime _selectedDate = DateTime.now();
+
+  @override
+  void dispose() {
+    txtDescription.dispose();
+    txtAmount.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -42,36 +49,82 @@ class _ExpensesPageState extends State<ExpensesPage> {
     }
   }
 
-  @override
-  void dispose() {
-    txtDescription.dispose();
-    txtAmount.dispose();
-    super.dispose();
+  void onSave() async {
+    if (_formKey.currentState!.validate()) {
+      Expenses newRecord = Expenses(
+        description: txtDescription.text,
+        expenseAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
+        expenseDate: Timestamp.fromDate(_selectedDate),
+        createdBy: authService.value.currentUser!.displayName!,
+        lastUpdatedBy: authService.value.currentUser!.displayName!,
+        createdDate: Timestamp.now(),
+        lastupdatedDate: Timestamp.now(),
+      );
+      db.addExpenses(newRecord);
+
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully created expense record for [${txtDescription.text}]!');
+        Navigator.pop(context);
+      }
+    } else {
+      ShowMessage.error(context, 'Please fill up all required fields');
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Expense Details', subtitle: widget.recID.isEmpty ? 'New Record' : widget.expense.description),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 16,
-            children: [
-              // 1. Expense Details Card
-              _buildExpenseDetailsCard(),
+  void onUpdate() async {
+    if (_formKey.currentState!.validate()) {
+      Expenses expenses = widget.expense.copyWith(
+        description: txtDescription.text,
+        expenseAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
+        expenseDate: Timestamp.fromDate(_selectedDate),
+        createdBy: widget.expense.createdBy,
+        lastUpdatedBy: authService.value.currentUser!.displayName!,
+        createdDate: widget.expense.createdDate,
+        lastupdatedDate: Timestamp.now(),
+      );
+      db.updateExpenses(widget.recID, expenses);
 
-              // 2. Audit & History Card (if editing)
-              if (widget.recID.isNotEmpty) _buildAuditCard(),
-            ],
-          ),
-        ),
-      ),
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully updated expense record for [${expenses.description}]!');
+        Navigator.pop(context);
+      }
+    } else {
+      ShowMessage.error(context, 'Please fill up all required fields');
+    }
+  }
+
+  void onDelete() async {
+    db.deleteExpenses(widget.recID);
+
+    if (mounted) {
+      ShowMessage.success(context, 'Successfully deleted expense record for [${widget.expense.description}]!');
+      Navigator.pop(context);
+    }
+  }
+
+  void onChangeDate() async {
+    final DateTime? dateTime = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(3000),
     );
+
+    if (dateTime != null) {
+      setState(() {
+        _selectedDate = dateTime;
+      });
+    }
+  }
+
+  void onFocusChange(bool hasFocus, TextEditingController controller) {
+    if (controller.text.isNotEmpty) {
+      if (!hasFocus) {
+        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
+      } else {
+        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
+      }
+    }
   }
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
@@ -342,81 +395,28 @@ class _ExpensesPageState extends State<ExpensesPage> {
     );
   }
 
-  void onSave() async {
-    if (_formKey.currentState!.validate()) {
-      Expenses newRecord = Expenses(
-        description: txtDescription.text,
-        expenseAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
-        expenseDate: Timestamp.fromDate(_selectedDate),
-        createdBy: authService.value.currentUser!.displayName!,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: Timestamp.now(),
-        lastupdatedDate: Timestamp.now(),
-      );
-      db.addExpenses(newRecord);
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(title: 'Expense Details', subtitle: widget.recID.isEmpty ? 'New Record' : widget.expense.description),
+      bottomNavigationBar: _buildStickyBottomBar(),
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 16,
+            children: [
+              // 1. Expense Details Card
+              _buildExpenseDetailsCard(),
 
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully created expense record for [${txtDescription.text}]!');
-        Navigator.pop(context);
-      }
-    } else {
-      ShowMessage.error(context, 'Please fill up all required fields');
-    }
-  }
-
-  void onUpdate() async {
-    if (_formKey.currentState!.validate()) {
-      Expenses expenses = widget.expense.copyWith(
-        description: txtDescription.text,
-        expenseAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
-        expenseDate: Timestamp.fromDate(_selectedDate),
-        createdBy: widget.expense.createdBy,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: widget.expense.createdDate,
-        lastupdatedDate: Timestamp.now(),
-      );
-      db.updateExpenses(widget.recID, expenses);
-
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully updated expense record for [${expenses.description}]!');
-        Navigator.pop(context);
-      }
-    } else {
-      ShowMessage.error(context, 'Please fill up all required fields');
-    }
-  }
-
-  void onDelete() async {
-    db.deleteExpenses(widget.recID);
-
-    if (mounted) {
-      ShowMessage.success(context, 'Successfully deleted expense record for [${widget.expense.description}]!');
-      Navigator.pop(context);
-    }
-  }
-
-  void onChangeDate() async {
-    final DateTime? dateTime = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(3000),
+              // 2. Audit & History Card (if editing)
+              if (widget.recID.isNotEmpty) _buildAuditCard(),
+            ],
+          ),
+        ),
+      ),
     );
-
-    if (dateTime != null) {
-      setState(() {
-        _selectedDate = dateTime;
-      });
-    }
-  }
-
-  void onFocusChange(bool hasFocus, TextEditingController controller) {
-    if (controller.text.isNotEmpty) {
-      if (!hasFocus) {
-        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
-      } else {
-        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
-      }
-    }
   }
 }

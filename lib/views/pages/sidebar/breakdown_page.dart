@@ -12,30 +12,47 @@ import 'package:intl/intl.dart';
 
 class BreakdownPage extends StatefulWidget {
   const BreakdownPage({super.key, required this.breakdownID, required this.breakdown});
-  final String breakdownID;
+
   final Breakdown breakdown;
+  final String breakdownID;
 
   @override
   State<BreakdownPage> createState() => _BreakdownPageState();
 }
 
 class _BreakdownPageState extends State<BreakdownPage> {
-  final TextEditingController txt1000 = TextEditingController();
-  final TextEditingController txt500 = TextEditingController();
-  final TextEditingController txt200 = TextEditingController();
-  final TextEditingController txt100 = TextEditingController();
-  final TextEditingController txt50 = TextEditingController();
-  final TextEditingController txtB20 = TextEditingController();
-  final TextEditingController txtC20 = TextEditingController();
-  final TextEditingController txt10 = TextEditingController();
-  final TextEditingController txt5 = TextEditingController();
-  final TextEditingController txt1 = TextEditingController();
-  final TextEditingController txtCent = TextEditingController();
-  final TextEditingController txtBankDeposit = TextEditingController();
-
   final BreakdownTotal breakdownTotal = BreakdownTotal();
   final BreakdownService db = BreakdownService();
+  final TextEditingController txt1 = TextEditingController();
+  final TextEditingController txt10 = TextEditingController();
+  final TextEditingController txt100 = TextEditingController();
+  final TextEditingController txt1000 = TextEditingController();
+  final TextEditingController txt200 = TextEditingController();
+  final TextEditingController txt5 = TextEditingController();
+  final TextEditingController txt50 = TextEditingController();
+  final TextEditingController txt500 = TextEditingController();
+  final TextEditingController txtB20 = TextEditingController();
+  final TextEditingController txtBankDeposit = TextEditingController();
+  final TextEditingController txtC20 = TextEditingController();
+  final TextEditingController txtCent = TextEditingController();
   bool withBankDeposit = false;
+
+  @override
+  void dispose() {
+    txt1000.dispose();
+    txt500.dispose();
+    txt200.dispose();
+    txt100.dispose();
+    txt50.dispose();
+    txtB20.dispose();
+    txtC20.dispose();
+    txt10.dispose();
+    txt5.dispose();
+    txt1.dispose();
+    txtCent.dispose();
+    txtBankDeposit.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -63,49 +80,117 @@ class _BreakdownPageState extends State<BreakdownPage> {
     }
   }
 
-  @override
-  void dispose() {
-    txt1000.dispose();
-    txt500.dispose();
-    txt200.dispose();
-    txt100.dispose();
-    txt50.dispose();
-    txtB20.dispose();
-    txtC20.dispose();
-    txt10.dispose();
-    txt5.dispose();
-    txt1.dispose();
-    txtCent.dispose();
-    txtBankDeposit.dispose();
-    super.dispose();
+  void onSave() {
+    recompute();
+    Breakdown newRecord = Breakdown(
+      breakdownDate: widget.breakdown.breakdownDate,
+      bankDepositAmount: txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text),
+      breakdownAmount: widget.breakdown.breakdownAmount,
+      expectedAmount: widget.breakdown.expectedAmount,
+      discrepancy: widget.breakdown.discrepancy,
+      cent: txtCent.text.isEmpty ? 0 : int.parse(txtCent.text),
+      b1000: txt1000.text.isEmpty ? 0 : int.parse(txt1000.text),
+      b500: txt500.text.isEmpty ? 0 : int.parse(txt500.text),
+      b200: txt200.text.isEmpty ? 0 : int.parse(txt200.text),
+      b100: txt100.text.isEmpty ? 0 : int.parse(txt100.text),
+      b50: txt50.text.isEmpty ? 0 : int.parse(txt50.text),
+      b20: txtB20.text.isEmpty ? 0 : int.parse(txtB20.text),
+      c20: txtC20.text.isEmpty ? 0 : int.parse(txtC20.text),
+      c10: txt10.text.isEmpty ? 0 : int.parse(txt10.text),
+      c5: txt5.text.isEmpty ? 0 : int.parse(txt5.text),
+      c1: txt1.text.isEmpty ? 0 : int.parse(txt1.text),
+      createdBy: authService.value.currentUser!.displayName!,
+      lastUpdatedBy: authService.value.currentUser!.displayName!,
+      createdDate: Timestamp.now(),
+      lastupdatedDate: Timestamp.now(),
+    );
+
+    db.addBreakdown(newRecord);
+    ShowMessage.success(context, 'Successfully created a new breakdown record!');
+    Navigator.pop(context);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Cash Breakdown', subtitle: Helperfunctions.formatTimestampForDisplay(widget.breakdown.breakdownDate)),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 16,
-          children: [
-            // 1. Reconciliation Summary Banner
-            _buildReconciliationSummary(),
-
-            // 2. Denominations Table Card
-            _buildDenominationsCard(),
-
-            // 3. Bank Deposit Card
-            _buildBankDepositCard(),
-
-            // 4. Audit & History Card (when viewing existing breakdown)
-            if (widget.breakdownID.isNotEmpty) _buildAuditCard(),
-          ],
-        ),
-      ),
+  void onUpdate() {
+    recompute();
+    Breakdown newRecord = widget.breakdown.copyWith(
+      breakdownDate: widget.breakdown.breakdownDate,
+      breakdownAmount: widget.breakdown.breakdownAmount,
+      expectedAmount: widget.breakdown.expectedAmount,
+      discrepancy: widget.breakdown.discrepancy,
+      bankDepositAmount: txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text),
+      cent: txtCent.text.isEmpty ? 0 : int.parse(txtCent.text),
+      b1000: txt1000.text.isEmpty ? 0 : int.parse(txt1000.text),
+      b500: txt500.text.isEmpty ? 0 : int.parse(txt500.text),
+      b200: txt200.text.isEmpty ? 0 : int.parse(txt200.text),
+      b100: txt100.text.isEmpty ? 0 : int.parse(txt100.text),
+      b50: txt50.text.isEmpty ? 0 : int.parse(txt50.text),
+      b20: txtB20.text.isEmpty ? 0 : int.parse(txtB20.text),
+      c20: txtC20.text.isEmpty ? 0 : int.parse(txtC20.text),
+      c10: txt10.text.isEmpty ? 0 : int.parse(txt10.text),
+      c5: txt5.text.isEmpty ? 0 : int.parse(txt5.text),
+      c1: txt1.text.isEmpty ? 0 : int.parse(txt1.text),
+      createdBy: widget.breakdown.createdBy,
+      lastUpdatedBy: authService.value.currentUser!.displayName!,
+      createdDate: widget.breakdown.createdDate,
+      lastupdatedDate: Timestamp.now(),
     );
+
+    db.updateBreakdown(widget.breakdownID, newRecord);
+    ShowMessage.success(context, 'Successfully updated breakdown record!');
+    Navigator.pop(context);
+  }
+
+  void recompute() {
+    if (withBankDeposit) {
+      widget.breakdown.bankDepositAmount = txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text);
+    } else {
+      widget.breakdown.bankDepositAmount = 0;
+      txtBankDeposit.text = '';
+    }
+
+    breakdownTotal.total1000 = txt1000.text.isEmpty ? 0 : double.parse(txt1000.text) * 1000;
+    breakdownTotal.total500 = txt500.text.isEmpty ? 0 : double.parse(txt500.text) * 500;
+    breakdownTotal.total200 = txt200.text.isEmpty ? 0 : double.parse(txt200.text) * 200;
+    breakdownTotal.total100 = txt100.text.isEmpty ? 0 : double.parse(txt100.text) * 100;
+    breakdownTotal.total50 = txt50.text.isEmpty ? 0 : double.parse(txt50.text) * 50;
+    breakdownTotal.totalB20 = txtB20.text.isEmpty ? 0 : double.parse(txtB20.text) * 20;
+    breakdownTotal.totalC20 = txtC20.text.isEmpty ? 0 : double.parse(txtC20.text) * 20;
+    breakdownTotal.total10 = txt10.text.isEmpty ? 0 : double.parse(txt10.text) * 10;
+    breakdownTotal.total5 = txt5.text.isEmpty ? 0 : double.parse(txt5.text) * 5;
+    breakdownTotal.total1 = txt1.text.isEmpty ? 0 : double.parse(txt1.text) * 1;
+    breakdownTotal.totalCent = txtCent.text.isEmpty ? 0 : double.parse(txtCent.text) * .01;
+
+    widget.breakdown.breakdownAmount =
+        breakdownTotal.total1000 +
+        breakdownTotal.total500 +
+        breakdownTotal.total200 +
+        breakdownTotal.total100 +
+        breakdownTotal.total50 +
+        breakdownTotal.totalB20 +
+        breakdownTotal.totalC20 +
+        breakdownTotal.total10 +
+        breakdownTotal.total5 +
+        breakdownTotal.total1 +
+        breakdownTotal.totalCent;
+
+    widget.breakdown.discrepancy = (widget.breakdown.bankDepositAmount + widget.breakdown.breakdownAmount) - widget.breakdown.expectedAmount;
+
+    setState(() {});
+  }
+
+  void onFocusChange(bool hasFocus, TextEditingController controller) {
+    if (controller.text.isNotEmpty) {
+      if (!hasFocus) {
+        recompute();
+        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
+      } else {
+        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
+      }
+    } else {
+      if (!hasFocus) {
+        setState(() => recompute());
+      }
+    }
   }
 
   Widget _buildReconciliationSummary() {
@@ -491,130 +576,45 @@ class _BreakdownPageState extends State<BreakdownPage> {
     );
   }
 
-  void onSave() {
-    recompute();
-    Breakdown newRecord = Breakdown(
-      breakdownDate: widget.breakdown.breakdownDate,
-      bankDepositAmount: txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text),
-      breakdownAmount: widget.breakdown.breakdownAmount,
-      expectedAmount: widget.breakdown.expectedAmount,
-      discrepancy: widget.breakdown.discrepancy,
-      cent: txtCent.text.isEmpty ? 0 : int.parse(txtCent.text),
-      b1000: txt1000.text.isEmpty ? 0 : int.parse(txt1000.text),
-      b500: txt500.text.isEmpty ? 0 : int.parse(txt500.text),
-      b200: txt200.text.isEmpty ? 0 : int.parse(txt200.text),
-      b100: txt100.text.isEmpty ? 0 : int.parse(txt100.text),
-      b50: txt50.text.isEmpty ? 0 : int.parse(txt50.text),
-      b20: txtB20.text.isEmpty ? 0 : int.parse(txtB20.text),
-      c20: txtC20.text.isEmpty ? 0 : int.parse(txtC20.text),
-      c10: txt10.text.isEmpty ? 0 : int.parse(txt10.text),
-      c5: txt5.text.isEmpty ? 0 : int.parse(txt5.text),
-      c1: txt1.text.isEmpty ? 0 : int.parse(txt1.text),
-      createdBy: authService.value.currentUser!.displayName!,
-      lastUpdatedBy: authService.value.currentUser!.displayName!,
-      createdDate: Timestamp.now(),
-      lastupdatedDate: Timestamp.now(),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(title: 'Cash Breakdown', subtitle: Helperfunctions.formatTimestampForDisplay(widget.breakdown.breakdownDate)),
+      bottomNavigationBar: _buildStickyBottomBar(),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: [
+            // 1. Reconciliation Summary Banner
+            _buildReconciliationSummary(),
+
+            // 2. Denominations Table Card
+            _buildDenominationsCard(),
+
+            // 3. Bank Deposit Card
+            _buildBankDepositCard(),
+
+            // 4. Audit & History Card (when viewing existing breakdown)
+            if (widget.breakdownID.isNotEmpty) _buildAuditCard(),
+          ],
+        ),
+      ),
     );
-
-    db.addBreakdown(newRecord);
-    ShowMessage.success(context, 'Successfully created a new breakdown record!');
-    Navigator.pop(context);
-  }
-
-  void onUpdate() {
-    recompute();
-    Breakdown newRecord = widget.breakdown.copyWith(
-      breakdownDate: widget.breakdown.breakdownDate,
-      breakdownAmount: widget.breakdown.breakdownAmount,
-      expectedAmount: widget.breakdown.expectedAmount,
-      discrepancy: widget.breakdown.discrepancy,
-      bankDepositAmount: txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text),
-      cent: txtCent.text.isEmpty ? 0 : int.parse(txtCent.text),
-      b1000: txt1000.text.isEmpty ? 0 : int.parse(txt1000.text),
-      b500: txt500.text.isEmpty ? 0 : int.parse(txt500.text),
-      b200: txt200.text.isEmpty ? 0 : int.parse(txt200.text),
-      b100: txt100.text.isEmpty ? 0 : int.parse(txt100.text),
-      b50: txt50.text.isEmpty ? 0 : int.parse(txt50.text),
-      b20: txtB20.text.isEmpty ? 0 : int.parse(txtB20.text),
-      c20: txtC20.text.isEmpty ? 0 : int.parse(txtC20.text),
-      c10: txt10.text.isEmpty ? 0 : int.parse(txt10.text),
-      c5: txt5.text.isEmpty ? 0 : int.parse(txt5.text),
-      c1: txt1.text.isEmpty ? 0 : int.parse(txt1.text),
-      createdBy: widget.breakdown.createdBy,
-      lastUpdatedBy: authService.value.currentUser!.displayName!,
-      createdDate: widget.breakdown.createdDate,
-      lastupdatedDate: Timestamp.now(),
-    );
-
-    db.updateBreakdown(widget.breakdownID, newRecord);
-    ShowMessage.success(context, 'Successfully updated breakdown record!');
-    Navigator.pop(context);
-  }
-
-  void recompute() {
-    if (withBankDeposit) {
-      widget.breakdown.bankDepositAmount = txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text);
-    } else {
-      widget.breakdown.bankDepositAmount = 0;
-      txtBankDeposit.text = '';
-    }
-
-    breakdownTotal.total1000 = txt1000.text.isEmpty ? 0 : double.parse(txt1000.text) * 1000;
-    breakdownTotal.total500 = txt500.text.isEmpty ? 0 : double.parse(txt500.text) * 500;
-    breakdownTotal.total200 = txt200.text.isEmpty ? 0 : double.parse(txt200.text) * 200;
-    breakdownTotal.total100 = txt100.text.isEmpty ? 0 : double.parse(txt100.text) * 100;
-    breakdownTotal.total50 = txt50.text.isEmpty ? 0 : double.parse(txt50.text) * 50;
-    breakdownTotal.totalB20 = txtB20.text.isEmpty ? 0 : double.parse(txtB20.text) * 20;
-    breakdownTotal.totalC20 = txtC20.text.isEmpty ? 0 : double.parse(txtC20.text) * 20;
-    breakdownTotal.total10 = txt10.text.isEmpty ? 0 : double.parse(txt10.text) * 10;
-    breakdownTotal.total5 = txt5.text.isEmpty ? 0 : double.parse(txt5.text) * 5;
-    breakdownTotal.total1 = txt1.text.isEmpty ? 0 : double.parse(txt1.text) * 1;
-    breakdownTotal.totalCent = txtCent.text.isEmpty ? 0 : double.parse(txtCent.text) * .01;
-
-    widget.breakdown.breakdownAmount =
-        breakdownTotal.total1000 +
-        breakdownTotal.total500 +
-        breakdownTotal.total200 +
-        breakdownTotal.total100 +
-        breakdownTotal.total50 +
-        breakdownTotal.totalB20 +
-        breakdownTotal.totalC20 +
-        breakdownTotal.total10 +
-        breakdownTotal.total5 +
-        breakdownTotal.total1 +
-        breakdownTotal.totalCent;
-
-    widget.breakdown.discrepancy = (widget.breakdown.bankDepositAmount + widget.breakdown.breakdownAmount) - widget.breakdown.expectedAmount;
-
-    setState(() {});
-  }
-
-  void onFocusChange(bool hasFocus, TextEditingController controller) {
-    if (controller.text.isNotEmpty) {
-      if (!hasFocus) {
-        recompute();
-        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
-      } else {
-        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
-      }
-    } else {
-      if (!hasFocus) {
-        setState(() => recompute());
-      }
-    }
   }
 }
 
 class BreakdownTotal {
-  double total1000 = 0;
-  double total500 = 0;
-  double total200 = 0;
+  double total1 = 0;
+  double total10 = 0;
   double total100 = 0;
+  double total1000 = 0;
+  double total200 = 0;
+  double total5 = 0;
   double total50 = 0;
+  double total500 = 0;
   double totalB20 = 0;
   double totalC20 = 0;
-  double total10 = 0;
-  double total5 = 0;
-  double total1 = 0;
   double totalCent = 0;
 }

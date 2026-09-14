@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/kpi_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/dto/kpi_dto.dart';
-import 'package:flutter_app/views/pages/transactionlist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
 enum _StoreSort { nameAscending, nameDescending, orderCountAscending, orderCountDescending, orderTotalAscending, orderTotalDescending }
@@ -205,36 +205,6 @@ class _BuyinglistPageState extends State<BuyinglistPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: appbarTitle.isEmpty ? 'KPI - Buying' : appbarTitle,
-        subtitle: _currentIndex == 0 ? 'Buying store performance' : 'Stores requiring attention',
-        actions: [_buildSortMenu()],
-      ),
-      body: _screens[_currentIndex],
-
-      // 4. Implement the NavigationBar
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (int index) {
-          _currentIndex = index; // Rebuilds the UI with the new screen
-          if (_currentIndex == 0) {
-            appbarTitle = 'KPI - Buying';
-          } else {
-            appbarTitle = 'KPI - Non Buying';
-          }
-          setState(() {});
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Buying Stores'),
-          NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Non Buying Stores'),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSortMenu() {
     return PopupMenuButton<_StoreSort>(
       icon: const Icon(Icons.sort_rounded, color: Colors.white),
@@ -260,6 +230,36 @@ class _BuyinglistPageState extends State<BuyinglistPage> {
           const SizedBox(width: 12),
           Expanded(child: Text('$label (${ascending ? 'Ascending' : 'Descending'})')),
           if (_sort == sort) const Icon(Icons.check_rounded, size: 18),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(
+        title: appbarTitle.isEmpty ? 'KPI - Buying' : appbarTitle,
+        subtitle: _currentIndex == 0 ? 'Buying store performance' : 'Stores requiring attention',
+        actions: [_buildSortMenu()],
+      ),
+      body: _screens[_currentIndex],
+
+      // 4. Implement the NavigationBar
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (int index) {
+          _currentIndex = index; // Rebuilds the UI with the new screen
+          if (_currentIndex == 0) {
+            appbarTitle = 'KPI - Buying';
+          } else {
+            appbarTitle = 'KPI - Non Buying';
+          }
+          setState(() {});
+        },
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Buying Stores'),
+          NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: 'Non Buying Stores'),
         ],
       ),
     );

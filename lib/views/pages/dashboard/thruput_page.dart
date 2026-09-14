@@ -6,77 +6,9 @@ import 'package:flutter_app/views/widgets/appbar_widget.dart';
 class ThruputPage extends StatelessWidget {
   const ThruputPage({super.key, required this.dashboardDTO});
 
-  static const double _targetThruput = 8000;
-
   final DashboardDTO dashboardDTO;
-  @override
-  Widget build(BuildContext context) {
-    final totalStores = dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount;
-    final averageSale = dashboardDTO.totaltransactionCount == 0 ? 0.0 : dashboardDTO.totalBuyingSales / dashboardDTO.totaltransactionCount;
-    final averageTransactions = dashboardDTO.buyingCount == 0 ? 0.0 : dashboardDTO.totaltransactionCount / dashboardDTO.buyingCount;
-    final remainingThruput = (_targetThruput - dashboardDTO.buyingThruput).clamp(0, _targetThruput).toDouble();
-    final progress = (dashboardDTO.buyingThruput / _targetThruput).clamp(0.0, 1.0);
 
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'KPI - Thruput', subtitle: 'Performance overview'),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          _buildThruputSummary(context, progress: progress, remainingThruput: remainingThruput),
-          const SizedBox(height: 20),
-          _buildSection(
-            context,
-            title: 'Store Coverage',
-            icon: Icons.storefront_outlined,
-            children: [
-              _buildMetricRow(context, label: 'Total stores', value: '$totalStores', icon: Icons.business_outlined),
-              _buildMetricRow(
-                context,
-                label: 'Buying stores',
-                value: '${dashboardDTO.buyingCount}',
-                icon: Icons.check_circle_outline,
-                valueColor: Theme.of(context).colorScheme.primary,
-              ),
-              _buildMetricRow(
-                context,
-                label: 'Non-buying stores',
-                value: '${dashboardDTO.nonBuyingCount}',
-                icon: Icons.remove_shopping_cart_outlined,
-                valueColor: Theme.of(context).colorScheme.error,
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildSection(
-            context,
-            title: 'Sales Activity',
-            icon: Icons.receipt_long_outlined,
-            children: [
-              _buildMetricRow(
-                context,
-                label: 'Buying store sales',
-                value: Helperfunctions.formatDoubleAmountForDisplay(dashboardDTO.totalBuyingSales),
-                icon: Icons.payments_outlined,
-              ),
-              _buildMetricRow(context, label: 'Transactions', value: '${dashboardDTO.totaltransactionCount}', icon: Icons.receipt_outlined),
-              _buildMetricRow(
-                context,
-                label: 'Average sale per transaction',
-                value: Helperfunctions.formatDoubleAmountForDisplay(averageSale),
-                icon: Icons.trending_up_outlined,
-              ),
-              _buildMetricRow(
-                context,
-                label: 'Average transactions per store',
-                value: averageTransactions.toStringAsFixed(2),
-                icon: Icons.analytics_outlined,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  static const double _targetThruput = 8000;
 
   Widget _buildThruputSummary(BuildContext context, {required double progress, required double remainingThruput}) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -193,6 +125,75 @@ class ThruputPage extends StatelessWidget {
           Text(
             value,
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: valueColor ?? colorScheme.onSurface),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalStores = dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount;
+    final averageSale = dashboardDTO.totaltransactionCount == 0 ? 0.0 : dashboardDTO.totalBuyingSales / dashboardDTO.totaltransactionCount;
+    final averageTransactions = dashboardDTO.buyingCount == 0 ? 0.0 : dashboardDTO.totaltransactionCount / dashboardDTO.buyingCount;
+    final remainingThruput = (_targetThruput - dashboardDTO.buyingThruput).clamp(0, _targetThruput).toDouble();
+    final progress = (dashboardDTO.buyingThruput / _targetThruput).clamp(0.0, 1.0);
+
+    return Scaffold(
+      appBar: const CustomAppbar(title: 'KPI - Thruput', subtitle: 'Performance overview'),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        children: [
+          _buildThruputSummary(context, progress: progress, remainingThruput: remainingThruput),
+          const SizedBox(height: 20),
+          _buildSection(
+            context,
+            title: 'Store Coverage',
+            icon: Icons.storefront_outlined,
+            children: [
+              _buildMetricRow(context, label: 'Total stores', value: '$totalStores', icon: Icons.business_outlined),
+              _buildMetricRow(
+                context,
+                label: 'Buying stores',
+                value: '${dashboardDTO.buyingCount}',
+                icon: Icons.check_circle_outline,
+                valueColor: Theme.of(context).colorScheme.primary,
+              ),
+              _buildMetricRow(
+                context,
+                label: 'Non-buying stores',
+                value: '${dashboardDTO.nonBuyingCount}',
+                icon: Icons.remove_shopping_cart_outlined,
+                valueColor: Theme.of(context).colorScheme.error,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildSection(
+            context,
+            title: 'Sales Activity',
+            icon: Icons.receipt_long_outlined,
+            children: [
+              _buildMetricRow(
+                context,
+                label: 'Buying store sales',
+                value: Helperfunctions.formatDoubleAmountForDisplay(dashboardDTO.totalBuyingSales),
+                icon: Icons.payments_outlined,
+              ),
+              _buildMetricRow(context, label: 'Transactions', value: '${dashboardDTO.totaltransactionCount}', icon: Icons.receipt_outlined),
+              _buildMetricRow(
+                context,
+                label: 'Average sale per transaction',
+                value: Helperfunctions.formatDoubleAmountForDisplay(averageSale),
+                icon: Icons.trending_up_outlined,
+              ),
+              _buildMetricRow(
+                context,
+                label: 'Average transactions per store',
+                value: averageTransactions.toStringAsFixed(2),
+                icon: Icons.analytics_outlined,
+              ),
+            ],
           ),
         ],
       ),

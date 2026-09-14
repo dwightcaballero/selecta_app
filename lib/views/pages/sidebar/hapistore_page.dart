@@ -8,6 +8,7 @@ import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
 class HapiStorePage extends StatefulWidget {
   const HapiStorePage({super.key, required this.hapiStoreID, required this.hapistore});
+
   final String hapiStoreID;
   final Hapistore hapistore;
 
@@ -17,19 +18,11 @@ class HapiStorePage extends StatefulWidget {
 
 class _HapiStorePageState extends State<HapiStorePage> {
   final HapiStoreService db = HapiStoreService();
-  final _formKey = GlobalKey<FormState>();
-
-  late TextEditingController txtName;
   late TextEditingController txtAddress;
   late TextEditingController txtContact;
+  late TextEditingController txtName;
 
-  @override
-  void initState() {
-    super.initState();
-    txtName = TextEditingController(text: widget.hapistore.storeName);
-    txtAddress = TextEditingController(text: widget.hapistore.storeAddress);
-    txtContact = TextEditingController(text: widget.hapistore.storeContact);
-  }
+  final _formKey = GlobalKey<FormState>();
 
   @override
   void dispose() {
@@ -40,25 +33,47 @@ class _HapiStorePageState extends State<HapiStorePage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Hapi Store', subtitle: widget.hapiStoreID.isEmpty ? 'New Store Record' : widget.hapistore.storeName),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 16,
-            children: [
-              // 1. Store Details Card
-              _buildStoreDetailsCard(),
-            ],
-          ),
-        ),
-      ),
-    );
+  void initState() {
+    super.initState();
+    txtName = TextEditingController(text: widget.hapistore.storeName);
+    txtAddress = TextEditingController(text: widget.hapistore.storeAddress);
+    txtContact = TextEditingController(text: widget.hapistore.storeContact);
+  }
+
+  void onSave() {
+    if (_formKey.currentState!.validate()) {
+      Hapistore newHs = Hapistore(
+        storeName: txtName.text.trim().toUpperCase(),
+        storeAddress: txtAddress.text.trim(),
+        storeContact: txtContact.text.trim(),
+      );
+      db.addHapiStore(newHs);
+      ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
+      Navigator.pop(context);
+    } else {
+      ShowMessage.error(context, 'Please fill up all required fields');
+    }
+  }
+
+  void onUpdate() {
+    if (_formKey.currentState!.validate()) {
+      Hapistore updatedHS = widget.hapistore.copyWith(
+        storeName: txtName.text.trim().toUpperCase(),
+        storeAddress: txtAddress.text.trim(),
+        storeContact: txtContact.text.trim(),
+      );
+      db.updateHapiStore(widget.hapiStoreID, updatedHS);
+      ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
+      Navigator.pop(context);
+    } else {
+      ShowMessage.error(context, 'Please fill up all required fields');
+    }
+  }
+
+  void onDelete() {
+    db.deleteHapiStore(widget.hapiStoreID);
+    ShowMessage.success(context, 'Successfully deleted Hapi Store [${widget.hapistore.storeName}]!');
+    Navigator.pop(context);
   }
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
@@ -254,39 +269,25 @@ class _HapiStorePageState extends State<HapiStorePage> {
     );
   }
 
-  void onSave() {
-    if (_formKey.currentState!.validate()) {
-      Hapistore newHs = Hapistore(
-        storeName: txtName.text.trim().toUpperCase(),
-        storeAddress: txtAddress.text.trim(),
-        storeContact: txtContact.text.trim(),
-      );
-      db.addHapiStore(newHs);
-      ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
-      Navigator.pop(context);
-    } else {
-      ShowMessage.error(context, 'Please fill up all required fields');
-    }
-  }
-
-  void onUpdate() {
-    if (_formKey.currentState!.validate()) {
-      Hapistore updatedHS = widget.hapistore.copyWith(
-        storeName: txtName.text.trim().toUpperCase(),
-        storeAddress: txtAddress.text.trim(),
-        storeContact: txtContact.text.trim(),
-      );
-      db.updateHapiStore(widget.hapiStoreID, updatedHS);
-      ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
-      Navigator.pop(context);
-    } else {
-      ShowMessage.error(context, 'Please fill up all required fields');
-    }
-  }
-
-  void onDelete() {
-    db.deleteHapiStore(widget.hapiStoreID);
-    ShowMessage.success(context, 'Successfully deleted Hapi Store [${widget.hapistore.storeName}]!');
-    Navigator.pop(context);
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(title: 'Hapi Store', subtitle: widget.hapiStoreID.isEmpty ? 'New Store Record' : widget.hapistore.storeName),
+      bottomNavigationBar: _buildStickyBottomBar(),
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 16,
+            children: [
+              // 1. Store Details Card
+              _buildStoreDetailsCard(),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

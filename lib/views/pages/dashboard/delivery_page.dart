@@ -22,8 +22,8 @@ import 'package:intl/intl.dart';
 class DeliveryPage extends StatefulWidget {
   const DeliveryPage({super.key, required this.deliveryID, required this.delivery});
 
-  final String deliveryID;
   final Delivery delivery;
+  final String deliveryID;
 
   @override
   State<DeliveryPage> createState() => _DeliveryPageState();
@@ -31,79 +31,335 @@ class DeliveryPage extends StatefulWidget {
 
 class _DeliveryPageState extends State<DeliveryPage> {
   final DeliveryService db = DeliveryService();
-  TextEditingController txtOrderAmount = TextEditingController();
-  TextEditingController txtCashAmount = TextEditingController();
-  TextEditingController txtOnlineAmount = TextEditingController();
-  TextEditingController txtCreditAmount = TextEditingController();
-  TextEditingController txtReturnAmount = TextEditingController();
-  TextEditingController txtRemarks = TextEditingController();
-  TextEditingController txtSMS = TextEditingController();
-  TextEditingController dropdownStatus = TextEditingController();
+  double discrepancy = 0;
   TextEditingController dropdownHapiStore = TextEditingController();
-  DateTime _selectedDate = DateTime.now();
-
+  TextEditingController dropdownStatus = TextEditingController();
+  File? image;
+  bool isDealer = true;
   List<DropdownMenuEntry<String>> listDropdownStatus = [];
   List<DropdownMenuEntry<String>> listDropdownStore = [];
-  double discrepancy = 0;
-  bool isDealer = true;
-  final _formkey = KVariables.formkey;
-  File? image;
-  final picker = ImagePicker();
   String networkImagePath = '';
+  final picker = ImagePicker();
   bool sendText = false;
   String simDetails = '';
+  TextEditingController txtCashAmount = TextEditingController();
+  TextEditingController txtCreditAmount = TextEditingController();
+  TextEditingController txtOnlineAmount = TextEditingController();
+  TextEditingController txtOrderAmount = TextEditingController();
+  TextEditingController txtRemarks = TextEditingController();
+  TextEditingController txtReturnAmount = TextEditingController();
+  TextEditingController txtSMS = TextEditingController();
+
+  final _formkey = KVariables.formkey;
+  DateTime _selectedDate = DateTime.now();
 
   @override
-  Widget build(BuildContext context) {
-    bool isDelivered = dropdownStatus.text == DeliveryStatus.delivered;
-    bool isReturned = dropdownStatus.text == DeliveryStatus.returned;
-    bool showRemarks = isReturned || (isDelivered && txtReturnAmount.text.isNotEmpty);
+  void dispose() {
+    super.dispose();
+    txtOrderAmount.dispose();
+    txtCashAmount.dispose();
+    txtOnlineAmount.dispose();
+    txtCreditAmount.dispose();
+    txtReturnAmount.dispose();
+    txtRemarks.dispose();
+    txtSMS.dispose();
+    dropdownStatus.dispose();
+    dropdownHapiStore.dispose();
+  }
 
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Delivery', subtitle: widget.deliveryID.isEmpty ? 'New Record' : widget.delivery.storeName),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formkey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 16,
-              children: [
-                // 1. Order & Store Info Card
-                _buildOrderAndStoreCard(),
+  @override
+  void initState() {
+    super.initState();
+    prefetchData();
+  }
 
-                // 2. Payment Breakdown Card (Animated for Delivered status)
-                if (widget.deliveryID.isNotEmpty)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                    child: isDelivered ? _buildPaymentBreakdownCard() : const SizedBox.shrink(),
-                  ),
+  void onSave() async {
+    if (_formkey.currentState!.validate()) {
+      // save image
+      String imageFilePath = '';
+      if (image != null) {
+        imageFilePath = await Helperfunctions.saveImage(context, image!);
+      }
 
-                // 3. Remarks Card (Animated for Returned or Delivered with return amount)
-                if (widget.deliveryID.isNotEmpty)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                    child: showRemarks ? _buildRemarksCard() : const SizedBox.shrink(),
-                  ),
+      Delivery newRecord = Delivery(
+        storeName: dropdownHapiStore.text,
+        remarks: '',
+        transactionStatus: DeliveryStatus.pending,
+        imagePath: imageFilePath,
+        orderAmount: Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text),
+        returnAmount: 0,
+        creditAmount: 0,
+        cashAmount: 0,
+        onlineAmount: 0,
+        deliveryDate: Timestamp.fromDate(_selectedDate),
+        creditStatus: CreditStatus.unpaid,
+        createdBy: authService.value.currentUser!.displayName!,
+        lastUpdatedBy: authService.value.currentUser!.displayName!,
+        createdDate: Timestamp.now(),
+        lastupdatedDate: Timestamp.now(),
+      );
+      db.addDelivery(newRecord);
 
-                // 4. Receipt & Documents Card
-                _buildReceiptCard(),
+      // log transaction
+      await Helperfunctions.logTransaction(
+        dropdownHapiStore.text,
+        'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(newRecord.orderAmount)}',
+        LogAction.create,
+      );
 
-                // 5. SMS Notification Card (when creating new delivery)
-                if (widget.deliveryID.isEmpty) _buildSmsCard(),
+      // send text message to the store if user opted to send a text message
+      if (sendText) {
+        String storeContact = await HapiStoreService.getContactByStoreName(dropdownHapiStore.text);
+        storeContact = storeContact.replaceFirst('09', '+639');
 
-                // 6. Audit & History Card (when updating existing record)
-                if (widget.deliveryID.isNotEmpty) _buildAuditCard(),
-              ],
-            ),
-          ),
-        ),
-      ),
+        final Telephony telephony = Telephony.instance;
+        bool? permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
+
+        if (permissionsGranted ?? false) {
+          telephony.sendSms(to: storeContact, message: txtSMS.text, isMultipart: true);
+        }
+      }
+
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully created a new delivery record!\n[${dropdownHapiStore.text}]');
+        Navigator.pop(context); // go back to previous page
+      }
+
+      setState(() {});
+    } else {
+      ShowMessage.error(context, 'Please fill up the required fields');
+    }
+  }
+
+  void onChangeDate() async {
+    final DateTime? dateTime = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(3000),
     );
+
+    if (dateTime != null) {
+      setState(() {
+        _selectedDate = dateTime;
+      });
+    }
+  }
+
+  void prefetchData() async {
+    if (widget.deliveryID.isNotEmpty) {
+      isDealer = await KVariables.getIsDealer();
+      networkImagePath = widget.delivery.imagePath;
+
+      listDropdownStatus = [
+        DropdownMenuEntry(label: DeliveryStatus.pending, value: DeliveryStatus.pending),
+        DropdownMenuEntry(label: DeliveryStatus.delivered, value: DeliveryStatus.delivered),
+        DropdownMenuEntry(label: DeliveryStatus.returned, value: DeliveryStatus.returned),
+      ];
+
+      dropdownHapiStore.text = widget.delivery.storeName;
+      dropdownStatus.text = widget.delivery.transactionStatus;
+      txtRemarks.text = widget.delivery.remarks;
+      txtOrderAmount.text = widget.delivery.orderAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount);
+      txtCashAmount.text = widget.delivery.cashAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.cashAmount);
+      txtOnlineAmount.text = widget.delivery.onlineAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.onlineAmount);
+      txtCreditAmount.text = widget.delivery.creditAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount);
+      txtReturnAmount.text = widget.delivery.returnAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount);
+
+      computeDiscrepancy();
+    } else {
+      composeSMS();
+    }
+
+    setState(() {});
+  }
+
+  List<String> validate() {
+    List<String> listError = [];
+    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
+    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
+    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
+    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
+
+    Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmount;
+    Decimal orderAmount = Decimal.parse(widget.delivery.orderAmount.toString());
+
+    if (dropdownStatus.text == DeliveryStatus.delivered && totalAmount != orderAmount) {
+      listError.add('Total amount does not match the order amount!');
+    }
+    if ((returnAmount != Decimal.zero || dropdownStatus.text == DeliveryStatus.returned) && txtRemarks.text.isEmpty) {
+      listError.add('Please enter a remark for return details!');
+    }
+
+    return listError;
+  }
+
+  void onUpdate() async {
+    var listError = validate();
+    if (listError.isEmpty) {
+      double returnAmount = 0;
+      double creditAmount = 0;
+      double onlineAmount = 0;
+      double cashAmount = 0;
+      String remark = txtRemarks.text;
+
+      switch (dropdownStatus.text) {
+        case DeliveryStatus.pending:
+          widget.delivery.orderAmount = Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text);
+          remark = '';
+          break;
+
+        case DeliveryStatus.delivered:
+          returnAmount = Helperfunctions.formatStringAmountToDouble(txtReturnAmount.text);
+          creditAmount = Helperfunctions.formatStringAmountToDouble(txtCreditAmount.text);
+          onlineAmount = Helperfunctions.formatStringAmountToDouble(txtOnlineAmount.text);
+          cashAmount = Helperfunctions.formatStringAmountToDouble(txtCashAmount.text);
+          break;
+
+        case DeliveryStatus.returned:
+          returnAmount = widget.delivery.orderAmount;
+          break;
+        default:
+      }
+
+      // update image data
+      String imageFilePath = await Helperfunctions.updateImage(context, image, networkImagePath, widget.delivery.imagePath);
+
+      Delivery updatedDelivery = widget.delivery.copyWith(
+        storeName: dropdownHapiStore.text,
+        remarks: remark,
+        transactionStatus: dropdownStatus.text,
+        imagePath: imageFilePath,
+        orderAmount: widget.delivery.orderAmount,
+        returnAmount: returnAmount,
+        creditAmount: creditAmount,
+        cashAmount: cashAmount,
+        onlineAmount: onlineAmount,
+        deliveryDate: widget.delivery.deliveryDate,
+        createdBy: widget.delivery.createdBy,
+        lastUpdatedBy: authService.value.currentUser!.displayName!,
+        createdDate: widget.delivery.createdDate,
+        lastupdatedDate: Timestamp.now(),
+      );
+      db.updateDelivery(widget.deliveryID, updatedDelivery);
+
+      // log transaction
+      await Helperfunctions.logTransaction(
+        dropdownHapiStore.text,
+        'Status: ${updatedDelivery.transactionStatus}\nOrder Amount: ${Helperfunctions.formatDoubleAmountForDisplay(updatedDelivery.orderAmount)}',
+        LogAction.update,
+      );
+
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully updated delivery record!\n[${widget.delivery.storeName}]');
+        Navigator.pop(context); // go back to previous page
+      }
+
+      setState(() {});
+    } else {
+      if (mounted) ShowMessage.listError(context, listError);
+    }
+  }
+
+  void onDelete() async {
+    if (widget.delivery.imagePath.isNotEmpty) {
+      await Helperfunctions.deleteImage(context, widget.delivery.imagePath);
+    }
+    db.deleteDelivery(widget.deliveryID);
+
+    // log transaction
+    await Helperfunctions.logTransaction(
+      dropdownHapiStore.text,
+      'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount)}',
+      LogAction.delete,
+    );
+
+    if (mounted) {
+      ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]');
+      Navigator.pop(context); // go back to previous page
+    }
+
+    setState(() {});
+  }
+
+  void onFocusChange(bool hasFocus, TextEditingController controller) {
+    if (controller.text.isNotEmpty) {
+      if (!hasFocus) {
+        computeDiscrepancy();
+        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
+        composeSMS();
+      } else {
+        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
+      }
+    } else {
+      if (!hasFocus) {
+        setState(() => computeDiscrepancy());
+      }
+    }
+  }
+
+  void computeDiscrepancy() {
+    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
+    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
+    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
+    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
+
+    Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmount;
+    Decimal orderAmount = Decimal.parse(widget.delivery.orderAmount.toString());
+
+    discrepancy = (totalAmount - orderAmount).toDouble();
+
+    setState(() {});
+  }
+
+  Widget hapistoreDropdown() {
+    final HapiStoreService dbHS = HapiStoreService();
+    return StreamBuilder(
+      stream: dbHS.getListHapiStoresAsStream(),
+      builder: (BuildContext context, AsyncSnapshot snapshot) {
+        final listHapiStore = snapshot.data?.docs ?? [];
+        List<DropdownMenuEntry<String>> listDropdownItems = [];
+        for (int i = 0; i < listHapiStore.length; i++) {
+          Hapistore hapistore = listHapiStore[i].data();
+          listDropdownItems.add(DropdownMenuEntry(value: hapistore.storeName, label: hapistore.storeName));
+        }
+
+        return DropdownMenuFormField<String>(
+          controller: dropdownHapiStore,
+          enabled: isDealer,
+          initialSelection: dropdownHapiStore.text,
+          label: const Text('Hapi Store'),
+          leadingIcon: const Icon(Icons.storefront_outlined, size: 20),
+          inputDecorationTheme: InputDecorationTheme(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          ),
+          validator: (value) => value == null || value.isEmpty ? 'Please select a Hapi Store' : null,
+          autovalidateMode: AutovalidateMode.onUnfocus,
+          dropdownMenuEntries: listDropdownItems,
+          enableSearch: true,
+          enableFilter: true,
+          requestFocusOnTap: true,
+          expandedInsets: EdgeInsets.zero,
+          menuHeight: 300,
+          onSelected: (String? newValue) {
+            composeSMS();
+          },
+        );
+      },
+    );
+  }
+
+  void scanDocs(File? scannedImage) {
+    setState(() {
+      networkImagePath = '';
+      scannedImage == null ? image = null : image = scannedImage;
+    });
+  }
+
+  void composeSMS() async {
+    txtSMS.text =
+        '[SELECTA DELIVERY]\n\nGood day ${dropdownHapiStore.text}! This is to confirm that your order worth (${txtOrderAmount.text}) is now pending for delivery.\n\nPlease expect your stocks to arrive in a few hours. Thank you for choosing Selecta Ice Cream. Have a sweet day!';
   }
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child, Widget? trailing}) {
@@ -819,312 +1075,56 @@ class _DeliveryPageState extends State<DeliveryPage> {
     );
   }
 
-  void onSave() async {
-    if (_formkey.currentState!.validate()) {
-      // save image
-      String imageFilePath = '';
-      if (image != null) {
-        imageFilePath = await Helperfunctions.saveImage(context, image!);
-      }
-
-      Delivery newRecord = Delivery(
-        storeName: dropdownHapiStore.text,
-        remarks: '',
-        transactionStatus: DeliveryStatus.pending,
-        imagePath: imageFilePath,
-        orderAmount: Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text),
-        returnAmount: 0,
-        creditAmount: 0,
-        cashAmount: 0,
-        onlineAmount: 0,
-        deliveryDate: Timestamp.fromDate(_selectedDate),
-        creditStatus: CreditStatus.unpaid,
-        createdBy: authService.value.currentUser!.displayName!,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: Timestamp.now(),
-        lastupdatedDate: Timestamp.now(),
-      );
-      db.addDelivery(newRecord);
-
-      // log transaction
-      await Helperfunctions.logTransaction(
-        dropdownHapiStore.text,
-        'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(newRecord.orderAmount)}',
-        LogAction.create,
-      );
-
-      // send text message to the store if user opted to send a text message
-      if (sendText) {
-        String storeContact = await HapiStoreService.getContactByStoreName(dropdownHapiStore.text);
-        storeContact = storeContact.replaceFirst('09', '+639');
-
-        final Telephony telephony = Telephony.instance;
-        bool? permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
-
-        if (permissionsGranted ?? false) {
-          telephony.sendSms(to: storeContact, message: txtSMS.text, isMultipart: true);
-        }
-      }
-
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully created a new delivery record!\n[${dropdownHapiStore.text}]');
-        Navigator.pop(context); // go back to previous page
-      }
-
-      setState(() {});
-    } else {
-      ShowMessage.error(context, 'Please fill up the required fields');
-    }
-  }
-
-  void onChangeDate() async {
-    final DateTime? dateTime = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(3000),
-    );
-
-    if (dateTime != null) {
-      setState(() {
-        _selectedDate = dateTime;
-      });
-    }
-  }
-
-  void prefetchData() async {
-    if (widget.deliveryID.isNotEmpty) {
-      isDealer = await KVariables.getIsDealer();
-      networkImagePath = widget.delivery.imagePath;
-
-      listDropdownStatus = [
-        DropdownMenuEntry(label: DeliveryStatus.pending, value: DeliveryStatus.pending),
-        DropdownMenuEntry(label: DeliveryStatus.delivered, value: DeliveryStatus.delivered),
-        DropdownMenuEntry(label: DeliveryStatus.returned, value: DeliveryStatus.returned),
-      ];
-
-      dropdownHapiStore.text = widget.delivery.storeName;
-      dropdownStatus.text = widget.delivery.transactionStatus;
-      txtRemarks.text = widget.delivery.remarks;
-      txtOrderAmount.text = widget.delivery.orderAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount);
-      txtCashAmount.text = widget.delivery.cashAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.cashAmount);
-      txtOnlineAmount.text = widget.delivery.onlineAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.onlineAmount);
-      txtCreditAmount.text = widget.delivery.creditAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount);
-      txtReturnAmount.text = widget.delivery.returnAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount);
-
-      computeDiscrepancy();
-    } else {
-      composeSMS();
-    }
-
-    setState(() {});
-  }
-
   @override
-  void initState() {
-    super.initState();
-    prefetchData();
-  }
+  Widget build(BuildContext context) {
+    bool isDelivered = dropdownStatus.text == DeliveryStatus.delivered;
+    bool isReturned = dropdownStatus.text == DeliveryStatus.returned;
+    bool showRemarks = isReturned || (isDelivered && txtReturnAmount.text.isNotEmpty);
 
-  @override
-  void dispose() {
-    super.dispose();
-    txtOrderAmount.dispose();
-    txtCashAmount.dispose();
-    txtOnlineAmount.dispose();
-    txtCreditAmount.dispose();
-    txtReturnAmount.dispose();
-    txtRemarks.dispose();
-    txtSMS.dispose();
-    dropdownStatus.dispose();
-    dropdownHapiStore.dispose();
-  }
+    return Scaffold(
+      appBar: CustomAppbar(title: 'Delivery', subtitle: widget.deliveryID.isEmpty ? 'New Record' : widget.delivery.storeName),
+      bottomNavigationBar: _buildStickyBottomBar(),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formkey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 16,
+              children: [
+                // 1. Order & Store Info Card
+                _buildOrderAndStoreCard(),
 
-  List<String> validate() {
-    List<String> listError = [];
-    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
-    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
-    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
-    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
+                // 2. Payment Breakdown Card (Animated for Delivered status)
+                if (widget.deliveryID.isNotEmpty)
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    child: isDelivered ? _buildPaymentBreakdownCard() : const SizedBox.shrink(),
+                  ),
 
-    Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmount;
-    Decimal orderAmount = Decimal.parse(widget.delivery.orderAmount.toString());
+                // 3. Remarks Card (Animated for Returned or Delivered with return amount)
+                if (widget.deliveryID.isNotEmpty)
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    child: showRemarks ? _buildRemarksCard() : const SizedBox.shrink(),
+                  ),
 
-    if (dropdownStatus.text == DeliveryStatus.delivered && totalAmount != orderAmount) {
-      listError.add('Total amount does not match the order amount!');
-    }
-    if ((returnAmount != Decimal.zero || dropdownStatus.text == DeliveryStatus.returned) && txtRemarks.text.isEmpty) {
-      listError.add('Please enter a remark for return details!');
-    }
+                // 4. Receipt & Documents Card
+                _buildReceiptCard(),
 
-    return listError;
-  }
+                // 5. SMS Notification Card (when creating new delivery)
+                if (widget.deliveryID.isEmpty) _buildSmsCard(),
 
-  void onUpdate() async {
-    var listError = validate();
-    if (listError.isEmpty) {
-      double returnAmount = 0;
-      double creditAmount = 0;
-      double onlineAmount = 0;
-      double cashAmount = 0;
-      String remark = txtRemarks.text;
-
-      switch (dropdownStatus.text) {
-        case DeliveryStatus.pending:
-          widget.delivery.orderAmount = Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text);
-          remark = '';
-          break;
-
-        case DeliveryStatus.delivered:
-          returnAmount = Helperfunctions.formatStringAmountToDouble(txtReturnAmount.text);
-          creditAmount = Helperfunctions.formatStringAmountToDouble(txtCreditAmount.text);
-          onlineAmount = Helperfunctions.formatStringAmountToDouble(txtOnlineAmount.text);
-          cashAmount = Helperfunctions.formatStringAmountToDouble(txtCashAmount.text);
-          break;
-
-        case DeliveryStatus.returned:
-          returnAmount = widget.delivery.orderAmount;
-          break;
-        default:
-      }
-
-      // update image data
-      String imageFilePath = await Helperfunctions.updateImage(context, image, networkImagePath, widget.delivery.imagePath);
-
-      Delivery updatedDelivery = widget.delivery.copyWith(
-        storeName: dropdownHapiStore.text,
-        remarks: remark,
-        transactionStatus: dropdownStatus.text,
-        imagePath: imageFilePath,
-        orderAmount: widget.delivery.orderAmount,
-        returnAmount: returnAmount,
-        creditAmount: creditAmount,
-        cashAmount: cashAmount,
-        onlineAmount: onlineAmount,
-        deliveryDate: widget.delivery.deliveryDate,
-        createdBy: widget.delivery.createdBy,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: widget.delivery.createdDate,
-        lastupdatedDate: Timestamp.now(),
-      );
-      db.updateDelivery(widget.deliveryID, updatedDelivery);
-
-      // log transaction
-      await Helperfunctions.logTransaction(
-        dropdownHapiStore.text,
-        'Status: ${updatedDelivery.transactionStatus}\nOrder Amount: ${Helperfunctions.formatDoubleAmountForDisplay(updatedDelivery.orderAmount)}',
-        LogAction.update,
-      );
-
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully updated delivery record!\n[${widget.delivery.storeName}]');
-        Navigator.pop(context); // go back to previous page
-      }
-
-      setState(() {});
-    } else {
-      if (mounted) ShowMessage.listError(context, listError);
-    }
-  }
-
-  void onDelete() async {
-    if (widget.delivery.imagePath.isNotEmpty) {
-      await Helperfunctions.deleteImage(context, widget.delivery.imagePath);
-    }
-    db.deleteDelivery(widget.deliveryID);
-
-    // log transaction
-    await Helperfunctions.logTransaction(
-      dropdownHapiStore.text,
-      'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount)}',
-      LogAction.delete,
-    );
-
-    if (mounted) {
-      ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]');
-      Navigator.pop(context); // go back to previous page
-    }
-
-    setState(() {});
-  }
-
-  void onFocusChange(bool hasFocus, TextEditingController controller) {
-    if (controller.text.isNotEmpty) {
-      if (!hasFocus) {
-        computeDiscrepancy();
-        setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
-        composeSMS();
-      } else {
-        setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
-      }
-    } else {
-      if (!hasFocus) {
-        setState(() => computeDiscrepancy());
-      }
-    }
-  }
-
-  void computeDiscrepancy() {
-    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
-    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
-    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
-    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
-
-    Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmount;
-    Decimal orderAmount = Decimal.parse(widget.delivery.orderAmount.toString());
-
-    discrepancy = (totalAmount - orderAmount).toDouble();
-
-    setState(() {});
-  }
-
-  Widget hapistoreDropdown() {
-    final HapiStoreService dbHS = HapiStoreService();
-    return StreamBuilder(
-      stream: dbHS.getListHapiStoresAsStream(),
-      builder: (BuildContext context, AsyncSnapshot snapshot) {
-        final listHapiStore = snapshot.data?.docs ?? [];
-        List<DropdownMenuEntry<String>> listDropdownItems = [];
-        for (int i = 0; i < listHapiStore.length; i++) {
-          Hapistore hapistore = listHapiStore[i].data();
-          listDropdownItems.add(DropdownMenuEntry(value: hapistore.storeName, label: hapistore.storeName));
-        }
-
-        return DropdownMenuFormField<String>(
-          controller: dropdownHapiStore,
-          enabled: isDealer,
-          initialSelection: dropdownHapiStore.text,
-          label: const Text('Hapi Store'),
-          leadingIcon: const Icon(Icons.storefront_outlined, size: 20),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                // 6. Audit & History Card (when updating existing record)
+                if (widget.deliveryID.isNotEmpty) _buildAuditCard(),
+              ],
+            ),
           ),
-          validator: (value) => value == null || value.isEmpty ? 'Please select a Hapi Store' : null,
-          autovalidateMode: AutovalidateMode.onUnfocus,
-          dropdownMenuEntries: listDropdownItems,
-          enableSearch: true,
-          enableFilter: true,
-          requestFocusOnTap: true,
-          expandedInsets: EdgeInsets.zero,
-          menuHeight: 300,
-          onSelected: (String? newValue) {
-            composeSMS();
-          },
-        );
-      },
+        ),
+      ),
     );
-  }
-
-  void scanDocs(File? scannedImage) {
-    setState(() {
-      networkImagePath = '';
-      scannedImage == null ? image = null : image = scannedImage;
-    });
-  }
-
-  void composeSMS() async {
-    txtSMS.text =
-        '[SELECTA DELIVERY]\n\nGood day ${dropdownHapiStore.text}! This is to confirm that your order worth (${txtOrderAmount.text}) is now pending for delivery.\n\nPlease expect your stocks to arrive in a few hours. Thank you for choosing Selecta Ice Cream. Have a sweet day!';
   }
 }

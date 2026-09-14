@@ -12,8 +12,8 @@ import 'package:intl/intl.dart';
 class ReturnPage extends StatefulWidget {
   const ReturnPage({super.key, required this.recID, required this.delivery});
 
-  final String recID;
   final Delivery delivery;
+  final String recID;
 
   @override
   State<ReturnPage> createState() => _ReturnPageState();
@@ -22,28 +22,45 @@ class ReturnPage extends StatefulWidget {
 class _ReturnPageState extends State<ReturnPage> {
   final DeliveryService db = DeliveryService();
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Return Details', subtitle: widget.delivery.storeName),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 16,
-          children: [
-            // 1. Return Overview Hero Card
-            _buildReturnOverviewCard(),
+  void onUpdate() async {
+    Delivery updatedDelivery = widget.delivery.copyWith(
+      storeName: widget.delivery.storeName,
+      remarks: '',
+      transactionStatus: DeliveryStatus.pending,
+      orderAmount: widget.delivery.orderAmount,
+      returnAmount: 0,
+      creditAmount: widget.delivery.creditAmount,
+      cashAmount: widget.delivery.cashAmount,
+      onlineAmount: widget.delivery.onlineAmount,
+      deliveryDate: Timestamp.now(),
+      creditStatus: '',
+      createdBy: widget.delivery.createdBy,
+      lastUpdatedBy: authService.value.currentUser!.displayName!,
+      createdDate: widget.delivery.createdDate,
+      lastupdatedDate: Timestamp.now(),
+    );
+    db.updateDelivery(widget.recID, updatedDelivery);
+    ShowMessage.success(context, 'Successfully rescheduled delivery for [${updatedDelivery.storeName}]!');
 
-            // 2. Remarks / Reason Card
-            if (widget.delivery.remarks.isNotEmpty) _buildRemarksCard(),
+    Navigator.pop(context);
 
-            // 3. Audit & History Card
-            _buildAuditCard(),
-          ],
-        ),
-      ),
+    await Helperfunctions.logTransaction(
+      '[REDELIVER] ${widget.delivery.storeName}',
+      'Status: ${updatedDelivery.transactionStatus}\nOrder Amount: ${Helperfunctions.formatDoubleAmountForDisplay(updatedDelivery.orderAmount)}',
+      LogAction.update,
+    );
+  }
+
+  void onDelete() async {
+    db.deleteDelivery(widget.recID);
+    ShowMessage.success(context, 'Successfully deleted delivery record!\n[${widget.delivery.storeName}]');
+
+    Navigator.pop(context);
+
+    await Helperfunctions.logTransaction(
+      '[DELETE] ${widget.delivery.storeName}',
+      'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount)}',
+      LogAction.delete,
     );
   }
 
@@ -289,45 +306,28 @@ class _ReturnPageState extends State<ReturnPage> {
     );
   }
 
-  void onUpdate() async {
-    Delivery updatedDelivery = widget.delivery.copyWith(
-      storeName: widget.delivery.storeName,
-      remarks: '',
-      transactionStatus: DeliveryStatus.pending,
-      orderAmount: widget.delivery.orderAmount,
-      returnAmount: 0,
-      creditAmount: widget.delivery.creditAmount,
-      cashAmount: widget.delivery.cashAmount,
-      onlineAmount: widget.delivery.onlineAmount,
-      deliveryDate: Timestamp.now(),
-      creditStatus: '',
-      createdBy: widget.delivery.createdBy,
-      lastUpdatedBy: authService.value.currentUser!.displayName!,
-      createdDate: widget.delivery.createdDate,
-      lastupdatedDate: Timestamp.now(),
-    );
-    db.updateDelivery(widget.recID, updatedDelivery);
-    ShowMessage.success(context, 'Successfully rescheduled delivery for [${updatedDelivery.storeName}]!');
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(title: 'Return Details', subtitle: widget.delivery.storeName),
+      bottomNavigationBar: _buildStickyBottomBar(),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: [
+            // 1. Return Overview Hero Card
+            _buildReturnOverviewCard(),
 
-    Navigator.pop(context);
+            // 2. Remarks / Reason Card
+            if (widget.delivery.remarks.isNotEmpty) _buildRemarksCard(),
 
-    await Helperfunctions.logTransaction(
-      '[REDELIVER] ${widget.delivery.storeName}',
-      'Status: ${updatedDelivery.transactionStatus}\nOrder Amount: ${Helperfunctions.formatDoubleAmountForDisplay(updatedDelivery.orderAmount)}',
-      LogAction.update,
-    );
-  }
-
-  void onDelete() async {
-    db.deleteDelivery(widget.recID);
-    ShowMessage.success(context, 'Successfully deleted delivery record!\n[${widget.delivery.storeName}]');
-
-    Navigator.pop(context);
-
-    await Helperfunctions.logTransaction(
-      '[DELETE] ${widget.delivery.storeName}',
-      'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount)}',
-      LogAction.delete,
+            // 3. Audit & History Card
+            _buildAuditCard(),
+          ],
+        ),
+      ),
     );
   }
 }

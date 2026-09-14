@@ -22,16 +22,107 @@ class _RegisterPageState extends State<RegisterPage> {
   UserService db = UserService();
   List<DropdownMenuEntry<String>> dropdownItems = [];
   TextEditingController dropdowncontroller = TextEditingController();
+  TextEditingController txtConfirmPassword = TextEditingController();
   TextEditingController txtDealerName = TextEditingController();
   TextEditingController txtEmail = TextEditingController();
   TextEditingController txtPassword = TextEditingController();
-  TextEditingController txtConfirmPassword = TextEditingController();
   TextEditingController txtUsername = TextEditingController();
 
   final _formKey = KVariables.formkey;
+  bool _isConfirmPasswordObscured = true;
   bool _isLoading = false;
   bool _isObscured = true;
-  bool _isConfirmPasswordObscured = true;
+
+  @override
+  void dispose() {
+    txtEmail.dispose();
+    txtPassword.dispose();
+    txtConfirmPassword.dispose();
+    txtUsername.dispose();
+    txtDealerName.dispose();
+    dropdowncontroller.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    dropdownItems.add(DropdownMenuEntry(value: BusinessRole.dealer, label: BusinessRole.dealer));
+    dropdownItems.add(DropdownMenuEntry(value: BusinessRole.salesman, label: BusinessRole.salesman));
+  }
+
+  Future<void> onRegister() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      _showSnackBar('Please complete all required fields.', isError: true);
+      return;
+    }
+
+    if (!_hasValidPassword) {
+      _showSnackBar('Password must contain at least 8 characters, one uppercase letter, one lowercase letter, and one number.', isError: true);
+      return;
+    }
+
+    if (txtPassword.text != txtConfirmPassword.text) {
+      _showSnackBar('Passwords do not match.', isError: true);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final dbDealer = DealerService();
+      final existingDealer = await dbDealer.getDealerByName(txtDealerName.text.trim());
+
+      if (existingDealer == null) {
+        _showSnackBar('Dealer name does not exist. Please contact your administrator.', isError: true);
+        return;
+      }
+
+      final email = txtEmail.text.trim();
+      final password = txtPassword.text;
+      final username = txtUsername.text.trim();
+      final dealerName = txtDealerName.text.trim();
+      final role = dropdowncontroller.text;
+
+      await authService.value.createAccount(email: email, password: password);
+
+      await authService.value.signIn(email: email, password: password);
+
+      final newRecord = Users(email: email, username: username, role: role, dealerName: dealerName);
+
+      db.addUser(newRecord);
+
+      await authService.value.updateUsername(username: username);
+
+      await authService.value.signOut();
+
+      await authService.value.signIn(email: email, password: password);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_data', jsonEncode(newRecord.toJson()));
+
+      if (!mounted) return;
+
+      _showSnackBar('Successfully created account [$username].', isError: false);
+
+      Navigator.pop(context, 'Successfully created account [$username].');
+
+      await authService.value.signOut();
+    } on FirebaseAuthException catch (error) {
+      if (mounted) {
+        SnackBarWidget.error(context, _friendlyFirebaseMessage(error));
+      }
+    } catch (error) {
+      if (mounted) {
+        SnackBarWidget.error(context, 'Something went wrong. Please try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   bool get _hasValidPassword {
     final password = txtPassword.text;
@@ -106,25 +197,6 @@ class _RegisterPageState extends State<RegisterPage> {
           duration: const Duration(seconds: 4),
         ),
       );
-  }
-
-  @override
-  void dispose() {
-    txtEmail.dispose();
-    txtPassword.dispose();
-    txtConfirmPassword.dispose();
-    txtUsername.dispose();
-    txtDealerName.dispose();
-    dropdowncontroller.dispose();
-    super.dispose();
-  }
-
-  @override
-  void initState() {
-    super.initState();
-
-    dropdownItems.add(DropdownMenuEntry(value: BusinessRole.dealer, label: BusinessRole.dealer));
-    dropdownItems.add(DropdownMenuEntry(value: BusinessRole.salesman, label: BusinessRole.salesman));
   }
 
   InputDecoration _inputDecoration({required String label, required IconData icon}) {
@@ -224,78 +296,6 @@ class _RegisterPageState extends State<RegisterPage> {
 
     if (confirmed == true && mounted) {
       await onRegister();
-    }
-  }
-
-  Future<void> onRegister() async {
-    if (!(_formKey.currentState?.validate() ?? false)) {
-      _showSnackBar('Please complete all required fields.', isError: true);
-      return;
-    }
-
-    if (!_hasValidPassword) {
-      _showSnackBar('Password must contain at least 8 characters, one uppercase letter, one lowercase letter, and one number.', isError: true);
-      return;
-    }
-
-    if (txtPassword.text != txtConfirmPassword.text) {
-      _showSnackBar('Passwords do not match.', isError: true);
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final dbDealer = DealerService();
-      final existingDealer = await dbDealer.getDealerByName(txtDealerName.text.trim());
-
-      if (existingDealer == null) {
-        _showSnackBar('Dealer name does not exist. Please contact your administrator.', isError: true);
-        return;
-      }
-
-      final email = txtEmail.text.trim();
-      final password = txtPassword.text;
-      final username = txtUsername.text.trim();
-      final dealerName = txtDealerName.text.trim();
-      final role = dropdowncontroller.text;
-
-      await authService.value.createAccount(email: email, password: password);
-
-      await authService.value.signIn(email: email, password: password);
-
-      final newRecord = Users(email: email, username: username, role: role, dealerName: dealerName);
-
-      db.addUser(newRecord);
-
-      await authService.value.updateUsername(username: username);
-
-      await authService.value.signOut();
-
-      await authService.value.signIn(email: email, password: password);
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_data', jsonEncode(newRecord.toJson()));
-
-      if (!mounted) return;
-
-      _showSnackBar('Successfully created account [$username].', isError: false);
-
-      Navigator.pop(context, 'Successfully created account [$username].');
-
-      await authService.value.signOut();
-    } on FirebaseAuthException catch (error) {
-      if (mounted) {
-        SnackBarWidget.error(context, _friendlyFirebaseMessage(error));
-      }
-    } catch (error) {
-      if (mounted) {
-        SnackBarWidget.error(context, 'Something went wrong. Please try again.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 

@@ -6,12 +6,13 @@ import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
-import 'package:flutter_app/views/pages/delivery_page.dart';
+import 'package:flutter_app/views/pages/dashboard/delivery_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class TransactionListPage extends StatefulWidget {
   const TransactionListPage({super.key, required this.storeName});
+
   final String storeName;
 
   @override
@@ -22,13 +23,8 @@ class _TransactionListPageState extends State<TransactionListPage> {
   final DeliveryService db = DeliveryService();
   final HapiStoreService dbHS = HapiStoreService();
   final TextEditingController dropdownHapiStore = TextEditingController();
-  String _selectedMonthsAgo = MonthsAgo.months1;
 
-  @override
-  void initState() {
-    super.initState();
-    dropdownHapiStore.text = widget.storeName;
-  }
+  String _selectedMonthsAgo = MonthsAgo.months1;
 
   @override
   void dispose() {
@@ -37,19 +33,9 @@ class _TransactionListPageState extends State<TransactionListPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Store Transactions', subtitle: dropdownHapiStore.text.isNotEmpty ? dropdownHapiStore.text : 'Transaction History'),
-      body: Column(
-        children: [
-          // 1. Store Selector & Timeframe Filter Card
-          _buildFilterCard(),
-
-          // 2. Transaction Stream List with Summary
-          Expanded(child: _buildTransactionStream()),
-        ],
-      ),
-    );
+  void initState() {
+    super.initState();
+    dropdownHapiStore.text = widget.storeName;
   }
 
   Widget _buildFilterCard() {
@@ -376,6 +362,22 @@ class _TransactionListPageState extends State<TransactionListPage> {
           Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
           SizedBox(height: 8),
           Text('Unable to load transaction list'),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppbar(title: 'Store Transactions', subtitle: dropdownHapiStore.text.isNotEmpty ? dropdownHapiStore.text : 'Transaction History'),
+      body: Column(
+        children: [
+          // 1. Store Selector & Timeframe Filter Card
+          _buildFilterCard(),
+
+          // 2. Transaction Stream List with Summary
+          Expanded(child: _buildTransactionStream()),
         ],
       ),
     );

@@ -1,20 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/views/pages/return_page.dart';
+import 'package:flutter_app/views/pages/dashboard/credit_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
-class ReturnlistPage extends StatefulWidget {
-  const ReturnlistPage({super.key});
+class CreditlistPage extends StatefulWidget {
+  const CreditlistPage({super.key});
 
   @override
-  State<ReturnlistPage> createState() => _ReturnlistPageState();
+  State<CreditlistPage> createState() => _CreditlistPageState();
 }
 
-class _ReturnlistPageState extends State<ReturnlistPage> {
+class _CreditlistPageState extends State<CreditlistPage> {
   final DeliveryService db = DeliveryService();
+  bool isDealer = true;
+
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -25,77 +28,29 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Returned Orders', subtitle: 'Needs Redelivery or Review'),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: db.getListDeliveryWithReturnStatus(),
-        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-          if (snapshot.hasError) {
-            return _buildErrorState();
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final allDocs = snapshot.data?.docs ?? [];
-          if (allDocs.isEmpty) {
-            return _buildEmptyState();
-          }
-
-          // Calculate total returned value and apply search filter
-          double totalReturnedAmount = 0;
-          final List<QueryDocumentSnapshot> filteredDocs = [];
-
-          for (var doc in allDocs) {
-            final delivery = doc.data() as Delivery;
-            totalReturnedAmount += delivery.orderAmount;
-            if (_searchQuery.isEmpty ||
-                delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                delivery.remarks.toLowerCase().contains(_searchQuery.toLowerCase())) {
-              filteredDocs.add(doc);
-            }
-          }
-
-          return Column(
-            children: [
-              // 1. Summary Card
-              _buildSummaryCard(totalAmount: totalReturnedAmount, totalCount: allDocs.length),
-
-              // 2. Search Bar
-              _buildSearchBar(),
-
-              // 3. Returned Orders List
-              Expanded(
-                child: filteredDocs.isEmpty
-                    ? _buildNoSearchResultsState()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                        itemCount: filteredDocs.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final delivery = filteredDocs[index].data() as Delivery;
-                          final deliveryID = filteredDocs[index].id;
-                          return _buildReturnCard(deliveryID: deliveryID, delivery: delivery);
-                        },
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+  void initState() {
+    super.initState();
+    prefetchData();
   }
 
-  Widget _buildSummaryCard({required double totalAmount, required int totalCount}) {
-    Theme.of(context).colorScheme;
+  void prefetchData() async {
+    isDealer = await KVariables.getIsDealer();
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildSummaryCard({required double totalCredit, required int totalAccounts}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.orange.shade700, Colors.deepOrange.shade600], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(
+          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.orange.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: colorScheme.primary.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -104,24 +59,24 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Total Returned Amount',
+                'Total Outstanding Credit',
                 style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 4),
               Text(
-                Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
+                Helperfunctions.formatDoubleAmountForDisplay(totalCredit),
                 style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
               ),
             ],
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)),
             child: Column(
               children: [
-                const Text('Orders', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                const Text('Stores', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 Text(
-                  '$totalCount',
+                  '$totalAccounts',
                   style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -140,7 +95,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
         controller: _searchController,
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
         decoration: InputDecoration(
-          hintText: 'Search by store name or remarks...',
+          hintText: 'Search by store name...',
           hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
           prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
           suffixIcon: _searchQuery.isNotEmpty
@@ -168,7 +123,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
     );
   }
 
-  Widget _buildReturnCard({required String deliveryID, required Delivery delivery}) {
+  Widget _buildCreditCard({required String deliveryID, required Delivery delivery}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
@@ -180,7 +135,14 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => Helperfunctions.navigateTo(context, ReturnPage(recID: deliveryID, delivery: delivery)),
+        onTap: isDealer
+            ? () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CreditPage(recID: deliveryID, delivery: delivery),
+                ),
+              )
+            : null,
         child: Padding(
           padding: const EdgeInsets.all(14.0),
           child: Row(
@@ -188,8 +150,8 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
               Container(
                 width: 44,
                 height: 44,
-                decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.assignment_return_outlined, color: Colors.deepOrange, size: 22),
+                decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.credit_card_outlined, color: Colors.purple, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -202,22 +164,13 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (delivery.remarks.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Reason: ${delivery.remarks}',
-                        style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
                     const SizedBox(height: 4),
                     Row(
                       children: [
                         Icon(Icons.calendar_month_outlined, size: 14, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
                         Text(
-                          Helperfunctions.formatTimestampForDisplay(delivery.lastupdatedDate),
+                          delivery.deliveryDate != null ? Helperfunctions.formatDateForDisplay(delivery.deliveryDate!.toDate()) : 'No Date',
                           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                         ),
                       ],
@@ -230,22 +183,21 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
+                    Helperfunctions.formatDoubleAmountForDisplay(delivery.creditAmount),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple),
                   ),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
+                    decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
                     child: const Text(
-                      'Returned',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+                      'Unpaid',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
+              if (isDealer) ...[const SizedBox(width: 6), Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant)],
             ],
           ),
         ),
@@ -263,13 +215,13 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.task_alt_rounded, color: Colors.green, size: 50),
+              child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 50),
             ),
             const SizedBox(height: 16),
-            const Text('No Returned Deliveries', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('All Credits Settled!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             const Text(
-              'All delivery transactions have been completed without returns.',
+              'There are no pending or unpaid credits recorded.',
               style: TextStyle(fontSize: 13, color: Colors.black54),
               textAlign: TextAlign.center,
             ),
@@ -288,7 +240,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
           children: [
             const Icon(Icons.search_off_rounded, size: 48, color: Colors.grey),
             const SizedBox(height: 12),
-            Text('No returns matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text('No stores matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
       ),
@@ -302,8 +254,69 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
         children: [
           Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
           SizedBox(height: 8),
-          Text('Unable to load return list'),
+          Text('Unable to load credit list'),
         ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: const CustomAppbar(title: 'Credit List', subtitle: 'Unpaid Store Accounts'),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: db.getListDeliveryWithCredit(),
+        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
+          if (snapshot.hasError) {
+            return _buildErrorState();
+          }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final allDocs = snapshot.data?.docs ?? [];
+          if (allDocs.isEmpty) {
+            return _buildEmptyState();
+          }
+
+          // Calculate total outstanding amount
+          double totalCredit = 0;
+          final List<QueryDocumentSnapshot> filteredDocs = [];
+
+          for (var doc in allDocs) {
+            final delivery = doc.data() as Delivery;
+            totalCredit += delivery.creditAmount;
+            if (_searchQuery.isEmpty || delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase())) {
+              filteredDocs.add(doc);
+            }
+          }
+
+          return Column(
+            children: [
+              // 1. Total Outstanding Summary Header
+              _buildSummaryCard(totalCredit: totalCredit, totalAccounts: allDocs.length),
+
+              // 2. Search Bar
+              _buildSearchBar(),
+
+              // 3. Filtered Credits List
+              Expanded(
+                child: filteredDocs.isEmpty
+                    ? _buildNoSearchResultsState()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        itemCount: filteredDocs.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final delivery = filteredDocs[index].data() as Delivery;
+                          final deliveryID = filteredDocs[index].id;
+                          return _buildCreditCard(deliveryID: deliveryID, delivery: delivery);
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
