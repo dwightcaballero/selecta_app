@@ -17,45 +17,43 @@ class PlacementService {
   final _firestore = FirebaseFirestore.instance;
   late final CollectionReference<Placement> _placementsRef;
 
-  Future<String> addPlacement(Placement placement) async {
-    final documentReference = await _placementsRef.add(placement);
-    return documentReference.id;
-  }
-
-  void updatePlacement(String placementID, Placement placement) {
-    _placementsRef.doc(placementID).update(placement.toJson());
-  }
-
-  void deletePlacement(String placementID) {
-    _placementsRef.doc(placementID).delete();
-  }
-
-  // Delete placement by delivery ID
-  Future<void> deletePlacementByDeliveryID(String deliveryID) async {
-    final querySnapshot = await _placementsRef.where('deliveryID', isEqualTo: deliveryID).get();
-    final batch = _firestore.batch();
-    for (final doc in querySnapshot.docs) {
-      batch.delete(doc.reference);
+  // Save placement record if it doesnt exist in the database. Else, update the existing record.
+  Future<void> savePlacement(Placement placement) async {
+    if (placement.id.isEmpty) {
+      await _placementsRef.add(placement);
+    } else {
+      await _placementsRef.doc(placement.id).update(placement.toJson());
     }
-    await batch.commit();
   }
 
-  // Get list of placement within the current month and store name
-  Future<List<Placement>> getPlacementsWithinCurrentMonth(String storeName) async {
+  // Get 1 placement record by store name and delivery date within the month
+  Future<Placement?> getPlacementByStoreAndDate(String storeName, DateTime deliveryDate) async {
     try {
-      final now = DateTime.now();
-      final startOfMonth = DateTime(now.year, now.month, 1);
-      final startOfNextMonth = DateTime(now.year, now.month + 1, 1);
+      final startOfMonth = DateTime(deliveryDate.year, deliveryDate.month, 1);
+      final startOfNextMonth = DateTime(deliveryDate.year, deliveryDate.month + 1, 1);
 
       final snapshot = await _placementsRef
           .where('storeName', isEqualTo: storeName)
           .where('deliveryDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
           .where('deliveryDate', isLessThan: Timestamp.fromDate(startOfNextMonth))
+          .limit(1)
           .get();
 
-      return snapshot.docs.map((doc) => doc.data()).toList();
+      if (snapshot.docs.isNotEmpty) {
+        var placement = snapshot.docs.first.data();
+        placement.id = snapshot.docs.first.id;
+        return placement;
+      } else {
+        return null;
+      }
     } catch (_) {
-      return [];
+      return null;
     }
+  }
+
+  // Get count of all placement records with finished status
+  static Future<int> getCountOfFinishedPlacements() async {
+    final snapshot = await FirebaseFirestore.instance.collection(PLACEMENT_COLLECTION_REF).where('isFinished', isEqualTo: true).get();
+    return snapshot.docs.length;
   }
 }

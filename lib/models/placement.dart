@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Placement {
+  String id;
   String storeName;
-  String deliveryID;
   Timestamp deliveryDate;
   bool cotc1;
   bool cotc2;
@@ -16,10 +16,11 @@ class Placement {
   bool cotc10;
   bool cotc11;
   bool cotc12;
+  bool isFinished;
 
   Placement({
+    required this.id,
     required this.storeName,
-    required this.deliveryID,
     required this.deliveryDate,
     required this.cotc1,
     required this.cotc2,
@@ -33,12 +34,13 @@ class Placement {
     required this.cotc10,
     required this.cotc11,
     required this.cotc12,
+    required this.isFinished,
   });
 
   Placement.fromJson(Map<String, Object?> json)
     : this(
+        id: json['id']! as String,
         storeName: json['storeName']! as String,
-        deliveryID: json['deliveryID']! as String,
         deliveryDate: json['deliveryDate']! as Timestamp,
         cotc1: json['cotc1']! as bool,
         cotc2: json['cotc2']! as bool,
@@ -52,14 +54,15 @@ class Placement {
         cotc10: json['cotc10']! as bool,
         cotc11: json['cotc11']! as bool,
         cotc12: json['cotc12']! as bool,
+        isFinished: json['isFinished']! as bool,
       );
 
   factory Placement.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     if (document.data() != null) {
       final data = document.data();
       return Placement(
+        id: data?['id'] as String,
         storeName: data?['storeName'] as String,
-        deliveryID: data?['deliveryID'] as String,
         deliveryDate: data?['deliveryDate'] as Timestamp,
         cotc1: data?['cotc1'] as bool,
         cotc2: data?['cotc2'] as bool,
@@ -73,6 +76,7 @@ class Placement {
         cotc10: data?['cotc10'] as bool,
         cotc11: data?['cotc11'] as bool,
         cotc12: data?['cotc12'] as bool,
+        isFinished: data?['isFinished'] as bool,
       );
     } else {
       return Placement.empty();
@@ -80,8 +84,8 @@ class Placement {
   }
 
   static Placement empty() => Placement(
+    id: '',
     storeName: '',
-    deliveryID: '',
     deliveryDate: Timestamp.now(),
     cotc1: false,
     cotc2: false,
@@ -95,13 +99,14 @@ class Placement {
     cotc10: false,
     cotc11: false,
     cotc12: false,
+    isFinished: false,
   );
 
-  factory Placement.fromFlags({required String storeName, required String deliveryID, required Timestamp deliveryDate, required List<bool> flags}) {
+  factory Placement.fromFlags({required String id, required String storeName, required Timestamp deliveryDate, required List<bool> flags}) {
     assert(flags.length == 12);
     return Placement(
+      id: id,
       storeName: storeName,
-      deliveryID: deliveryID,
       deliveryDate: deliveryDate,
       cotc1: flags[0],
       cotc2: flags[1],
@@ -115,12 +120,13 @@ class Placement {
       cotc10: flags[9],
       cotc11: flags[10],
       cotc12: flags[11],
+      isFinished: false,
     );
   }
 
   Placement copyWith({
+    String? id,
     String? storeName,
-    String? deliveryID,
     Timestamp? deliveryDate,
     bool? cotc1,
     bool? cotc2,
@@ -134,10 +140,11 @@ class Placement {
     bool? cotc10,
     bool? cotc11,
     bool? cotc12,
+    bool? isFinished,
   }) {
     return Placement(
+      id: id ?? this.id,
       storeName: storeName ?? this.storeName,
-      deliveryID: deliveryID ?? this.deliveryID,
       deliveryDate: deliveryDate ?? this.deliveryDate,
       cotc1: cotc1 ?? this.cotc1,
       cotc2: cotc2 ?? this.cotc2,
@@ -151,13 +158,14 @@ class Placement {
       cotc10: cotc10 ?? this.cotc10,
       cotc11: cotc11 ?? this.cotc11,
       cotc12: cotc12 ?? this.cotc12,
+      isFinished: isFinished ?? this.isFinished,
     );
   }
 
   Map<String, Object?> toJson() {
     return {
+      'id': id,
       'storeName': storeName,
-      'deliveryID': deliveryID,
       'deliveryDate': deliveryDate,
       'cotc1': cotc1,
       'cotc2': cotc2,
@@ -171,6 +179,7 @@ class Placement {
       'cotc10': cotc10,
       'cotc11': cotc11,
       'cotc12': cotc12,
+      'isFinished': isFinished,
     };
   }
 }

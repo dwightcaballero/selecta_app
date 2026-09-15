@@ -54,6 +54,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   TextEditingController txtReturnAmount = TextEditingController();
   TextEditingController txtSMS = TextEditingController();
   List<KPlacement> listPlacement = [];
+  String placementID = '';
 
   final _formkey = KVariables.formkey;
   DateTime _selectedDate = DateTime.now();
@@ -103,15 +104,29 @@ class _DeliveryPageState extends State<DeliveryPage> {
         createdDate: Timestamp.now(),
         lastupdatedDate: Timestamp.now(),
       );
-      String deliveryID = await db.addDelivery(newRecord);
+      db.addDelivery(newRecord);
 
       final placement = Placement.fromFlags(
         storeName: newRecord.storeName,
-        deliveryID: deliveryID,
         deliveryDate: newRecord.deliveryDate!,
         flags: listPlacement.map((placement) => placement.isPlaced).toList(),
+        id: placementID,
       );
-      await placementService.addPlacement(placement);
+      if (placement.cotc1 &&
+          placement.cotc2 &&
+          placement.cotc3 &&
+          placement.cotc4 &&
+          placement.cotc5 &&
+          placement.cotc6 &&
+          placement.cotc7 &&
+          placement.cotc8 &&
+          placement.cotc9 &&
+          placement.cotc10 &&
+          placement.cotc11 &&
+          placement.cotc12) {
+        placement.isFinished = true;
+      }
+      await placementService.savePlacement(placement);
 
       // log transaction
       await Helperfunctions.logTransaction(
@@ -280,9 +295,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
     }
     db.deleteDelivery(widget.deliveryID);
 
-    // delete also the placement record associated with this delivery
-    placementService.deletePlacementByDeliveryID(widget.deliveryID);
-
     // log transaction
     await Helperfunctions.logTransaction(
       dropdownHapiStore.text,
@@ -381,121 +393,102 @@ class _DeliveryPageState extends State<DeliveryPage> {
       // Prefetch placements for the current store within the current month
       listPlacement = KData.getListPlacement();
       if (dropdownHapiStore.text.isNotEmpty) {
-        var savedPlacements = await placementService.getPlacementsWithinCurrentMonth(dropdownHapiStore.text);
-        for (var placement in listPlacement) {
-          switch (placement.itemCode) {
-            case 'cotc1':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+        var savedPlacement = await placementService.getPlacementByStoreAndDate(dropdownHapiStore.text, DateTime.now());
+        if (savedPlacement != null) {
+          placementID = savedPlacement.id;
+          for (var placement in listPlacement) {
+            switch (placement.itemCode) {
+              case 'cotc1':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc1) {
                   placement.isPlaced = savedPlacement.cotc1;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc2':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc2':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc2) {
                   placement.isPlaced = savedPlacement.cotc2;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc3':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc3':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc3) {
                   placement.isPlaced = savedPlacement.cotc3;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc4':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc4':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc4) {
                   placement.isPlaced = savedPlacement.cotc4;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc5':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc5':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc5) {
                   placement.isPlaced = savedPlacement.cotc5;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc6':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc6':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc6) {
                   placement.isPlaced = savedPlacement.cotc6;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc7':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc7':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc7) {
                   placement.isPlaced = savedPlacement.cotc7;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc8':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc8':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc8) {
                   placement.isPlaced = savedPlacement.cotc8;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc9':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc9':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc9) {
                   placement.isPlaced = savedPlacement.cotc9;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc10':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc10':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc10) {
                   placement.isPlaced = savedPlacement.cotc10;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc11':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc11':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc11) {
                   placement.isPlaced = savedPlacement.cotc11;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            case 'cotc12':
-              // Retrieve from the list of saved placements based on item code
-              for (var savedPlacement in savedPlacements) {
+                break;
+              case 'cotc12':
+                // Retrieve from the saved placement based on item code
                 if (savedPlacement.cotc12) {
                   placement.isPlaced = savedPlacement.cotc12;
                   placement.isPlacedFromDB = true;
                 }
-              }
-              break;
-            default:
-              // Handle default case
-              break;
+                break;
+              default:
+                // Handle default case
+                break;
+            }
           }
+        } else {
+          savedPlacement = Placement.empty();
         }
       }
     }

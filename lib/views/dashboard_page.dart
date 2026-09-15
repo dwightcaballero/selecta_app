@@ -265,9 +265,7 @@ class _DashboardPageState extends State<DashboardPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(child: _buildThruputCard()),
-            Expanded(
-              child: _buildBlankCard(title: 'Placement', icon: Icons.grid_view_outlined),
-            ),
+            Expanded(child: _buildPlacementCard()),
           ],
         ),
         Row(
@@ -327,6 +325,48 @@ class _DashboardPageState extends State<DashboardPage> {
           _buildLegendRow('Actual', Helperfunctions.formatDoubleAmountForDisplay(buyingThruput), Colors.orange),
           _buildLegendRow('Missing', Helperfunctions.formatDoubleAmountForDisplay(missingThruput), Colors.grey),
           _buildLegendRow('Target', Helperfunctions.formatDoubleAmountForDisplay(thruputTarget), colorScheme.onSurface),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlacementCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final int totalStores = dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount;
+    double actual = isSyncing ? 0 : dashboardDTO.totalPlacementCount.toDouble();
+    double missing = isSyncing ? 0 : (totalStores - dashboardDTO.totalPlacementCount).toDouble();
+    double target = isSyncing ? 1 : dashboardDTO.totalHapiStores.toDouble();
+    final percentage = target == 0 ? 0.0 : (actual / target);
+
+    return _buildCardWrapper(
+      title: 'Placement',
+      icon: Icons.grid_view_outlined,
+      nextPage: const BuyinglistPage(),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 120,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                PieChart(
+                  PieChartData(
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 36,
+                    sections: [
+                      PieChartSectionData(value: actual <= 0 ? 0.01 : actual, color: Colors.blue, showTitle: false, radius: 14),
+                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: Colors.grey.shade300, showTitle: false, radius: 12),
+                    ],
+                  ),
+                ),
+                Text(NumberFormat('0%').format(percentage), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildLegendRow('Actual', actual.toStringAsFixed(0), Colors.blue),
+          _buildLegendRow('Missing', missing.toStringAsFixed(0), Colors.grey),
+          _buildLegendRow('Target', target.toStringAsFixed(0), colorScheme.onSurface),
         ],
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:flutter_app/services/placement_service.dart';
 import 'package:flutter_app/services/purchaseorder_service.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -43,12 +44,16 @@ class DashboardController {
         dashboardDTO.nonBuyingCount += 1;
       }
     }
+    dashboardDTO.totalHapiStores = listStores.length;
 
     // DASHBOARD: thruput of buying stores
     dashboardDTO.buyingThruput = dashboardDTO.totalBuyingSales / dashboardDTO.buyingCount;
 
     // DASHBOARD: total invoice amount for the current month
     dashboardDTO.totalInvoiceAmount = await PurchaseOrderService.getTotalInvoiceAmountForCurrentMonth();
+
+    // DASHBOARD: total stores with finished placement
+    dashboardDTO.totalPlacementCount = await PlacementService.getCountOfFinishedPlacements();
 
     // SAVE: dashboard data
     String jsonString = jsonEncode(dashboardDTO.toJson());
