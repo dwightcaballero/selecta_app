@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_app/models/placement.dart';
 
 class Delivery {
   String storeName;
@@ -18,6 +19,8 @@ class Delivery {
   String lastUpdatedBy;
   Timestamp createdDate;
   Timestamp lastupdatedDate;
+
+  Placement? placement;
 
   Delivery({
     required this.storeName,
@@ -60,9 +63,7 @@ class Delivery {
         storeName: json['storeName']! as String,
         remarks: json['remarks']! as String,
         transactionStatus: json['transactionStatus']! as String,
-        imagePath: json['imagePath'] == null
-            ? ''
-            : json['imagePath']! as String,
+        imagePath: json['imagePath'] == null ? '' : json['imagePath']! as String,
         orderAmount: json['orderAmount']! as double,
         returnAmount: json['returnAmount']! as double,
         creditAmount: json['creditAmount']! as double,
@@ -76,9 +77,7 @@ class Delivery {
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
       );
 
-  factory Delivery.fromSnapshot(
-    DocumentSnapshot<Map<String, dynamic>> document,
-  ) {
+  factory Delivery.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     if (document.data() != null) {
       final data = document.data();
       return Delivery(

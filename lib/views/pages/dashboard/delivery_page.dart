@@ -4,13 +4,16 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/data/data.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/models/hapistore.dart';
+import 'package:flutter_app/models/placement.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:flutter_app/services/placement_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/imageviewer_page.dart';
@@ -31,6 +34,7 @@ class DeliveryPage extends StatefulWidget {
 
 class _DeliveryPageState extends State<DeliveryPage> {
   final DeliveryService db = DeliveryService();
+  final PlacementService placementService = PlacementService();
   double discrepancy = 0;
   TextEditingController dropdownHapiStore = TextEditingController();
   TextEditingController dropdownStatus = TextEditingController();
@@ -49,6 +53,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   TextEditingController txtRemarks = TextEditingController();
   TextEditingController txtReturnAmount = TextEditingController();
   TextEditingController txtSMS = TextEditingController();
+  List<KPlacement> listPlacement = [];
 
   final _formkey = KVariables.formkey;
   DateTime _selectedDate = DateTime.now();
@@ -98,7 +103,15 @@ class _DeliveryPageState extends State<DeliveryPage> {
         createdDate: Timestamp.now(),
         lastupdatedDate: Timestamp.now(),
       );
-      db.addDelivery(newRecord);
+      String deliveryID = await db.addDelivery(newRecord);
+
+      final placement = Placement.fromFlags(
+        storeName: newRecord.storeName,
+        deliveryID: deliveryID,
+        deliveryDate: newRecord.deliveryDate!,
+        flags: listPlacement.map((placement) => placement.isPlaced).toList(),
+      );
+      await placementService.addPlacement(placement);
 
       // log transaction
       await Helperfunctions.logTransaction(
@@ -168,7 +181,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
       computeDiscrepancy();
     } else {
-      composeSMS();
+      onStoreSelected();
     }
 
     setState(() {});
@@ -267,6 +280,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
     }
     db.deleteDelivery(widget.deliveryID);
 
+    // delete also the placement record associated with this delivery
+    placementService.deletePlacementByDeliveryID(widget.deliveryID);
+
     // log transaction
     await Helperfunctions.logTransaction(
       dropdownHapiStore.text,
@@ -287,7 +303,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       if (!hasFocus) {
         computeDiscrepancy();
         setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
-        composeSMS();
+        onStoreSelected();
       } else {
         setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
       }
@@ -343,7 +359,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           expandedInsets: EdgeInsets.zero,
           menuHeight: 300,
           onSelected: (String? newValue) {
-            composeSMS();
+            onStoreSelected();
           },
         );
       },
@@ -357,9 +373,134 @@ class _DeliveryPageState extends State<DeliveryPage> {
     });
   }
 
-  void composeSMS() async {
+  void onStoreSelected() async {
     txtSMS.text =
         '[SELECTA DELIVERY]\n\nGood day ${dropdownHapiStore.text}! This is to confirm that your order worth (${txtOrderAmount.text}) is now pending for delivery.\n\nPlease expect your stocks to arrive in a few hours. Thank you for choosing Selecta Ice Cream. Have a sweet day!';
+
+    if (dropdownHapiStore.text.isNotEmpty) {
+      // Prefetch placements for the current store within the current month
+      listPlacement = KData.getListPlacement();
+      if (dropdownHapiStore.text.isNotEmpty) {
+        var savedPlacements = await placementService.getPlacementsWithinCurrentMonth(dropdownHapiStore.text);
+        for (var placement in listPlacement) {
+          switch (placement.itemCode) {
+            case 'cotc1':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc1) {
+                  placement.isPlaced = savedPlacement.cotc1;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc2':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc2) {
+                  placement.isPlaced = savedPlacement.cotc2;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc3':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc3) {
+                  placement.isPlaced = savedPlacement.cotc3;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc4':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc4) {
+                  placement.isPlaced = savedPlacement.cotc4;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc5':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc5) {
+                  placement.isPlaced = savedPlacement.cotc5;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc6':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc6) {
+                  placement.isPlaced = savedPlacement.cotc6;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc7':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc7) {
+                  placement.isPlaced = savedPlacement.cotc7;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc8':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc8) {
+                  placement.isPlaced = savedPlacement.cotc8;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc9':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc9) {
+                  placement.isPlaced = savedPlacement.cotc9;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc10':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc10) {
+                  placement.isPlaced = savedPlacement.cotc10;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc11':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc11) {
+                  placement.isPlaced = savedPlacement.cotc11;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            case 'cotc12':
+              // Retrieve from the list of saved placements based on item code
+              for (var savedPlacement in savedPlacements) {
+                if (savedPlacement.cotc12) {
+                  placement.isPlaced = savedPlacement.cotc12;
+                  placement.isPlacedFromDB = true;
+                }
+              }
+              break;
+            default:
+              // Handle default case
+              break;
+          }
+        }
+      }
+    }
+
+    setState(() {});
   }
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child, Widget? trailing}) {
@@ -1075,6 +1216,80 @@ class _DeliveryPageState extends State<DeliveryPage> {
     );
   }
 
+  Widget _buildPlacementCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _buildSectionCard(
+      title: 'Placement',
+      icon: Icons.inventory_2_outlined,
+      trailing: Text(
+        '${listPlacement.where((placement) => placement.isPlaced).length}/12 placed',
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+      ),
+      child: SizedBox(
+        height: 320,
+        child: ListView.separated(
+          primary: false,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(right: 4),
+          itemCount: 12,
+          separatorBuilder: (_, _) => Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          itemBuilder: (context, index) {
+            final isPlaced = listPlacement[index].isPlaced;
+
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: isPlaced ? colorScheme.primary.withValues(alpha: 0.08) : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: isPlaced ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent),
+              ),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    listPlacement[index].itemImagePath,
+                    width: 80,
+                    height: 60,
+                    fit: BoxFit.fitWidth,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 80,
+                      height: 60,
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Icon(Icons.image_outlined, color: colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+                title: Text(listPlacement[index].itemName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  isPlaced ? 'Placed and ready' : 'Pending placement',
+                  style: TextStyle(fontSize: 12, color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                ),
+                trailing: Checkbox(
+                  value: isPlaced,
+                  activeColor: colorScheme.primary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  onChanged: (value) {
+                    if (listPlacement[index].isPlacedFromDB) {
+                      null;
+                    } else {
+                      setState(() {
+                        listPlacement[index].isPlaced = value ?? false;
+                      });
+                    }
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isDelivered = dropdownStatus.text == DeliveryStatus.delivered;
@@ -1114,6 +1329,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
                 // 4. Receipt & Documents Card
                 _buildReceiptCard(),
+
+                // 4b. Placement Card
+                if (widget.deliveryID.isEmpty && dropdownHapiStore.text.isNotEmpty) _buildPlacementCard(),
 
                 // 5. SMS Notification Card (when creating new delivery)
                 if (widget.deliveryID.isEmpty) _buildSmsCard(),

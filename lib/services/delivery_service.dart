@@ -19,8 +19,9 @@ class DeliveryService {
         );
   }
 
-  void addDelivery(Delivery delivery) {
-    _ordersRef.add(delivery);
+  Future<String> addDelivery(Delivery delivery) async {
+    final documentReference = await _ordersRef.add(delivery);
+    return documentReference.id;
   }
 
   void updateDelivery(String deliveryID, Delivery delivery) {
