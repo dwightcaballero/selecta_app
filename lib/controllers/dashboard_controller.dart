@@ -55,6 +55,9 @@ class DashboardController {
     // DASHBOARD: total stores with finished placement
     dashboardDTO.totalPlacementCount = await PlacementService.getCountOfFinishedPlacements();
 
+    // DASHBOARD: total stores opened this month
+    dashboardDTO.totalExpansionCount = (await HapiStoreService.getListHapiStoresWithOpeningDateInCurrentMonth()).length;
+
     // SAVE: dashboard data
     String jsonString = jsonEncode(dashboardDTO.toJson());
     await prefs.setString('dashboard_DTO', jsonString);

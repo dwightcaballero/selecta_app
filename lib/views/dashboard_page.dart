@@ -6,6 +6,7 @@ import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
+import 'package:flutter_app/views/pages/dashboard/expansion_page.dart';
 import 'package:flutter_app/views/pages/dashboard/overpaymentlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/sales_page.dart';
@@ -276,9 +277,7 @@ class _DashboardPageState extends State<DashboardPage> {
             Expanded(
               child: _buildBlankCard(title: 'Store Scanning', icon: Icons.qr_code_scanner_outlined),
             ),
-            Expanded(
-              child: _buildBlankCard(title: 'Expansion', icon: Icons.trending_up_outlined),
-            ),
+            Expanded(child: _buildExpansionCard()),
           ],
         ),
       ],
@@ -308,7 +307,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     sectionsSpace: 2,
                     centerSpaceRadius: 36,
                     sections: [
-                      PieChartSectionData(value: buyingThruput <= 0 ? 0.01 : buyingThruput, color: Colors.orange, showTitle: false, radius: 14),
+                      PieChartSectionData(value: buyingThruput <= 0 ? 0.01 : buyingThruput, color: Colors.purple, showTitle: false, radius: 14),
                       PieChartSectionData(
                         value: missingThruput <= 0 ? 0.01 : missingThruput,
                         color: Colors.grey.shade300,
@@ -323,7 +322,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildLegendRow('Actual', Helperfunctions.formatDoubleAmountForDisplay(buyingThruput), Colors.orange),
+          _buildLegendRow('Actual', Helperfunctions.formatDoubleAmountForDisplay(buyingThruput), Colors.purple),
           _buildLegendRow('Missing', Helperfunctions.formatDoubleAmountForDisplay(missingThruput), Colors.grey),
           _buildLegendRow('Target', Helperfunctions.formatDoubleAmountForDisplay(thruputTarget), colorScheme.onSurface),
         ],
@@ -425,7 +424,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final double sales = dashboardDTO.totalInvoiceAmount;
     final double missing = (target - sales) < 0 ? 0 : (target - sales);
     final double percentage = target <= 0 ? 0 : (sales / target).clamp(0, 1);
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 0);
+    final currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
 
     return _buildCardWrapper(
       title: 'Sales',
@@ -456,6 +455,47 @@ class _DashboardPageState extends State<DashboardPage> {
           _buildLegendRow('Invoiced', currencyFormat.format(sales), Colors.green),
           _buildLegendRow('Missing', currencyFormat.format(missing), Colors.grey),
           _buildLegendRow('Target', currencyFormat.format(target), colorScheme.onSurface),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpansionCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    const double target = 8;
+    double opened = isSyncing ? 0 : dashboardDTO.totalExpansionCount.toDouble();
+    double missing = (target - opened).clamp(0.0, double.infinity);
+    final percentage = target == 0 ? 0.0 : (opened / target);
+
+    return _buildCardWrapper(
+      title: 'Expansion',
+      icon: Icons.trending_up_outlined,
+      nextPage: const ExpansionPage(),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 120,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                PieChart(
+                  PieChartData(
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 36,
+                    sections: [
+                      PieChartSectionData(value: opened <= 0 ? 0.01 : opened, color: Colors.teal, showTitle: false, radius: 14),
+                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: Colors.grey.shade300, showTitle: false, radius: 12),
+                    ],
+                  ),
+                ),
+                Text(NumberFormat('0%').format(percentage), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildLegendRow('Opened', opened.toStringAsFixed(0), Colors.teal),
+          _buildLegendRow('Missing', missing.toStringAsFixed(0), Colors.grey),
+          _buildLegendRow('Target', target.toStringAsFixed(0), colorScheme.onSurface),
         ],
       ),
     );

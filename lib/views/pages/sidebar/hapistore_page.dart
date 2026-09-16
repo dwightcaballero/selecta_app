@@ -1,6 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
@@ -21,6 +23,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
   late TextEditingController txtAddress;
   late TextEditingController txtContact;
   late TextEditingController txtName;
+  DateTime? _selectedOpeningDate;
 
   final _formKey = GlobalKey<FormState>();
 
@@ -38,6 +41,28 @@ class _HapiStorePageState extends State<HapiStorePage> {
     txtName = TextEditingController(text: widget.hapistore.storeName);
     txtAddress = TextEditingController(text: widget.hapistore.storeAddress);
     txtContact = TextEditingController(text: widget.hapistore.storeContact);
+    _selectedOpeningDate = widget.hapistore.openingDate?.toDate();
+  }
+
+  void onChangeDate() async {
+    final DateTime? dateTime = await showDatePicker(
+      context: context,
+      initialDate: _selectedOpeningDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(3000),
+    );
+
+    if (dateTime != null) {
+      setState(() {
+        _selectedOpeningDate = dateTime;
+      });
+    }
+  }
+
+  void onClearDate() {
+    setState(() {
+      _selectedOpeningDate = null;
+    });
   }
 
   void onSave() {
@@ -46,6 +71,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
         storeName: txtName.text.trim().toUpperCase(),
         storeAddress: txtAddress.text.trim(),
         storeContact: txtContact.text.trim(),
+        openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
       );
       db.addHapiStore(newHs);
       ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
@@ -61,6 +87,8 @@ class _HapiStorePageState extends State<HapiStorePage> {
         storeName: txtName.text.trim().toUpperCase(),
         storeAddress: txtAddress.text.trim(),
         storeContact: txtContact.text.trim(),
+        openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
+        clearOpeningDate: _selectedOpeningDate == null,
       );
       db.updateHapiStore(widget.hapiStoreID, updatedHS);
       ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
@@ -125,7 +153,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
             textCapitalization: TextCapitalization.characters,
             decoration: InputDecoration(
               labelText: 'Store Name',
-              hintText: 'e.g. TITA MELY SARI-SARI STORE',
+              hintText: 'e.g. DWIGHT MINI STORE',
               prefixIcon: Icon(Icons.store_outlined, size: 20, color: colorScheme.primary),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -167,7 +195,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
             maxLines: 4,
             decoration: InputDecoration(
               labelText: 'Store Address',
-              hintText: 'e.g. Purok 3, Barangay San Jose...',
+              hintText: 'e.g. Purok 14, Saavedra Village, Bago Aplaya...',
               alignLabelWithHint: true,
               prefixIcon: Icon(Icons.location_on_outlined, size: 20, color: colorScheme.primary),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -179,7 +207,51 @@ class _HapiStorePageState extends State<HapiStorePage> {
               return null;
             },
           ),
+
+          // Opening Date
+          _buildDatePickerField(label: 'Opening Date', selectedDate: _selectedOpeningDate, onTap: onChangeDate, onClear: onClearDate),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDatePickerField({required String label, required DateTime? selectedDate, required VoidCallback onTap, VoidCallback? onClear}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.black54),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_month_outlined, size: 20, color: colorScheme.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                  Text(
+                    selectedDate != null ? Helperfunctions.formatDateForDisplay(selectedDate) : 'Select Date',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: selectedDate != null ? FontWeight.w600 : FontWeight.normal,
+                      color: selectedDate != null ? null : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (selectedDate != null && onClear != null)
+              IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: onClear, padding: EdgeInsets.zero, constraints: const BoxConstraints())
+            else
+              Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.primary),
+          ],
+        ),
       ),
     );
   }

@@ -67,4 +67,32 @@ class HapiStoreService {
     var snapshot = await FirebaseFirestore.instance.collection(HAPISTORE_COLLECTION_REF).orderBy('storeName').get();
     return snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
   }
+
+  // Get list of hapi stores with opening date within the current month
+  static Future<List<Hapistore>> getListHapiStoresWithOpeningDateInCurrentMonth() async {
+    var now = DateTime.now();
+    var firstDayOfMonth = DateTime(now.year, now.month, 1);
+    var lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+
+    var snapshot = await FirebaseFirestore.instance
+        .collection(HAPISTORE_COLLECTION_REF)
+        .where('openingDate', isGreaterThanOrEqualTo: firstDayOfMonth)
+        .where('openingDate', isLessThanOrEqualTo: lastDayOfMonth)
+        .get();
+
+    return snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
+  }
+
+  // Get list of stores opened within the past 3 months
+  static Future<List<Hapistore>> getListHapiStoresOpenedWithinPastThreeMonths() async {
+    var now = DateTime.now();
+    var threeMonthsAgo = DateTime(now.year, now.month - 3, 0);
+
+    var snapshot = await FirebaseFirestore.instance
+        .collection(HAPISTORE_COLLECTION_REF)
+        .where('openingDate', isGreaterThanOrEqualTo: threeMonthsAgo)
+        .get();
+
+    return snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
+  }
 }
