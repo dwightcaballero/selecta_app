@@ -7,6 +7,7 @@ import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/views/pages/dashboard/overpaymentlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/sales_page.dart';
 import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/creditlist_page.dart';
@@ -341,7 +342,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return _buildCardWrapper(
       title: 'Placement',
       icon: Icons.grid_view_outlined,
-      nextPage: const BuyinglistPage(),
+      nextPage: const PlacementlistPage(),
       child: Column(
         children: [
           SizedBox(

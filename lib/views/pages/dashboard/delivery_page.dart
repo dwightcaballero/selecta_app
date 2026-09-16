@@ -112,20 +112,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
         flags: listPlacement.map((placement) => placement.isPlaced).toList(),
         id: placementID,
       );
-      if (placement.cotc1 &&
-          placement.cotc2 &&
-          placement.cotc3 &&
-          placement.cotc4 &&
-          placement.cotc5 &&
-          placement.cotc6 &&
-          placement.cotc7 &&
-          placement.cotc8 &&
-          placement.cotc9 &&
-          placement.cotc10 &&
-          placement.cotc11 &&
-          placement.cotc12) {
-        placement.isFinished = true;
-      }
+      placement.progressCount = listPlacement.where((placement) => placement.isPlaced).length;
+      placement.isFinished = placement.progressCount == 12;
       await placementService.savePlacement(placement);
 
       // log transaction

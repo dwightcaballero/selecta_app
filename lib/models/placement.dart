@@ -17,6 +17,7 @@ class Placement {
   bool cotc11;
   bool cotc12;
   bool isFinished;
+  int progressCount;
 
   Placement({
     required this.id,
@@ -35,6 +36,7 @@ class Placement {
     required this.cotc11,
     required this.cotc12,
     required this.isFinished,
+    required this.progressCount,
   });
 
   Placement.fromJson(Map<String, Object?> json)
@@ -55,6 +57,7 @@ class Placement {
         cotc11: json['cotc11']! as bool,
         cotc12: json['cotc12']! as bool,
         isFinished: json['isFinished']! as bool,
+        progressCount: json['progressCount']! as int,
       );
 
   factory Placement.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -77,6 +80,7 @@ class Placement {
         cotc11: data?['cotc11'] as bool,
         cotc12: data?['cotc12'] as bool,
         isFinished: data?['isFinished'] as bool,
+        progressCount: data?['progressCount'] as int,
       );
     } else {
       return Placement.empty();
@@ -100,6 +104,7 @@ class Placement {
     cotc11: false,
     cotc12: false,
     isFinished: false,
+    progressCount: 0,
   );
 
   factory Placement.fromFlags({required String id, required String storeName, required Timestamp deliveryDate, required List<bool> flags}) {
@@ -121,6 +126,7 @@ class Placement {
       cotc11: flags[10],
       cotc12: flags[11],
       isFinished: false,
+      progressCount: 0,
     );
   }
 
@@ -141,6 +147,7 @@ class Placement {
     bool? cotc11,
     bool? cotc12,
     bool? isFinished,
+    int? progressCount,
   }) {
     return Placement(
       id: id ?? this.id,
@@ -159,6 +166,7 @@ class Placement {
       cotc11: cotc11 ?? this.cotc11,
       cotc12: cotc12 ?? this.cotc12,
       isFinished: isFinished ?? this.isFinished,
+      progressCount: progressCount ?? this.progressCount,
     );
   }
 
@@ -180,6 +188,7 @@ class Placement {
       'cotc11': cotc11,
       'cotc12': cotc12,
       'isFinished': isFinished,
+      'progressCount': progressCount,
     };
   }
 }

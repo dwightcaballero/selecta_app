@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_app/services/hapistore_service.dart';
 import '../models/placement.dart';
 
 // ignore: constant_identifier_names
@@ -51,9 +52,46 @@ class PlacementService {
     }
   }
 
+  // Get list of all placement records within the current month\
+  static Future<List<Placement>> getListOfPlacementsWithinCurrentMonth() async {
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final startOfNextMonth = DateTime(now.year, now.month + 1, 1);
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection(PLACEMENT_COLLECTION_REF)
+        .where('deliveryDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('deliveryDate', isLessThan: Timestamp.fromDate(startOfNextMonth))
+        .get();
+
+    return snapshot.docs.map((doc) {
+      var placement = Placement.fromJson(doc.data());
+      placement.id = doc.id;
+      return placement;
+    }).toList();
+  }
+
   // Get count of all placement records with finished status
   static Future<int> getCountOfFinishedPlacements() async {
     final snapshot = await FirebaseFirestore.instance.collection(PLACEMENT_COLLECTION_REF).where('isFinished', isEqualTo: true).get();
     return snapshot.docs.length;
+  }
+
+  static Future<List<Placement>> getListPlacementForAllStores() async {
+    var listStores = await HapiStoreService.getListHapiStores();
+    var listPlacements = await getListOfPlacementsWithinCurrentMonth();
+    List<Placement> finalList = [];
+    for (var store in listStores) {
+      Placement? placement = listPlacements.where((placement) => placement.storeName == store.storeName).firstOrNull;
+
+      if (placement != null) {
+        finalList.add(placement);
+      } else {
+        var tempPlacement = Placement.empty();
+        tempPlacement.storeName = store.storeName;
+        finalList.add(tempPlacement);
+      }
+    }
+    return finalList;
   }
 }
