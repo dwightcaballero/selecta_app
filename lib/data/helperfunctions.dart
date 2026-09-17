@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:decimal/decimal.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/transactionlog.dart';
 import 'package:flutter_app/models/users.dart';
@@ -170,6 +171,48 @@ class Helperfunctions {
 
     final TransactionLogService db = TransactionLogService();
     db.addLog(log);
+  }
+
+  // audit metadata fields excluded from create/update log details since they're redundant with the log's own loggedBy/loggedDate
+  static const List<String> _auditFieldsToSkip = ['createdBy', 'lastUpdatedBy', 'createdDate', 'lastupdatedDate'];
+
+  static String _formatFieldValue(Object? value) {
+    if (value == null) return '(empty)';
+    if (value is Timestamp) return formatTimestampForDisplay(value);
+    if (value is String) return value.isEmpty ? '(empty)' : value;
+    return value.toString();
+  }
+
+  static String _formatRecordDetails(Map<String, Object?> data) {
+    return data.entries
+        .where((entry) => !_auditFieldsToSkip.contains(entry.key))
+        .map((entry) => '${entry.key}: ${_formatFieldValue(entry.value)}')
+        .join('\n');
+  }
+
+  /// Logs the creation of a record, capturing all of its field values.
+  static Future<void> logCreate(String identifier, Map<String, Object?> newData) async {
+    await logTransaction(identifier, _formatRecordDetails(newData), LogAction.create);
+  }
+
+  /// Logs an update to a record, capturing only the fields whose values actually changed.
+  static Future<void> logUpdate(String identifier, Map<String, Object?> oldData, Map<String, Object?> newData) async {
+    final List<String> changes = [];
+    for (final key in newData.keys) {
+      if (_auditFieldsToSkip.contains(key)) continue;
+      final oldValue = oldData[key];
+      final newValue = newData[key];
+      if (oldValue.toString() != newValue.toString()) {
+        changes.add('$key: ${_formatFieldValue(oldValue)} → ${_formatFieldValue(newValue)}');
+      }
+    }
+
+    await logTransaction(identifier, changes.isEmpty ? 'No field changes detected.' : changes.join('\n'), LogAction.update);
+  }
+
+  /// Logs the deletion of a record, capturing all of its field values at the time of deletion.
+  static Future<void> logDelete(String identifier, Map<String, Object?> oldData) async {
+    await logTransaction(identifier, _formatRecordDetails(oldData), LogAction.delete);
   }
 
   static Future<void> showLoading({required BuildContext context, required bool showLoading}) async {

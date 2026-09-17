@@ -44,11 +44,7 @@ class _ReturnPageState extends State<ReturnPage> {
 
     Navigator.pop(context);
 
-    await Helperfunctions.logTransaction(
-      '[REDELIVER] ${widget.delivery.storeName}',
-      'Status: ${updatedDelivery.transactionStatus}\nOrder Amount: ${Helperfunctions.formatDoubleAmountForDisplay(updatedDelivery.orderAmount)}',
-      LogAction.update,
-    );
+    await Helperfunctions.logUpdate('[REDELIVER] ${widget.delivery.storeName}', widget.delivery.toJson(), updatedDelivery.toJson());
   }
 
   void onDelete() async {
@@ -57,11 +53,7 @@ class _ReturnPageState extends State<ReturnPage> {
 
     Navigator.pop(context);
 
-    await Helperfunctions.logTransaction(
-      '[DELETE] ${widget.delivery.storeName}',
-      'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount)}',
-      LogAction.delete,
-    );
+    await Helperfunctions.logDelete('[DELETE] ${widget.delivery.storeName}', widget.delivery.toJson());
   }
 
   Widget _buildReturnOverviewCard() {

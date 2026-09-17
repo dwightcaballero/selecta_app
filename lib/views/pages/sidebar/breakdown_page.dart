@@ -106,6 +106,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
     );
 
     db.addBreakdown(newRecord);
+    Helperfunctions.logCreate(Helperfunctions.formatTimestampForDisplay(newRecord.breakdownDate), newRecord.toJson());
     ShowMessage.success(context, 'Successfully created a new breakdown record!');
     Navigator.pop(context);
   }
@@ -136,6 +137,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
     );
 
     db.updateBreakdown(widget.breakdownID, newRecord);
+    Helperfunctions.logUpdate(Helperfunctions.formatTimestampForDisplay(newRecord.breakdownDate), widget.breakdown.toJson(), newRecord.toJson());
     ShowMessage.success(context, 'Successfully updated breakdown record!');
     Navigator.pop(context);
   }

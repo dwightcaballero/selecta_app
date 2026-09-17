@@ -12,8 +12,7 @@ class TransactionLogService {
     _logRef = _firestore
         .collection(LOG_COLLECTION_REF)
         .withConverter<TransactionLog>(
-          fromFirestore: (snapshots, _) =>
-              TransactionLog.fromJson(snapshots.data()!),
+          fromFirestore: (snapshots, _) => TransactionLog.fromJson(snapshots.data()!),
           toFirestore: (log, _) => log.toJson(),
         );
   }
@@ -24,30 +23,29 @@ class TransactionLogService {
 
   Stream<QuerySnapshot> getLogsLastSevenDays() {
     DateTime sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
-    DateTime startOfDay = DateTime(
-      sevenDaysAgo.year,
-      sevenDaysAgo.month,
-      sevenDaysAgo.day,
-    );
-    DateTime endOfDay = DateTime(
-      sevenDaysAgo.year,
-      sevenDaysAgo.month,
-      sevenDaysAgo.day,
-      23,
-      59,
-      59,
-    );
+    DateTime startOfDay = DateTime(sevenDaysAgo.year, sevenDaysAgo.month, sevenDaysAgo.day);
+    DateTime endOfDay = DateTime(sevenDaysAgo.year, sevenDaysAgo.month, sevenDaysAgo.day, 23, 59, 59);
 
     try {
       Query query = _logRef
-          .where(
-            'loggedDate',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-          )
-          .where(
-            'loggedDate',
-            isLessThanOrEqualTo: Timestamp.fromDate(endOfDay),
-          )
+          .where('loggedDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('loggedDate', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+          .orderBy('loggedDate', descending: true);
+
+      return query.snapshots();
+    } catch (e) {
+      return Stream.empty();
+    }
+  }
+
+  Stream<QuerySnapshot> getLogsForDay(DateTime day) {
+    DateTime startOfDay = DateTime(day.year, day.month, day.day);
+    DateTime endOfDay = DateTime(day.year, day.month, day.day, 23, 59, 59);
+
+    try {
+      Query query = _logRef
+          .where('loggedDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('loggedDate', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
           .orderBy('loggedDate', descending: true);
 
       return query.snapshots();

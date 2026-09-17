@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/scanning.dart';
 import 'package:flutter_app/services/scanning_services.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
@@ -84,7 +85,13 @@ class _ScanningPageState extends State<ScanningPage> {
     );
 
     try {
+      final bool isNewRecord = _scanning.id.isEmpty;
       await _scanningServices.saveScanning(newRecord);
+      if (isNewRecord) {
+        await Helperfunctions.logCreate(newRecord.storeName, newRecord.toJson());
+      } else {
+        await Helperfunctions.logUpdate(newRecord.storeName, _scanning.toJson(), newRecord.toJson());
+      }
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully saved the scanning record!\n[${newRecord.storeName}]');
       Navigator.pop(context);

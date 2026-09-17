@@ -68,6 +68,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
         lastupdatedDate: Timestamp.now(),
       );
       db.addBadOrder(newRecord);
+      Helperfunctions.logCreate(dropDownController.text, newRecord.toJson());
       ShowMessage.success(context, 'Successfully created bad order record for [${dropDownController.text}]!');
       Navigator.pop(context);
     } else {
@@ -77,6 +78,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
 
   void onDelete() {
     db.deleteBadOrder(widget.recID);
+    Helperfunctions.logDelete(widget.badorder.hapistore, widget.badorder.toJson());
     ShowMessage.success(context, 'Successfully deleted bad order record for [${widget.badorder.hapistore}]!');
     Navigator.pop(context);
   }
@@ -94,6 +96,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
         lastupdatedDate: Timestamp.now(),
       );
       db.updateBadOrder(widget.recID, newRecord);
+      Helperfunctions.logUpdate(dropDownController.text, widget.badorder.toJson(), newRecord.toJson());
       ShowMessage.success(context, 'Successfully updated bad order record for [${dropDownController.text}]!');
       Navigator.pop(context);
     } else {

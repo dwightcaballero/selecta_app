@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/users.dart';
 import 'package:flutter_app/services/auth_service.dart';
@@ -92,6 +93,7 @@ class _RegisterPageState extends State<RegisterPage> {
       final newRecord = Users(email: email, username: username, role: role, dealerName: dealerName);
 
       db.addUser(newRecord);
+      await Helperfunctions.logCreate(username, newRecord.toJson());
 
       await authService.value.updateUsername(username: username);
 

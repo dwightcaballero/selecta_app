@@ -19,11 +19,59 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedActionFilter = 'All';
+  DateTime _selectedDate = DateTime.now();
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final DateTime? picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime(2000), lastDate: DateTime.now());
+
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  Widget _buildDateSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bool isToday = DateUtils.isSameDay(_selectedDate, DateTime.now());
+
+    return Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            onTap: _pickDate,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today_outlined, size: 18, color: colorScheme.primary),
+                  const SizedBox(width: 10),
+                  Text(DateFormat('EEE, d MMM yyyy').format(_selectedDate), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (!isToday) ...[
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Jump to today',
+            onPressed: () => setState(() => _selectedDate = DateTime.now()),
+            icon: Icon(Icons.today_outlined, color: colorScheme.primary),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _buildFilterHeader() {
@@ -33,6 +81,10 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Column(
         children: [
+          // Day Selector
+          _buildDateSelector(),
+          const SizedBox(height: 10),
+
           // Search Bar
           TextField(
             controller: _searchController,
@@ -97,7 +149,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
 
   Widget _buildLogsList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: db.getListLogs(),
+      stream: db.getLogsForDay(_selectedDate),
       builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
         if (snapshot.hasError) {
           return _buildErrorState();

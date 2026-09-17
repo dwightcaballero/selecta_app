@@ -48,6 +48,7 @@ class _CreditPageState extends State<CreditPage> {
       lastupdatedDate: Timestamp.now(),
     );
     db.updateDelivery(widget.recID, updatedDelivery);
+    Helperfunctions.logUpdate(updatedDelivery.storeName, widget.delivery.toJson(), updatedDelivery.toJson());
     ShowMessage.success(context, 'Successfully updated the credit status!\n[${updatedDelivery.storeName}]');
     Navigator.pop(context);
   }

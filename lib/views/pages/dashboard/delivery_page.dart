@@ -117,11 +117,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       await placementService.savePlacement(placement);
 
       // log transaction
-      await Helperfunctions.logTransaction(
-        dropdownHapiStore.text,
-        'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(newRecord.orderAmount)}',
-        LogAction.create,
-      );
+      await Helperfunctions.logCreate(dropdownHapiStore.text, newRecord.toJson());
 
       // send text message to the store if user opted to send a text message
       if (sendText) {
@@ -260,11 +256,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       db.updateDelivery(widget.deliveryID, updatedDelivery);
 
       // log transaction
-      await Helperfunctions.logTransaction(
-        dropdownHapiStore.text,
-        'Status: ${updatedDelivery.transactionStatus}\nOrder Amount: ${Helperfunctions.formatDoubleAmountForDisplay(updatedDelivery.orderAmount)}',
-        LogAction.update,
-      );
+      await Helperfunctions.logUpdate(dropdownHapiStore.text, widget.delivery.toJson(), updatedDelivery.toJson());
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully updated delivery record!\n[${widget.delivery.storeName}]');
@@ -284,11 +276,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     db.deleteDelivery(widget.deliveryID);
 
     // log transaction
-    await Helperfunctions.logTransaction(
-      dropdownHapiStore.text,
-      'Order Amount: ${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount)}',
-      LogAction.delete,
-    );
+    await Helperfunctions.logDelete(dropdownHapiStore.text, widget.delivery.toJson());
 
     if (mounted) {
       ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]');
@@ -560,13 +548,16 @@ class _DeliveryPageState extends State<DeliveryPage> {
           child: SegmentedButton<String>(
             showSelectedIcon: false,
             style: SegmentedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             segments: [
               ButtonSegment<String>(
                 value: DeliveryStatus.pending,
-                label: const Text(DeliveryStatus.pending, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(DeliveryStatus.pending, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
                 icon: Icon(
                   Icons.pending_actions,
                   size: 18,
@@ -575,7 +566,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ),
               ButtonSegment<String>(
                 value: DeliveryStatus.delivered,
-                label: const Text(DeliveryStatus.delivered, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(DeliveryStatus.delivered, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
                 icon: Icon(
                   Icons.check_circle_outline,
                   size: 18,
@@ -584,7 +578,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ),
               ButtonSegment<String>(
                 value: DeliveryStatus.returned,
-                label: const Text(DeliveryStatus.returned, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(DeliveryStatus.returned, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
                 icon: Icon(
                   Icons.assignment_return_outlined,
                   size: 18,

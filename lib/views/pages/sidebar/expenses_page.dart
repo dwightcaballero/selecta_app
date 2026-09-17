@@ -61,6 +61,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
         lastupdatedDate: Timestamp.now(),
       );
       db.addExpenses(newRecord);
+      await Helperfunctions.logCreate(txtDescription.text, newRecord.toJson());
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully created expense record for [${txtDescription.text}]!');
@@ -83,6 +84,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
         lastupdatedDate: Timestamp.now(),
       );
       db.updateExpenses(widget.recID, expenses);
+      await Helperfunctions.logUpdate(expenses.description, widget.expense.toJson(), expenses.toJson());
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully updated expense record for [${expenses.description}]!');
@@ -95,6 +97,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
 
   void onDelete() async {
     db.deleteExpenses(widget.recID);
+    await Helperfunctions.logDelete(widget.expense.description, widget.expense.toJson());
 
     if (mounted) {
       ShowMessage.success(context, 'Successfully deleted expense record for [${widget.expense.description}]!');

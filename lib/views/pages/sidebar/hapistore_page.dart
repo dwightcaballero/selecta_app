@@ -74,6 +74,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
         openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
       );
       db.addHapiStore(newHs);
+      Helperfunctions.logCreate(newHs.storeName, newHs.toJson());
       ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
       Navigator.pop(context);
     } else {
@@ -91,6 +92,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
         clearOpeningDate: _selectedOpeningDate == null,
       );
       db.updateHapiStore(widget.hapiStoreID, updatedHS);
+      Helperfunctions.logUpdate(updatedHS.storeName, widget.hapistore.toJson(), updatedHS.toJson());
       ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
       Navigator.pop(context);
     } else {
@@ -100,6 +102,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   void onDelete() {
     db.deleteHapiStore(widget.hapiStoreID);
+    Helperfunctions.logDelete(widget.hapistore.storeName, widget.hapistore.toJson());
     ShowMessage.success(context, 'Successfully deleted Hapi Store [${widget.hapistore.storeName}]!');
     Navigator.pop(context);
   }

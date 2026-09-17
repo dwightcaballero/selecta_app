@@ -31,6 +31,13 @@ class _OverpaymentPageState extends State<OverpaymentPage> {
 
     widget.purchaseorder.isSettled = true;
     db.updatePurchaseorder(widget.purchaseorderID, widget.purchaseorder);
+    Helperfunctions.logUpdate(
+      widget.purchaseorder.invoiceNumber.isNotEmpty
+          ? widget.purchaseorder.invoiceNumber
+          : Helperfunctions.formatTimestampForDisplay(widget.purchaseorder.orderDate),
+      {...widget.purchaseorder.toJson(), 'isSettled': false},
+      widget.purchaseorder.toJson(),
+    );
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Overpayment settled successfully')));
   }

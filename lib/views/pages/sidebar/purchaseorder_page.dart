@@ -104,6 +104,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       );
 
       db.addPurchaseorder(newPurchaseorder);
+      await Helperfunctions.logCreate(Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate), newPurchaseorder.toJson());
 
       if (mounted) {
         Navigator.pop(context);
@@ -142,6 +143,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       );
 
       db.updatePurchaseorder(widget.purchaseorderID, updatedPurchaseorder);
+      await Helperfunctions.logUpdate(
+        updatedPurchaseorder.invoiceNumber.isNotEmpty
+            ? updatedPurchaseorder.invoiceNumber
+            : Helperfunctions.formatTimestampForDisplay(updatedPurchaseorder.orderDate),
+        widget.purchaseorder.toJson(),
+        updatedPurchaseorder.toJson(),
+      );
 
       if (mounted) {
         Navigator.pop(context);
@@ -156,6 +164,12 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     }
 
     db.deletePurchaseorder(widget.purchaseorderID);
+    await Helperfunctions.logDelete(
+      widget.purchaseorder.invoiceNumber.isNotEmpty
+          ? widget.purchaseorder.invoiceNumber
+          : Helperfunctions.formatTimestampForDisplay(widget.purchaseorder.orderDate),
+      widget.purchaseorder.toJson(),
+    );
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Purchase order deleted successfully!')));
