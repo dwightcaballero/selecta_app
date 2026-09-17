@@ -6,6 +6,7 @@ import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/services/placement_service.dart';
 import 'package:flutter_app/services/purchaseorder_service.dart';
+import 'package:flutter_app/services/scanning_services.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -57,6 +58,12 @@ class DashboardController {
 
     // DASHBOARD: total stores opened this month
     dashboardDTO.totalExpansionCount = (await HapiStoreService.getListHapiStoresWithOpeningDateInCurrentMonth()).length;
+
+    // DASHBOARD: total scanned and not scanned stores
+    var listScannings = await ScanningServices.getAllScannings();
+    listScannings = listScannings.where((scanning) => scanning.status != ScanningStatus.pullout).toList();
+    dashboardDTO.totalScanCount = listScannings.where((scanning) => scanning.status == ScanningStatus.scanned).length;
+    dashboardDTO.totalNotScannedCount = listScannings.length - dashboardDTO.totalScanCount;
 
     // SAVE: dashboard data
     String jsonString = jsonEncode(dashboardDTO.toJson());

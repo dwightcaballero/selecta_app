@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class KConstants {
   static const themeModeKey = 'themeModeKey';
@@ -36,6 +35,12 @@ class DeliveryStatus {
 class CreditStatus {
   static const paid = "Paid";
   static const unpaid = "Unpaid";
+}
+
+class ScanningStatus {
+  static const scanned = "Scanned";
+  static const notScanned = "Not Scanned";
+  static const pullout = "Pullout";
 }
 
 class ConfirmMessage {

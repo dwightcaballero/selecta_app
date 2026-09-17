@@ -55,6 +55,8 @@ dependencies:
   fl_chart: ^1.2.0
   gal: ^2.3.3
   http: ^1.6.0
+  mobile_scanner: ^7.4.2
+  barcode_widget: ^2.0.4
 
 dev_dependencies:
   flutter_test:

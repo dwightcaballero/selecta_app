@@ -20,6 +20,12 @@
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"
+        },
+        {
+            "name": "Flutter (lib/views/widgets/barcode_scanner_page.dart)",
+            "type": "dart",
+            "request": "launch",
+            "program": "lib/views/widgets/barcode_scanner_page.dart"
         }
     ]
 }

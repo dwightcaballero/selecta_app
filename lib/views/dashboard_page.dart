@@ -8,8 +8,10 @@ import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/views/pages/dashboard/expansion_page.dart';
 import 'package:flutter_app/views/pages/dashboard/overpaymentlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/pjp_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/sales_page.dart';
+import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/creditlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
@@ -130,10 +132,13 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: (isDealer ? Colors.blue : Colors.teal).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(
+              color: (isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Text(
               isDealer ? 'Dealer' : 'Salesman',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isDealer ? Colors.blue.shade800 : Colors.teal.shade800),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isDealer ? colorScheme.primary : colorScheme.tertiary),
             ),
           ),
         ],
@@ -162,22 +167,22 @@ class _DashboardPageState extends State<DashboardPage> {
               label: 'Deliveries',
               icon: Icons.local_shipping_outlined,
               count: dashboardDTO.pendingDeliveryCount,
-              color: Colors.blue,
+              color: Theme.of(context).colorScheme.primary,
               nextPage: const DeliveryListPage(),
             ),
             _buildQuickAccessCard(
-              label: 'Credit',
-              icon: Icons.credit_card_outlined,
-              count: dashboardDTO.unpaidCreditCount,
-              color: Colors.red,
-              nextPage: const CreditlistPage(),
+              label: 'Scanning',
+              icon: Icons.qr_code_scanner_outlined,
+              count: dashboardDTO.totalNotScannedCount,
+              color: Theme.of(context).colorScheme.primary,
+              nextPage: const ScanninglistPage(),
             ),
             _buildQuickAccessCard(
-              label: 'Returns',
-              icon: Icons.assignment_return_outlined,
-              count: dashboardDTO.returnedDeliveryCount,
-              color: Colors.purple,
-              nextPage: const ReturnlistPage(),
+              label: 'PJP',
+              icon: Icons.map_outlined,
+              count: 0,
+              color: Theme.of(context).colorScheme.primary,
+              nextPage: const PjpPage(),
             ),
           ],
         ),
@@ -188,24 +193,30 @@ class _DashboardPageState extends State<DashboardPage> {
               label: 'Overpayment',
               icon: Icons.money_off_csred_outlined,
               count: dashboardDTO.overpaymentCount,
-              color: Colors.orange,
+              color: Theme.of(context).colorScheme.primary,
               nextPage: const OverpaymentlistPage(),
             ),
-            _buildQuickAccessCard(label: 'TBA', icon: Icons.question_mark_outlined, count: 0, color: Colors.green, nextPage: const CreditlistPage()),
-            _buildQuickAccessCard(label: 'TBA', icon: Icons.question_mark_outlined, count: 0, color: Colors.yellow, nextPage: const ReturnlistPage()),
+            _buildQuickAccessCard(
+              label: 'Credit',
+              icon: Icons.credit_card_outlined,
+              count: dashboardDTO.unpaidCreditCount,
+              color: Theme.of(context).colorScheme.primary,
+              nextPage: const CreditlistPage(),
+            ),
+            _buildQuickAccessCard(
+              label: 'Returns',
+              icon: Icons.assignment_return_outlined,
+              count: dashboardDTO.returnedDeliveryCount,
+              color: Theme.of(context).colorScheme.primary,
+              nextPage: const ReturnlistPage(),
+            ),
           ],
         ),
       ],
     );
   }
 
-  Widget _buildQuickAccessCard({
-    required String label,
-    required IconData icon,
-    required int count,
-    required MaterialColor color,
-    required Widget nextPage,
-  }) {
+  Widget _buildQuickAccessCard({required String label, required IconData icon, required int count, required Color color, required Widget nextPage}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Expanded(
@@ -229,11 +240,11 @@ class _DashboardPageState extends State<DashboardPage> {
                 Badge(
                   isLabelVisible: count > 0,
                   label: Text('$count', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                  backgroundColor: color.shade700,
+                  backgroundColor: Colors.red,
                   child: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-                    child: Icon(icon, size: 24, color: color.shade800),
+                    child: Icon(icon, size: 24, color: color),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -274,9 +285,7 @@ class _DashboardPageState extends State<DashboardPage> {
           spacing: 12,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: _buildBlankCard(title: 'Store Scanning', icon: Icons.qr_code_scanner_outlined),
-            ),
+            Expanded(child: _buildScanningCard()),
             Expanded(child: _buildExpansionCard()),
           ],
         ),
@@ -286,6 +295,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildThruputCard() {
     final colorScheme = Theme.of(context).colorScheme;
+    final accent = _metricColor(context, 'throughput');
     double buyingThruput = isSyncing ? 0 : dashboardDTO.buyingThruput;
     double thruputTarget = 8000;
     final missingThruput = (thruputTarget - buyingThruput).clamp(0.0, double.infinity);
@@ -294,6 +304,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return _buildCardWrapper(
       title: 'Throughput',
       icon: Icons.speed_outlined,
+      accent: accent,
       nextPage: ThruputPage(dashboardDTO: dashboardDTO),
       child: Column(
         children: [
@@ -307,10 +318,10 @@ class _DashboardPageState extends State<DashboardPage> {
                     sectionsSpace: 2,
                     centerSpaceRadius: 36,
                     sections: [
-                      PieChartSectionData(value: buyingThruput <= 0 ? 0.01 : buyingThruput, color: Colors.purple, showTitle: false, radius: 14),
+                      PieChartSectionData(value: buyingThruput <= 0 ? 0.01 : buyingThruput, color: accent, showTitle: false, radius: 14),
                       PieChartSectionData(
                         value: missingThruput <= 0 ? 0.01 : missingThruput,
-                        color: Colors.grey.shade300,
+                        color: _mutedChartColor(context),
                         showTitle: false,
                         radius: 12,
                       ),
@@ -322,8 +333,8 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildLegendRow('Actual', Helperfunctions.formatDoubleAmountForDisplay(buyingThruput), Colors.purple),
-          _buildLegendRow('Missing', Helperfunctions.formatDoubleAmountForDisplay(missingThruput), Colors.grey),
+          _buildLegendRow('Actual', Helperfunctions.formatDoubleAmountForDisplay(buyingThruput), accent),
+          _buildLegendRow('Missing', Helperfunctions.formatDoubleAmountForDisplay(missingThruput), colorScheme.onSurfaceVariant),
           _buildLegendRow('Target', Helperfunctions.formatDoubleAmountForDisplay(thruputTarget), colorScheme.onSurface),
         ],
       ),
@@ -332,6 +343,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildPlacementCard() {
     final colorScheme = Theme.of(context).colorScheme;
+    final accent = _metricColor(context, 'placement');
     final int totalStores = dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount;
     double actual = isSyncing ? 0 : dashboardDTO.totalPlacementCount.toDouble();
     double missing = isSyncing ? 0 : (totalStores - dashboardDTO.totalPlacementCount).toDouble();
@@ -341,6 +353,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return _buildCardWrapper(
       title: 'Placement',
       icon: Icons.grid_view_outlined,
+      accent: accent,
       nextPage: const PlacementlistPage(),
       child: Column(
         children: [
@@ -354,8 +367,8 @@ class _DashboardPageState extends State<DashboardPage> {
                     sectionsSpace: 2,
                     centerSpaceRadius: 36,
                     sections: [
-                      PieChartSectionData(value: actual <= 0 ? 0.01 : actual, color: Colors.blue, showTitle: false, radius: 14),
-                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: Colors.grey.shade300, showTitle: false, radius: 12),
+                      PieChartSectionData(value: actual <= 0 ? 0.01 : actual, color: accent, showTitle: false, radius: 14),
+                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: _mutedChartColor(context), showTitle: false, radius: 12),
                     ],
                   ),
                 ),
@@ -364,8 +377,8 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildLegendRow('Actual', actual.toStringAsFixed(0), Colors.blue),
-          _buildLegendRow('Missing', missing.toStringAsFixed(0), Colors.grey),
+          _buildLegendRow('Actual', actual.toStringAsFixed(0), accent),
+          _buildLegendRow('Missing', missing.toStringAsFixed(0), colorScheme.onSurfaceVariant),
           _buildLegendRow('Target', target.toStringAsFixed(0), colorScheme.onSurface),
         ],
       ),
@@ -374,6 +387,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildBuyingCard() {
     final colorScheme = Theme.of(context).colorScheme;
+    final accent = _metricColor(context, 'buying');
     double buyingTarget = isSyncing ? 1 : (dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount).toDouble();
     double buyingCount = isSyncing ? 0 : dashboardDTO.buyingCount.toDouble();
     double nonBuyingCount = isSyncing ? 1 : dashboardDTO.nonBuyingCount.toDouble();
@@ -382,6 +396,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return _buildCardWrapper(
       title: 'Buying Stores',
       icon: Icons.shopping_cart_outlined,
+      accent: accent,
       nextPage: const BuyinglistPage(),
       child: Column(
         children: [
@@ -395,10 +410,10 @@ class _DashboardPageState extends State<DashboardPage> {
                     sectionsSpace: 2,
                     centerSpaceRadius: 36,
                     sections: [
-                      PieChartSectionData(value: buyingCount <= 0 ? 0.01 : buyingCount, color: Colors.red, showTitle: false, radius: 14),
+                      PieChartSectionData(value: buyingCount <= 0 ? 0.01 : buyingCount, color: accent, showTitle: false, radius: 14),
                       PieChartSectionData(
                         value: nonBuyingCount <= 0 ? 0.01 : nonBuyingCount,
-                        color: Colors.grey.shade300,
+                        color: _mutedChartColor(context),
                         showTitle: false,
                         radius: 12,
                       ),
@@ -410,8 +425,8 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildLegendRow('Buying', buyingCount.toStringAsFixed(0), Colors.red),
-          _buildLegendRow('Non-Buying', nonBuyingCount.toStringAsFixed(0), Colors.grey),
+          _buildLegendRow('Buying', buyingCount.toStringAsFixed(0), accent),
+          _buildLegendRow('Non-Buying', nonBuyingCount.toStringAsFixed(0), colorScheme.onSurfaceVariant),
           _buildLegendRow('Total Stores', buyingTarget.toStringAsFixed(0), colorScheme.onSurface),
         ],
       ),
@@ -420,6 +435,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildSalesCard() {
     final colorScheme = Theme.of(context).colorScheme;
+    final accent = _metricColor(context, 'sales');
     const double target = 1000000;
     final double sales = dashboardDTO.totalInvoiceAmount;
     final double missing = (target - sales) < 0 ? 0 : (target - sales);
@@ -429,6 +445,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return _buildCardWrapper(
       title: 'Sales',
       icon: Icons.attach_money,
+      accent: accent,
       nextPage: SalesPage(),
       child: Column(
         children: [
@@ -442,8 +459,8 @@ class _DashboardPageState extends State<DashboardPage> {
                     sectionsSpace: 2,
                     centerSpaceRadius: 36,
                     sections: [
-                      PieChartSectionData(value: sales <= 0 ? 0.01 : sales, color: Colors.green, showTitle: false, radius: 14),
-                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: Colors.grey.shade300, showTitle: false, radius: 12),
+                      PieChartSectionData(value: sales <= 0 ? 0.01 : sales, color: accent, showTitle: false, radius: 14),
+                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: _mutedChartColor(context), showTitle: false, radius: 12),
                     ],
                   ),
                 ),
@@ -452,8 +469,8 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildLegendRow('Invoiced', currencyFormat.format(sales), Colors.green),
-          _buildLegendRow('Missing', currencyFormat.format(missing), Colors.grey),
+          _buildLegendRow('Invoiced', currencyFormat.format(sales), accent),
+          _buildLegendRow('Missing', currencyFormat.format(missing), colorScheme.onSurfaceVariant),
           _buildLegendRow('Target', currencyFormat.format(target), colorScheme.onSurface),
         ],
       ),
@@ -462,6 +479,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildExpansionCard() {
     final colorScheme = Theme.of(context).colorScheme;
+    final accent = _metricColor(context, 'expansion');
     const double target = 8;
     double opened = isSyncing ? 0 : dashboardDTO.totalExpansionCount.toDouble();
     double missing = (target - opened).clamp(0.0, double.infinity);
@@ -470,6 +488,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return _buildCardWrapper(
       title: 'Expansion',
       icon: Icons.trending_up_outlined,
+      accent: accent,
       nextPage: const ExpansionPage(),
       child: Column(
         children: [
@@ -483,8 +502,8 @@ class _DashboardPageState extends State<DashboardPage> {
                     sectionsSpace: 2,
                     centerSpaceRadius: 36,
                     sections: [
-                      PieChartSectionData(value: opened <= 0 ? 0.01 : opened, color: Colors.teal, showTitle: false, radius: 14),
-                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: Colors.grey.shade300, showTitle: false, radius: 12),
+                      PieChartSectionData(value: opened <= 0 ? 0.01 : opened, color: accent, showTitle: false, radius: 14),
+                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: _mutedChartColor(context), showTitle: false, radius: 12),
                     ],
                   ),
                 ),
@@ -493,27 +512,72 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildLegendRow('Opened', opened.toStringAsFixed(0), Colors.teal),
-          _buildLegendRow('Missing', missing.toStringAsFixed(0), Colors.grey),
+          _buildLegendRow('Opened', opened.toStringAsFixed(0), accent),
+          _buildLegendRow('Missing', missing.toStringAsFixed(0), colorScheme.onSurfaceVariant),
           _buildLegendRow('Target', target.toStringAsFixed(0), colorScheme.onSurface),
         ],
       ),
     );
   }
 
-  Widget _buildBlankCard({required String title, required IconData icon, Widget? nextPage}) {
-    return _buildCardWrapper(title: title, icon: icon, nextPage: nextPage ?? const BuyinglistPage(), child: const SizedBox(height: 180));
+  Widget _buildScanningCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = _metricColor(context, 'scanning');
+    final scanned = isSyncing ? 0 : dashboardDTO.totalScanCount;
+    final notScanned = isSyncing ? 0 : dashboardDTO.totalNotScannedCount;
+    final total = scanned + notScanned;
+    final percentage = total == 0 ? 0.0 : scanned / total;
+
+    return _buildCardWrapper(
+      title: 'Store Scanning',
+      icon: Icons.qr_code_scanner_outlined,
+      accent: accent,
+      nextPage: const ScanninglistPage(),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 120,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                PieChart(
+                  PieChartData(
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 36,
+                    sections: [
+                      PieChartSectionData(value: scanned <= 0 ? 0.01 : scanned.toDouble(), color: accent, showTitle: false, radius: 14),
+                      PieChartSectionData(
+                        value: notScanned <= 0 ? 0.01 : notScanned.toDouble(),
+                        color: _mutedChartColor(context),
+                        showTitle: false,
+                        radius: 12,
+                      ),
+                    ],
+                  ),
+                ),
+                Text(NumberFormat('0%').format(percentage), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildLegendRow('Scanned', scanned.toString(), accent),
+          _buildLegendRow('Not Scanned', notScanned.toString(), colorScheme.onSurfaceVariant),
+          _buildLegendRow('Total', total.toString(), colorScheme.onSurface),
+        ],
+      ),
+    );
   }
 
-  Widget _buildCardWrapper({required String title, required IconData icon, required Widget child, required Widget nextPage}) {
+  Widget _buildCardWrapper({required String title, required IconData icon, required Widget child, required Widget nextPage, Color? accent}) {
     final colorScheme = Theme.of(context).colorScheme;
+    final cardAccent = accent ?? colorScheme.primary;
 
     return Card(
       elevation: 0,
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        side: BorderSide(color: cardAccent.withValues(alpha: 0.28)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -528,7 +592,13 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               Row(
                 children: [
-                  Icon(icon, size: 16, color: colorScheme.primary),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(color: cardAccent, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(icon, size: 16, color: cardAccent),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -640,6 +710,24 @@ class _DashboardPageState extends State<DashboardPage> {
         }
       },
     );
+  }
+
+  Color _mutedChartColor(BuildContext context) {
+    return Theme.of(context).colorScheme.surfaceContainerHighest;
+  }
+
+  Color _metricColor(BuildContext context, String metric) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return switch (metric) {
+      'sales' => const Color(0xFF15803D),
+      'buying' => const Color(0xFF2563EB),
+      'throughput' => const Color(0xFF7C3AED),
+      'placement' => const Color(0xFF0891B2),
+      'scanning' => const Color(0xFFD97706),
+      'expansion' => const Color(0xFF0F766E),
+      _ => colorScheme.primary,
+    };
   }
 
   @override
