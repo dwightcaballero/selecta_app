@@ -19,11 +19,22 @@ class HapiStorePage extends StatefulWidget {
 }
 
 class _HapiStorePageState extends State<HapiStorePage> {
+  static const String monday = 'Monday';
+  static const String tuesday = 'Tuesday';
+  static const String wednesday = 'Wednesday';
+  static const String thursday = 'Thursday';
+  static const String friday = 'Friday';
+  static const String saturday = 'Saturday';
+  static const String sunday = 'Sunday';
+
+  static const List<String> _pjpScheduleDays = [monday, tuesday, wednesday, thursday, friday, saturday, sunday];
+
   final HapiStoreService db = HapiStoreService();
   late TextEditingController txtAddress;
   late TextEditingController txtContact;
   late TextEditingController txtName;
   DateTime? _selectedOpeningDate;
+  String? _selectedPjpSchedule;
 
   final _formKey = GlobalKey<FormState>();
 
@@ -42,6 +53,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
     txtAddress = TextEditingController(text: widget.hapistore.storeAddress);
     txtContact = TextEditingController(text: widget.hapistore.storeContact);
     _selectedOpeningDate = widget.hapistore.openingDate?.toDate();
+    _selectedPjpSchedule = _pjpScheduleDays.contains(widget.hapistore.pjpSchedule) ? widget.hapistore.pjpSchedule : null;
   }
 
   void onChangeDate() async {
@@ -72,6 +84,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
         storeAddress: txtAddress.text.trim(),
         storeContact: txtContact.text.trim(),
         openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
+        pjpSchedule: _selectedPjpSchedule,
       );
       db.addHapiStore(newHs);
       Helperfunctions.logCreate(newHs.storeName, newHs.toJson());
@@ -90,6 +103,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
         storeContact: txtContact.text.trim(),
         openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
         clearOpeningDate: _selectedOpeningDate == null,
+        pjpSchedule: _selectedPjpSchedule,
       );
       db.updateHapiStore(widget.hapiStoreID, updatedHS);
       Helperfunctions.logUpdate(updatedHS.storeName, widget.hapistore.toJson(), updatedHS.toJson());
@@ -213,6 +227,22 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
           // Opening Date
           _buildDatePickerField(label: 'Opening Date', selectedDate: _selectedOpeningDate, onTap: onChangeDate, onClear: onClearDate),
+
+          DropdownButtonFormField<String>(
+            initialValue: _selectedPjpSchedule,
+            decoration: InputDecoration(
+              labelText: 'PJP Schedule',
+              prefixIcon: Icon(Icons.calendar_view_week_outlined, size: 20, color: colorScheme.primary),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            ),
+            items: _pjpScheduleDays.map((day) => DropdownMenuItem(value: day, child: Text(day))).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedPjpSchedule = value;
+              });
+            },
+          ),
         ],
       ),
     );

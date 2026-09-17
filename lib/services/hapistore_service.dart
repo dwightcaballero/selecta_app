@@ -95,4 +95,34 @@ class HapiStoreService {
 
     return snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
   }
+
+  static Future<List<Hapistore>> getListHapiStoresBasedOnPJPSchedule(String pjpSchedule) async {
+    var snapshot = await FirebaseFirestore.instance
+        .collection(HAPISTORE_COLLECTION_REF)
+        .where('pjpSchedule', isEqualTo: pjpSchedule)
+        .orderBy('pjpSequence')
+        .get();
+
+    return snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
+  }
+
+  // No orderBy here: Firestore excludes docs missing the pjpSequence field from ordered queries,
+  // which would hide stores that haven't been sequenced yet. Sorting is done client-side instead.
+  Stream<QuerySnapshot> getListHapiStoresByPjpScheduleAsStream(String pjpSchedule) {
+    return _hapistoresRef.where('pjpSchedule', isEqualTo: pjpSchedule).snapshots();
+  }
+
+  // Persists a new store order for a PJP day, writing sequential pjpSequence values and the day's
+  // pjpSchedule (so stores newly added to the day from elsewhere get reassigned) in a single batch.
+  // Stores removed from the day have their pjpSchedule/pjpSequence cleared instead.
+  Future<void> updatePjpSequenceOrder(String pjpSchedule, List<String> orderedHapiStoreIDs, {List<String> removedHapiStoreIDs = const []}) async {
+    final batch = _firestore.batch();
+    for (var i = 0; i < orderedHapiStoreIDs.length; i++) {
+      batch.update(_hapistoresRef.doc(orderedHapiStoreIDs[i]), {'pjpSchedule': pjpSchedule, 'pjpSequence': i});
+    }
+    for (final hapiStoreID in removedHapiStoreIDs) {
+      batch.update(_hapistoresRef.doc(hapiStoreID), {'pjpSchedule': null, 'pjpSequence': null});
+    }
+    await batch.commit();
+  }
 }

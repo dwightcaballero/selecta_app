@@ -76,4 +76,16 @@ class MonthsAgo {
   static const months6 = "Past 6 Months";
 }
 
+class PjpScheduleDays {
+  static const monday = 'Monday';
+  static const tuesday = 'Tuesday';
+  static const wednesday = 'Wednesday';
+  static const thursday = 'Thursday';
+  static const friday = 'Friday';
+  static const saturday = 'Saturday';
+  static const sunday = 'Sunday';
+
+  static const List<String> all = [monday, tuesday, wednesday, thursday, friday, saturday, sunday];
+}
+
 // ₱

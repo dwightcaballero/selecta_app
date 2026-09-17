@@ -684,6 +684,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
           _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
+          _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpPage()),
 
           const Divider(indent: 16, endIndent: 16),
 
