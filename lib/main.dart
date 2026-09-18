@@ -6,6 +6,8 @@ import 'package:flutter_app/firebase_options.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
+
 void main() async {
   // 1. Ensure Flutter framework is fully bootstrapped
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,11 +46,9 @@ class _MyAppState extends State<MyApp> {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.lightBlue,
-              brightness: isDarkMode ? Brightness.dark : Brightness.light,
-            ),
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.lightBlue, brightness: isDarkMode ? Brightness.dark : Brightness.light),
           ),
+          navigatorObservers: [routeObserver],
           home: AuthPage(),
         );
       },

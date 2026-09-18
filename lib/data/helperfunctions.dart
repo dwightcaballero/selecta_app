@@ -170,7 +170,7 @@ class Helperfunctions {
     }
 
     final TransactionLogService db = TransactionLogService();
-    db.addLog(log);
+    await db.addLog(log);
   }
 
   // audit metadata fields excluded from create/update log details since they're redundant with the log's own loggedBy/loggedDate

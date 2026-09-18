@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_app/data/notifiers.dart';
 import 'package:flutter_app/models/transactionlog.dart';
 
 // ignore: constant_identifier_names
@@ -54,8 +55,9 @@ class TransactionLogService {
     }
   }
 
-  void addLog(TransactionLog log) {
-    _logRef.add(log);
+  Future<void> addLog(TransactionLog log) async {
+    await _logRef.add(log);
+    dashboardNeedsRefreshNotifier.value = true;
   }
 
   void updateLog(String logID, TransactionLog log) {

@@ -55,6 +55,7 @@ class _ScanningPageState extends State<ScanningPage> {
     }
 
     String scannedBy = '';
+    String storeName = _dropdownHapiStore.text;
     Timestamp? scannedDate;
 
     switch (_selectedStatus) {
@@ -69,6 +70,7 @@ class _ScanningPageState extends State<ScanningPage> {
       case ScanningStatus.pullout:
         scannedDate = Timestamp.now();
         scannedBy = '';
+        storeName = '';
         break;
       default:
         scannedDate = _scanning.scannedDate;
@@ -78,7 +80,7 @@ class _ScanningPageState extends State<ScanningPage> {
     final newRecord = Scanning(
       id: _scanning.id,
       barcode: widget.initialBarcode,
-      storeName: _dropdownHapiStore.text,
+      storeName: storeName,
       scannedDate: scannedDate,
       scannedBy: scannedBy,
       status: _selectedStatus,

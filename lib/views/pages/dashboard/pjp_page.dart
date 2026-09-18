@@ -18,14 +18,6 @@ class PjpPage extends StatefulWidget {
 class _PjpPageState extends State<PjpPage> {
   final HapiStoreService db = HapiStoreService();
 
-  late String _selectedDay;
-  bool _isEditing = false;
-  bool _isDealer = true;
-  List<String> _editableStoreIDs = [];
-  Set<String> _originalStoreIDs = {};
-  Map<String, Hapistore> _editableStoresById = {};
-  bool _isSaving = false;
-
   static const List<String> _weekdayNames = [
     PjpScheduleDays.monday,
     PjpScheduleDays.tuesday,
@@ -35,6 +27,14 @@ class _PjpPageState extends State<PjpPage> {
     PjpScheduleDays.saturday,
     PjpScheduleDays.sunday,
   ];
+
+  List<String> _editableStoreIDs = [];
+  Map<String, Hapistore> _editableStoresById = {};
+  bool _isDealer = true;
+  bool _isEditing = false;
+  bool _isSaving = false;
+  Set<String> _originalStoreIDs = {};
+  late String _selectedDay;
 
   @override
   void initState() {
@@ -157,7 +157,7 @@ class _PjpPageState extends State<PjpPage> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
         items: _weekdayNames.map((day) => DropdownMenuItem(value: day, child: Text(day))).toList(),
-        onChanged: (_isEditing || !_isDealer) ? null : _onDayChanged,
+        onChanged: (_isEditing) ? null : _onDayChanged,
       ),
     );
   }

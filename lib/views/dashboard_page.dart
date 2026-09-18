@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/data/notifiers.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
@@ -28,6 +31,7 @@ import 'package:flutter_app/views/pages/sidebar/transactionlog_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -52,7 +56,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void prefetchData() async {
     isDealer = await KVariables.getIsDealer();
-    syncDashboard();
+    _syncDashboardFromSharedPreferences();
   }
 
   Future<void> syncDashboard() async {
@@ -70,6 +74,36 @@ class _DashboardPageState extends State<DashboardPage> {
       setState(() {
         isSyncing = false;
       });
+    }
+  }
+
+  Future<void> _refreshDashboardIfNeeded() async {
+    if (!dashboardNeedsRefreshNotifier.value) {
+      await _syncDashboardFromSharedPreferences();
+      return;
+    }
+
+    dashboardNeedsRefreshNotifier.value = false;
+    await syncDashboard();
+  }
+
+  Future<void> _syncDashboardFromSharedPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonString = prefs.getString('dashboard_DTO');
+    if (jsonString == null || !mounted) return;
+
+    try {
+      final json = jsonDecode(jsonString) as Map<String, dynamic>;
+      final cachedDashboard = DashboardDTO.fromJson(json);
+      final cachedLastSync = await DashboardController.getLastSync();
+      if (!mounted) return;
+
+      setState(() {
+        dashboardDTO = cachedDashboard;
+        lastSyncDateTime = cachedLastSync;
+      });
+    } on FormatException {
+      // Ignore a stale or malformed cache; the next manual refresh rebuilds it.
     }
   }
 
@@ -231,7 +265,7 @@ class _DashboardPageState extends State<DashboardPage> {
           borderRadius: BorderRadius.circular(14),
           onTap: () async {
             await Helperfunctions.navigateThenWait(context, nextPage);
-            if (mounted) syncDashboard();
+            if (mounted) await _refreshDashboardIfNeeded();
           },
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
@@ -583,7 +617,7 @@ class _DashboardPageState extends State<DashboardPage> {
         borderRadius: BorderRadius.circular(14),
         onTap: () async {
           await Helperfunctions.navigateThenWait(context, nextPage);
-          if (mounted) syncDashboard();
+          if (mounted) await _refreshDashboardIfNeeded();
         },
         child: Padding(
           padding: const EdgeInsets.all(14.0),
@@ -707,7 +741,7 @@ class _DashboardPageState extends State<DashboardPage> {
           onLogout();
         } else if (nextPage != null) {
           await Navigator.push(context, MaterialPageRoute(builder: (_) => nextPage));
-          syncDashboard();
+          if (mounted) await _refreshDashboardIfNeeded();
         }
       },
     );
