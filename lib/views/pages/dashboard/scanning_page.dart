@@ -12,20 +12,27 @@ import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
 
 class ScanningPage extends StatefulWidget {
-  final String initialBarcode;
   const ScanningPage({super.key, required this.initialBarcode});
+
+  final String initialBarcode;
 
   @override
   State<ScanningPage> createState() => _ScanningPageState();
 }
 
 class _ScanningPageState extends State<ScanningPage> {
-  final _formKey = GlobalKey<FormState>();
-  final ScanningServices _scanningServices = ScanningServices();
   final TextEditingController _dropdownHapiStore = TextEditingController();
-  String _selectedStatus = ScanningStatus.notScanned;
-  Scanning _scanning = Scanning.empty();
+  final _formKey = GlobalKey<FormState>();
   bool _hasCheckedDatabase = false;
+  Scanning _scanning = Scanning.empty();
+  final ScanningServices _scanningServices = ScanningServices();
+  String _selectedStatus = ScanningStatus.notScanned;
+
+  @override
+  void dispose() {
+    _dropdownHapiStore.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -40,12 +47,6 @@ class _ScanningPageState extends State<ScanningPage> {
     _hasCheckedDatabase = true;
 
     if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _dropdownHapiStore.dispose();
-    super.dispose();
   }
 
   Future<void> _onSave() async {
@@ -100,6 +101,29 @@ class _ScanningPageState extends State<ScanningPage> {
     } catch (error) {
       if (!mounted) return;
       ShowMessage.error(context, 'Unable to save the scanning record. Please try again.');
+    }
+  }
+
+  Future<void> _onDelete() async {
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Delete scanning record',
+      message: 'Delete the record for barcode ${_scanning.barcode}? This cannot be undone.',
+      confirmText: 'Delete',
+      isDestructive: true,
+      icon: Icons.delete_outline_rounded,
+    );
+    if (!confirmed || !mounted) return;
+
+    try {
+      await _scanningServices.deleteScanning(_scanning.id);
+      await Helperfunctions.logDelete(_scanning.storeName, _scanning.toJson());
+      if (!mounted) return;
+      ShowMessage.success(context, 'Scanning record deleted.');
+      Navigator.pop(context);
+    } catch (_) {
+      if (!mounted) return;
+      ShowMessage.error(context, 'Unable to delete the scanning record. Please try again.');
     }
   }
 
@@ -296,7 +320,17 @@ class _ScanningPageState extends State<ScanningPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppbar(title: _scanning.id.isEmpty ? 'New Scanning Record' : 'Edit Scanning Record'),
+      appBar: CustomAppbar(
+        title: _scanning.id.isEmpty ? 'New Scanning Record' : 'Edit Scanning Record',
+        actions: [
+          if (_scanning.id.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+              tooltip: 'Delete scanning record',
+              onPressed: _onDelete,
+            ),
+        ],
+      ),
       body: Form(
         key: _formKey,
         child: ListView(

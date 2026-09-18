@@ -73,7 +73,7 @@ class ScanningServices {
     _scanningRef.doc(scanningID).update(scanning.toJson());
   }
 
-  void deleteScanning(String scanningID) {
-    _scanningRef.doc(scanningID).delete();
+  Future<void> deleteScanning(String scanningID) {
+    return _scanningRef.doc(scanningID).delete();
   }
 }
