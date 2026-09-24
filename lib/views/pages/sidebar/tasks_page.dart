@@ -57,6 +57,8 @@ class _TasksPageState extends State<TasksPage> {
       txtDescription.text = widget.task.taskDescription;
       _selectedDeadline = widget.task.taskDeadline.toDate();
       _isTaskDone = widget.task.isTaskDone;
+    } else if (widget.task.storeName.isNotEmpty) {
+      txtStoreName.text = widget.task.storeName;
     }
   }
 

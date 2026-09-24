@@ -58,6 +58,18 @@ class Helperfunctions {
     return DateFormat('E, d MMM yyyy').format(ts.toDate());
   }
 
+  static DateTime startOfWeek(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    final monday = d.subtract(Duration(days: d.weekday - 1));
+    return DateTime(monday.year, monday.month, monday.day);
+  }
+
+  static bool isSameWeek(DateTime a, DateTime b) {
+    final startA = startOfWeek(a);
+    final startB = startOfWeek(b);
+    return startA.isAtSameMomentAs(startB);
+  }
+
   static void navigateTo(BuildContext context, dynamic nextPage) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => nextPage));
   }

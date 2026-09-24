@@ -29,6 +29,9 @@ class DashboardController {
     var listStores = await HapiStoreService.getListHapiStores();
     var listDelivery = await DeliveryService.getListDeliveryWithinCurrentMonth();
 
+    // DASHBOARD: PJP pending visit count for today
+    dashboardDTO.pendingPjpCount = HapiStoreService.countPendingPjpVisitsForToday(listStores);
+
     // For each store, check if there are delivered transactions in order to determine if they are buying or not
     for (var store in listStores) {
       var listTransactions = listDelivery.where((delivery) => delivery.storeName.toLowerCase() == store.storeName.toLowerCase());

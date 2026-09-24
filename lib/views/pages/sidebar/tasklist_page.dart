@@ -10,7 +10,9 @@ import 'package:intl/intl.dart';
 enum TaskFilter { all, pending, completed, overdue }
 
 class TasklistPage extends StatefulWidget {
-  const TasklistPage({super.key});
+  const TasklistPage({super.key, this.initialStoreName});
+
+  final String? initialStoreName;
 
   @override
   State<TasklistPage> createState() => _TasklistPageState();
@@ -32,6 +34,10 @@ class _TasklistPageState extends State<TasklistPage> {
   void initState() {
     super.initState();
     _tasksStream = db.getListTasks();
+    if (widget.initialStoreName != null && widget.initialStoreName!.isNotEmpty) {
+      _searchController.text = widget.initialStoreName!;
+      _searchQuery = widget.initialStoreName!.trim().toLowerCase();
+    }
   }
 
   @override
@@ -44,7 +50,10 @@ class _TasklistPageState extends State<TasklistPage> {
   void _navigateToAddTask() {
     Helperfunctions.navigateTo(
       context,
-      TasksPage(taskID: '', task: Tasks.empty()),
+      TasksPage(
+        taskID: '',
+        task: Tasks.empty().copyWith(storeName: widget.initialStoreName ?? ''),
+      ),
     );
   }
 

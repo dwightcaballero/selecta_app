@@ -14,6 +14,7 @@ class DashboardDTO {
   int totalExpansionCount;
   int totalScanCount;
   int totalNotScannedCount;
+  int pendingPjpCount;
 
   DashboardDTO({
     required this.buyingCount,
@@ -31,6 +32,7 @@ class DashboardDTO {
     required this.totalExpansionCount,
     required this.totalScanCount,
     required this.totalNotScannedCount,
+    this.pendingPjpCount = 0,
   });
 
   static DashboardDTO empty() {
@@ -50,6 +52,7 @@ class DashboardDTO {
       totalExpansionCount: 0,
       totalScanCount: 0,
       totalNotScannedCount: 0,
+      pendingPjpCount: 0,
     );
   }
 
@@ -70,6 +73,7 @@ class DashboardDTO {
         totalExpansionCount: json['totalExpansionCount']! as int,
         totalScanCount: json['totalScanCount']! as int,
         totalNotScannedCount: json['totalNotScannedCount']! as int,
+        pendingPjpCount: (json['pendingPjpCount'] as num?)?.toInt() ?? 0,
       );
 
   Map<String, Object?> toJson() {
@@ -89,6 +93,7 @@ class DashboardDTO {
       'totalExpansionCount': totalExpansionCount,
       'totalScanCount': totalScanCount,
       'totalNotScannedCount': totalNotScannedCount,
+      'pendingPjpCount': pendingPjpCount,
     };
   }
 }

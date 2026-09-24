@@ -12,9 +12,10 @@ import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
 
 class ScanningPage extends StatefulWidget {
-  const ScanningPage({super.key, required this.initialBarcode});
+  const ScanningPage({super.key, required this.initialBarcode, this.initialStoreName});
 
   final String initialBarcode;
+  final String? initialStoreName;
 
   @override
   State<ScanningPage> createState() => _ScanningPageState();
@@ -43,7 +44,7 @@ class _ScanningPageState extends State<ScanningPage> {
   void prefetchData() async {
     _scanning = await _scanningServices.getScanningByBarcode(widget.initialBarcode) ?? Scanning.empty();
     _selectedStatus = _scanning.status.isEmpty ? ScanningStatus.notScanned : _scanning.status;
-    _dropdownHapiStore.text = _scanning.storeName;
+    _dropdownHapiStore.text = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
     _hasCheckedDatabase = true;
 
     if (mounted) setState(() {});

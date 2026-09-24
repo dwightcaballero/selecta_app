@@ -11,7 +11,7 @@ import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/views/pages/dashboard/expansion_page.dart';
 import 'package:flutter_app/views/pages/dashboard/overpaymentlist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/pjp_page.dart';
+import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/sales_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
@@ -230,9 +230,9 @@ class _DashboardPageState extends State<DashboardPage> {
             _buildQuickAccessCard(
               label: 'PJP',
               icon: Icons.map_outlined,
-              count: 0,
+              count: dashboardDTO.pendingPjpCount,
               color: Theme.of(context).colorScheme.primary,
-              nextPage: const PjpPage(),
+              nextPage: const PjpListPage(),
             ),
           ],
         ),
@@ -735,7 +735,12 @@ class _DashboardPageState extends State<DashboardPage> {
 
           _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
-          _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpPage()),
+          _buildDrawerItem(
+            Icons.map_outlined,
+            'Journey Plan (PJP)',
+            const PjpListPage(),
+            badgeCount: dashboardDTO.pendingPjpCount,
+          ),
 
           const Divider(indent: 16, endIndent: 16),
 
@@ -745,13 +750,26 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, Widget? nextPage, {bool isLogout = false}) {
+  Widget _buildDrawerItem(IconData icon, String title, Widget? nextPage, {bool isLogout = false, int badgeCount = 0}) {
     return ListTile(
       leading: Icon(icon, color: isLogout ? Colors.red : null, size: 22),
       title: Text(
         title,
         style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: isLogout ? Colors.red : null),
       ),
+      trailing: badgeCount > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$badgeCount',
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            )
+          : null,
       onTap: () async {
         Navigator.pop(context);
         if (isLogout) {

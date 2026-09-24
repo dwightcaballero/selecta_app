@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/hapistore.dart';
 
 // ignore: constant_identifier_names
@@ -124,5 +126,23 @@ class HapiStoreService {
       batch.update(_hapistoresRef.doc(hapiStoreID), {'pjpSchedule': null, 'pjpSequence': null});
     }
     await batch.commit();
+  }
+
+  // Count stores scheduled for today that haven't been visited yet this week
+  static int countPendingPjpVisitsForToday(List<Hapistore> stores, [DateTime? date]) {
+    final now = date ?? DateTime.now();
+    final todayName = PjpScheduleDays.all[now.weekday - 1];
+    return stores.where((store) {
+      final isTodaySchedule = store.pjpSchedule?.trim().toLowerCase() == todayName.toLowerCase();
+      if (!isTodaySchedule) return false;
+      final isVisitedThisWeek = store.lastPjpVisit != null &&
+          Helperfunctions.isSameWeek(store.lastPjpVisit!.toDate(), now);
+      return !isVisitedThisWeek;
+    }).length;
+  }
+
+  static Future<int> getPendingPjpVisitCountForToday() async {
+    final stores = await getListHapiStores();
+    return countPendingPjpVisitsForToday(stores);
   }
 }
