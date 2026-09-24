@@ -16,12 +16,21 @@ class ReturnlistPage extends StatefulWidget {
 class _ReturnlistPageState extends State<ReturnlistPage> {
   final DeliveryService db = DeliveryService();
 
+  late final Stream<QuerySnapshot> _returnsStream;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _returnsStream = db.getListDeliveryWithReturnStatus();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -76,6 +85,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
         decoration: InputDecoration(
           hintText: 'Search by store name or remarks...',
@@ -218,9 +228,9 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   }
 
   Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(32.0),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -251,12 +261,12 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
     return Scaffold(
       appBar: const CustomAppbar(title: 'Returned Orders', subtitle: 'Needs Redelivery or Review'),
       body: StreamBuilder<QuerySnapshot>(
-        stream: db.getListDeliveryWithReturnStatus(),
+        stream: _returnsStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
           if (snapshot.hasError) {
             return _buildErrorState();
           }
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 

@@ -21,6 +21,7 @@ import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
 import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/hapistorelist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/thruput_page.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
@@ -54,6 +55,11 @@ class _DashboardPageState extends State<DashboardPage> {
     });
   }
 
+  void showLoading(bool showLoading) async {
+    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
+    if (!showLoading) setState(() {});
+  }
+
   void prefetchData() async {
     isDealer = await KVariables.getIsDealer();
     _syncDashboardFromSharedPreferences();
@@ -62,18 +68,24 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> syncDashboard() async {
     if (!mounted) return;
 
+    showLoading(true);
     setState(() {
       isSyncing = true;
       dashboardDTO = DashboardDTO.empty();
     });
 
-    dashboardDTO = await DashboardController.getLatestDashboardData();
-    lastSyncDateTime = await DashboardController.getLastSync();
-
-    if (mounted) {
-      setState(() {
-        isSyncing = false;
-      });
+    try {
+      dashboardDTO = await DashboardController.getLatestDashboardData();
+      lastSyncDateTime = await DashboardController.getLastSync();
+    } catch (e) {
+      debugPrint('Error syncing dashboard: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSyncing = false;
+        });
+        showLoading(false);
+      }
     }
   }
 
@@ -90,7 +102,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _syncDashboardFromSharedPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString('dashboard_DTO');
-    if (jsonString == null || !mounted) return;
+    if (jsonString == null || !mounted) {
+      await syncDashboard();
+      return;
+    }
 
     try {
       final json = jsonDecode(jsonString) as Map<String, dynamic>;
@@ -104,6 +119,7 @@ class _DashboardPageState extends State<DashboardPage> {
       });
     } on FormatException {
       // Ignore a stale or malformed cache; the next manual refresh rebuilds it.
+      await syncDashboard();
     }
   }
 
@@ -708,6 +724,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
 
           // Drawer Navigation Items
+          _buildDrawerItem(Icons.task_alt_outlined, 'Tasks', TaskListPage()),
           _buildDrawerItem(Icons.assignment_outlined, 'Purchase Orders', PurchaseorderlistPage()),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),

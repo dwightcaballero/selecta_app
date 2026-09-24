@@ -23,6 +23,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
   bool _isLoading = true;
   _ScanningSort _sort = _ScanningSort.storeNameAscending;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
 
   @override
@@ -37,6 +38,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -133,6 +135,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     final colorScheme = Theme.of(context).colorScheme;
     return TextField(
       controller: _searchController,
+      focusNode: _searchFocusNode,
       decoration: InputDecoration(
         hintText: 'Search by store name or barcode',
         hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),

@@ -16,12 +16,21 @@ class OverpaymentlistPage extends StatefulWidget {
 class _OverpaymentlistPageState extends State<OverpaymentlistPage> {
   final PurchaseOrderService db = PurchaseOrderService();
 
+  late final Stream<QuerySnapshot> _overpaymentsStream;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _overpaymentsStream = db.getListPurchaseOrdersNotYetSettled();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -75,6 +84,7 @@ class _OverpaymentlistPageState extends State<OverpaymentlistPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
         decoration: InputDecoration(
           hintText: 'Search by invoice number...',
@@ -222,10 +232,10 @@ class _OverpaymentlistPageState extends State<OverpaymentlistPage> {
     return Scaffold(
       appBar: const CustomAppbar(title: 'Overpayments', subtitle: 'Outstanding Purchase-Order Balances'),
       body: StreamBuilder<QuerySnapshot>(
-        stream: db.getListPurchaseOrdersNotYetSettled(),
+        stream: _overpaymentsStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
           if (snapshot.hasError) return _buildErrorState();
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final allDocs = snapshot.data?.docs ?? [];
           if (allDocs.isEmpty) return _buildEmptyState();
           double totalOverpayment = 0;
@@ -240,8 +250,11 @@ class _OverpaymentlistPageState extends State<OverpaymentlistPage> {
               _buildSearchBar(),
               Expanded(
                 child: filteredDocs.isEmpty
-                    ? Center(
-                        child: Text('No overpayments matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(32),
+                        child: Center(
+                          child: Text('No overpayments matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ),
                       )
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),

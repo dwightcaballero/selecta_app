@@ -16,12 +16,21 @@ class BadOrderlistPage extends StatefulWidget {
 class _BadOrderlistPageState extends State<BadOrderlistPage> {
   final BadOrderService db = BadOrderService();
 
+  late final Stream<QuerySnapshot> _badOrdersStream;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _badOrdersStream = db.getListBadOrder();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -75,6 +84,7 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
         decoration: InputDecoration(
           hintText: 'Search by store name or description...',
@@ -217,9 +227,9 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
   }
 
   Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(32.0),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -259,12 +269,12 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: db.getListBadOrder(),
+        stream: _badOrdersStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
           if (snapshot.hasError) {
             return _buildErrorState();
           }
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 

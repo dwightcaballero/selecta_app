@@ -20,28 +20,28 @@ class Expenses {
   });
 
   static Expenses empty() => Expenses(
-    description: '', 
-    expenseAmount: 0, 
-    expenseDate: Timestamp.now(), 
+    description: '',
+    expenseAmount: 0,
+    expenseDate: Timestamp.now(),
     createdBy: '',
     lastUpdatedBy: '',
-    createdDate: Timestamp.now(), 
-    lastupdatedDate: Timestamp.now()
+    createdDate: Timestamp.now(),
+    lastupdatedDate: Timestamp.now(),
   );
 
-  Expenses.fromJson(Map<String, Object?> json) 
-  : this(
-      description: json['description']! as String,
-      expenseAmount: json['expenseAmount']! as double,
-      expenseDate: json['expenseDate']! as Timestamp,
-      createdBy: json['createdBy']! as String,
-      lastUpdatedBy: json['lastUpdatedBy']! as String,
-      createdDate: json['createdDate']! as Timestamp,
-      lastupdatedDate: json['lastupdatedDate']! as Timestamp,
-    );
+  Expenses.fromJson(Map<String, Object?> json)
+    : this(
+        description: json['description']! as String,
+        expenseAmount: json['expenseAmount']! as double,
+        expenseDate: json['expenseDate']! as Timestamp,
+        createdBy: json['createdBy']! as String,
+        lastUpdatedBy: json['lastUpdatedBy']! as String,
+        createdDate: json['createdDate']! as Timestamp,
+        lastupdatedDate: json['lastupdatedDate']! as Timestamp,
+      );
 
-  factory Expenses.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document){
-    if (document.data() != null){
+  factory Expenses.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
+    if (document.data() != null) {
       final data = document.data();
       return Expenses(
         description: data?['description'],
@@ -50,9 +50,9 @@ class Expenses {
         createdBy: data?['createdBy'],
         lastUpdatedBy: data?['lastUpdatedBy'],
         createdDate: data?['createdDate'],
-        lastupdatedDate: data?['lastupdatedDate']);
-    }
-    else{
+        lastupdatedDate: data?['lastupdatedDate'],
+      );
+    } else {
       return Expenses.empty();
     }
   }
@@ -73,10 +73,11 @@ class Expenses {
       createdBy: createdBy ?? this.createdBy,
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
-      lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate);
+      lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
+    );
   }
 
-  Map<String,Object?> toJson(){
+  Map<String, Object?> toJson() {
     return {
       'description': description,
       'expenseAmount': expenseAmount,

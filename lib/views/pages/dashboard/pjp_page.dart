@@ -392,7 +392,16 @@ class _AddStoreSheet extends StatefulWidget {
 }
 
 class _AddStoreSheetState extends State<_AddStoreSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -408,11 +417,22 @@ class _AddStoreSheetState extends State<_AddStoreSheet> {
               const Text('Add Store', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               TextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
                 autofocus: true,
                 onChanged: (value) => setState(() => _searchQuery = value.trim().toUpperCase()),
                 decoration: InputDecoration(
                   hintText: 'Search by store name...',
                   prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
                   filled: true,
                   fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                   contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
@@ -427,7 +447,7 @@ class _AddStoreSheetState extends State<_AddStoreSheet> {
                     if (snapshot.hasError) {
                       return const Center(child: Text('Unable to load stores'));
                     }
-                    if (snapshot.connectionState == ConnectionState.waiting) {
+                    if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
 

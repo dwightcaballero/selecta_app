@@ -16,22 +16,38 @@ class TransactionLogPage extends StatefulWidget {
 class _TransactionLogPageState extends State<TransactionLogPage> {
   final TransactionLogService db = TransactionLogService();
 
+  late Stream<QuerySnapshot> _logsStream;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
   String _selectedActionFilter = 'All';
   DateTime _selectedDate = DateTime.now();
 
   @override
+  void initState() {
+    super.initState();
+    _logsStream = db.getLogsForDay(_selectedDate);
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _setDate(DateTime date) {
+    setState(() {
+      _selectedDate = date;
+      _logsStream = db.getLogsForDay(_selectedDate);
+    });
   }
 
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime(2000), lastDate: DateTime.now());
 
     if (picked != null) {
-      setState(() => _selectedDate = picked);
+      _setDate(picked);
     }
   }
 
@@ -66,7 +82,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
           const SizedBox(width: 8),
           IconButton(
             tooltip: 'Jump to today',
-            onPressed: () => setState(() => _selectedDate = DateTime.now()),
+            onPressed: () => _setDate(DateTime.now()),
             icon: Icon(Icons.today_outlined, color: colorScheme.primary),
           ),
         ],
@@ -88,6 +104,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
           // Search Bar
           TextField(
             controller: _searchController,
+            focusNode: _searchFocusNode,
             onChanged: (val) => setState(() => _searchQuery = val.trim()),
             decoration: InputDecoration(
               hintText: 'Search logs by user, store, or details...',
@@ -149,12 +166,12 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
 
   Widget _buildLogsList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: db.getLogsForDay(_selectedDate),
+      stream: _logsStream,
       builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
         if (snapshot.hasError) {
           return _buildErrorState();
         }
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
@@ -327,9 +344,9 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
   }
 
   Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(32.0),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

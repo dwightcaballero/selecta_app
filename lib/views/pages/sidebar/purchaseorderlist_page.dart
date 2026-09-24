@@ -16,12 +16,21 @@ class PurchaseorderlistPage extends StatefulWidget {
 class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
   final PurchaseOrderService db = PurchaseOrderService();
 
+  late final Stream<QuerySnapshot> _ordersStream;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _ordersStream = db.getListPurchaseordersAsStream();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -116,6 +125,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
         decoration: InputDecoration(
           hintText: 'Search by invoice number...',
@@ -290,12 +300,12 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: db.getListPurchaseordersAsStream(),
+        stream: _ordersStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
           if (snapshot.hasError) {
             return _buildErrorState();
           }
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -330,8 +340,11 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
               _buildSearchBar(),
               Expanded(
                 child: filteredDocs.isEmpty
-                    ? Center(
-                        child: Text('No orders matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ? SingleChildScrollView(
+                        padding: const EdgeInsets.all(32),
+                        child: Center(
+                          child: Text('No orders matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        ),
                       )
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),

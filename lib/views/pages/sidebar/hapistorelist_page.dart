@@ -20,11 +20,13 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
   Timer? _debounceTimer;
   bool _isDealer = true;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _debounceTimer?.cancel();
     super.dispose();
   }
@@ -56,6 +58,7 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
           hintText: 'Search by store name...',
@@ -95,7 +98,7 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
         if (snapshot.hasError) {
           return _buildErrorState();
         }
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
@@ -226,9 +229,9 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
   }
 
   Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(32.0),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

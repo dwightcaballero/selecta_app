@@ -18,18 +18,22 @@ class _CreditlistPageState extends State<CreditlistPage> {
   final DeliveryService db = DeliveryService();
   bool isDealer = true;
 
+  late final Stream<QuerySnapshot> _creditStream;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    _creditStream = db.getListDeliveryWithCredit();
     prefetchData();
   }
 
@@ -93,6 +97,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
         decoration: InputDecoration(
           hintText: 'Search by store name...',
@@ -232,9 +237,9 @@ class _CreditlistPageState extends State<CreditlistPage> {
   }
 
   Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(32.0),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -265,12 +270,12 @@ class _CreditlistPageState extends State<CreditlistPage> {
     return Scaffold(
       appBar: const CustomAppbar(title: 'Credit List', subtitle: 'Unpaid Store Accounts'),
       body: StreamBuilder<QuerySnapshot>(
-        stream: db.getListDeliveryWithCredit(),
+        stream: _creditStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
           if (snapshot.hasError) {
             return _buildErrorState();
           }
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
