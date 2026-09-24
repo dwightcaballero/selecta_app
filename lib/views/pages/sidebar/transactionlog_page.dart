@@ -23,6 +23,9 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
   String _selectedActionFilter = 'All';
   DateTime _selectedDate = DateTime.now();
 
+  // Set of expanded log document IDs for progressive disclosure
+  final Set<String> _expandedLogIds = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -39,285 +42,392 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
   void _setDate(DateTime date) {
     setState(() {
       _selectedDate = date;
+      _expandedLogIds.clear();
       _logsStream = db.getLogsForDay(_selectedDate);
     });
   }
 
   Future<void> _pickDate() async {
-    final DateTime? picked = await showDatePicker(context: context, initialDate: _selectedDate, firstDate: DateTime(2000), lastDate: DateTime.now());
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
 
     if (picked != null) {
       _setDate(picked);
     }
   }
 
-  Widget _buildDateSelector() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final bool isToday = DateUtils.isSameDay(_selectedDate, DateTime.now());
-
-    return Row(
-      children: [
-        Expanded(
-          child: InkWell(
-            onTap: _pickDate,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colorScheme.outlineVariant),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.calendar_today_outlined, size: 18, color: colorScheme.primary),
-                  const SizedBox(width: 10),
-                  Text(DateFormat('EEE, d MMM yyyy').format(_selectedDate), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ),
-        ),
-        if (!isToday) ...[
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'Jump to today',
-            onPressed: () => _setDate(DateTime.now()),
-            icon: Icon(Icons.today_outlined, color: colorScheme.primary),
-          ),
-        ],
-      ],
-    );
+  void _previousDay() {
+    _setDate(_selectedDate.subtract(const Duration(days: 1)));
   }
 
-  Widget _buildFilterHeader() {
-    final colorScheme = Theme.of(context).colorScheme;
+  void _nextDay() {
+    final tomorrow = _selectedDate.add(const Duration(days: 1));
+    if (!tomorrow.isAfter(DateTime.now())) {
+      _setDate(tomorrow);
+    }
+  }
+
+  Widget _buildDateNavigator(ThemeData theme) {
+    final colorScheme = theme.colorScheme;
+    final bool isToday = DateUtils.isSameDay(_selectedDate, DateTime.now());
+    final bool canGoNext = !isToday;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Row(
         children: [
-          // Day Selector
-          _buildDateSelector(),
-          const SizedBox(height: 10),
-
-          // Search Bar
-          TextField(
-            controller: _searchController,
-            focusNode: _searchFocusNode,
-            onChanged: (val) => setState(() => _searchQuery = val.trim()),
-            decoration: InputDecoration(
-              hintText: 'Search logs by user, store, or details...',
-              hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-              prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, size: 18),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                    )
-                  : null,
-              filled: true,
-              fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: colorScheme.outlineVariant),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          IconButton(
+            icon: const Icon(Icons.chevron_left, size: 22),
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Previous Day',
+            onPressed: _previousDay,
+          ),
+          Expanded(
+            child: InkWell(
+              onTap: _pickDate,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.calendar_today_outlined, size: 16, color: colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        isToday
+                            ? 'Today, ${DateFormat('d MMM yyyy').format(_selectedDate)}'
+                            : DateFormat('EEE, d MMM yyyy').format(_selectedDate),
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
-
-          // Action Filter Chips
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              spacing: 8,
-              children: [
-                _buildFilterChip('All', null),
-                _buildFilterChip(LogAction.create, Icons.add_circle_outline, color: Colors.green),
-                _buildFilterChip(LogAction.update, Icons.edit_outlined, color: Colors.orange),
-                _buildFilterChip(LogAction.delete, Icons.delete_outline, color: Colors.red),
-              ],
-            ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right, size: 22),
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Next Day',
+            onPressed: canGoNext ? _nextDay : null,
           ),
+          if (!isToday) ...[
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ActionChip(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                label: const Text('Today', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                onPressed: () => _setDate(DateTime.now()),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildFilterChip(String action, IconData? icon, {Color? color}) {
-    bool isSelected = _selectedActionFilter == action;
+  Widget _buildFilterChips({
+    required int totalCount,
+    required int createCount,
+    required int updateCount,
+    required int deleteCount,
+  }) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildFilterChip('All', 'All ($totalCount)', null),
+          const SizedBox(width: 8),
+          _buildFilterChip(LogAction.create, 'Created ($createCount)', Icons.add_circle_outline, color: Colors.green),
+          const SizedBox(width: 8),
+          _buildFilterChip(LogAction.update, 'Updated ($updateCount)', Icons.edit_outlined, color: Colors.orange.shade800),
+          const SizedBox(width: 8),
+          _buildFilterChip(LogAction.delete, 'Deleted ($deleteCount)', Icons.delete_outline, color: Colors.red),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String actionKey, String label, IconData? icon, {Color? color}) {
+    final bool isSelected = _selectedActionFilter == actionKey;
+    final theme = Theme.of(context);
 
     return ChoiceChip(
       showCheckmark: false,
-      avatar: icon != null ? Icon(icon, size: 16, color: isSelected ? Colors.white : color) : null,
-      label: Text(action),
+      visualDensity: VisualDensity.compact,
+      avatar: icon != null
+          ? Icon(
+              icon,
+              size: 14,
+              color: isSelected ? theme.colorScheme.onPrimary : color,
+            )
+          : null,
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+        ),
+      ),
       selected: isSelected,
-      onSelected: (_) => setState(() => _selectedActionFilter = action),
+      onSelected: (_) => setState(() => _selectedActionFilter = actionKey),
     );
   }
 
-  Widget _buildLogsList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _logsStream,
-      builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-        if (snapshot.hasError) {
-          return _buildErrorState();
-        }
-        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+  Widget _buildSearchBar(ThemeData theme) {
+    final colorScheme = theme.colorScheme;
 
-        final allDocs = snapshot.data?.docs ?? [];
-        if (allDocs.isEmpty) {
-          return _buildEmptyState();
-        }
-
-        final List<QueryDocumentSnapshot> filteredLogs = [];
-
-        for (var doc in allDocs) {
-          final log = doc.data() as TransactionLog;
-
-          bool matchesAction = _selectedActionFilter == 'All' || log.logAction == _selectedActionFilter;
-          bool matchesSearch =
-              _searchQuery.isEmpty ||
-              log.message.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              log.details.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              log.loggedBy.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              log.loggedRole.toLowerCase().contains(_searchQuery.toLowerCase());
-
-          if (matchesAction && matchesSearch) {
-            filteredLogs.add(doc);
-          }
-        }
-
-        if (filteredLogs.isEmpty) {
-          return _buildNoSearchResultsState();
-        }
-
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          itemCount: filteredLogs.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final log = filteredLogs[index].data() as TransactionLog;
-            return _buildLogCard(log);
-          },
-        );
-      },
+    return SizedBox(
+      height: 42,
+      child: TextField(
+        controller: _searchController,
+        focusNode: _searchFocusNode,
+        onChanged: (val) => setState(() => _searchQuery = val.trim()),
+        style: const TextStyle(fontSize: 13.5),
+        decoration: InputDecoration(
+          hintText: 'Search user, store, message...',
+          hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
+          prefixIcon: Icon(Icons.search, size: 18, color: colorScheme.primary),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.close, size: 16),
+                  splashRadius: 16,
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildLogCard(TransactionLog log) {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildLogCard(String docId, TransactionLog log) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final bool isExpanded = _expandedLogIds.contains(docId);
+    final bool hasDetails = log.details.trim().isNotEmpty;
 
     Color actionColor = Colors.blue;
     IconData actionIcon = Icons.info_outline;
 
     if (log.logAction == LogAction.create) {
-      actionColor = Colors.green;
+      actionColor = Colors.green.shade700;
       actionIcon = Icons.add_circle_outline;
     } else if (log.logAction == LogAction.update) {
       actionColor = Colors.orange.shade800;
       actionIcon = Icons.edit_outlined;
     } else if (log.logAction == LogAction.delete) {
-      actionColor = Colors.red;
+      actionColor = Colors.red.shade700;
       actionIcon = Icons.delete_outline;
     }
 
-    final dateStr = DateFormat('EEE, d MMM yyyy • hh:mm a').format(log.loggedDate.toDate());
+    final timeStr = DateFormat('hh:mm a').format(log.loggedDate.toDate());
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Row: Action Badge + Message + Role/User
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: actionColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                  child: Icon(actionIcon, color: actionColor, size: 20),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: hasDetails
+            ? () {
+                setState(() {
+                  if (isExpanded) {
+                    _expandedLogIds.remove(docId);
+                  } else {
+                    _expandedLogIds.add(docId);
+                  }
+                });
+              }
+            : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Main Header Row
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Action Icon with subtle background
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: actionColor.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(actionIcon, color: actionColor, size: 16),
+                    ),
+                    const SizedBox(width: 10),
+
+                    // Log Content Area
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Message
+                          Text(
+                            log.message,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.25),
+                          ),
+                          const SizedBox(height: 6),
+
+                          // Metadata: User & Role
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircleAvatar(
+                                radius: 8,
+                                backgroundColor: colorScheme.primaryContainer,
+                                child: Text(
+                                  log.loggedBy.isNotEmpty ? log.loggedBy[0].toUpperCase() : '?',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    color: colorScheme.onPrimaryContainer,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                log.loggedBy,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              if (log.loggedRole.isNotEmpty) ...[
+                                Text(
+                                  ' • ${log.loggedRole}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Timestamp & Expand Indicator
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          timeStr,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (hasDetails) ...[
+                          const SizedBox(height: 4),
+                          Icon(
+                            isExpanded ? Icons.expand_less : Icons.expand_more,
+                            size: 18,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+              ),
+
+              // Expandable Details (Progressive Disclosure)
+              if (hasDetails && isExpanded) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+                    border: Border(
+                      top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+                    ),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(log.message, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.person_outline, size: 14, color: colorScheme.onSurfaceVariant),
+                          Icon(Icons.article_outlined, size: 13, color: colorScheme.primary),
                           const SizedBox(width: 4),
                           Text(
-                            '${log.loggedBy} (${log.loggedRole})',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                            'CHANGE DETAILS',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                              color: colorScheme.primary,
+                            ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 6),
+                      SelectableText(
+                        log.details,
+                        style: TextStyle(fontSize: 12, height: 1.4, color: colorScheme.onSurface),
                       ),
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: actionColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                  child: Text(
-                    log.logAction.toUpperCase(),
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: actionColor),
-                  ),
-                ),
               ],
-            ),
-
-            // Details Container (if available)
-            if (log.details.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
-                ),
-                child: Text(log.details, style: const TextStyle(fontSize: 13, height: 1.35)),
-              ),
             ],
-
-            const SizedBox(height: 10),
-
-            // Footer Timestamp
-            Row(
-              children: [
-                Icon(Icons.access_time, size: 13, color: colorScheme.onSurfaceVariant),
-                const SizedBox(width: 4),
-                Text(dateStr, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildEmptyState() {
+    final theme = Theme.of(context);
+    final isToday = DateUtils.isSameDay(_selectedDate, DateTime.now());
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -325,16 +435,22 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.history_toggle_off_rounded, color: Colors.blue, size: 50),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.history_toggle_off_rounded, color: theme.colorScheme.primary, size: 44),
             ),
             const SizedBox(height: 16),
-            const Text('No Logs Available', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(
+              isToday ? 'No Activity Recorded Today' : 'No Activity on This Date',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 6),
-            const Text(
-              'Audit entries will appear here as transactions and records are modified.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
+            Text(
+              'Changes to deliveries, store records, and orders will appear here automatically.',
+              style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
           ],
@@ -350,9 +466,24 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.search_off_rounded, size: 48, color: Colors.grey),
+            Icon(Icons.search_off_rounded, size: 44, color: Theme.of(context).colorScheme.outline),
             const SizedBox(height: 12),
-            Text('No logs matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'No logs match "$_searchQuery"',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () {
+                _searchController.clear();
+                setState(() {
+                  _searchQuery = '';
+                  _selectedActionFilter = 'All';
+                });
+              },
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Reset filters'),
+            ),
           ],
         ),
       ),
@@ -360,13 +491,13 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
   }
 
   Widget _buildErrorState() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
-          SizedBox(height: 8),
-          Text('Unable to load audit logs'),
+          Icon(Icons.error_outline_rounded, color: Theme.of(context).colorScheme.error, size: 36),
+          const SizedBox(height: 8),
+          const Text('Unable to load audit logs'),
         ],
       ),
     );
@@ -374,16 +505,95 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Audit Logs', subtitle: 'System Activity & Changes'),
-      body: Column(
-        children: [
-          // 1. Search Bar & Action Filter Chips
-          _buildFilterHeader(),
+    final theme = Theme.of(context);
 
-          // 2. Logs Stream List
-          Expanded(child: _buildLogsList()),
-        ],
+    return Scaffold(
+      appBar: const CustomAppbar(
+        title: 'Audit Logs',
+        subtitle: 'System Activity & Changes',
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _logsStream,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return _buildErrorState();
+          }
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final allDocs = snapshot.data?.docs ?? [];
+
+          // Calculate activity counts for the selected day
+          int createCount = 0;
+          int updateCount = 0;
+          int deleteCount = 0;
+
+          final List<QueryDocumentSnapshot> filteredLogs = [];
+
+          for (var doc in allDocs) {
+            final log = doc.data() as TransactionLog;
+
+            if (log.logAction == LogAction.create) createCount++;
+            if (log.logAction == LogAction.update) updateCount++;
+            if (log.logAction == LogAction.delete) deleteCount++;
+
+            final bool matchesAction = _selectedActionFilter == 'All' || log.logAction == _selectedActionFilter;
+            final bool matchesSearch = _searchQuery.isEmpty ||
+                log.message.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                log.details.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                log.loggedBy.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                log.loggedRole.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                log.dealerName.toLowerCase().contains(_searchQuery.toLowerCase());
+
+            if (matchesAction && matchesSearch) {
+              filteredLogs.add(doc);
+            }
+          }
+
+          return Column(
+            children: [
+              // Sticky Filter Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: Column(
+                  children: [
+                    _buildDateNavigator(theme),
+                    const SizedBox(height: 8),
+                    _buildSearchBar(theme),
+                    const SizedBox(height: 8),
+                    _buildFilterChips(
+                      totalCount: allDocs.length,
+                      createCount: createCount,
+                      updateCount: updateCount,
+                      deleteCount: deleteCount,
+                    ),
+                  ],
+                ),
+              ),
+
+              const Divider(height: 1, thickness: 0.5),
+
+              // Activity Feed List
+              Expanded(
+                child: allDocs.isEmpty
+                    ? _buildEmptyState()
+                    : filteredLogs.isEmpty
+                        ? _buildNoSearchResultsState()
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                            itemCount: filteredLogs.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final doc = filteredLogs[index];
+                              final log = doc.data() as TransactionLog;
+                              return _buildLogCard(doc.id, log);
+                            },
+                          ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
