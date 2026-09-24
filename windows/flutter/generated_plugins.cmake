@@ -11,6 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_storage
   flutter_doc_scanner
   gal
+  geolocator_windows
   permission_handler_windows
 )
 
