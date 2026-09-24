@@ -5,7 +5,7 @@ import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
-import 'package:flutter_app/views/pages/dashboard/pjp_visit_page.dart';
+import 'package:flutter_app/views/pages/dashboard/pjp_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
@@ -161,26 +161,19 @@ class _PjpListPageState extends State<PjpListPage> {
     final selected = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         final colorScheme = Theme.of(context).colorScheme;
         return SafeArea(
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.75,
-            ),
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
             child: ListView(
               shrinkWrap: true,
               padding: const EdgeInsets.symmetric(vertical: 16),
               children: [
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Text(
-                    'Select PJP Day',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
+                  child: Text('Select PJP Day', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
                 const Divider(),
                 ..._weekdayNames.map((day) {
@@ -204,17 +197,10 @@ class _PjpListPageState extends State<PjpListPage> {
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
+                            decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
                             child: Text(
                               'Today',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.primary,
-                              ),
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
                             ),
                           ),
                         ],
@@ -253,11 +239,7 @@ class _PjpListPageState extends State<PjpListPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              tooltip: 'Previous Day',
-              onPressed: _isEditing ? null : () => _changeDay(-1),
-            ),
+            IconButton(icon: const Icon(Icons.chevron_left), tooltip: 'Previous Day', onPressed: _isEditing ? null : () => _changeDay(-1)),
             InkWell(
               onTap: _isEditing ? null : _showDayPicker,
               borderRadius: BorderRadius.circular(8),
@@ -268,43 +250,25 @@ class _PjpListPageState extends State<PjpListPage> {
                   children: [
                     Icon(Icons.calendar_month_outlined, size: 18, color: colorScheme.primary),
                     const SizedBox(width: 8),
-                    Text(
-                      _selectedDay,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
+                    Text(_selectedDay, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                     if (isToday) ...[
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
                         child: Text(
                           'Today',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.primary,
-                          ),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
                         ),
                       ),
                     ],
                     const SizedBox(width: 4),
-                    Icon(
-                      Icons.arrow_drop_down,
-                      size: 20,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    Icon(Icons.arrow_drop_down, size: 20, color: colorScheme.onSurfaceVariant),
                   ],
                 ),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              tooltip: 'Next Day',
-              onPressed: _isEditing ? null : () => _changeDay(1),
-            ),
+            IconButton(icon: const Icon(Icons.chevron_right), tooltip: 'Next Day', onPressed: _isEditing ? null : () => _changeDay(1)),
           ],
         ),
       ),
@@ -432,7 +396,7 @@ class _PjpListPageState extends State<PjpListPage> {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (context) => PjpVisitPage(hapiStoreID: hapiStoreID, initialHapistore: hapistore, selectedDay: _selectedDay),
+        builder: (context) => PjpPage(hapiStoreID: hapiStoreID, initialHapistore: hapistore, selectedDay: _selectedDay),
       ),
     );
 

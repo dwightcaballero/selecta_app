@@ -21,9 +21,17 @@ class PlacementService {
   // Save placement record if it doesnt exist in the database. Else, update the existing record.
   Future<void> savePlacement(Placement placement) async {
     if (placement.id.isEmpty) {
-      await _placementsRef.add(placement);
+      final existing = await getPlacementByStoreAndDate(placement.storeName, placement.deliveryDate.toDate());
+      if (existing != null) {
+        placement.id = existing.id;
+        await _placementsRef.doc(placement.id).set(placement, SetOptions(merge: true));
+        return;
+      }
+      final docRef = _placementsRef.doc();
+      placement.id = docRef.id;
+      await docRef.set(placement);
     } else {
-      await _placementsRef.doc(placement.id).update(placement.toJson());
+      await _placementsRef.doc(placement.id).set(placement, SetOptions(merge: true));
     }
   }
 
@@ -71,10 +79,10 @@ class PlacementService {
     }).toList();
   }
 
-  // Get count of all placement records with finished status
+  // Get count of all placement records with finished status in current month
   static Future<int> getCountOfFinishedPlacements() async {
-    final snapshot = await FirebaseFirestore.instance.collection(PLACEMENT_COLLECTION_REF).where('isFinished', isEqualTo: true).get();
-    return snapshot.docs.length;
+    final list = await getListOfPlacementsWithinCurrentMonth();
+    return list.where((placement) => placement.isFinished).length;
   }
 
   static Future<List<Placement>> getListPlacementForAllStores() async {

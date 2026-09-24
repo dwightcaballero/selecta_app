@@ -17,23 +17,18 @@ import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 
-class PjpVisitPage extends StatefulWidget {
-  const PjpVisitPage({
-    super.key,
-    required this.hapiStoreID,
-    required this.initialHapistore,
-    required this.selectedDay,
-  });
+class PjpPage extends StatefulWidget {
+  const PjpPage({super.key, required this.hapiStoreID, required this.initialHapistore, required this.selectedDay});
 
   final String hapiStoreID;
   final Hapistore initialHapistore;
   final String selectedDay;
 
   @override
-  State<PjpVisitPage> createState() => _PjpVisitPageState();
+  State<PjpPage> createState() => _PjpPageState();
 }
 
-class _PjpVisitPageState extends State<PjpVisitPage> {
+class _PjpPageState extends State<PjpPage> {
   static const double _maxAllowedDistanceMeters = 200.0;
 
   late Hapistore _currentHapistore;
@@ -101,12 +96,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
   }
 
   Future<void> _runAllChecks() async {
-    await Future.wait([
-      _checkLocation(),
-      _checkScanning(),
-      _checkPlacement(),
-      _checkTasks(),
-    ]);
+    await Future.wait([_checkLocation(), _checkScanning(), _checkPlacement(), _checkTasks()]);
   }
 
   Future<void> _checkLocation() async {
@@ -173,12 +163,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 10)),
       );
 
-      final distance = Geolocator.distanceBetween(
-        position.latitude,
-        position.longitude,
-        _currentHapistore.latitude!,
-        _currentHapistore.longitude!,
-      );
+      final distance = Geolocator.distanceBetween(position.latitude, position.longitude, _currentHapistore.latitude!, _currentHapistore.longitude!);
 
       if (mounted) {
         setState(() {
@@ -210,10 +195,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
     setState(() => _isLoadingScanning = true);
 
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('scanning')
-          .where('storeName', isEqualTo: _currentHapistore.storeName)
-          .get();
+      final snapshot = await FirebaseFirestore.instance.collection('scanning').where('storeName', isEqualTo: _currentHapistore.storeName).get();
 
       final scannings = snapshot.docs.map((doc) {
         var s = Scanning.fromJson(doc.data());
@@ -289,18 +271,18 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
       final lastVisit = _currentHapistore.lastPjpVisit?.toDate();
       final bool lastVisitWithinWeek = lastVisit != null && Helperfunctions.isSameWeek(lastVisit, now);
 
-      final bool isPassed = _placementViewed ||
-          lastVisitWithinWeek ||
-          (matching != null && matching.isFinished);
+      final bool isPassed = _placementViewed || lastVisitWithinWeek || (matching != null && matching.isFinished);
 
       String statusMsg;
-      if (_placementViewed) {
+      if (matching != null && matching.isFinished) {
+        statusMsg = 'Placement checklist completed (${matching.progressCount}/12 placed).';
+      } else if (matching != null && (_placementViewed || matching.progressCount > 0)) {
+        statusMsg = 'Placement checklist updated (${matching.progressCount}/12 placed).';
+      } else if (_placementViewed) {
         statusMsg = 'Placement record viewed and verified.';
       } else if (lastVisitWithinWeek) {
         final dateLabel = DateFormat('EEE, MMM d').format(lastVisit);
         statusMsg = 'Placement verified (PJP visit completed on $dateLabel).';
-      } else if (matching != null && matching.isFinished) {
-        statusMsg = 'Placement checklist completed (${matching.progressCount}/12 placed).';
       } else if (matching != null) {
         statusMsg = 'Placement in progress (${matching.progressCount}/12 placed) — review needed.';
       } else {
@@ -337,10 +319,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
     setState(() => _isLoadingTasks = true);
 
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('tasks')
-          .where('storeName', isEqualTo: _currentHapistore.storeName)
-          .get();
+      final snapshot = await FirebaseFirestore.instance.collection('tasks').where('storeName', isEqualTo: _currentHapistore.storeName).get();
 
       final tasks = snapshot.docs.map((doc) {
         var t = Tasks.fromJson(doc.data());
@@ -381,10 +360,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => HapiStorePage(
-          hapiStoreID: widget.hapiStoreID,
-          hapistore: _currentHapistore,
-        ),
+        builder: (context) => HapiStorePage(hapiStoreID: widget.hapiStoreID, hapistore: _currentHapistore),
       ),
     );
 
@@ -398,26 +374,17 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ScanningPage(
-            initialBarcode: _storeScannings.first.barcode,
-            initialStoreName: _currentHapistore.storeName,
-          ),
+          builder: (context) => ScanningPage(initialBarcode: _storeScannings.first.barcode, initialStoreName: _currentHapistore.storeName),
         ),
       );
     } else {
-      final scannedBarcode = await Navigator.push<String>(
-        context,
-        MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()),
-      );
+      final scannedBarcode = await Navigator.push<String>(context, MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()));
 
       if (scannedBarcode != null && scannedBarcode.isNotEmpty && mounted) {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ScanningPage(
-              initialBarcode: scannedBarcode,
-              initialStoreName: _currentHapistore.storeName,
-            ),
+            builder: (context) => ScanningPage(initialBarcode: scannedBarcode, initialStoreName: _currentHapistore.storeName),
           ),
         );
       }
@@ -428,7 +395,8 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
   }
 
   Future<void> _onPlacementAction() async {
-    final placementToView = _storePlacement ??
+    final placementToView =
+        _storePlacement ??
         Placement(
           id: '',
           storeName: _currentHapistore.storeName,
@@ -449,12 +417,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
           progressCount: 0,
         );
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PlacementPage(placement: placementToView),
-      ),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => PlacementPage(placement: placementToView)));
 
     if (!mounted) return;
     _placementViewed = true;
@@ -462,12 +425,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
   }
 
   Future<void> _onTasksAction() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TasklistPage(initialStoreName: _currentHapistore.storeName),
-      ),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => TasklistPage(initialStoreName: _currentHapistore.storeName)));
 
     if (!mounted) return;
     await _checkTasks();
@@ -478,9 +436,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
 
     setState(() => _isCompleting = true);
     try {
-      await FirebaseFirestore.instance.collection('hapistores').doc(widget.hapiStoreID).update({
-        'lastPjpVisit': Timestamp.now(),
-      });
+      await FirebaseFirestore.instance.collection('hapistores').doc(widget.hapiStoreID).update({'lastPjpVisit': Timestamp.now()});
 
       await Helperfunctions.logTransaction(
         'PJP Visit Completed - ${_currentHapistore.storeName}',
@@ -551,35 +507,21 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
                   color: isPassed ? Colors.green.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  isPassed ? Icons.check_circle_rounded : icon,
-                  size: 18,
-                  color: isPassed ? Colors.green : colorScheme.primary,
-                ),
+                child: Icon(isPassed ? Icons.check_circle_rounded : icon, size: 18, color: isPassed ? Colors.green : colorScheme.primary),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  '$stepNumber. $title',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
+                child: Text('$stepNumber. $title', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               ),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
+                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (isLoading) ...[
-                      SizedBox(
-                        width: 10,
-                        height: 10,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: statusColor),
-                      ),
+                      SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 2, color: statusColor)),
                       const SizedBox(width: 4),
                     ],
                     Text(
@@ -607,20 +549,14 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
                 ),
                 if (errorMessage != null) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    errorMessage,
-                    style: TextStyle(fontSize: 12, color: colorScheme.error),
-                  ),
+                  Text(errorMessage, style: TextStyle(fontSize: 12, color: colorScheme.error)),
                 ],
                 if (isPassed && showActionWhenPassed && !isLoading) ...[
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: onAction,
                     icon: const Icon(Icons.visibility_outlined, size: 14),
-                    label: Text(
-                      actionLabelWhenPassed ?? actionLabel,
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                    label: Text(actionLabelWhenPassed ?? actionLabel, style: const TextStyle(fontSize: 12)),
                     style: OutlinedButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -686,13 +622,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
       appBar: CustomAppbar(
         title: _currentHapistore.storeName,
         subtitle: 'PJP • ${widget.selectedDay}',
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh checks',
-            onPressed: _runAllChecks,
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.refresh_rounded), tooltip: 'Refresh checks', onPressed: _runAllChecks)],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -714,10 +644,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
                         child: Icon(Icons.store_rounded, color: colorScheme.primary, size: 24),
                       ),
                       const SizedBox(width: 12),
@@ -725,23 +652,14 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              _currentHapistore.storeName,
-                              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                            ),
+                            Text(_currentHapistore.storeName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                             if (_currentHapistore.storeAddress.isNotEmpty) ...[
                               const SizedBox(height: 2),
-                              Text(
-                                _currentHapistore.storeAddress,
-                                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                              ),
+                              Text(_currentHapistore.storeAddress, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                             ],
                             if (_currentHapistore.storeContact.isNotEmpty) ...[
                               const SizedBox(height: 2),
-                              Text(
-                                'Contact: ${_currentHapistore.storeContact}',
-                                style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                              ),
+                              Text('Contact: ${_currentHapistore.storeContact}', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                             ],
                           ],
                         ),
@@ -782,19 +700,12 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
             children: [
               Text(
                 'Visit Verification',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
               ),
               const Spacer(),
               Text(
                 '${[_locationPassed, _scanningPassed, _placementPassed, _tasksPassed].where((p) => p).length} of 4 Passed',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _allPassed ? Colors.green.shade700 : colorScheme.onSurfaceVariant,
-                ),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _allPassed ? Colors.green.shade700 : colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -869,11 +780,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             child: _isCompleting
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                  )
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
                 : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -885,9 +792,7 @@ class _PjpVisitPageState extends State<PjpVisitPage> {
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          _allPassed
-                              ? (_isCompletedThisWeek ? 'Re-complete Store Visit' : 'Complete Store Visit')
-                              : 'Complete Store Visit',
+                          _allPassed ? (_isCompletedThisWeek ? 'Re-complete Store Visit' : 'Complete Store Visit') : 'Complete Store Visit',
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
