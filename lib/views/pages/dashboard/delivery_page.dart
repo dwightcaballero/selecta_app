@@ -8,7 +8,6 @@ import 'package:flutter_app/data/data.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/models/placement.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/delivery_service.dart';
@@ -20,6 +19,7 @@ import 'package:flutter_app/views/widgets/imageviewer_page.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:another_telephony/telephony.dart';
+import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
 import 'package:intl/intl.dart';
 
 class DeliveryPage extends StatefulWidget {
@@ -317,39 +317,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   Widget hapistoreDropdown() {
-    final HapiStoreService dbHS = HapiStoreService();
-    return StreamBuilder(
-      stream: dbHS.getListHapiStoresAsStream(),
-      builder: (BuildContext context, AsyncSnapshot snapshot) {
-        final listHapiStore = snapshot.data?.docs ?? [];
-        List<DropdownMenuEntry<String>> listDropdownItems = [];
-        for (int i = 0; i < listHapiStore.length; i++) {
-          Hapistore hapistore = listHapiStore[i].data();
-          listDropdownItems.add(DropdownMenuEntry(value: hapistore.storeName, label: hapistore.storeName));
-        }
-
-        return DropdownMenuFormField<String>(
-          controller: dropdownHapiStore,
-          enabled: isDealer,
-          initialSelection: dropdownHapiStore.text,
-          label: const Text('Hapi Store'),
-          leadingIcon: const Icon(Icons.storefront_outlined, size: 20),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          ),
-          validator: (value) => value == null || value.isEmpty ? 'Please select a Hapi Store' : null,
-          autovalidateMode: AutovalidateMode.onUnfocus,
-          dropdownMenuEntries: listDropdownItems,
-          enableSearch: true,
-          enableFilter: true,
-          requestFocusOnTap: true,
-          expandedInsets: EdgeInsets.zero,
-          menuHeight: 300,
-          onSelected: (String? newValue) {
-            onStoreSelected();
-          },
-        );
+    return HapistorePickerField(
+      controller: dropdownHapiStore,
+      enabled: isDealer,
+      label: 'Hapi Store',
+      validator: (value) => value == null || value.isEmpty ? 'Please select a Hapi Store' : null,
+      onChanged: () {
+        onStoreSelected();
       },
     );
   }

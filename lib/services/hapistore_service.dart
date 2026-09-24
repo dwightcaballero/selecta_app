@@ -19,20 +19,36 @@ class HapiStoreService {
         );
   }
 
+  static List<Hapistore>? cachedStores;
+
+  static void invalidateCache() {
+    cachedStores = null;
+  }
+
   void addHapiStore(Hapistore hapistore) {
+    invalidateCache();
     _hapistoresRef.add(hapistore);
   }
 
   void updateHapiStore(String hapiStoreID, Hapistore hapistore) {
+    invalidateCache();
     _hapistoresRef.doc(hapiStoreID).update(hapistore.toJson());
   }
 
   void deleteHapiStore(String hapiStoreID) {
+    invalidateCache();
     _hapistoresRef.doc(hapiStoreID).delete();
   }
 
   Stream<QuerySnapshot> getListHapiStoresAsStream() {
-    return _hapistoresRef.orderBy('storeName').snapshots();
+    return _hapistoresRef.orderBy('storeName').snapshots().map((snapshot) {
+      cachedStores = snapshot.docs.map((doc) {
+        final data = doc.data();
+        if (data is Hapistore) return data;
+        return Hapistore.fromJson(data as Map<String, Object?>);
+      }).toList();
+      return snapshot;
+    });
   }
 
   Stream<QuerySnapshot> getListHapiStoreSearch(String searchKeyword) {
@@ -64,10 +80,14 @@ class HapiStoreService {
     }
   }
 
-  // Get list hapi stores as a Future (not stream)
-  static Future<List<Hapistore>> getListHapiStores() async {
+  // Get list hapi stores as a Future (not stream) with in-memory caching
+  static Future<List<Hapistore>> getListHapiStores({bool forceRefresh = false}) async {
+    if (!forceRefresh && cachedStores != null) {
+      return cachedStores!;
+    }
     var snapshot = await FirebaseFirestore.instance.collection(HAPISTORE_COLLECTION_REF).orderBy('storeName').get();
-    return snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
+    cachedStores = snapshot.docs.map((doc) => Hapistore.fromJson(doc.data())).toList();
+    return cachedStores!;
   }
 
   // Get list of hapi stores with opening date within the current month
@@ -118,6 +138,7 @@ class HapiStoreService {
   // pjpSchedule (so stores newly added to the day from elsewhere get reassigned) in a single batch.
   // Stores removed from the day have their pjpSchedule/pjpSequence cleared instead.
   Future<void> updatePjpSequenceOrder(String pjpSchedule, List<String> orderedHapiStoreIDs, {List<String> removedHapiStoreIDs = const []}) async {
+    invalidateCache();
     final batch = _firestore.batch();
     for (var i = 0; i < orderedHapiStoreIDs.length; i++) {
       batch.update(_hapistoresRef.doc(orderedHapiStoreIDs[i]), {'pjpSchedule': pjpSchedule, 'pjpSequence': i});

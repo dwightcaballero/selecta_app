@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/pages/dashboard/delivery_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
 import 'package:intl/intl.dart';
 
 class TransactionListPage extends StatefulWidget {
@@ -53,7 +53,7 @@ class _TransactionListPageState extends State<TransactionListPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 12,
         children: [
-          // Store Dropdown
+          // Store Selector
           _buildHapistoreDropdown(),
 
           // Time Range Segmented Control
@@ -106,34 +106,10 @@ class _TransactionListPageState extends State<TransactionListPage> {
   }
 
   Widget _buildHapistoreDropdown() {
-    return StreamBuilder(
-      stream: dbHS.getListHapiStoresAsStream(),
-      builder: (BuildContext context, AsyncSnapshot snapshot) {
-        final listHapiStore = snapshot.data?.docs ?? [];
-        List<DropdownMenuEntry<String>> listDropdownItems = [];
-        for (int i = 0; i < listHapiStore.length; i++) {
-          Hapistore hapistore = listHapiStore[i].data();
-          listDropdownItems.add(DropdownMenuEntry(value: hapistore.storeName, label: hapistore.storeName));
-        }
-
-        return DropdownMenuFormField<String>(
-          controller: dropdownHapiStore,
-          initialSelection: dropdownHapiStore.text,
-          label: const Text('Select Store'),
-          leadingIcon: const Icon(Icons.storefront_outlined, size: 20),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          ),
-          dropdownMenuEntries: listDropdownItems,
-          enableSearch: true,
-          enableFilter: true,
-          requestFocusOnTap: true,
-          expandedInsets: EdgeInsets.zero,
-          menuHeight: 300,
-          onSelected: (_) => setState(() {}),
-        );
-      },
+    return HapistorePickerField(
+      controller: dropdownHapiStore,
+      label: 'Select Store',
+      onChanged: () => setState(() {}),
     );
   }
 
@@ -383,3 +359,4 @@ class _TransactionListPageState extends State<TransactionListPage> {
     );
   }
 }
+
