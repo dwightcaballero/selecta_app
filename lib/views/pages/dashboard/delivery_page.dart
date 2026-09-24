@@ -56,7 +56,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   List<KPlacement> listPlacement = [];
   String placementID = '';
 
-  final _formkey = KVariables.formkey;
+  final _formkey = GlobalKey<FormState>();
   DateTime _selectedDate = DateTime.now();
 
   @override
@@ -172,11 +172,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
       dropdownHapiStore.text = widget.delivery.storeName;
       dropdownStatus.text = widget.delivery.transactionStatus;
       txtRemarks.text = widget.delivery.remarks;
-      txtOrderAmount.text = widget.delivery.orderAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount);
-      txtCashAmount.text = widget.delivery.cashAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.cashAmount);
-      txtOnlineAmount.text = widget.delivery.onlineAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.onlineAmount);
-      txtCreditAmount.text = widget.delivery.creditAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount);
-      txtReturnAmount.text = widget.delivery.returnAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount);
+      txtOrderAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.orderAmount);
+      txtCashAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.cashAmount);
+      txtOnlineAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.onlineAmount);
+      txtCreditAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.creditAmount);
+      txtReturnAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.returnAmount);
 
       computeDiscrepancy();
     } else {
@@ -468,8 +468,14 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   child: Icon(icon, size: 18, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 10),
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                if (trailing != null) ...[const Spacer(), trailing],
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (trailing != null) ...[const SizedBox(width: 8), trailing],
               ],
             ),
             const Divider(height: 24),
@@ -636,6 +642,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
         autovalidateMode: AutovalidateMode.onUnfocus,
+        onChanged: (_) => computeDiscrepancy(),
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(prefixIcon, size: 20, color: iconColor ?? colorScheme.primary),
@@ -734,7 +741,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void _quickFillPayment({required String target}) {
-    String formattedOrder = widget.delivery.orderAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.orderAmount);
+    String formattedOrder = Helperfunctions.formatDoubleAmountForField(widget.delivery.orderAmount);
 
     setState(() {
       txtCashAmount.text = target == 'cash' ? formattedOrder : '';
@@ -746,6 +753,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   Widget _buildPaymentSummary() {
+    final colorScheme = Theme.of(context).colorScheme;
     Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
     Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
     Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
@@ -777,7 +785,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Total Accounted', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                    Text('Total Accounted', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 2),
                     Text(
                       Helperfunctions.formatDoubleAmountForDisplay(totalCollected.toDouble()),
@@ -786,13 +794,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   ],
                 ),
               ),
-              Container(height: 32, width: 1, color: Colors.grey.shade300),
+              Container(height: 32, width: 1, color: colorScheme.outlineVariant),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Target Order Amount', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                    Text('Target Order Amount', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 2),
                     Text(Helperfunctions.formatDoubleAmountForDisplay(orderAmt), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
@@ -811,10 +819,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   const SizedBox(width: 6),
                   Text(
                     isBalanced
-                        ? '✓ Balanced'
+                        ? 'Balanced'
                         : (isOver
-                              ? '⚠️ Over by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'
-                              : '⚠️ Short by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'),
+                              ? 'Over by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'
+                              : 'Short by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'),
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: badgeColor),
                   ),
                 ],
@@ -895,6 +903,66 @@ class _DeliveryPageState extends State<DeliveryPage> {
       }
     }
 
+    Future<void> pickFromGallery() async {
+      try {
+        final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+        if (pickedFile != null) {
+          scanDocs(File(pickedFile.path));
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to pick image: $e');
+        }
+      }
+    }
+
+    void showImageSourceSelector() {
+      showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                    child: Icon(Icons.document_scanner_outlined, color: colorScheme.primary),
+                  ),
+                  title: const Text('Scan Document / Receipt', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Automatically crop and enhance document'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    startScan();
+                  },
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                    child: Icon(Icons.photo_library_outlined, color: colorScheme.primary),
+                  ),
+                  title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Select a photo from device storage'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    pickFromGallery();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return _buildSectionCard(
       title: 'Receipt & Documents',
       icon: Icons.receipt_long_outlined,
@@ -912,43 +980,81 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      height: 200,
-                      width: double.infinity,
-                      decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10)),
-                      child: image != null
-                          ? Image.file(image!, fit: BoxFit.cover)
-                          : Image.network(
-                              networkImagePath,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return const Center(child: CircularProgressIndicator());
-                              },
-                            ),
+                    child: InkWell(
+                      onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
+                      child: Container(
+                        height: 200,
+                        width: double.infinity,
+                        decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10)),
+                        child: image != null
+                            ? Image.file(image!, fit: BoxFit.cover)
+                            : Image.network(
+                                networkImagePath,
+                                fit: BoxFit.cover,
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return const Center(child: CircularProgressIndicator());
+                                },
+                                errorBuilder: (_, _, _) => Container(
+                                  height: 200,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  alignment: Alignment.center,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.broken_image_outlined, size: 36, color: colorScheme.onSurfaceVariant),
+                                      const SizedBox(height: 4),
+                                      Text('Unable to load receipt', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    alignment: WrapAlignment.spaceEvenly,
-                    spacing: 8,
-                    runSpacing: 8,
+                  const SizedBox(height: 10),
+                  Row(
                     children: [
-                      OutlinedButton.icon(
-                        onPressed: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
-                        icon: const Icon(Icons.fullscreen, size: 18),
-                        label: const Text('View Fullscreen'),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
+                          style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          icon: const Icon(Icons.fullscreen, size: 16),
+                          label: const Text('View', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        ),
                       ),
                       if (isDealer) ...[
-                        OutlinedButton.icon(onPressed: startScan, icon: const Icon(Icons.replay, size: 18), label: const Text('Retake / Replace')),
-                        OutlinedButton.icon(
-                          onPressed: () => scanDocs(null),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red.shade700,
-                            side: BorderSide(color: Colors.red.shade300),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: showImageSourceSelector,
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.replay, size: 16),
+                            label: const Text('Retake', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                           ),
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          label: const Text('Delete Receipt'),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => scanDocs(null),
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                              foregroundColor: Colors.red.shade700,
+                              side: BorderSide(color: Colors.red.shade300),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.delete_outline, size: 16),
+                            label: const Text('Delete', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          ),
                         ),
                       ],
                     ],
@@ -957,7 +1063,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ),
             )
           : InkWell(
-              onTap: isDealer ? startScan : null,
+              onTap: isDealer ? showImageSourceSelector : null,
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 width: double.infinity,
@@ -978,7 +1084,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     const SizedBox(height: 10),
                     const Text('Tap to scan or attach receipt', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text('Scan receipt document for order verification', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                    Text('Scan receipt or choose from gallery', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -1170,74 +1276,137 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   Widget _buildPlacementCard() {
     final colorScheme = Theme.of(context).colorScheme;
+    final placedCount = listPlacement.where((placement) => placement.isPlaced).length;
+    final unplacedCount = listPlacement.where((placement) => !placement.isPlaced).length;
 
     return _buildSectionCard(
-      title: 'Placement',
+      title: 'Placement Checklist',
       icon: Icons.inventory_2_outlined,
-      trailing: Text(
-        '${listPlacement.where((placement) => placement.isPlaced).length}/12 placed',
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: (placedCount == 12 ? colorScheme.primary : colorScheme.onSurfaceVariant).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          '$placedCount/12 placed',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: placedCount == 12 ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
-      child: SizedBox(
-        height: 320,
-        child: ListView.separated(
-          primary: false,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(right: 4),
-          itemCount: 12,
-          separatorBuilder: (_, _) => Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-          itemBuilder: (context, index) {
-            final isPlaced = listPlacement[index].isPlaced;
-
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              margin: const EdgeInsets.symmetric(vertical: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: isPlaced ? colorScheme.primary.withValues(alpha: 0.08) : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: isPlaced ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent),
-              ),
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    listPlacement[index].itemImagePath,
-                    width: 80,
-                    height: 60,
-                    fit: BoxFit.fitWidth,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      width: 80,
-                      height: 60,
-                      color: colorScheme.surfaceContainerHighest,
-                      child: Icon(Icons.image_outlined, color: colorScheme.onSurfaceVariant),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: listPlacement.isEmpty ? 0 : placedCount / listPlacement.length,
+                      minHeight: 6,
+                      backgroundColor: colorScheme.surfaceContainerHighest,
+                      color: placedCount == 12 ? Colors.green : colorScheme.primary,
                     ),
                   ),
                 ),
-                title: Text(listPlacement[index].itemName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                subtitle: Text(
-                  isPlaced ? 'Placed and ready' : 'Pending placement',
-                  style: TextStyle(fontSize: 12, color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant),
-                ),
-                trailing: Checkbox(
-                  value: isPlaced,
-                  activeColor: colorScheme.primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                  onChanged: (value) {
-                    if (listPlacement[index].isPlacedFromDB) {
-                      null;
-                    } else {
+                if (unplacedCount > 0) ...[
+                  const SizedBox(width: 10),
+                  FilledButton.tonalIcon(
+                    onPressed: () {
                       setState(() {
-                        listPlacement[index].isPlaced = value ?? false;
+                        for (var placement in listPlacement) {
+                          placement.isPlaced = true;
+                        }
                       });
-                    }
-                  },
+                    },
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                    ),
+                    icon: const Icon(Icons.done_all_rounded, size: 15),
+                    label: const Text('Place All', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: listPlacement.length,
+            separatorBuilder: (_, _) => Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            itemBuilder: (context, index) {
+              final item = listPlacement[index];
+              final isPlaced = item.isPlaced;
+              final isLocked = item.isPlacedFromDB;
+
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                margin: const EdgeInsets.symmetric(vertical: 3),
+                decoration: BoxDecoration(
+                  color: isLocked
+                      ? colorScheme.primary.withValues(alpha: 0.08)
+                      : (isPlaced ? colorScheme.primary.withValues(alpha: 0.04) : Colors.transparent),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isLocked
+                        ? colorScheme.primary.withValues(alpha: 0.35)
+                        : (isPlaced ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent),
+                  ),
                 ),
-              ),
-            );
-          },
-        ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  onTap: isLocked
+                      ? () => ShowMessage.error(context, '${item.itemName} is already placed for this month.')
+                      : () => setState(() => item.isPlaced = !item.isPlaced),
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      item.itemImagePath,
+                      width: 60,
+                      height: 50,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        width: 60,
+                        height: 50,
+                        color: colorScheme.surfaceContainerHighest,
+                        child: Icon(Icons.image_outlined, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ),
+                  title: Text(item.itemName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  subtitle: Text(
+                    isLocked
+                        ? 'Locked (saved in DB)'
+                        : (isPlaced ? 'Placed and ready' : 'Pending placement'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: isLocked
+                      ? Icon(Icons.lock_outline, size: 20, color: colorScheme.primary)
+                      : Checkbox(
+                          value: isPlaced,
+                          activeColor: colorScheme.primary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                          onChanged: (value) {
+                            setState(() {
+                              item.isPlaced = value ?? false;
+                            });
+                          },
+                        ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -1254,6 +1423,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           child: Form(
             key: _formkey,
             child: Column(

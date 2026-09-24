@@ -72,7 +72,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
       txtCent.text = widget.breakdown.cent != 0 ? widget.breakdown.cent.toString() : '';
 
       if (widget.breakdown.bankDepositAmount > 0) {
-        txtBankDeposit.text = Helperfunctions.formatDoubleAmountForDisplay(widget.breakdown.bankDepositAmount);
+        txtBankDeposit.text = Helperfunctions.formatDoubleAmountForField(widget.breakdown.bankDepositAmount);
         withBankDeposit = true;
       }
 
@@ -195,7 +195,23 @@ class _BreakdownPageState extends State<BreakdownPage> {
     }
   }
 
+  void _clearAllDenominations() {
+    txt1000.clear();
+    txt500.clear();
+    txt200.clear();
+    txt100.clear();
+    txt50.clear();
+    txtB20.clear();
+    txtC20.clear();
+    txt10.clear();
+    txt5.clear();
+    txt1.clear();
+    txtCent.clear();
+    recompute();
+  }
+
   Widget _buildReconciliationSummary() {
+    final colorScheme = Theme.of(context).colorScheme;
     double totalCollected = widget.breakdown.breakdownAmount + widget.breakdown.bankDepositAmount;
     double expected = widget.breakdown.expectedAmount;
     double discrepancy = widget.breakdown.discrepancy;
@@ -223,7 +239,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Total Counted', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                    Text('Total Counted', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 2),
                     Text(
                       Helperfunctions.formatDoubleAmountForDisplay(totalCollected),
@@ -232,13 +248,13 @@ class _BreakdownPageState extends State<BreakdownPage> {
                   ],
                 ),
               ),
-              Container(height: 32, width: 1, color: Colors.grey.shade300),
+              Container(height: 32, width: 1, color: colorScheme.outlineVariant),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Expected Amount', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                    Text('Expected Amount', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 2),
                     Text(Helperfunctions.formatDoubleAmountForDisplay(expected), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ],
@@ -256,10 +272,10 @@ class _BreakdownPageState extends State<BreakdownPage> {
                   const SizedBox(width: 6),
                   Text(
                     isBalanced
-                        ? '✓ Balanced'
+                        ? 'Balanced'
                         : (isOver
-                              ? '⚠️ Over by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'
-                              : '⚠️ Short by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'),
+                              ? 'Over by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'
+                              : 'Short by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'),
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: badgeColor),
                   ),
                 ],
@@ -270,6 +286,22 @@ class _BreakdownPageState extends State<BreakdownPage> {
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: badgeColor),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryHeader(String title, IconData icon, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            title,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color, letterSpacing: 0.3),
           ),
         ],
       ),
@@ -299,6 +331,16 @@ class _BreakdownPageState extends State<BreakdownPage> {
                 ),
                 const SizedBox(width: 10),
                 const Text('Cash Denominations', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _clearAllDenominations,
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                  icon: const Icon(Icons.restart_alt, size: 16),
+                  label: const Text('Clear All', style: TextStyle(fontSize: 12)),
+                ),
               ],
             ),
             const Divider(height: 22),
@@ -333,18 +375,21 @@ class _BreakdownPageState extends State<BreakdownPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
+            _buildCategoryHeader('Banknotes (Bills)', Icons.money_rounded, Colors.green.shade700),
             _buildDenominationRow('₱1,000', txt1000, breakdownTotal.total1000, isBill: true),
             _buildDenominationRow('₱500', txt500, breakdownTotal.total500, isBill: true),
             _buildDenominationRow('₱200', txt200, breakdownTotal.total200, isBill: true),
             _buildDenominationRow('₱100', txt100, breakdownTotal.total100, isBill: true),
             _buildDenominationRow('₱50', txt50, breakdownTotal.total50, isBill: true),
             _buildDenominationRow('₱20 (Bill)', txtB20, breakdownTotal.totalB20, isBill: true),
+            const SizedBox(height: 10),
+            _buildCategoryHeader('Coins & Centavos', Icons.monetization_on_outlined, Colors.amber.shade800),
             _buildDenominationRow('₱20 (Coin)', txtC20, breakdownTotal.totalC20, isBill: false),
             _buildDenominationRow('₱10', txt10, breakdownTotal.total10, isBill: false),
             _buildDenominationRow('₱5', txt5, breakdownTotal.total5, isBill: false),
             _buildDenominationRow('₱1', txt1, breakdownTotal.total1, isBill: false),
-            _buildDenominationRow('Centavos', txtCent, breakdownTotal.totalCent, isBill: false),
+            _buildDenominationRow('Centavos', txtCent, breakdownTotal.totalCent, isBill: false, isLast: true),
             const Divider(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -362,11 +407,11 @@ class _BreakdownPageState extends State<BreakdownPage> {
     );
   }
 
-  Widget _buildDenominationRow(String label, TextEditingController controller, double subtotal, {required bool isBill}) {
+  Widget _buildDenominationRow(String label, TextEditingController controller, double subtotal, {required bool isBill, bool isLast = false}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 3.0),
       child: Row(
         children: [
           Expanded(
@@ -391,6 +436,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
               child: TextFormField(
                 controller: controller,
                 keyboardType: TextInputType.number,
+                textInputAction: isLast ? TextInputAction.done : TextInputAction.next,
                 textAlign: TextAlign.center,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
@@ -459,6 +505,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
                           textAlign: TextAlign.end,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+                          onChanged: (_) => recompute(),
                           decoration: InputDecoration(
                             labelText: 'Bank Deposit Amount',
                             prefixIcon: const Icon(Icons.account_balance_outlined, color: Colors.blue, size: 20),
@@ -553,10 +600,17 @@ class _BreakdownPageState extends State<BreakdownPage> {
         ),
         child: FilledButton.icon(
           onPressed: () async {
+            final bool isBalanced = widget.breakdown.discrepancy == 0;
+            final double disc = widget.breakdown.discrepancy.abs();
+            final String baseMsg = isUpdating ? ConfirmMessage.update : ConfirmMessage.save;
+            final String message = isBalanced
+                ? baseMsg
+                : '$baseMsg\n\n⚠️ Note: Discrepancy is ${Helperfunctions.formatDoubleAmountForDisplay(disc)} (${widget.breakdown.discrepancy > 0 ? "Overpaid" : "Shortage"}).';
+
             final confirmed = await ShowMessage.confirm(
               context,
               title: isUpdating ? ConfirmTitle.update : ConfirmTitle.save,
-              message: isUpdating ? ConfirmMessage.update : ConfirmMessage.save,
+              message: message,
               icon: isUpdating ? Icons.check_circle_outline : Icons.save_outlined,
               confirmText: isUpdating ? 'Update' : 'Save',
             );
@@ -584,6 +638,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
       appBar: CustomAppbar(title: 'Cash Breakdown', subtitle: Helperfunctions.formatTimestampForDisplay(widget.breakdown.breakdownDate)),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

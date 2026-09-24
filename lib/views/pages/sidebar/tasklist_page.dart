@@ -70,13 +70,18 @@ class _TasklistPageState extends State<TasklistPage> {
       final updatedTask = task.copyWith(isTaskDone: newStatus);
       await db.updateTasks(taskID, updatedTask);
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              newStatus ? 'Task marked as completed!' : 'Task marked as pending.',
+              newStatus ? 'Task completed!' : 'Task marked as pending.',
             ),
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 4),
             behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () => _toggleTaskStatus(taskID, updatedTask),
+            ),
           ),
         );
       }
@@ -218,6 +223,13 @@ class _TasklistPageState extends State<TasklistPage> {
       iconColor = accentColor;
     }
 
+    final selectedTextColor = switch (filter) {
+      TaskFilter.pending => Colors.orange.shade900,
+      TaskFilter.completed => Colors.green.shade800,
+      TaskFilter.overdue => Colors.red.shade800,
+      TaskFilter.all => colorScheme.primary,
+    };
+
     return Expanded(
       child: Material(
         color: Colors.transparent,
@@ -267,7 +279,7 @@ class _TasklistPageState extends State<TasklistPage> {
                     Text(
                       value,
                       style: TextStyle(
-                        color: isSelected ? colorScheme.primary : Colors.white,
+                        color: isSelected ? selectedTextColor : Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
                         height: 1.1,
@@ -279,7 +291,7 @@ class _TasklistPageState extends State<TasklistPage> {
                 Text(
                   label,
                   style: TextStyle(
-                    color: isSelected ? colorScheme.primary : Colors.white70,
+                    color: isSelected ? selectedTextColor : Colors.white70,
                     fontSize: 10.5,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                   ),
@@ -334,26 +346,66 @@ class _TasklistPageState extends State<TasklistPage> {
 
 
 
+  String _formatDeadline(DateTime deadline, {required bool isDone}) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final deadlineDate = DateTime(deadline.year, deadline.month, deadline.day);
+    final diffDays = deadlineDate.difference(today).inDays;
+    final timeStr = DateFormat('h:mm a').format(deadline);
+
+    if (isDone) {
+      return DateFormat('EEE, d MMM • h:mm a').format(deadline);
+    }
+
+    if (diffDays == 0) {
+      if (deadline.isBefore(now)) {
+        final hoursAgo = now.difference(deadline).inHours;
+        if (hoursAgo == 0) {
+          final minutesAgo = now.difference(deadline).inMinutes;
+          return 'Overdue by ${minutesAgo <= 1 ? 1 : minutesAgo}m • $timeStr';
+        }
+        return 'Overdue by ${hoursAgo}h • $timeStr';
+      }
+      return 'Today • $timeStr';
+    } else if (diffDays == 1) {
+      return 'Tomorrow • $timeStr';
+    } else if (diffDays == -1) {
+      return 'Yesterday • $timeStr';
+    } else if (diffDays < -1) {
+      return '${(-diffDays)}d overdue • $timeStr';
+    } else if (diffDays < 7) {
+      return DateFormat('EEEE • h:mm a').format(deadline);
+    } else {
+      return DateFormat('EEE, d MMM • h:mm a').format(deadline);
+    }
+  }
+
   Widget _buildTaskCard({required String taskID, required Tasks task}) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final deadlineDate = task.taskDeadline.toDate();
     final isDone = task.isTaskDone;
-    final isOverdue = !isDone && task.taskDeadline.toDate().isBefore(DateTime.now());
-    final deadlineFormatted = DateFormat('EEE, d MMM • h:mm a').format(task.taskDeadline.toDate());
+    final isOverdue = !isDone && deadlineDate.isBefore(DateTime.now());
+    final isDueToday = !isDone && !isOverdue &&
+        deadlineDate.year == DateTime.now().year &&
+        deadlineDate.month == DateTime.now().month &&
+        deadlineDate.day == DateTime.now().day;
+    final deadlineFormatted = _formatDeadline(deadlineDate, isDone: isDone);
 
     Color statusColor;
     String statusText;
     IconData statusIcon;
 
     if (isDone) {
-      statusColor = Colors.green;
+      statusColor = isDark ? Colors.green.shade400 : Colors.green.shade700;
       statusText = 'Completed';
       statusIcon = Icons.check_circle_rounded;
     } else if (isOverdue) {
-      statusColor = Colors.red;
+      statusColor = isDark ? Colors.red.shade300 : Colors.red.shade700;
       statusText = 'Overdue';
       statusIcon = Icons.error_outline_rounded;
     } else {
-      statusColor = Colors.orange;
+      statusColor = isDark ? Colors.orange.shade300 : Colors.orange.shade800;
       statusText = 'Pending';
       statusIcon = Icons.schedule_rounded;
     }
@@ -365,8 +417,10 @@ class _TasklistPageState extends State<TasklistPage> {
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
           color: isDone
-              ? Colors.green.withValues(alpha: 0.3)
-              : (isOverdue ? Colors.red.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              ? (isDark ? Colors.green.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.25))
+              : (isOverdue
+                  ? (isDark ? Colors.red.withValues(alpha: 0.35) : Colors.red.withValues(alpha: 0.25))
+                  : colorScheme.outlineVariant.withValues(alpha: 0.6)),
           width: 1,
         ),
       ),
@@ -382,7 +436,9 @@ class _TasklistPageState extends State<TasklistPage> {
               IconButton(
                 icon: Icon(
                   isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                  color: isDone ? Colors.green : (isOverdue ? Colors.red.shade400 : colorScheme.outline),
+                  color: isDone
+                      ? (isDark ? Colors.green.shade400 : Colors.green)
+                      : (isOverdue ? (isDark ? Colors.red.shade300 : Colors.red.shade400) : colorScheme.outline),
                   size: 26,
                 ),
                 padding: EdgeInsets.zero,
@@ -418,7 +474,7 @@ class _TasklistPageState extends State<TasklistPage> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.12),
+                            color: statusColor.withValues(alpha: isDark ? 0.18 : 0.12),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
@@ -483,15 +539,19 @@ class _TasklistPageState extends State<TasklistPage> {
                             Icon(
                               Icons.calendar_month_outlined,
                               size: 14,
-                              color: isOverdue ? Colors.red : colorScheme.onSurfaceVariant,
+                              color: isOverdue
+                                  ? (isDark ? Colors.red.shade300 : Colors.red.shade700)
+                                  : (isDueToday ? colorScheme.primary : colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(width: 4),
                             Text(
                               deadlineFormatted,
                               style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
-                                color: isOverdue ? Colors.red.shade800 : colorScheme.onSurfaceVariant,
+                                fontWeight: (isOverdue || isDueToday) ? FontWeight.w600 : FontWeight.normal,
+                                color: isOverdue
+                                    ? (isDark ? Colors.red.shade300 : Colors.red.shade800)
+                                    : (isDueToday ? colorScheme.primary : colorScheme.onSurfaceVariant),
                               ),
                             ),
                           ],
@@ -514,8 +574,9 @@ class _TasklistPageState extends State<TasklistPage> {
     );
   }
 
-  Widget _buildSectionHeader(String headerKey) {
+  Widget _buildSectionHeader(String headerKey, {int count = 0}) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final String label;
     final IconData icon;
@@ -523,28 +584,28 @@ class _TasklistPageState extends State<TasklistPage> {
 
     switch (headerKey) {
       case '_header_overdue':
-        label = 'Overdue';
+        label = count > 0 ? 'Overdue ($count)' : 'Overdue';
         icon = Icons.warning_amber_rounded;
-        color = Colors.red;
+        color = isDark ? Colors.red.shade300 : Colors.red;
         break;
       case '_header_pending':
-        label = 'Pending';
+        label = count > 0 ? 'Pending ($count)' : 'Pending';
         icon = Icons.hourglass_top_rounded;
-        color = Colors.orange;
+        color = isDark ? Colors.orange.shade300 : Colors.orange.shade800;
         break;
       case '_header_completed':
-        label = 'Completed';
+        label = count > 0 ? 'Completed ($count)' : 'Completed';
         icon = Icons.check_circle_outline_rounded;
-        color = Colors.green;
+        color = isDark ? Colors.green.shade400 : Colors.green;
         break;
       default:
-        label = headerKey;
+        label = count > 0 ? '$headerKey ($count)' : headerKey;
         icon = Icons.label_outline;
         color = colorScheme.primary;
     }
 
     return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 6),
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
       child: Row(
         children: [
           Icon(icon, size: 14, color: color),
@@ -571,6 +632,7 @@ class _TasklistPageState extends State<TasklistPage> {
   }
 
   Widget _buildEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -580,20 +642,20 @@ class _TasklistPageState extends State<TasklistPage> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.1),
+                color: colorScheme.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.assignment_outlined, color: Colors.blue, size: 50),
+              child: Icon(Icons.assignment_outlined, color: colorScheme.primary, size: 50),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No Tasks Created',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Keep track of assignments and store duties by adding your first task.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
@@ -609,19 +671,20 @@ class _TasklistPageState extends State<TasklistPage> {
   }
 
   Widget _buildNoSearchResultsState() {
+    final colorScheme = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.search_off_rounded, size: 48, color: Colors.grey),
+            Icon(Icons.search_off_rounded, size: 48, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
             const SizedBox(height: 12),
             Text(
               _searchQuery.isNotEmpty
                   ? 'No tasks matching "$_searchQuery"'
                   : 'No tasks found with the selected filter',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: colorScheme.onSurface),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
@@ -711,6 +774,27 @@ class _TasklistPageState extends State<TasklistPage> {
             }
           }
 
+          // Sort overdue: nearest deadline first
+          overdueDocs.sort((a, b) {
+            final taskA = a.data() as Tasks;
+            final taskB = b.data() as Tasks;
+            return taskA.taskDeadline.compareTo(taskB.taskDeadline);
+          });
+
+          // Sort pending: nearest deadline first (most urgent at the top)
+          pendingDocs.sort((a, b) {
+            final taskA = a.data() as Tasks;
+            final taskB = b.data() as Tasks;
+            return taskA.taskDeadline.compareTo(taskB.taskDeadline);
+          });
+
+          // Sort completed: most recently updated / completed first
+          completedDocs.sort((a, b) {
+            final taskA = a.data() as Tasks;
+            final taskB = b.data() as Tasks;
+            return taskB.lastupdatedDate.compareTo(taskA.lastupdatedDate);
+          });
+
           // Apply search filter across all groups
           bool matchesSearch(QueryDocumentSnapshot doc) {
             if (_searchQuery.isEmpty) return true;
@@ -726,11 +810,15 @@ class _TasklistPageState extends State<TasklistPage> {
 
           // Each entry is either a header String or a QueryDocumentSnapshot
           final List<dynamic> displayItems = [];
+          final Map<String, int> headerCounts = {};
 
           if (_selectedFilter == TaskFilter.overdue || isShowingAll) {
             final filtered = overdueDocs.where(matchesSearch).toList();
             if (filtered.isNotEmpty) {
-              if (isShowingAll) displayItems.add('_header_overdue');
+              if (isShowingAll) {
+                displayItems.add('_header_overdue');
+                headerCounts['_header_overdue'] = filtered.length;
+              }
               displayItems.addAll(filtered);
             }
           }
@@ -738,7 +826,10 @@ class _TasklistPageState extends State<TasklistPage> {
           if (_selectedFilter == TaskFilter.pending || isShowingAll) {
             final filtered = pendingDocs.where(matchesSearch).toList();
             if (filtered.isNotEmpty) {
-              if (isShowingAll) displayItems.add('_header_pending');
+              if (isShowingAll) {
+                displayItems.add('_header_pending');
+                headerCounts['_header_pending'] = filtered.length;
+              }
               displayItems.addAll(filtered);
             }
           }
@@ -746,10 +837,15 @@ class _TasklistPageState extends State<TasklistPage> {
           if (_selectedFilter == TaskFilter.completed || isShowingAll) {
             final filtered = completedDocs.where(matchesSearch).toList();
             if (filtered.isNotEmpty) {
-              if (isShowingAll) displayItems.add('_header_completed');
+              if (isShowingAll) {
+                displayItems.add('_header_completed');
+                headerCounts['_header_completed'] = filtered.length;
+              }
               displayItems.addAll(filtered);
             }
           }
+
+          final colorScheme = Theme.of(context).colorScheme;
 
           return Column(
             children: [
@@ -764,6 +860,50 @@ class _TasklistPageState extends State<TasklistPage> {
               // 2. Search Field
               _buildSearchBar(),
 
+              // Active filter pill
+              if (_selectedFilter != TaskFilter.all || _searchQuery.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _selectedFilter != TaskFilter.all
+                              ? 'Filter: ${_selectedFilter.name.toUpperCase()}'
+                              : 'Search: "$_searchQuery"',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.onPrimaryContainer,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                            _selectedFilter = TaskFilter.all;
+                          });
+                        },
+                        icon: const Icon(Icons.close, size: 14),
+                        label: const Text('Clear Filter', style: TextStyle(fontSize: 11)),
+                      ),
+                    ],
+                  ),
+                ),
+
               const SizedBox(height: 4),
 
               // 3. Tasks List View
@@ -771,14 +911,14 @@ class _TasklistPageState extends State<TasklistPage> {
                 child: displayItems.isEmpty
                     ? _buildNoSearchResultsState()
                     : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
                         itemCount: displayItems.length,
                         itemBuilder: (context, index) {
                           final item = displayItems[index];
 
                           if (item is String) {
                             // Section header
-                            return _buildSectionHeader(item);
+                            return _buildSectionHeader(item, count: headerCounts[item] ?? 0);
                           }
 
                           final doc = item as QueryDocumentSnapshot;

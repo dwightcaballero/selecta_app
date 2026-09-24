@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/models/scanning.dart';
@@ -40,6 +41,25 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text('Copied $label to clipboard'),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> prefetchData() async {
@@ -196,7 +216,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     }
 
     final statusColor = switch (status) {
-      ScanningStatus.scanned => colorScheme.primary,
+      ScanningStatus.scanned => Colors.green,
       ScanningStatus.pullout => colorScheme.error,
       _ => colorScheme.tertiary,
     };
@@ -208,7 +228,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
 
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(0, 16, 0, 32),
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 32),
       itemCount: scannings.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
@@ -236,7 +256,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                   Container(
                     width: 42,
                     height: 42,
-                    decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                    decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
                     child: Icon(statusIcon, color: statusColor),
                   ),
                   const SizedBox(width: 12),
@@ -244,9 +264,29 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(scanning.storeName, style: KTextStyle.titleTextStyle, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 3),
-                        Text(scanning.barcode, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                        Text(
+                          scanning.storeName.isNotEmpty ? scanning.storeName : 'Unassigned Store',
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(4),
+                          onTap: () => _copyToClipboard(scanning.barcode, 'barcode ${scanning.barcode}'),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.qr_code_2_rounded, size: 13, color: colorScheme.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Text(
+                                scanning.barcode,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.primary),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.copy_rounded, size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                            ],
+                          ),
+                        ),
                         const SizedBox(height: 3),
                         Text(
                           scanning.scannedDate == null ? 'Not scanned yet' : DateFormat('MMM d, yyyy hh:mm a').format(scanning.scannedDate!.toDate()),
@@ -267,40 +307,74 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
 
   Widget _buildSummaryBanner({required int count, required String status, required Color statusColor}) {
     final colorScheme = Theme.of(context).colorScheme;
+    final notScannedCount = scanningList.where((s) => s.status == ScanningStatus.notScanned).length;
+    final scannedCount = scanningList.where((s) => s.status == ScanningStatus.scanned).length;
+    final totalActive = notScannedCount + scannedCount;
+    final overallProgress = totalActive > 0 ? scannedCount / totalActive : 0.0;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: 0.09),
+        color: statusColor.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: statusColor.withValues(alpha: 0.25)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Icon(
-            status == ScanningStatus.scanned
-                ? Icons.task_alt_rounded
-                : status == ScanningStatus.pullout
-                ? Icons.outbox_outlined
-                : Icons.pending_actions_rounded,
-            color: statusColor,
+          Row(
+            children: [
+              Icon(
+                status == ScanningStatus.scanned
+                    ? Icons.task_alt_rounded
+                    : status == ScanningStatus.pullout
+                    ? Icons.outbox_outlined
+                    : Icons.pending_actions_rounded,
+                color: statusColor,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$status records',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                    ),
+                    Text(
+                      '$count ${count == 1 ? 'record' : 'records'}',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              if (totalActive > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(
+                    '${(overallProgress * 100).toInt()}% Done',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$status records',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '$count ${count == 1 ? 'record' : 'records'}',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ],
+          if (totalActive > 0) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: overallProgress,
+                minHeight: 5,
+                backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.green.shade600),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -309,22 +383,33 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final notScannedCount = scanningList.where((s) => s.status == ScanningStatus.notScanned).length;
+    final scannedCount = scanningList.where((s) => s.status == ScanningStatus.scanned).length;
+    final pulloutCount = scanningList.where((s) => s.status == ScanningStatus.pullout).length;
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
-      appBar: CustomAppbar(title: 'Scanning List', subtitle: 'Track barcode scanning progress', actions: [_buildSortMenu()]),
+      appBar: CustomAppbar(
+        title: 'Scanning List',
+        subtitle: 'Track barcode scanning progress',
+        actions: [_buildSortMenu()],
+      ),
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         child: Column(
           children: [
             _buildSearchField(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
                 onPressed: _enterBarcodeManually,
-                icon: const Icon(Icons.keyboard_outlined),
-                label: const Text('Enter barcode manually'),
+                icon: const Icon(Icons.keyboard_outlined, size: 18),
+                label: const Text('Enter barcode manually', style: TextStyle(fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ),
             const SizedBox(height: 4),
@@ -351,10 +436,52 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
         onDestinationSelected: (int index) {
           setState(() => _currentIndex = index);
         },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.radio_button_unchecked), selectedIcon: Icon(Icons.pending_outlined), label: 'Not Scanned'),
-          NavigationDestination(icon: Icon(Icons.check_circle_outline), selectedIcon: Icon(Icons.check_circle), label: 'Scanned'),
-          NavigationDestination(icon: Icon(Icons.outbox_outlined), selectedIcon: Icon(Icons.outbox), label: 'Pullout'),
+        destinations: [
+          NavigationDestination(
+            icon: Badge.count(
+              count: notScannedCount,
+              isLabelVisible: notScannedCount > 0,
+              backgroundColor: colorScheme.tertiary,
+              child: const Icon(Icons.radio_button_unchecked),
+            ),
+            selectedIcon: Badge.count(
+              count: notScannedCount,
+              isLabelVisible: notScannedCount > 0,
+              backgroundColor: colorScheme.tertiary,
+              child: const Icon(Icons.pending_outlined),
+            ),
+            label: 'Not Scanned',
+          ),
+          NavigationDestination(
+            icon: Badge.count(
+              count: scannedCount,
+              isLabelVisible: scannedCount > 0,
+              backgroundColor: Colors.green,
+              child: const Icon(Icons.check_circle_outline),
+            ),
+            selectedIcon: Badge.count(
+              count: scannedCount,
+              isLabelVisible: scannedCount > 0,
+              backgroundColor: Colors.green,
+              child: const Icon(Icons.check_circle),
+            ),
+            label: 'Scanned',
+          ),
+          NavigationDestination(
+            icon: Badge.count(
+              count: pulloutCount,
+              isLabelVisible: pulloutCount > 0,
+              backgroundColor: colorScheme.error,
+              child: const Icon(Icons.outbox_outlined),
+            ),
+            selectedIcon: Badge.count(
+              count: pulloutCount,
+              isLabelVisible: pulloutCount > 0,
+              backgroundColor: colorScheme.error,
+              child: const Icon(Icons.outbox),
+            ),
+            label: 'Pullout',
+          ),
         ],
       ),
     );

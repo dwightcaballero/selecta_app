@@ -49,7 +49,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
   void prefetchData() {
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.badorder.description;
-      txtAmount.text = widget.badorder.badorderAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.badorder.badorderAmount);
+      txtAmount.text = Helperfunctions.formatDoubleAmountForField(widget.badorder.badorderAmount);
       _selectedDate = widget.badorder.badorderDate.toDate();
       dropDownController.text = widget.badorder.hapistore;
     }

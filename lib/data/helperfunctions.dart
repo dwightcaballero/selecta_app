@@ -19,14 +19,19 @@ class Helperfunctions {
       String cleanAmount = stringAmount.replaceAll(RegExp(r'[^0-9.]'), '');
       double finalAmount = double.tryParse(cleanAmount) ?? 0;
 
-      return NumberFormat.currency(symbol: '₱').format(finalAmount);
+      return NumberFormat('#,##0.00').format(finalAmount);
     }
 
-    return NumberFormat.currency(symbol: '₱').format(0);
+    return '0.00';
   }
 
   static String formatDoubleAmountForDisplay(double amount) {
     return NumberFormat.currency(symbol: '₱').format(amount);
+  }
+
+  static String formatDoubleAmountForField(double amount) {
+    if (amount == 0) return '';
+    return NumberFormat('#,##0.00').format(amount);
   }
 
   static double formatStringAmountToDouble(String stringAmount) {

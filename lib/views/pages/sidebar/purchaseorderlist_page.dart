@@ -20,6 +20,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+  String _selectedFilter = 'All';
 
   @override
   void initState() {
@@ -42,16 +43,22 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.8)],
+          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.85)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: colorScheme.primary.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.primary.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -74,7 +81,10 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
                 child: Column(
                   children: [
                     const Text('Orders', style: TextStyle(color: Colors.white70, fontSize: 11)),
@@ -94,7 +104,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
           Row(
             children: [
               Expanded(child: _buildSummaryMetric('Invoice Total', totalInvoiceAmount)),
-              Expanded(child: _buildSummaryMetric('Overpayment', totalOverpayment)),
+              Expanded(child: _buildSummaryMetric('Net Overpayment', totalOverpayment)),
             ],
           ),
         ],
@@ -106,10 +116,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
-        ),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
         const SizedBox(height: 3),
         Text(
           Helperfunctions.formatDoubleAmountForDisplay(amount),
@@ -119,37 +126,87 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     );
   }
 
+  Widget _buildFilterChips({
+    required int totalCount,
+    required int pendingCount,
+    required int overpaymentCount,
+    required int settledCount,
+  }) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          _buildChoiceChip('All', 'All ($totalCount)'),
+          const SizedBox(width: 8),
+          _buildChoiceChip('Pending', 'Awaiting Invoice ($pendingCount)', color: Colors.orange.shade800),
+          const SizedBox(width: 8),
+          _buildChoiceChip('Overpayment', 'Overpayment ($overpaymentCount)', color: Colors.red.shade700),
+          const SizedBox(width: 8),
+          _buildChoiceChip('Settled', 'Settled ($settledCount)', color: Colors.green.shade700),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChoiceChip(String key, String label, {Color? color}) {
+    final isSelected = _selectedFilter == key;
+    final theme = Theme.of(context);
+
+    return ChoiceChip(
+      showCheckmark: false,
+      visualDensity: VisualDensity.compact,
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          color: isSelected
+              ? theme.colorScheme.onPrimary
+              : (color ?? theme.colorScheme.onSurfaceVariant),
+        ),
+      ),
+      selected: isSelected,
+      selectedColor: color ?? theme.colorScheme.primary,
+      onSelected: (_) => setState(() => _selectedFilter = key),
+    );
+  }
+
   Widget _buildSearchBar() {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: TextField(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
-        decoration: InputDecoration(
-          hintText: 'Search by invoice number...',
-          hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
-          suffixIcon: _searchQuery.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                )
-              : null,
-          filled: true,
-          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: SizedBox(
+        height: 40,
+        child: TextField(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
+          style: const TextStyle(fontSize: 13),
+          decoration: InputDecoration(
+            hintText: 'Search invoice number or date...',
+            hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+            prefixIcon: Icon(Icons.search, size: 18, color: colorScheme.primary),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 16),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  )
+                : null,
+            filled: true,
+            fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+            ),
           ),
         ),
       ),
@@ -158,69 +215,106 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
 
   Widget _buildOrderCard({required String orderId, required Purchaseorder order}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final invoiceNumber = order.invoiceNumber.trim().isEmpty ? 'No invoice number' : order.invoiceNumber;
+    final bool hasInvoice = order.invoiceNumber.trim().isNotEmpty;
+    final String invoiceNumber = hasInvoice ? order.invoiceNumber : 'Awaiting Invoice';
+    final dateStr = Helperfunctions.formatTimestampForDisplay(order.orderDate);
+    final bool hasAttachment = order.imagePath.isNotEmpty;
+
     Color statusColor;
     String statusText;
-    switch (order.isSettled) {
-      case true:
-        statusColor = Colors.green;
-        statusText = 'Settled';
-        break;
-      case false:
-        statusColor = Colors.red;
-        statusText = 'With Overpayment';
-        break;
-      default:
-        statusColor = Colors.grey;
-        statusText = '';
+    IconData statusIcon;
+
+    if (!hasInvoice || order.invoiceAmount == 0) {
+      statusColor = Colors.orange.shade800;
+      statusText = 'Awaiting Invoice';
+      statusIcon = Icons.hourglass_top_outlined;
+    } else if (order.isSettled == true) {
+      statusColor = Colors.green.shade700;
+      statusText = 'Settled';
+      statusIcon = Icons.check_circle_outline;
+    } else if (order.overpayment > 0) {
+      statusColor = Colors.red.shade700;
+      statusText = 'Overpayment: ${Helperfunctions.formatDoubleAmountForDisplay(order.overpayment)}';
+      statusIcon = Icons.warning_amber_rounded;
+    } else {
+      statusColor = Colors.blue.shade700;
+      statusText = 'Invoiced (Balanced)';
+      statusIcon = Icons.verified_outlined;
     }
 
     return Card(
       elevation: 0,
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: orderId, purchaseorder: order)),
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Helperfunctions.navigateTo(
+          context,
+          PurchaseorderPage(purchaseorderID: orderId, purchaseorder: order),
+        ),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                child: Icon(Icons.receipt_long_outlined, color: colorScheme.primary, size: 22),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.receipt_long_outlined, color: colorScheme.primary, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      invoiceNumber,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            invoiceNumber,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: hasInvoice ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                              fontStyle: hasInvoice ? FontStyle.normal : FontStyle.italic,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (hasAttachment) ...[
+                          const SizedBox(width: 6),
+                          Icon(Icons.attach_file, size: 14, color: colorScheme.primary),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.calendar_month_outlined, size: 14, color: colorScheme.onSurfaceVariant),
+                        Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
-                        Text(
-                          Helperfunctions.formatTimestampForDisplay(order.orderDate),
-                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                        ),
+                        Text(dateStr, style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      statusText,
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: statusColor),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Icon(statusIcon, size: 13, color: statusColor),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            statusText,
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: statusColor),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -229,21 +323,27 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('Order', style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
+                  Text('Order Target', style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
                   Text(
                     Helperfunctions.formatDoubleAmountForDisplay(order.orderAmount),
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
                   ),
-                  const SizedBox(height: 2),
-                  Text('Invoice', style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: 3),
+                  Text('Invoice Amount', style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
                   Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(order.invoiceAmount),
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                    order.invoiceAmount > 0
+                        ? Helperfunctions.formatDoubleAmountForDisplay(order.invoiceAmount)
+                        : '—',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: order.invoiceAmount > 0 ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, size: 18, color: colorScheme.onSurfaceVariant),
             ],
           ),
         ),
@@ -258,12 +358,12 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.receipt_long_outlined, size: 50, color: Colors.grey),
+            Icon(Icons.receipt_long_outlined, size: 48, color: Colors.grey),
             SizedBox(height: 16),
-            Text('No Purchase Orders Yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('No Purchase Orders Yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             SizedBox(height: 6),
             Text(
-              'Tap the button below to add your first purchase order.',
+              'Tap the "Add Order" button below to create your first purchase order.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: Colors.black54),
             ),
@@ -273,14 +373,31 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     );
   }
 
-  Widget _buildErrorState() {
-    return const Center(
+  Widget _buildNoSearchResultsState() {
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
-          SizedBox(height: 8),
-          Text('Unable to load purchase orders'),
+          Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
+          const SizedBox(height: 8),
+          Text(
+            _searchQuery.isNotEmpty
+                ? 'No orders match "$_searchQuery"'
+                : 'No orders match the selected filter',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () {
+              _searchController.clear();
+              setState(() {
+                _searchQuery = '';
+                _selectedFilter = 'All';
+              });
+            },
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Reset filters'),
+          ),
         ],
       ),
     );
@@ -291,19 +408,19 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     return Scaffold(
       appBar: const CustomAppbar(title: 'Purchase Orders', subtitle: 'Invoices & Order Tracking'),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty())),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          'Add Order',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        onPressed: () => Helperfunctions.navigateTo(
+          context,
+          PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty()),
         ),
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('Add Order', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _ordersStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
           if (snapshot.hasError) {
-            return _buildErrorState();
+            return const Center(child: Text('Unable to load purchase orders. Please try again.'));
           }
           if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -317,16 +434,45 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
           double totalOrderAmount = 0;
           double totalInvoiceAmount = 0;
           double totalOverpayment = 0;
+          int pendingCount = 0;
+          int overpaymentCount = 0;
+          int settledCount = 0;
+
           for (final doc in allDocs) {
             final order = doc.data() as Purchaseorder;
             totalOrderAmount += order.orderAmount;
             totalInvoiceAmount += order.invoiceAmount;
             totalOverpayment += order.overpayment;
+
+            final hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
+            if (!hasInvoice) {
+              pendingCount++;
+            } else if (order.isSettled == true) {
+              settledCount++;
+            } else if (order.overpayment > 0) {
+              overpaymentCount++;
+            }
           }
 
           final filteredDocs = allDocs.where((doc) {
             final order = doc.data() as Purchaseorder;
-            return _searchQuery.isEmpty || order.invoiceNumber.toLowerCase().contains(_searchQuery);
+            final hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
+
+            bool matchesFilter = true;
+            if (_selectedFilter == 'Pending') {
+              matchesFilter = !hasInvoice;
+            } else if (_selectedFilter == 'Overpayment') {
+              matchesFilter = order.overpayment > 0 && order.isSettled != true;
+            } else if (_selectedFilter == 'Settled') {
+              matchesFilter = order.isSettled == true;
+            }
+
+            final dateStr = Helperfunctions.formatTimestampForDisplay(order.orderDate).toLowerCase();
+            final matchesSearch = _searchQuery.isEmpty ||
+                order.invoiceNumber.toLowerCase().contains(_searchQuery) ||
+                dateStr.contains(_searchQuery);
+
+            return matchesFilter && matchesSearch;
           }).toList();
 
           return Column(
@@ -337,22 +483,27 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                 totalOverpayment: totalOverpayment,
                 totalCount: allDocs.length,
               ),
+              _buildFilterChips(
+                totalCount: allDocs.length,
+                pendingCount: pendingCount,
+                overpaymentCount: overpaymentCount,
+                settledCount: settledCount,
+              ),
               _buildSearchBar(),
+              const SizedBox(height: 4),
               Expanded(
                 child: filteredDocs.isEmpty
-                    ? SingleChildScrollView(
-                        padding: const EdgeInsets.all(32),
-                        child: Center(
-                          child: Text('No orders matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      )
+                    ? _buildNoSearchResultsState()
                     : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 80),
                         itemCount: filteredDocs.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final doc = filteredDocs[index];
-                          return _buildOrderCard(orderId: doc.id, order: doc.data() as Purchaseorder);
+                          return _buildOrderCard(
+                            orderId: doc.id,
+                            order: doc.data() as Purchaseorder,
+                          );
                         },
                       ),
               ),

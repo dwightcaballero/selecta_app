@@ -44,7 +44,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
   void prefetchData() {
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.expense.description;
-      txtAmount.text = widget.expense.expenseAmount == 0 ? '' : Helperfunctions.formatDoubleAmountForDisplay(widget.expense.expenseAmount);
+      txtAmount.text = Helperfunctions.formatDoubleAmountForField(widget.expense.expenseAmount);
       _selectedDate = widget.expense.expenseDate.toDate();
     }
   }

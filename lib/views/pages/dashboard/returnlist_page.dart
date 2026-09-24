@@ -35,14 +35,24 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   }
 
   Widget _buildSummaryCard({required double totalAmount, required int totalCount}) {
-    Theme.of(context).colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.orange.shade700, Colors.deepOrange.shade600], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(
+          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.85)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.orange.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.primary.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -51,7 +61,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Total Returned Amount',
+                'Total Returned Value',
                 style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 4),
@@ -63,7 +73,10 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
             child: Column(
               children: [
                 const Text('Orders', style: TextStyle(color: Colors.white70, fontSize: 11)),
@@ -82,34 +95,38 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   Widget _buildSearchBar() {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-      child: TextField(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        onChanged: (val) => setState(() => _searchQuery = val.trim()),
-        decoration: InputDecoration(
-          hintText: 'Search by store name or remarks...',
-          hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
-          suffixIcon: _searchQuery.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                )
-              : null,
-          filled: true,
-          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      child: SizedBox(
+        height: 40,
+        child: TextField(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          onChanged: (val) => setState(() => _searchQuery = val.trim()),
+          style: const TextStyle(fontSize: 13),
+          decoration: InputDecoration(
+            hintText: 'Search by store name or remarks...',
+            hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+            prefixIcon: Icon(Icons.search, size: 18, color: colorScheme.primary),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 16),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  )
+                : null,
+            filled: true,
+            fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+            ),
           ),
         ),
       ),
@@ -118,55 +135,78 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
 
   Widget _buildReturnCard({required String deliveryID, required Delivery delivery}) {
     final colorScheme = Theme.of(context).colorScheme;
+    final displayAmount = delivery.returnAmount > 0 ? delivery.returnAmount : delivery.orderAmount;
+    final isPartialReturn = delivery.returnAmount > 0 && delivery.returnAmount != delivery.orderAmount;
 
     return Card(
       elevation: 0,
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: () => Helperfunctions.navigateTo(context, ReturnPage(recID: deliveryID, delivery: delivery)),
         child: Padding(
-          padding: const EdgeInsets.all(14.0),
+          padding: const EdgeInsets.all(12.0),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.assignment_return_outlined, color: Colors.deepOrange, size: 22),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.assignment_return_outlined, color: colorScheme.primary, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      delivery.storeName,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            delivery.storeName,
+                            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (delivery.imagePath.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.photo_outlined, size: 14, color: colorScheme.primary),
+                        ],
+                      ],
                     ),
-                    if (delivery.remarks.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'Reason: ${delivery.remarks}',
-                        style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    if (delivery.remarks.trim().isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.notes_outlined, size: 13, color: colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              delivery.remarks,
+                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.calendar_month_outlined, size: 14, color: colorScheme.onSurfaceVariant),
+                        Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
                         Text(
                           Helperfunctions.formatTimestampForDisplay(delivery.lastupdatedDate),
-                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                          style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -178,22 +218,24 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
+                    Helperfunctions.formatDoubleAmountForDisplay(displayAmount),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
                   ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-                    child: const Text(
-                      'Returned',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+                  if (isPartialReturn) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Orig: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount)}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                        decoration: TextDecoration.lineThrough,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
-              const SizedBox(width: 6),
-              Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, size: 18, color: colorScheme.onSurfaceVariant),
             ],
           ),
         ),
@@ -209,12 +251,15 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.task_alt_rounded, color: Colors.green, size: 50),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 44),
             ),
             const SizedBox(height: 16),
-            const Text('No Returned Deliveries', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('No Returned Deliveries', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             const Text(
               'All delivery transactions have been completed without returns.',
@@ -228,17 +273,26 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   }
 
   Widget _buildNoSearchResultsState() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(32.0),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.search_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text('No returns matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
+          const SizedBox(height: 8),
+          Text(
+            'No returns matching "$_searchQuery"',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () {
+              _searchController.clear();
+              setState(() => _searchQuery = '');
+            },
+            icon: const Icon(Icons.refresh, size: 16),
+            label: const Text('Reset search'),
+          ),
+        ],
       ),
     );
   }
@@ -281,7 +335,8 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
 
           for (var doc in allDocs) {
             final delivery = doc.data() as Delivery;
-            totalReturnedAmount += delivery.orderAmount;
+            final returnAmount = delivery.returnAmount > 0 ? delivery.returnAmount : delivery.orderAmount;
+            totalReturnedAmount += returnAmount;
             if (_searchQuery.isEmpty ||
                 delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
                 delivery.remarks.toLowerCase().contains(_searchQuery.toLowerCase())) {

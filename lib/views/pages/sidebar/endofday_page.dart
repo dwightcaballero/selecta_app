@@ -50,31 +50,39 @@ class _EndofdayPageState extends State<EndofdayPage> {
     }
   }
 
-  void getData() async {
+  Future<void> getData() async {
     showLoading(true);
-    _isDealer = await KVariables.getIsDealer();
-    endOfDayData = await db.getListDeliveryForEndOfDay(_selectedDate);
-    breakdown = await dbBS.getDocumentsBySpecificDate(_selectedDate) ?? Breakdown.empty();
-    breakdownID = await dbBS.getIDofBreakdown(_selectedDate);
+    try {
+      _isDealer = await KVariables.getIsDealer();
+      endOfDayData = await db.getListDeliveryForEndOfDay(_selectedDate);
+      breakdown = await dbBS.getDocumentsBySpecificDate(_selectedDate) ?? Breakdown.empty();
+      breakdownID = await dbBS.getIDofBreakdown(_selectedDate);
 
-    breakdown!.breakdownDate = Timestamp.fromDate(_selectedDate);
-    breakdown!.expectedAmount = endOfDayData.expectedcashonhand;
-
-    showLoading(false);
+      breakdown!.breakdownDate = Timestamp.fromDate(_selectedDate);
+      breakdown!.expectedAmount = endOfDayData.expectedcashonhand;
+    } catch (e) {
+      if (mounted) ShowMessage.error(context, 'Failed to fetch End of Day data: $e');
+    } finally {
+      showLoading(false);
+    }
   }
 
   void validateBeforeBreakdown() async {
+    if (endOfDayData.totaldelivery == 0 && breakdownID.isEmpty) {
+      ShowMessage.error(context, 'No deliveries recorded for this date');
+      return;
+    }
     if (endOfDayData.pendingstatus > 0) {
       ShowMessage.error(context, 'There should be no transaction that is pending for delivery');
-    } else {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => BreakdownPage(breakdown: breakdown!, breakdownID: breakdownID),
-        ),
-      );
-      getData();
+      return;
     }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BreakdownPage(breakdown: breakdown!, breakdownID: breakdownID),
+      ),
+    );
+    getData();
   }
 
   void showLoading(bool showLoading) async {
@@ -84,6 +92,8 @@ class _EndofdayPageState extends State<EndofdayPage> {
 
   Widget _buildDateNavigator() {
     final colorScheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final isToday = _selectedDate.year == now.year && _selectedDate.month == now.month && _selectedDate.day == now.day;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -100,23 +110,49 @@ class _EndofdayPageState extends State<EndofdayPage> {
             onTap: _isDealer ? onChangeDate : null,
             borderRadius: BorderRadius.circular(8),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               child: Row(
                 children: [
                   Icon(Icons.calendar_month_outlined, size: 18, color: colorScheme.primary),
                   const SizedBox(width: 8),
                   Text(DateFormat('E, d MMM yyyy').format(_selectedDate), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  if (!isToday) ...[
+                    const SizedBox(width: 8),
+                    InkWell(
+                      onTap: () {
+                        setState(() => _selectedDate = DateTime.now());
+                        getData();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text('Today', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary)),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
-          IconButton(icon: const Icon(Icons.chevron_right), tooltip: 'Next Day', onPressed: _isDealer ? () => _changeDate(1) : null),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: 'Next Day',
+            onPressed: (_isDealer && !isToday) ? () => _changeDate(1) : null,
+          ),
         ],
       ),
     );
   }
 
   Widget _buildPendingWarningBanner() {
+    final count = endOfDayData.pendingstatus;
+    final text = count == 1
+        ? '1 delivery is currently pending. Please settle all deliveries before viewing the cash breakdown.'
+        : '$count deliveries are currently pending. Please settle all deliveries before viewing the cash breakdown.';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -131,7 +167,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '${endOfDayData.pendingstatus} delivery is currently pending. Please settle all deliveries before viewing the cash breakdown.',
+              text,
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
             ),
           ),
@@ -153,25 +189,30 @@ class _EndofdayPageState extends State<EndofdayPage> {
   }
 
   Widget _buildCountTile({required String label, required int count, required MaterialColor color, required IconData icon}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? color.shade200 : color.shade900;
+    final labelColor = isDark ? color.shade300 : color.shade700;
+    final iconColor = isDark ? color.shade300 : color.shade800;
+
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
+          color: color.withValues(alpha: isDark ? 0.16 : 0.08),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
+          border: Border.all(color: color.withValues(alpha: isDark ? 0.35 : 0.25)),
         ),
         child: Column(
           children: [
-            Icon(icon, size: 20, color: color.shade800),
+            Icon(icon, size: 20, color: iconColor),
             const SizedBox(height: 4),
             Text(
               '$count',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color.shade900),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
             ),
             Text(
               label,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color.shade700),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: labelColor),
             ),
           ],
         ),
@@ -246,7 +287,8 @@ class _EndofdayPageState extends State<EndofdayPage> {
   }
 
   Widget _buildCashReconciliationCard() {
-    bool hasBreakdown = endOfDayData.actualcashonhand != 0;
+    final colorScheme = Theme.of(context).colorScheme;
+    bool hasBreakdown = breakdownID.isNotEmpty || endOfDayData.actualcashonhand != 0;
     bool isBalanced = endOfDayData.discrepancy == 0;
     bool isOver = endOfDayData.discrepancy > 0;
 
@@ -266,19 +308,35 @@ class _EndofdayPageState extends State<EndofdayPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Expected Cash-On-Hand', style: TextStyle(fontSize: 13, color: Colors.black54)),
-              Text(
-                Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.expectedcashonhand),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+              Text('Expected Cash-On-Hand', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: hasBreakdown ? Colors.green.withValues(alpha: 0.12) : Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  hasBreakdown ? 'Breakdown Recorded' : 'Breakdown Pending',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: hasBreakdown ? Colors.green.shade700 : Colors.orange.shade800,
+                  ),
+                ),
               ),
             ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.expectedcashonhand),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
           ),
           if (hasBreakdown) ...[
             const Divider(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Salesman Actual Cash', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                Text('Salesman Actual Cash', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
                 Text(
                   Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.actualcashonhand),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -321,7 +379,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Bank Deposit', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                  Text('Bank Deposit', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
                   Text(
                     Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.bankdeposit),
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.blue),
@@ -355,6 +413,11 @@ class _EndofdayPageState extends State<EndofdayPage> {
 
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
+    final bool hasPending = endOfDayData.pendingstatus > 0;
+    final bool hasBreakdown = breakdownID.isNotEmpty;
+    final bool hasNoDeliveries = endOfDayData.totaldelivery == 0;
+    final bool isRecordDisabled = !hasBreakdown && hasNoDeliveries;
+
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -364,13 +427,29 @@ class _EndofdayPageState extends State<EndofdayPage> {
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
         ),
         child: FilledButton.icon(
-          onPressed: validateBeforeBreakdown,
+          onPressed: isRecordDisabled ? null : validateBeforeBreakdown,
           style: FilledButton.styleFrom(
             minimumSize: const Size(double.infinity, 50.0),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            backgroundColor: hasPending ? colorScheme.surfaceContainerHighest : null,
+            foregroundColor: hasPending ? colorScheme.onSurfaceVariant : null,
           ),
-          icon: const Icon(Icons.calculate_outlined, size: 20),
-          label: const Text('View Cash Breakdown', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          icon: Icon(
+            isRecordDisabled
+                ? Icons.event_busy_outlined
+                : (hasPending
+                    ? Icons.lock_outline
+                    : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined)),
+            size: 20,
+          ),
+          label: Text(
+            isRecordDisabled
+                ? 'No Deliveries Recorded'
+                : (hasPending
+                    ? 'Settle ${endOfDayData.pendingstatus} ${endOfDayData.pendingstatus == 1 ? "Pending" : "Pendings"} to Continue'
+                    : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown')),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
         ),
       ),
     );
@@ -385,33 +464,63 @@ class _EndofdayPageState extends State<EndofdayPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: CustomAppbar(title: 'End of Day Report', subtitle: DateFormat('EEEE, d MMM yyyy').format(_selectedDate)),
       bottomNavigationBar: _buildStickyBottomBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 16,
-          children: [
-            // 1. Date Navigation Header
-            _buildDateNavigator(),
+      body: RefreshIndicator(
+        onRefresh: getData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 16,
+            children: [
+              // 1. Date Navigation Header
+              _buildDateNavigator(),
 
-            // 2. Pending Status Warning (if any)
-            if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
+              // 2. Pending Status Warning (if any)
+              if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
 
-            // 3. Delivery Volume & Status Grid
-            _buildDeliveryStatusGrid(),
+              // 2b. Empty state notice if no activity recorded
+              if (endOfDayData.totaldelivery == 0)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20, color: colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'No delivery transactions recorded for this date.',
+                          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
-            // 4. Sales & Collections Card
-            _buildSalesAndCollectionsCard(),
+              // 3. Delivery Volume & Status Grid
+              _buildDeliveryStatusGrid(),
 
-            // 5. Deductions & Returns Card
-            _buildDeductionsCard(),
+              // 4. Sales & Collections Card
+              _buildSalesAndCollectionsCard(),
 
-            // 6. Cash Reconciliation Summary Card
-            _buildCashReconciliationCard(),
-          ],
+              // 5. Deductions & Returns Card
+              _buildDeductionsCard(),
+
+              // 6. Cash Reconciliation Summary Card
+              _buildCashReconciliationCard(),
+            ],
+          ),
         ),
       ),
     );

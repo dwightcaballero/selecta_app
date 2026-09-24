@@ -7,6 +7,17 @@ import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/views/pages/dashboard/credit_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
+enum CreditSort {
+  highestAmount('Highest Credit', Icons.arrow_downward),
+  lowestAmount('Lowest Credit', Icons.arrow_upward),
+  oldest('Oldest First (Aging)', Icons.history),
+  newest('Newest First', Icons.calendar_today);
+
+  const CreditSort(this.label, this.icon);
+  final String label;
+  final IconData icon;
+}
+
 class CreditlistPage extends StatefulWidget {
   const CreditlistPage({super.key});
 
@@ -22,6 +33,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+  CreditSort _selectedSort = CreditSort.highestAmount;
 
   @override
   void dispose() {
@@ -42,8 +54,15 @@ class _CreditlistPageState extends State<CreditlistPage> {
     if (mounted) setState(() {});
   }
 
-  Widget _buildSummaryCard({required double totalCredit, required int totalAccounts}) {
+  Widget _buildSummaryCard({
+    required double totalCredit,
+    required int totalAccounts,
+    required double filteredCredit,
+    required int filteredCount,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isFiltered = _searchQuery.isNotEmpty && filteredCount != totalAccounts;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
       padding: const EdgeInsets.all(16),
@@ -54,82 +73,161 @@ class _CreditlistPageState extends State<CreditlistPage> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: colorScheme.primary.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.primary.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Total Outstanding Credit',
-                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isFiltered ? 'Filtered Outstanding Credit' : 'Total Outstanding Credit',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    Helperfunctions.formatDoubleAmountForDisplay(isFiltered ? filteredCredit : totalCredit),
+                    style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                Helperfunctions.formatDoubleAmountForDisplay(totalCredit),
-                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  children: [
+                    Text(isFiltered ? 'Matching' : 'Stores', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                    Text(
+                      isFiltered ? '$filteredCount / $totalAccounts' : '$totalAccounts',
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              children: [
-                const Text('Stores', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                Text(
-                  '$totalAccounts',
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
+          if (isFiltered) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.filter_alt_outlined, size: 13, color: Colors.white70),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Overall: ${Helperfunctions.formatDoubleAmountForDisplay(totalCredit)} ($totalAccounts stores)',
+                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                ],
+              ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchAndFilterBar() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              onChanged: (val) => setState(() => _searchQuery = val.trim()),
+              decoration: InputDecoration(
+                hintText: 'Search by store name...',
+                hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+                prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: colorScheme.outlineVariant),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          PopupMenuButton<CreditSort>(
+            tooltip: 'Sort credits',
+            icon: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: Icon(Icons.sort, color: colorScheme.primary, size: 20),
+            ),
+            initialValue: _selectedSort,
+            onSelected: (sort) => setState(() => _selectedSort = sort),
+            itemBuilder: (context) => CreditSort.values.map((sort) {
+              final isSelected = sort == _selectedSort;
+              return PopupMenuItem<CreditSort>(
+                value: sort,
+                child: Row(
+                  children: [
+                    Icon(
+                      sort.icon,
+                      size: 18,
+                      color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      sort.label,
+                      style: TextStyle(
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: isSelected ? colorScheme.primary : null,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchBar() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-      child: TextField(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        onChanged: (val) => setState(() => _searchQuery = val.trim()),
-        decoration: InputDecoration(
-          hintText: 'Search by store name...',
-          hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
-          suffixIcon: _searchQuery.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() => _searchQuery = '');
-                  },
-                )
-              : null,
-          filled: true,
-          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildCreditCard({required String deliveryID, required Delivery delivery}) {
     final colorScheme = Theme.of(context).colorScheme;
+    final hasRemarks = delivery.remarks.trim().isNotEmpty;
 
     return Card(
       elevation: 0,
@@ -155,8 +253,11 @@ class _CreditlistPageState extends State<CreditlistPage> {
               Container(
                 width: 44,
                 height: 44,
-                decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.credit_card_outlined, color: Colors.purple, size: 22),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.credit_card_outlined, color: colorScheme.primary, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -165,21 +266,45 @@ class _CreditlistPageState extends State<CreditlistPage> {
                   children: [
                     Text(
                       delivery.storeName,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.calendar_month_outlined, size: 14, color: colorScheme.onSurfaceVariant),
+                        Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
                         Text(
-                          delivery.deliveryDate != null ? Helperfunctions.formatDateForDisplay(delivery.deliveryDate!.toDate()) : 'No Date',
+                          delivery.deliveryDate != null
+                              ? Helperfunctions.formatDateForDisplay(delivery.deliveryDate!.toDate())
+                              : 'No Date',
                           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Order Total: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount)}',
+                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                    ),
+                    if (hasRemarks) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.notes, size: 12, color: colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              delivery.remarks,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -189,20 +314,30 @@ class _CreditlistPageState extends State<CreditlistPage> {
                 children: [
                   Text(
                     Helperfunctions.formatDoubleAmountForDisplay(delivery.creditAmount),
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.primary),
                   ),
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                    child: const Text(
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
                       'Unpaid',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red.shade700,
+                      ),
                     ),
                   ),
                 ],
               ),
-              if (isDealer) ...[const SizedBox(width: 6), Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant)],
+              if (isDealer) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
+              ],
             ],
           ),
         ),
@@ -211,6 +346,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
   }
 
   Widget _buildEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -218,16 +354,22 @@ class _CreditlistPageState extends State<CreditlistPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 50),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 48),
             ),
             const SizedBox(height: 16),
-            const Text('All Credits Settled!', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(
+              'All Credits Settled!',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+            ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'There are no pending or unpaid credits recorded.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
           ],
@@ -237,15 +379,19 @@ class _CreditlistPageState extends State<CreditlistPage> {
   }
 
   Widget _buildNoSearchResultsState() {
+    final colorScheme = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.search_off_rounded, size: 48, color: Colors.grey),
+            Icon(Icons.search_off_rounded, size: 48, color: colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
-            Text('No stores matching "$_searchQuery"', style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'No stores matching "$_searchQuery"',
+              style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
+            ),
           ],
         ),
       ),
@@ -253,13 +399,17 @@ class _CreditlistPageState extends State<CreditlistPage> {
   }
 
   Widget _buildErrorState() {
-    return const Center(
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
-          SizedBox(height: 8),
-          Text('Unable to load credit list'),
+          Icon(Icons.error_outline_rounded, color: colorScheme.error, size: 40),
+          const SizedBox(height: 8),
+          Text(
+            'Unable to load credit list',
+            style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w500),
+          ),
         ],
       ),
     );
@@ -285,24 +435,54 @@ class _CreditlistPageState extends State<CreditlistPage> {
           }
 
           // Calculate total outstanding amount
-          double totalCredit = 0;
-          final List<QueryDocumentSnapshot> filteredDocs = [];
+          final totalCredit = allDocs.fold<double>(
+            0.0,
+            (sum, doc) => sum + ((doc.data() as Delivery).creditAmount),
+          );
 
-          for (var doc in allDocs) {
+          final filteredDocs = allDocs.where((doc) {
             final delivery = doc.data() as Delivery;
-            totalCredit += delivery.creditAmount;
-            if (_searchQuery.isEmpty || delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase())) {
-              filteredDocs.add(doc);
+            if (_searchQuery.isEmpty) return true;
+            return delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase());
+          }).toList();
+
+          // Apply selected sort
+          filteredDocs.sort((a, b) {
+            final delA = a.data() as Delivery;
+            final delB = b.data() as Delivery;
+            switch (_selectedSort) {
+              case CreditSort.highestAmount:
+                return delB.creditAmount.compareTo(delA.creditAmount);
+              case CreditSort.lowestAmount:
+                return delA.creditAmount.compareTo(delB.creditAmount);
+              case CreditSort.oldest:
+                final dateA = delA.deliveryDate?.toDate() ?? DateTime(1970);
+                final dateB = delB.deliveryDate?.toDate() ?? DateTime(1970);
+                return dateA.compareTo(dateB);
+              case CreditSort.newest:
+                final dateA = delA.deliveryDate?.toDate() ?? DateTime(1970);
+                final dateB = delB.deliveryDate?.toDate() ?? DateTime(1970);
+                return dateB.compareTo(dateA);
             }
-          }
+          });
+
+          final filteredCredit = filteredDocs.fold<double>(
+            0.0,
+            (sum, doc) => sum + ((doc.data() as Delivery).creditAmount),
+          );
 
           return Column(
             children: [
               // 1. Total Outstanding Summary Header
-              _buildSummaryCard(totalCredit: totalCredit, totalAccounts: allDocs.length),
+              _buildSummaryCard(
+                totalCredit: totalCredit,
+                totalAccounts: allDocs.length,
+                filteredCredit: filteredCredit,
+                filteredCount: filteredDocs.length,
+              ),
 
-              // 2. Search Bar
-              _buildSearchBar(),
+              // 2. Search & Sort Bar
+              _buildSearchAndFilterBar(),
 
               // 3. Filtered Credits List
               Expanded(

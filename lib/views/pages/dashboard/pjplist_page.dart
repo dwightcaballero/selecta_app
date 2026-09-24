@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
@@ -49,6 +50,25 @@ class _PjpListPageState extends State<PjpListPage> {
   void _prefetchData() async {
     _isDealer = await KVariables.getIsDealer();
     if (mounted) setState(() {});
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text('Copied $label to clipboard'),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   // Stores without a pjpSequence yet are appended alphabetically after the sequenced ones.
@@ -145,130 +165,115 @@ class _PjpListPageState extends State<PjpListPage> {
     }
   }
 
-  void _changeDay(int offset) {
-    if (_isEditing) return;
-    final currentIndex = _weekdayNames.indexOf(_selectedDay);
-    if (currentIndex == -1) return;
-    final newIndex = (currentIndex + offset) % _weekdayNames.length;
-    final normalizedIndex = newIndex < 0 ? newIndex + _weekdayNames.length : newIndex;
-    _onDayChanged(_weekdayNames[normalizedIndex]);
-  }
-
-  Future<void> _showDayPicker() async {
-    if (_isEditing) return;
-    final todayName = _weekdayNames[DateTime.now().weekday - 1];
-
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        final colorScheme = Theme.of(context).colorScheme;
-        return SafeArea(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: Text('Select PJP Day', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ),
-                const Divider(),
-                ..._weekdayNames.map((day) {
-                  final isSelected = day == _selectedDay;
-                  final isToday = day == todayName;
-                  return ListTile(
-                    leading: Icon(
-                      isSelected ? Icons.check_circle_rounded : Icons.calendar_today_outlined,
-                      color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                    ),
-                    title: Row(
-                      children: [
-                        Text(
-                          day,
-                          style: TextStyle(
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            color: isSelected ? colorScheme.primary : null,
-                          ),
-                        ),
-                        if (isToday) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                            child: Text(
-                              'Today',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    trailing: isSelected ? Icon(Icons.check, color: colorScheme.primary) : null,
-                    onTap: () => Navigator.pop(context, day),
-                  );
-                }),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    if (selected != null && selected != _selectedDay) {
-      _onDayChanged(selected);
-    }
-  }
-
-  Widget _buildDayNavigator() {
+  Widget _buildDayChips() {
     final colorScheme = Theme.of(context).colorScheme;
     final todayName = _weekdayNames[DateTime.now().weekday - 1];
-    final isToday = _selectedDay == todayName;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
+      child: SizedBox(
+        height: 40,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: _weekdayNames.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final day = _weekdayNames[index];
+            final isSelected = day == _selectedDay;
+            final isToday = day == todayName;
+            final shortDay = day.substring(0, 3);
+
+            return FilterChip(
+              selected: isSelected,
+              showCheckmark: false,
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    shortDay,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                  ),
+                  if (isToday) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isSelected ? colorScheme.onPrimary : colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              selectedColor: colorScheme.primary,
+              backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+              onSelected: _isEditing ? null : (_) => _onDayChanged(day),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressHeader(int completedCount, int totalCount) {
+    final progress = totalCount > 0 ? completedCount / totalCount : 0.0;
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconButton(icon: const Icon(Icons.chevron_left), tooltip: 'Previous Day', onPressed: _isEditing ? null : () => _changeDay(-1)),
-            InkWell(
-              onTap: _isEditing ? null : _showDayPicker,
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.calendar_month_outlined, size: 18, color: colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Text(_selectedDay, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    if (isToday) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                        child: Text(
-                          'Today',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(width: 4),
-                    Icon(Icons.arrow_drop_down, size: 20, color: colorScheme.onSurfaceVariant),
-                  ],
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Route Progress',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                ),
+                Text(
+                  '$completedCount of $totalCount visited (${(progress * 100).toInt()}%)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: progress == 1.0 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  progress == 1.0 ? Colors.green : colorScheme.primary,
                 ),
               ),
             ),
-            IconButton(icon: const Icon(Icons.chevron_right), tooltip: 'Next Day', onPressed: _isEditing ? null : () => _changeDay(1)),
           ],
         ),
       ),
@@ -340,8 +345,29 @@ class _PjpListPageState extends State<PjpListPage> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (hapistore.latitude != null && hapistore.longitude != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.location_on, size: 10, color: Colors.green.shade700),
+                                const SizedBox(width: 2),
+                                Text(
+                                  'GPS',
+                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         if (isDone) ...[
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
@@ -353,6 +379,26 @@ class _PjpListPageState extends State<PjpListPage> {
                         ],
                       ],
                     ),
+                    if (hapistore.storeContact.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: () => _copyToClipboard(hapistore.storeContact, 'contact number'),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.phone_outlined, size: 12, color: colorScheme.primary),
+                            const SizedBox(width: 4),
+                            Text(
+                              hapistore.storeContact,
+                              style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.copy_rounded, size: 10, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (hapistore.storeAddress.isNotEmpty) ...[
                       const SizedBox(height: 3),
                       Text(
@@ -406,6 +452,8 @@ class _PjpListPageState extends State<PjpListPage> {
   }
 
   Widget _buildEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -414,17 +462,28 @@ class _PjpListPageState extends State<PjpListPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.event_note_outlined, color: Colors.blue, size: 50),
+              decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+              child: Icon(Icons.event_note_outlined, color: colorScheme.primary, size: 48),
             ),
             const SizedBox(height: 16),
             Text('No Stores Scheduled for $_selectedDay', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Assign a PJP schedule to stores to see them here.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
+            if (_isDealer) ...[
+              const SizedBox(height: 16),
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  _startEditing([]);
+                  _showAddStorePicker();
+                },
+                icon: const Icon(Icons.add_business_outlined, size: 18),
+                label: Text('Add Stores to $_selectedDay'),
+              ),
+            ],
           ],
         ),
       ),
@@ -487,14 +546,30 @@ class _PjpListPageState extends State<PjpListPage> {
 
         if (docs.isEmpty) return _buildEmptyState();
 
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final hapiStoreID = docs[index].id;
-            final hapistore = docs[index].data() as Hapistore;
-            return _buildStoreTile(index: index, hapiStoreID: hapiStoreID, hapistore: hapistore);
-          },
+        int completedCount = 0;
+        final now = DateTime.now();
+        for (final doc in docs) {
+          final hapistore = doc.data() as Hapistore;
+          if (hapistore.lastPjpVisit != null && Helperfunctions.isSameWeek(hapistore.lastPjpVisit!.toDate(), now)) {
+            completedCount++;
+          }
+        }
+
+        return Column(
+          children: [
+            _buildProgressHeader(completedCount, docs.length),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                itemCount: docs.length,
+                itemBuilder: (context, index) {
+                  final hapiStoreID = docs[index].id;
+                  final hapistore = docs[index].data() as Hapistore;
+                  return _buildStoreTile(index: index, hapiStoreID: hapiStoreID, hapistore: hapistore);
+                },
+              ),
+            ),
+          ],
         );
       },
     );
@@ -505,6 +580,7 @@ class _PjpListPageState extends State<PjpListPage> {
     return Scaffold(
       appBar: CustomAppbar(
         title: 'Permanent Journey Plan',
+        subtitle: '$_selectedDay Route',
         actions: [
           if (!_isEditing && _isDealer)
             IconButton(
@@ -539,10 +615,10 @@ class _PjpListPageState extends State<PjpListPage> {
           : null,
       body: Column(
         children: [
-          _buildDayNavigator(),
+          _buildDayChips(),
           if (_isEditing)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Row(
                 children: [
                   Expanded(
@@ -555,6 +631,7 @@ class _PjpListPageState extends State<PjpListPage> {
                 ],
               ),
             ),
+          const SizedBox(height: 4),
           Expanded(child: _buildBody()),
         ],
       ),
@@ -595,16 +672,17 @@ class _AddStoreSheetState extends State<_AddStoreSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Add Store', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text('Add Store to PJP', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               TextField(
                 controller: _searchController,
                 focusNode: _searchFocusNode,
                 autofocus: true,
-                onChanged: (value) => setState(() => _searchQuery = value.trim().toUpperCase()),
+                onChanged: (value) => setState(() => _searchQuery = value.trim().toLowerCase()),
                 decoration: InputDecoration(
-                  hintText: 'Search by store name...',
-                  prefixIcon: const Icon(Icons.search),
+                  hintText: 'Search by store name, address, contact...',
+                  hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                  prefixIcon: const Icon(Icons.search, size: 20),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.clear, size: 18),
@@ -615,7 +693,7 @@ class _AddStoreSheetState extends State<_AddStoreSheet> {
                         )
                       : null,
                   filled: true,
-                  fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                  fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
                   contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -623,7 +701,7 @@ class _AddStoreSheetState extends State<_AddStoreSheet> {
               const SizedBox(height: 12),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: widget.db.getListHapiStoreSearch(_searchQuery),
+                  stream: widget.db.getListHapiStoresAsStream(),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
                       return const Center(child: Text('Unable to load stores'));
@@ -632,20 +710,56 @@ class _AddStoreSheetState extends State<_AddStoreSheet> {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    final docs = (snapshot.data?.docs ?? []).where((doc) => !widget.excludedStoreIDs.contains(doc.id)).toList();
+                    final allDocs = snapshot.data?.docs ?? [];
+                    final docs = allDocs.where((doc) {
+                      if (widget.excludedStoreIDs.contains(doc.id)) return false;
+                      final rawData = doc.data();
+                      final store = rawData is Hapistore ? rawData : Hapistore.fromJson(rawData as Map<String, Object?>);
+                      if (_searchQuery.isEmpty) return true;
+                      return store.storeName.toLowerCase().contains(_searchQuery) ||
+                          store.storeAddress.toLowerCase().contains(_searchQuery) ||
+                          store.storeContact.contains(_searchQuery);
+                    }).toList();
+
                     if (docs.isEmpty) {
-                      return const Center(child: Text('No stores found'));
+                      return Center(
+                        child: Text('No stores found', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                      );
                     }
 
-                    return ListView.builder(
+                    return ListView.separated(
                       itemCount: docs.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (context, index) {
                         final hapiStoreID = docs[index].id;
-                        final hapistore = docs[index].data() as Hapistore;
+                        final rawData = docs[index].data();
+                        final hapistore = rawData is Hapistore ? rawData : Hapistore.fromJson(rawData as Map<String, Object?>);
+
                         return ListTile(
-                          leading: const Icon(Icons.storefront_outlined),
-                          title: Text(hapistore.storeName),
-                          subtitle: hapistore.pjpSchedule != null ? Text('Currently scheduled: ${hapistore.pjpSchedule}') : null,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          leading: CircleAvatar(
+                            backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                            child: Icon(Icons.storefront_outlined, color: colorScheme.primary, size: 20),
+                          ),
+                          title: Text(hapistore.storeName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (hapistore.storeAddress.isNotEmpty)
+                                Text(
+                                  hapistore.storeAddress,
+                                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              if (hapistore.pjpSchedule != null && hapistore.pjpSchedule!.isNotEmpty)
+                                Text(
+                                  'Current: ${hapistore.pjpSchedule}',
+                                  style: TextStyle(fontSize: 11, color: Colors.blue.shade700, fontWeight: FontWeight.w500),
+                                ),
+                            ],
+                          ),
+                          trailing: const Icon(Icons.add_circle_outline, color: Colors.green),
                           onTap: () => Navigator.pop(context, MapEntry(hapiStoreID, hapistore)),
                         );
                       },

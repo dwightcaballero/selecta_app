@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/hapistore.dart';
@@ -80,6 +81,25 @@ class _PjpPageState extends State<PjpPage> {
     super.initState();
     _currentHapistore = widget.initialHapistore;
     _runAllChecks();
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text('Copied $label to clipboard'),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _refreshStoreDoc() async {
@@ -455,6 +475,64 @@ class _PjpPageState extends State<PjpPage> {
     }
   }
 
+  Widget _buildVerificationProgress() {
+    final passedCount = [_locationPassed, _scanningPassed, _placementPassed, _tasksPassed].where((p) => p).length;
+    final progress = passedCount / 4.0;
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: passedCount == 4 ? Colors.green.withValues(alpha: isDark ? 0.2 : 0.08) : colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: passedCount == 4 ? Colors.green.withValues(alpha: 0.4) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    passedCount == 4 ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
+                    size: 16,
+                    color: passedCount == 4 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'PJP Checklist',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                  ),
+                ],
+              ),
+              Text(
+                '$passedCount of 4 Passed (${(progress * 100).toInt()}%)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: passedCount == 4 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              valueColor: AlwaysStoppedAnimation<Color>(passedCount == 4 ? Colors.green : colorScheme.primary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildChecklistCard({
     required int stepNumber,
     required String title,
@@ -463,6 +541,7 @@ class _PjpPageState extends State<PjpPage> {
     required bool isPassed,
     required String statusMessage,
     String? errorMessage,
+    Widget? extraContent,
     required String actionLabel,
     String? actionLabelWhenPassed,
     bool showActionWhenPassed = false,
@@ -470,6 +549,7 @@ class _PjpPageState extends State<PjpPage> {
     VoidCallback? onRetry,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final Color statusColor;
     final String statusLabel;
 
@@ -477,10 +557,10 @@ class _PjpPageState extends State<PjpPage> {
       statusColor = Colors.grey;
       statusLabel = 'Checking...';
     } else if (isPassed) {
-      statusColor = Colors.green;
+      statusColor = isDark ? Colors.greenAccent : Colors.green.shade700;
       statusLabel = 'Passed';
     } else {
-      statusColor = Colors.orange.shade800;
+      statusColor = isDark ? Colors.amberAccent : Colors.orange.shade800;
       statusLabel = 'Action Needed';
     }
 
@@ -488,7 +568,7 @@ class _PjpPageState extends State<PjpPage> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: isPassed ? Colors.green.withValues(alpha: 0.04) : colorScheme.surface,
+        color: isPassed ? Colors.green.withValues(alpha: isDark ? 0.08 : 0.04) : colorScheme.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isPassed ? Colors.green.withValues(alpha: 0.4) : colorScheme.outlineVariant.withValues(alpha: 0.7),
@@ -543,7 +623,7 @@ class _PjpPageState extends State<PjpPage> {
                   isLoading ? 'Verifying status...' : statusMessage,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isPassed ? Colors.green.shade800 : colorScheme.onSurfaceVariant,
+                    color: isPassed ? (isDark ? Colors.greenAccent : Colors.green.shade800) : colorScheme.onSurfaceVariant,
                     fontWeight: isPassed ? FontWeight.w500 : FontWeight.normal,
                   ),
                 ),
@@ -551,6 +631,7 @@ class _PjpPageState extends State<PjpPage> {
                   const SizedBox(height: 4),
                   Text(errorMessage, style: TextStyle(fontSize: 12, color: colorScheme.error)),
                 ],
+                if (extraContent != null) extraContent,
                 if (isPassed && showActionWhenPassed && !isLoading) ...[
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
@@ -654,12 +735,41 @@ class _PjpPageState extends State<PjpPage> {
                           children: [
                             Text(_currentHapistore.storeName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                             if (_currentHapistore.storeAddress.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(_currentHapistore.storeAddress, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Icon(Icons.location_on_outlined, size: 12, color: colorScheme.onSurfaceVariant),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      _currentHapistore.storeAddress,
+                                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                             if (_currentHapistore.storeContact.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text('Contact: ${_currentHapistore.storeContact}', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                              const SizedBox(height: 4),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(4),
+                                onTap: () => _copyToClipboard(_currentHapistore.storeContact, 'contact number'),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.phone_outlined, size: 12, color: colorScheme.primary),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _currentHapistore.storeContact,
+                                      style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(Icons.copy_rounded, size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                                  ],
+                                ),
+                              ),
                             ],
                           ],
                         ),
@@ -695,20 +805,11 @@ class _PjpPageState extends State<PjpPage> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Text(
-                'Visit Verification',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
-              ),
-              const Spacer(),
-              Text(
-                '${[_locationPassed, _scanningPassed, _placementPassed, _tasksPassed].where((p) => p).length} of 4 Passed',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _allPassed ? Colors.green.shade700 : colorScheme.onSurfaceVariant),
-              ),
-            ],
-          ),
+          const SizedBox(height: 12),
+
+          // Verification Progress Indicator
+          _buildVerificationProgress(),
+
           const SizedBox(height: 10),
           // Step 1: Location
           _buildChecklistCard(
@@ -757,6 +858,67 @@ class _PjpPageState extends State<PjpPage> {
             isLoading: _isLoadingTasks,
             isPassed: _tasksPassed,
             statusMessage: _tasksStatus,
+            extraContent: (!_isLoadingTasks && !_tasksPassed && _pendingTasks.isNotEmpty)
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded, size: 14, color: Colors.orange.shade800),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Pending Task(s):',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          ..._pendingTasks
+                              .take(3)
+                              .map(
+                                (task) => Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '• ',
+                                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          task.taskTitle,
+                                          style: TextStyle(fontSize: 12, color: colorScheme.onSurface, fontWeight: FontWeight.w500),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          if (_pendingTasks.length > 3)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                '+${_pendingTasks.length - 3} more task(s)',
+                                style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  )
+                : null,
             actionLabel: 'View Store Tasks',
             actionLabelWhenPassed: 'View Store Tasks',
             showActionWhenPassed: true,

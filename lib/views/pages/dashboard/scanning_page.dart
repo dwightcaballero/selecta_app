@@ -1,15 +1,17 @@
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/scanning.dart';
+import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/scanning_services.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
+import 'package:intl/intl.dart';
 
 class ScanningPage extends StatefulWidget {
   const ScanningPage({super.key, required this.initialBarcode, this.initialStoreName});
@@ -28,6 +30,13 @@ class _ScanningPageState extends State<ScanningPage> {
   Scanning _scanning = Scanning.empty();
   final ScanningServices _scanningServices = ScanningServices();
   String _selectedStatus = ScanningStatus.notScanned;
+
+  bool get _hasUnsavedChanges {
+    if (!_hasCheckedDatabase) return false;
+    final initialStore = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
+    final initialStatus = _scanning.status.isEmpty ? ScanningStatus.notScanned : _scanning.status;
+    return _dropdownHapiStore.text.trim() != initialStore || _selectedStatus != initialStatus;
+  }
 
   @override
   void dispose() {
@@ -48,6 +57,43 @@ class _ScanningPageState extends State<ScanningPage> {
     _hasCheckedDatabase = true;
 
     if (mounted) setState(() {});
+  }
+
+  void _copyToClipboard(String text, String label) {
+    Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text('Copied $label to clipboard'),
+          ],
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _rescanBarcode() async {
+    final scanned = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()),
+    );
+    if (scanned != null && scanned.isNotEmpty && mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ScanningPage(
+            initialBarcode: scanned,
+            initialStoreName: _dropdownHapiStore.text,
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _onSave() async {
@@ -97,7 +143,7 @@ class _ScanningPageState extends State<ScanningPage> {
         await Helperfunctions.logUpdate(newRecord.storeName, _scanning.toJson(), newRecord.toJson());
       }
       if (!mounted) return;
-      ShowMessage.success(context, 'Successfully saved the scanning record!\n[${newRecord.storeName}]');
+      ShowMessage.success(context, 'Successfully saved the scanning record!\n[${newRecord.storeName.isNotEmpty ? newRecord.storeName : "Pullout"}]');
       Navigator.pop(context);
     } catch (error) {
       if (!mounted) return;
@@ -128,7 +174,7 @@ class _ScanningPageState extends State<ScanningPage> {
     }
   }
 
-  Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
+  Widget _buildSectionCard({required String title, required IconData icon, Widget? trailing, required Widget child}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
@@ -150,7 +196,8 @@ class _ScanningPageState extends State<ScanningPage> {
                   child: Icon(icon, size: 18, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 10),
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                Expanded(child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
+                if (trailing != null) trailing,
               ],
             ),
             const Divider(height: 24),
@@ -166,20 +213,44 @@ class _ScanningPageState extends State<ScanningPage> {
     return _buildSectionCard(
       title: 'Barcode',
       icon: Icons.qr_code_2_outlined,
+      trailing: TextButton.icon(
+        onPressed: _rescanBarcode,
+        icon: const Icon(Icons.qr_code_scanner_rounded, size: 16),
+        label: const Text('Re-scan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+      ),
       child: Column(
         children: [
           if (widget.initialBarcode.isNotEmpty)
-            BarcodeWidget(barcode: Barcode.code128(), data: widget.initialBarcode, height: 80, drawText: false, color: colorScheme.onSurface)
+            BarcodeWidget(barcode: Barcode.code128(), data: widget.initialBarcode, height: 75, drawText: false, color: colorScheme.onSurface)
           else
             Text('No barcode scanned yet.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          Text(widget.initialBarcode.isEmpty ? '—' : widget.initialBarcode, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 10),
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: widget.initialBarcode.isNotEmpty ? () => _copyToClipboard(widget.initialBarcode, 'barcode') : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.initialBarcode.isEmpty ? '—' : widget.initialBarcode,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 0.5),
+                  ),
+                  if (widget.initialBarcode.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.copy_rounded, size: 14, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                  ],
+                ],
+              ),
+            ),
+          ),
           if (_hasCheckedDatabase && _scanning.id.isEmpty) ...[
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(color: colorScheme.tertiaryContainer, borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: colorScheme.tertiaryContainer.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(10)),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -187,8 +258,8 @@ class _ScanningPageState extends State<ScanningPage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'This is a new barcode and is not yet saved in the database.',
-                      style: TextStyle(fontSize: 13, color: colorScheme.onTertiaryContainer),
+                      'This is a new barcode and is not yet registered in the database.',
+                      style: TextStyle(fontSize: 12, color: colorScheme.onTertiaryContainer, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
@@ -201,16 +272,30 @@ class _ScanningPageState extends State<ScanningPage> {
   }
 
   Widget _buildStoreCard() {
+    final isPullout = _selectedStatus == ScanningStatus.pullout;
+
     return _buildSectionCard(
-      title: 'Hapi Store',
+      title: 'Target Store',
       icon: Icons.storefront_outlined,
-      child: hapistoreDropdown(_dropdownHapiStore, onChanged: () => setState(() {})),
+      child: HapistorePickerField(
+        controller: _dropdownHapiStore,
+        enabled: !isPullout,
+        label: isPullout ? 'Store unassigned (Pullout)' : 'Target Store',
+        validator: (value) {
+          if (!isPullout && (value == null || value.trim().isEmpty)) {
+            return 'Target Store is required';
+          }
+          return null;
+        },
+        onChanged: () => setState(() {}),
+      ),
     );
   }
 
   Widget _buildStatusCard() {
     final colorScheme = Theme.of(context).colorScheme;
     bool isScanned = _selectedStatus == ScanningStatus.scanned;
+    bool isPullout = _selectedStatus == ScanningStatus.pullout;
 
     return _buildSectionCard(
       title: 'Scanning Status',
@@ -218,7 +303,7 @@ class _ScanningPageState extends State<ScanningPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Tag whether this record has been scanned:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+          Text('Select current status for this barcode:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -238,7 +323,7 @@ class _ScanningPageState extends State<ScanningPage> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
-                  icon: Icon(Icons.radio_button_unchecked, size: 18, color: isScanned ? colorScheme.onSurfaceVariant : colorScheme.tertiary),
+                  icon: Icon(Icons.radio_button_unchecked, size: 18, color: !isScanned && !isPullout ? colorScheme.tertiary : colorScheme.onSurfaceVariant),
                 ),
                 ButtonSegment<String>(
                   value: ScanningStatus.scanned,
@@ -249,7 +334,7 @@ class _ScanningPageState extends State<ScanningPage> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
-                  icon: Icon(Icons.check_circle_outline, size: 18, color: isScanned ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                  icon: Icon(Icons.check_circle_outline, size: 18, color: isScanned ? Colors.green : colorScheme.onSurfaceVariant),
                 ),
                 ButtonSegment<String>(
                   value: ScanningStatus.pullout,
@@ -263,7 +348,7 @@ class _ScanningPageState extends State<ScanningPage> {
                   icon: Icon(
                     Icons.outbox_outlined,
                     size: 18,
-                    color: _selectedStatus == ScanningStatus.pullout ? colorScheme.error : colorScheme.onSurfaceVariant,
+                    color: isPullout ? colorScheme.error : colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -273,6 +358,30 @@ class _ScanningPageState extends State<ScanningPage> {
               },
             ),
           ),
+          if (isPullout) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.errorContainer.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: colorScheme.error.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 16, color: colorScheme.error),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Pullout marks this barcode as retrieved from the store and unassigned.',
+                      style: TextStyle(fontSize: 12, color: colorScheme.onErrorContainer, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Container(
             width: double.infinity,
@@ -304,7 +413,7 @@ class _ScanningPageState extends State<ScanningPage> {
                 const Spacer(),
                 Flexible(
                   child: Text(
-                    _scanning.scannedBy.isNotEmpty == true ? _scanning.scannedBy : 'Not scanned yet',
+                    _scanning.scannedBy.isNotEmpty ? _scanning.scannedBy : 'Not scanned yet',
                     textAlign: TextAlign.end,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
@@ -320,32 +429,56 @@ class _ScanningPageState extends State<ScanningPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: _scanning.id.isEmpty ? 'New Scanning Record' : 'Edit Scanning Record',
-        actions: [
-          if (_scanning.id.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
-              tooltip: 'Delete scanning record',
-              onPressed: _onDelete,
-            ),
-        ],
-      ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-          children: [
-            _buildBarcodeCard(),
-            const SizedBox(height: 12),
-            _buildStoreCard(),
-
-            const SizedBox(height: 12),
-            _buildStatusCard(),
-            const SizedBox(height: 20),
-            FilledButton(onPressed: _onSave, style: KButtonStyle.save, child: const Text('Save')),
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final leave = await ShowMessage.confirm(
+          context,
+          title: 'Discard Changes',
+          message: 'You have unsaved changes. Are you sure you want to discard them?',
+          confirmText: 'Discard',
+          isDestructive: true,
+        );
+        if (leave && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: _scanning.id.isEmpty ? 'New Scanning Record' : 'Edit Scanning Record',
+          actions: [
+            if (_scanning.id.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+                tooltip: 'Delete scanning record',
+                onPressed: _onDelete,
+              ),
           ],
+        ),
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            children: [
+              _buildBarcodeCard(),
+              const SizedBox(height: 12),
+              _buildStoreCard(),
+              const SizedBox(height: 12),
+              _buildStatusCard(),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: _onSave,
+                icon: const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
+                label: const Text('Save Record', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 50),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
