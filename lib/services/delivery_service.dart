@@ -49,26 +49,30 @@ class DeliveryService {
   Stream<QuerySnapshot> getListDeliveryByStoreNameAndDateRange(String storeName, String monthsBefore) {
     DateTime now = DateTime.now();
     DateTime endofday = KVariables.lastDayOfTheMonth();
-    DateTime startOfDay = now;
+    DateTime startOfDay;
 
     switch (monthsBefore) {
       case MonthsAgo.months1:
-        startOfDay = KVariables.firstDayOfTheMonth();
+        // Current month (e.g. September 1 to September 30)
+        startOfDay = DateTime(now.year, now.month, 1);
         break;
       case MonthsAgo.months3:
-        startOfDay = DateTime(now.year, now.month - 3, 0);
+        // 3 months including current month (e.g. July 1 to September 30)
+        startOfDay = DateTime(now.year, now.month - 2, 1);
         break;
       case MonthsAgo.months6:
-        startOfDay = DateTime(now.year, now.month - 6, 0);
+        // 6 months including current month (e.g. April 1 to September 30)
+        startOfDay = DateTime(now.year, now.month - 5, 1);
         break;
       default:
+        startOfDay = DateTime(now.year, now.month, 1);
     }
 
     return _ordersRef
         .where(DeliveryModelString.storeName, isEqualTo: storeName)
         .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.delivered)
         .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: startOfDay)
-        .where(DeliveryModelString.deliveryDate, isLessThan: endofday)
+        .where(DeliveryModelString.deliveryDate, isLessThanOrEqualTo: endofday)
         .orderBy(DeliveryModelString.deliveryDate, descending: true)
         .snapshots();
   }

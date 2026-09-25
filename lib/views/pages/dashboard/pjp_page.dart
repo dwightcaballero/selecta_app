@@ -631,7 +631,7 @@ class _PjpPageState extends State<PjpPage> {
                   const SizedBox(height: 4),
                   Text(errorMessage, style: TextStyle(fontSize: 12, color: colorScheme.error)),
                 ],
-                if (extraContent != null) extraContent,
+                ?extraContent,
                 if (isPassed && showActionWhenPassed && !isLoading) ...[
                   const SizedBox(height: 8),
                   OutlinedButton.icon(

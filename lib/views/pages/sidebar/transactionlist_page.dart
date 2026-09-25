@@ -42,74 +42,52 @@ class _TransactionListPageState extends State<TransactionListPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: 12,
         children: [
-          // Store Selector
-          _buildHapistoreDropdown(),
-
-          // Time Range Segmented Control
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Time Range',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+          HapistorePickerField(
+            controller: dropdownHapiStore,
+            label: 'Select Store',
+            onChanged: () => setState(() {}),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<String>(
+              showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: SegmentedButton<String>(
-                  showSelectedIcon: false,
-                  style: SegmentedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  segments: const [
-                    ButtonSegment<String>(
-                      value: MonthsAgo.months1,
-                      label: Text('Past Month', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      icon: Icon(Icons.calendar_today_outlined, size: 16),
-                    ),
-                    ButtonSegment<String>(
-                      value: MonthsAgo.months3,
-                      label: Text('3 Months', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      icon: Icon(Icons.date_range_outlined, size: 16),
-                    ),
-                    ButtonSegment<String>(
-                      value: MonthsAgo.months6,
-                      label: Text('6 Months', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      icon: Icon(Icons.history_outlined, size: 16),
-                    ),
-                  ],
-                  selected: {_selectedMonthsAgo},
-                  onSelectionChanged: (newSelection) {
-                    setState(() {
-                      _selectedMonthsAgo = newSelection.first;
-                    });
-                  },
+              segments: const [
+                ButtonSegment<String>(
+                  value: MonthsAgo.months1,
+                  label: Text('This Month', style: TextStyle(fontSize: 12)),
                 ),
-              ),
-            ],
+                ButtonSegment<String>(
+                  value: MonthsAgo.months3,
+                  label: Text('3 Months', style: TextStyle(fontSize: 12)),
+                ),
+                ButtonSegment<String>(
+                  value: MonthsAgo.months6,
+                  label: Text('6 Months', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+              selected: {_selectedMonthsAgo},
+              onSelectionChanged: (newSelection) {
+                setState(() => _selectedMonthsAgo = newSelection.first);
+              },
+            ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildHapistoreDropdown() {
-    return HapistorePickerField(
-      controller: dropdownHapiStore,
-      label: 'Select Store',
-      onChanged: () => setState(() {}),
     );
   }
 
@@ -133,23 +111,57 @@ class _TransactionListPageState extends State<TransactionListPage> {
           return _buildEmptyState();
         }
 
-        double totalPeriodAmount = 0;
+        double totalAmount = 0;
         for (var doc in allDocs) {
           final delivery = doc.data() as Delivery;
-          totalPeriodAmount += delivery.orderAmount;
+          totalAmount += delivery.orderAmount;
         }
 
         return Column(
           children: [
-            // KPI Summary Header
-            _buildSummaryBanner(totalAmount: totalPeriodAmount, totalCount: allDocs.length),
+            // Lightweight subtitle / summary row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${allDocs.length} ${allDocs.length == 1 ? 'Delivery' : 'Deliveries'}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        'Total: ',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(
+                        Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
 
-            // Transactions List
+            // Clean, focused list
             Expanded(
               child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 24),
                 itemCount: allDocs.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final delivery = allDocs[index].data() as Delivery;
                   final deliveryID = allDocs[index].id;
@@ -163,62 +175,22 @@ class _TransactionListPageState extends State<TransactionListPage> {
     );
   }
 
-  Widget _buildSummaryBanner({required double totalAmount, required int totalCount}) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colorScheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colorScheme.primary.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.insights_rounded, size: 20, color: colorScheme.primary),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Total Delivered Revenue', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                  Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
-            child: Text(
-              '$totalCount Deliveries',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colorScheme.primary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildTransactionCard({required String deliveryID, required Delivery delivery}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final dateStr = delivery.deliveryDate != null ? DateFormat('EEEE, d MMMM yyyy').format(delivery.deliveryDate!.toDate()) : 'No date';
+    final dateStr = delivery.deliveryDate != null
+        ? DateFormat('EEE, MMM d, yyyy').format(delivery.deliveryDate!.toDate())
+        : 'No date';
+    final hasUnpaidCredit = delivery.creditAmount > 0 && delivery.creditStatus == CreditStatus.unpaid;
 
     return Card(
       elevation: 0,
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: () {
           Navigator.push(
             context,
@@ -228,45 +200,50 @@ class _TransactionListPageState extends State<TransactionListPage> {
           );
         },
         child: Padding(
-          padding: const EdgeInsets.all(14.0),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                    child: const Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(dateStr, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                   ),
                   Text(
                     Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: Colors.green,
+                    ),
                   ),
                 ],
               ),
-              const Divider(height: 18),
+              const SizedBox(height: 8),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Wrap(
-                    spacing: 6,
-                    children: [
-                      if (delivery.cashAmount > 0)
-                        _buildPaymentBadge('Cash: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.cashAmount)}', Colors.green),
-                      if (delivery.onlineAmount > 0)
-                        _buildPaymentBadge('Online: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.onlineAmount)}', Colors.blue),
-                      if (delivery.creditAmount > 0)
-                        _buildPaymentBadge('Credit: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.creditAmount)}', Colors.purple),
-                      if (delivery.returnAmount > 0)
-                        _buildPaymentBadge('Return: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)}', Colors.red),
-                    ],
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        if (delivery.cashAmount > 0)
+                          _buildBadge('Cash: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.cashAmount)}', Colors.green),
+                        if (delivery.onlineAmount > 0)
+                          _buildBadge('Online: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.onlineAmount)}', Colors.blue),
+                        if (delivery.creditAmount > 0)
+                          _buildBadge(
+                            'Credit: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.creditAmount)}${hasUnpaidCredit ? ' (Unpaid)' : ''}',
+                            hasUnpaidCredit ? Colors.deepOrange : Colors.purple,
+                          ),
+                        if (delivery.returnAmount > 0)
+                          _buildBadge('Return: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)}', Colors.red),
+                      ],
+                    ),
                   ),
-                  Icon(Icons.chevron_right, size: 18, color: colorScheme.onSurfaceVariant),
+                  Icon(Icons.chevron_right, size: 16, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                 ],
               ),
             ],
@@ -276,53 +253,48 @@ class _TransactionListPageState extends State<TransactionListPage> {
     );
   }
 
-  Widget _buildPaymentBadge(String label, Color color) {
+  Widget _buildBadge(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color),
       ),
     );
   }
 
   Widget _buildSelectStorePrompt() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.storefront_outlined, size: 48, color: Colors.grey),
-          SizedBox(height: 12),
-          Text('Select a Hapi Store to view transactions', style: TextStyle(fontWeight: FontWeight.w600)),
+          Icon(Icons.storefront_outlined, size: 40, color: Theme.of(context).colorScheme.outline),
+          const SizedBox(height: 10),
+          const Text('Select a store to view transactions', style: TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );
   }
 
   Widget _buildEmptyState() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.receipt_long_outlined, color: Colors.blue, size: 50),
-            ),
-            const SizedBox(height: 16),
-            const Text('No Delivered Orders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
+            Icon(Icons.receipt_long_outlined, color: colorScheme.outline, size: 44),
+            const SizedBox(height: 12),
+            const Text('No Delivered Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
             Text(
-              'No delivered orders found for "${dropdownHapiStore.text}" within the selected timeframe.',
-              style: const TextStyle(fontSize: 13, color: Colors.black54),
-              textAlign: TextAlign.center,
+              'No orders found for this timeframe.',
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -331,13 +303,13 @@ class _TransactionListPageState extends State<TransactionListPage> {
   }
 
   Widget _buildErrorState() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
-          SizedBox(height: 8),
-          Text('Unable to load transaction list'),
+          Icon(Icons.error_outline_rounded, color: Theme.of(context).colorScheme.error, size: 36),
+          const SizedBox(height: 8),
+          const Text('Unable to load transactions'),
         ],
       ),
     );
@@ -346,17 +318,16 @@ class _TransactionListPageState extends State<TransactionListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppbar(title: 'Store Transactions', subtitle: dropdownHapiStore.text.isNotEmpty ? dropdownHapiStore.text : 'Transaction History'),
+      appBar: CustomAppbar(
+        title: 'Store Transactions',
+        subtitle: dropdownHapiStore.text.isNotEmpty ? dropdownHapiStore.text : 'Transaction History',
+      ),
       body: Column(
         children: [
-          // 1. Store Selector & Timeframe Filter Card
           _buildFilterCard(),
-
-          // 2. Transaction Stream List with Summary
           Expanded(child: _buildTransactionStream()),
         ],
       ),
     );
   }
 }
-

@@ -3,11 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/users.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/dealer_service.dart';
 import 'package:flutter_app/services/user_services.dart';
+import 'package:flutter_app/views/pages/others/login_page.dart';
+import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/snackbar_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,16 +21,17 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  UserService db = UserService();
-  List<DropdownMenuEntry<String>> dropdownItems = [];
-  TextEditingController dropdowncontroller = TextEditingController();
-  TextEditingController txtConfirmPassword = TextEditingController();
-  TextEditingController txtDealerName = TextEditingController();
-  TextEditingController txtEmail = TextEditingController();
-  TextEditingController txtPassword = TextEditingController();
-  TextEditingController txtUsername = TextEditingController();
+  final UserService db = UserService();
+  final List<DropdownMenuEntry<String>> dropdownItems = [];
+  final TextEditingController dropdowncontroller = TextEditingController();
+  final TextEditingController txtConfirmPassword = TextEditingController();
+  final TextEditingController txtDealerName = TextEditingController();
+  final TextEditingController txtEmail = TextEditingController();
+  final TextEditingController txtPassword = TextEditingController();
+  final TextEditingController txtUsername = TextEditingController();
 
-  final _formKey = KVariables.formkey;
+  // Page-local GlobalKey to prevent Duplicate GlobalKey exceptions
+  final _formKey = GlobalKey<FormState>();
   bool _isConfirmPasswordObscured = true;
   bool _isLoading = false;
   bool _isObscured = true;
@@ -48,27 +50,27 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   void initState() {
     super.initState();
-
-    dropdownItems.add(DropdownMenuEntry(value: BusinessRole.dealer, label: BusinessRole.dealer));
-    dropdownItems.add(DropdownMenuEntry(value: BusinessRole.salesman, label: BusinessRole.salesman));
+    dropdownItems.add(const DropdownMenuEntry(value: BusinessRole.dealer, label: BusinessRole.dealer));
+    dropdownItems.add(const DropdownMenuEntry(value: BusinessRole.salesman, label: BusinessRole.salesman));
   }
 
   Future<void> onRegister() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
-      _showSnackBar('Please complete all required fields.', isError: true);
+      SnackBarWidget.error(context, 'Please complete all required fields correctly.');
       return;
     }
 
     if (!_hasValidPassword) {
-      _showSnackBar('Password must contain at least 8 characters, one uppercase letter, one lowercase letter, and one number.', isError: true);
+      SnackBarWidget.error(context, 'Password must satisfy all security requirements.');
       return;
     }
 
     if (txtPassword.text != txtConfirmPassword.text) {
-      _showSnackBar('Passwords do not match.', isError: true);
+      SnackBarWidget.error(context, 'Passwords do not match.');
       return;
     }
 
+    FocusScope.of(context).unfocus();
     setState(() => _isLoading = true);
 
     try {
@@ -76,7 +78,9 @@ class _RegisterPageState extends State<RegisterPage> {
       final existingDealer = await dbDealer.getDealerByName(txtDealerName.text.trim());
 
       if (existingDealer == null) {
-        _showSnackBar('Dealer name does not exist. Please contact your administrator.', isError: true);
+        if (mounted) {
+          SnackBarWidget.error(context, 'Dealer name does not exist. Please contact your administrator.');
+        }
         return;
       }
 
@@ -87,7 +91,6 @@ class _RegisterPageState extends State<RegisterPage> {
       final role = dropdowncontroller.text;
 
       await authService.value.createAccount(email: email, password: password);
-
       await authService.value.signIn(email: email, password: password);
 
       final newRecord = Users(email: email, username: username, role: role, dealerName: dealerName);
@@ -96,9 +99,7 @@ class _RegisterPageState extends State<RegisterPage> {
       await Helperfunctions.logCreate(username, newRecord.toJson());
 
       await authService.value.updateUsername(username: username);
-
       await authService.value.signOut();
-
       await authService.value.signIn(email: email, password: password);
 
       final prefs = await SharedPreferences.getInstance();
@@ -106,10 +107,8 @@ class _RegisterPageState extends State<RegisterPage> {
 
       if (!mounted) return;
 
-      _showSnackBar('Successfully created account [$username].', isError: false);
-
+      ShowMessage.success(context, 'Successfully created account [$username]!');
       Navigator.pop(context, 'Successfully created account [$username].');
-
       await authService.value.signOut();
     } on FirebaseAuthException catch (error) {
       if (mounted) {
@@ -117,7 +116,7 @@ class _RegisterPageState extends State<RegisterPage> {
       }
     } catch (error) {
       if (mounted) {
-        SnackBarWidget.error(context, 'Something went wrong. Please try again.');
+        SnackBarWidget.error(context, 'Unable to create account. Please try again.');
       }
     } finally {
       if (mounted) {
@@ -128,8 +127,10 @@ class _RegisterPageState extends State<RegisterPage> {
 
   bool get _hasValidPassword {
     final password = txtPassword.text;
-
-    return password.length >= 8 && password.contains(RegExp(r'[A-Z]')) && password.contains(RegExp(r'[a-z]')) && password.contains(RegExp(r'[0-9]'));
+    return password.length >= 8 &&
+        password.contains(RegExp(r'[A-Z]')) &&
+        password.contains(RegExp(r'[a-z]')) &&
+        password.contains(RegExp(r'[0-9]'));
   }
 
   String? _validateEmail(String? value) {
@@ -162,87 +163,51 @@ class _RegisterPageState extends State<RegisterPage> {
   String _friendlyFirebaseMessage(FirebaseAuthException error) {
     switch (error.code) {
       case 'email-already-in-use':
-        return 'Email is already registered.';
+        return 'This email is already registered. Please log in.';
       case 'invalid-email':
         return 'Please enter a valid email address.';
       case 'weak-password':
-        return 'Password is too weak.';
+        return 'Password is too weak. Please use a stronger password.';
       case 'network-request-failed':
-        return 'Network error. Please try again.';
+        return 'Network connection issue. Please check your internet connection.';
       case 'too-many-requests':
         return 'Too many attempts. Please try again later.';
       default:
-        return 'Unable to create the account. Please try again.';
+        return error.message ?? 'Unable to create account. Please try again.';
     }
   }
 
-  void _showSnackBar(String message, {required bool isError}) {
-    if (!mounted) return;
+  InputDecoration _inputDecoration(BuildContext context, {required String label, required IconData icon, Widget? suffixIcon}) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
-    final messenger = ScaffoldMessenger.of(context);
-
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(child: Text(message)),
-            ],
-          ),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: isError ? const Color(0xFFD32F2F) : const Color(0xFF2E7D32),
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          duration: const Duration(seconds: 4),
-        ),
-      );
-  }
-
-  InputDecoration _inputDecoration({required String label, required IconData icon}) {
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon),
+      prefixIcon: Icon(icon, color: colorScheme.onSurfaceVariant),
+      suffixIcon: suffixIcon,
       filled: true,
-      fillColor: Colors.grey.shade50,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      labelStyle: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colorScheme.primary, width: 2),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Colors.red),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colorScheme.error),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: Colors.red, width: 2),
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: colorScheme.error, width: 2),
       ),
-    );
-  }
-
-  Widget _textField({
-    required String label,
-    required IconData icon,
-    required TextEditingController controller,
-    TextInputType? keyboardType,
-    TextInputAction? textInputAction,
-    String? Function(String?)? validator,
-    TextCapitalization textCapitalization = TextCapitalization.none,
-  }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      textInputAction: textInputAction,
-      textCapitalization: textCapitalization,
-      validator: validator,
-      decoration: _inputDecoration(label: label, icon: icon),
     );
   }
 
@@ -250,47 +215,44 @@ class _RegisterPageState extends State<RegisterPage> {
     if (value == null || value.trim().isEmpty) {
       return 'Enter your $label';
     }
-
     return null;
-  }
-
-  Widget _businessRoleField() {
-    return DropdownButtonFormField<String>(
-      initialValue: dropdowncontroller.text.isEmpty ? null : dropdowncontroller.text,
-      decoration: _inputDecoration(label: 'Business role', icon: Icons.badge_outlined),
-      items: dropdownItems.map((entry) {
-        return DropdownMenuItem<String>(value: entry.value, child: Text(entry.label));
-      }).toList(),
-      onChanged: _isLoading
-          ? null
-          : (value) {
-              setState(() {
-                dropdowncontroller.text = value ?? '';
-              });
-            },
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Select a business role';
-        }
-
-        return null;
-      },
-    );
   }
 
   Future<void> _showRegisterConfirmation() async {
     if (_isLoading) return;
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      SnackBarWidget.error(context, 'Please complete all required fields before proceeding.');
+      return;
+    }
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
         return AlertDialog(
-          title: const Text('Create account?'),
-          content: const Text('Please confirm that you want to create this account.'),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(Icons.person_add_rounded, color: colorScheme.primary),
+              const SizedBox(width: 10),
+              const Text('Create Account?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: Text(
+            'Confirm registration for "${txtUsername.text.trim()}" at "${txtDealerName.text.trim()}".',
+            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 14),
+          ),
+          actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           actions: [
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Create account')),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              icon: const Icon(Icons.check_rounded, size: 18),
+              label: const Text('Confirm'),
+            ),
           ],
         );
       },
@@ -302,6 +264,8 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   Widget _passwordStrengthIndicator() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final password = txtPassword.text;
     final hasLength = password.length >= 8;
     final hasUppercase = password.contains(RegExp(r'[A-Z]'));
@@ -312,35 +276,76 @@ class _RegisterPageState extends State<RegisterPage> {
       (hasLength, '8+ characters'),
       (hasUppercase, 'Uppercase letter'),
       (hasLowercase, 'Lowercase letter'),
-      (hasNumber, 'Number'),
+      (hasNumber, 'Number (0-9)'),
     ];
 
     final completedCount = requirements.where((item) => item.$1).length;
     final progress = completedCount / requirements.length;
+    final isFull = completedCount == requirements.length;
+
+    Color progressColor;
+    if (progress <= 0.25) {
+      progressColor = colorScheme.error;
+    } else if (progress <= 0.75) {
+      progressColor = Colors.orange;
+    } else {
+      progressColor = Colors.green;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LinearProgressIndicator(
-          value: progress,
-          minHeight: 6,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Password strength',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              isFull ? 'Strong' : completedCount >= 2 ? 'Moderate' : 'Weak',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: progressColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          color: progress == 1 ? Colors.green : Theme.of(context).colorScheme.primary,
-          backgroundColor: Colors.grey.shade200,
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+            backgroundColor: colorScheme.surfaceContainerHighest,
+          ),
         ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 12,
-          runSpacing: 4,
+          runSpacing: 6,
           children: requirements.map((requirement) {
             final isComplete = requirement.$1;
-
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(isComplete ? Icons.check_circle : Icons.circle_outlined, size: 15, color: isComplete ? Colors.green : Colors.grey.shade500),
+                Icon(
+                  isComplete ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                  size: 14,
+                  color: isComplete ? Colors.green : colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                ),
                 const SizedBox(width: 4),
-                Text(requirement.$2, style: TextStyle(fontSize: 12, color: isComplete ? Colors.green.shade700 : Colors.grey.shade600)),
+                Text(
+                  requirement.$2,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: isComplete ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                    fontWeight: isComplete ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
               ],
             );
           }).toList(),
@@ -349,22 +354,66 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  Widget _buildSectionHeader({required IconData icon, required String title, required String subtitle}) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 20, color: colorScheme.primary),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            Text(
+              subtitle,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      // In Register Page:
       appBar: const CustomAppbar(title: 'Create Account', subtitle: 'Start your journey'),
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFEFF6FF), Colors.white]),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? [colorScheme.surface, colorScheme.surfaceContainerLowest]
+                : [colorScheme.primaryContainer.withValues(alpha: 0.25), colorScheme.surface],
+          ),
         ),
         child: SafeArea(
           child: SingleChildScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 480),
@@ -372,186 +421,303 @@ class _RegisterPageState extends State<RegisterPage> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
 
-                      CircleAvatar(
-                        radius: 42,
-                        backgroundColor: theme.colorScheme.primary,
-                        child: Icon(Icons.person_add_alt_1_rounded, size: 40, color: theme.colorScheme.onPrimary),
+                      // Avatar Header
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.person_add_alt_1_rounded, size: 42, color: colorScheme.primary),
                       ),
-
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 14),
 
                       Text(
                         'Join Sedy',
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, color: const Color(0xFF172033)),
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: colorScheme.onSurface,
+                          letterSpacing: -0.5,
+                        ),
                       ),
-
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
 
                       Text(
-                        'Create your account to get started.',
+                        'Create an account to access sales and distribution tools.',
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey.shade600),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
-
                       const SizedBox(height: 24),
 
+                      // Account Details Card
                       Card(
                         elevation: 0,
-                        color: Colors.white.withValues(alpha: 0.94),
+                        color: isDark ? colorScheme.surfaceContainer : Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(24),
-                          side: BorderSide(color: Colors.grey.shade200),
+                          side: BorderSide(
+                            color: isDark ? colorScheme.outlineVariant.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                          ),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(20),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Account details',
-                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: const Color(0xFF172033)),
+                              _buildSectionHeader(
+                                icon: Icons.lock_outline_rounded,
+                                title: 'Account Credentials',
+                                subtitle: 'Login information and credentials',
                               ),
+                              const SizedBox(height: 18),
 
-                              const SizedBox(height: 16),
-
+                              // Email
                               TextFormField(
                                 controller: txtEmail,
                                 keyboardType: TextInputType.emailAddress,
                                 textInputAction: TextInputAction.next,
                                 autofillHints: const [AutofillHints.email],
-                                decoration: InputDecoration(
-                                  labelText: 'Email address',
-                                  prefixIcon: const Icon(Icons.email_outlined),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                                decoration: _inputDecoration(
+                                  context,
+                                  label: 'Email address',
+                                  icon: Icons.email_outlined,
                                 ),
                                 validator: _validateEmail,
                               ),
-
                               const SizedBox(height: 16),
 
+                              // Password
                               TextFormField(
                                 controller: txtPassword,
                                 obscureText: _isObscured,
                                 textInputAction: TextInputAction.next,
+                                autofillHints: const [AutofillHints.newPassword],
                                 onChanged: (_) => setState(() {}),
-                                decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  prefixIcon: const Icon(Icons.lock_outline),
+                                decoration: _inputDecoration(
+                                  context,
+                                  label: 'Password',
+                                  icon: Icons.lock_outline_rounded,
                                   suffixIcon: IconButton(
                                     tooltip: _isObscured ? 'Show password' : 'Hide password',
-                                    onPressed: () {
-                                      setState(() {
-                                        _isObscured = !_isObscured;
-                                      });
-                                    },
+                                    onPressed: () => setState(() => _isObscured = !_isObscured),
                                     icon: Icon(_isObscured ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                                   ),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
                                     return 'Enter a password';
                                   }
-
                                   if (!_hasValidPassword) {
-                                    return 'Password does not meet the requirements';
+                                    return 'Password does not meet requirements';
                                   }
-
                                   return null;
                                 },
                               ),
-
                               const SizedBox(height: 10),
 
+                              // Password Strength indicator
                               _passwordStrengthIndicator(),
-
                               const SizedBox(height: 16),
 
+                              // Confirm Password
                               TextFormField(
                                 controller: txtConfirmPassword,
                                 obscureText: _isConfirmPasswordObscured,
                                 textInputAction: TextInputAction.next,
-                                decoration: InputDecoration(
-                                  labelText: 'Confirm password',
-                                  prefixIcon: const Icon(Icons.lock_reset_outlined),
+                                autofillHints: const [AutofillHints.newPassword],
+                                decoration: _inputDecoration(
+                                  context,
+                                  label: 'Confirm password',
+                                  icon: Icons.lock_reset_rounded,
                                   suffixIcon: IconButton(
                                     tooltip: _isConfirmPasswordObscured ? 'Show password' : 'Hide password',
-                                    onPressed: () {
-                                      setState(() {
-                                        _isConfirmPasswordObscured = !_isConfirmPasswordObscured;
-                                      });
-                                    },
+                                    onPressed: () => setState(() => _isConfirmPasswordObscured = !_isConfirmPasswordObscured),
                                     icon: Icon(_isConfirmPasswordObscured ? Icons.visibility_outlined : Icons.visibility_off_outlined),
                                   ),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                                 ),
                                 validator: _validateConfirmPassword,
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              _textField(
-                                label: 'Username',
-                                icon: Icons.person_outline,
-                                controller: txtUsername,
-                                textInputAction: TextInputAction.next,
-                                textCapitalization: TextCapitalization.words,
-                                validator: (value) => _requiredValidator(value, 'username'),
-                              ),
-
-                              const SizedBox(height: 12),
-
-                              Text(
-                                'Business details',
-                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: const Color(0xFF172033)),
-                              ),
-
-                              const SizedBox(height: 12),
-
-                              _textField(
-                                label: 'Dealer name',
-                                icon: Icons.storefront_outlined,
-                                controller: txtDealerName,
-                                textInputAction: TextInputAction.next,
-                                textCapitalization: TextCapitalization.words,
-                                validator: (value) => _requiredValidator(value, 'dealer name'),
-                              ),
-
-                              const SizedBox(height: 16),
-
-                              _businessRoleField(),
-
-                              const SizedBox(height: 20),
-
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton(
-                                  onPressed: _isLoading ? null : _showRegisterConfirmation,
-
-                                  style: FilledButton.styleFrom(
-                                    minimumSize: const Size.fromHeight(52),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                  ),
-                                  child: _isLoading
-                                      ? SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(strokeWidth: 2.5, color: theme.colorScheme.onPrimary),
-                                        )
-                                      : const Text('Create account'),
-                                ),
                               ),
                             ],
                           ),
                         ),
                       ),
+                      const SizedBox(height: 16),
 
-                      const SizedBox(height: 20),
+                      // Business & Profile Details Card
+                      Card(
+                        elevation: 0,
+                        color: isDark ? colorScheme.surfaceContainer : Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          side: BorderSide(
+                            color: isDark ? colorScheme.outlineVariant.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSectionHeader(
+                                icon: Icons.badge_outlined,
+                                title: 'Profile & Business',
+                                subtitle: 'Your organization information',
+                              ),
+                              const SizedBox(height: 18),
 
-                      Text('Your information is securely stored.', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey.shade500)),
+                              // Username
+                              TextFormField(
+                                controller: txtUsername,
+                                textInputAction: TextInputAction.next,
+                                textCapitalization: TextCapitalization.words,
+                                autofillHints: const [AutofillHints.username],
+                                decoration: _inputDecoration(
+                                  context,
+                                  label: 'Username',
+                                  icon: Icons.person_outline_rounded,
+                                ),
+                                validator: (value) => _requiredValidator(value, 'username'),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Dealer Name
+                              TextFormField(
+                                controller: txtDealerName,
+                                textInputAction: TextInputAction.next,
+                                textCapitalization: TextCapitalization.words,
+                                decoration: _inputDecoration(
+                                  context,
+                                  label: 'Dealer name',
+                                  icon: Icons.storefront_outlined,
+                                ),
+                                validator: (value) => _requiredValidator(value, 'dealer name'),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Business Role dropdown
+                              DropdownButtonFormField<String>(
+                                initialValue: dropdowncontroller.text.isEmpty ? null : dropdowncontroller.text,
+                                decoration: _inputDecoration(
+                                  context,
+                                  label: 'Business role',
+                                  icon: Icons.work_outline_rounded,
+                                ),
+                                items: dropdownItems.map((entry) {
+                                  return DropdownMenuItem<String>(
+                                    value: entry.value,
+                                    child: Text(entry.label),
+                                  );
+                                }).toList(),
+                                onChanged: _isLoading
+                                    ? null
+                                    : (value) {
+                                        setState(() {
+                                          dropdowncontroller.text = value ?? '';
+                                        });
+                                      },
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Select a business role';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Submit Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: _isLoading ? null : _showRegisterConfirmation,
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
+                          ),
+                          child: _isLoading
+                              ? SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: colorScheme.onPrimary,
+                                  ),
+                                )
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.person_add_rounded, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Create Account',
+                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Link back to Login
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Already have an account?',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _isLoading
+                                ? null
+                                : () {
+                                    if (Navigator.canPop(context)) {
+                                      Navigator.pop(context);
+                                    } else {
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => const LoginPage()),
+                                      );
+                                    }
+                                  },
+                            child: Text(
+                              'Log in',
+                              style: TextStyle(
+                                color: colorScheme.primary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Security reassurance footer
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.shield_outlined, size: 14, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Your credentials are fully encrypted and secure.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),

@@ -79,18 +79,12 @@ class _ScanningPageState extends State<ScanningPage> {
   }
 
   Future<void> _rescanBarcode() async {
-    final scanned = await Navigator.push<String>(
-      context,
-      MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()),
-    );
+    final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()));
     if (scanned != null && scanned.isNotEmpty && mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => ScanningPage(
-            initialBarcode: scanned,
-            initialStoreName: _dropdownHapiStore.text,
-          ),
+          builder: (context) => ScanningPage(initialBarcode: scanned, initialStoreName: _dropdownHapiStore.text),
         ),
       );
     }
@@ -196,8 +190,10 @@ class _ScanningPageState extends State<ScanningPage> {
                   child: Icon(icon, size: 18, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 10),
-                Expanded(child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
-                if (trailing != null) trailing,
+                Expanded(
+                  child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                ),
+                ?trailing,
               ],
             ),
             const Divider(height: 24),
@@ -323,7 +319,11 @@ class _ScanningPageState extends State<ScanningPage> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
-                  icon: Icon(Icons.radio_button_unchecked, size: 18, color: !isScanned && !isPullout ? colorScheme.tertiary : colorScheme.onSurfaceVariant),
+                  icon: Icon(
+                    Icons.radio_button_unchecked,
+                    size: 18,
+                    color: !isScanned && !isPullout ? colorScheme.tertiary : colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 ButtonSegment<String>(
                   value: ScanningStatus.scanned,
@@ -345,11 +345,7 @@ class _ScanningPageState extends State<ScanningPage> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   ),
-                  icon: Icon(
-                    Icons.outbox_outlined,
-                    size: 18,
-                    color: isPullout ? colorScheme.error : colorScheme.onSurfaceVariant,
-                  ),
+                  icon: Icon(Icons.outbox_outlined, size: 18, color: isPullout ? colorScheme.error : colorScheme.onSurfaceVariant),
                 ),
               ],
               selected: {_selectedStatus},
@@ -470,7 +466,10 @@ class _ScanningPageState extends State<ScanningPage> {
               FilledButton.icon(
                 onPressed: _onSave,
                 icon: const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
-                label: const Text('Save Record', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                label: const Text(
+                  'Save Record',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50),
                   backgroundColor: Theme.of(context).colorScheme.primary,

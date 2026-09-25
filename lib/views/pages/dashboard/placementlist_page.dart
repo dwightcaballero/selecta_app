@@ -25,6 +25,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
   List<Placement> listPlacement = [];
   _PlacementSort _sort = _PlacementSort.storeNameAscending;
   bool _isLoading = true;
+  String? _errorMessage;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -41,7 +42,12 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
   }
 
   Future<void> prefetchData() async {
-    if (mounted) setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
     try {
       final placements = await PlacementService.getListPlacementForAllStores();
       if (!mounted) return;
@@ -49,8 +55,13 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
         listPlacement = placements;
         _isLoading = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load placements: $e';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -373,7 +384,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('Avg Completion', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+              Text(isFinished ? 'Overall Rate' : 'Avg Progress', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
               const SizedBox(height: 2),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -382,7 +393,9 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${averageProgress.toStringAsFixed(1)}/12 ($averagePercent%)',
+                  isFinished
+                      ? '$count/${_completedCount + _incompleteCount} (${((count / ((_completedCount + _incompleteCount) == 0 ? 1 : (_completedCount + _incompleteCount))) * 100).round()}%)'
+                      : '${averageProgress.toStringAsFixed(1)}/12 ($averagePercent%)',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: statusColor),
                 ),
               ),
@@ -542,20 +555,45 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
   @override
   Widget build(BuildContext context) {
     final isCompleteTab = _currentIndex == 0;
+    final totalPlacements = _completedCount + _incompleteCount;
+    final overallPercent = totalPlacements == 0 ? 0 : ((_completedCount / totalPlacements) * 100).round();
 
     return Scaffold(
       appBar: CustomAppbar(
         title: 'Placement List',
+        subtitle: isCompleteTab
+            ? 'Completed • $overallPercent% of stores finished'
+            : 'Pending • $_incompleteCount stores need follow-up',
         actions: [_buildSortMenu()],
       ),
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          Expanded(
-            child: _placementListView(isCompleteTab),
-          ),
-        ],
-      ),
+      body: _errorMessage != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline_rounded, size: 44, color: Theme.of(context).colorScheme.error),
+                    const SizedBox(height: 10),
+                    Text(_errorMessage!, textAlign: TextAlign.center),
+                    const SizedBox(height: 16),
+                    FilledButton.tonalIcon(
+                      onPressed: prefetchData,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Column(
+              children: [
+                _buildSearchBar(),
+                Expanded(
+                  child: _placementListView(isCompleteTab),
+                ),
+              ],
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (int index) {
