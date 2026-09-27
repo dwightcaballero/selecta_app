@@ -52,9 +52,16 @@ class _CreditPageState extends State<CreditPage> {
         lastUpdatedBy: authService.value.currentUser?.displayName ?? 'Admin',
         createdDate: widget.delivery.createdDate,
         lastupdatedDate: Timestamp.now(),
+        createdPage: widget.delivery.createdPage,
+        lastUpdatedPage: AppPages.credit,
       );
       db.updateDelivery(widget.recID, updatedDelivery);
-      Helperfunctions.logUpdate(updatedDelivery.storeName, widget.delivery.toJson(), updatedDelivery.toJson());
+      Helperfunctions.logUpdate(
+        updatedDelivery.storeName,
+        widget.delivery.toJson(),
+        updatedDelivery.toJson(),
+        page: AppPages.credit,
+      );
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully updated credit status!\n[${updatedDelivery.storeName}]');
       Navigator.pop(context);
@@ -413,9 +420,13 @@ class _CreditPageState extends State<CreditPage> {
               children: [
                 _buildAuditRow('Created By', widget.delivery.createdBy),
                 _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.createdDate.toDate())),
+                if (widget.delivery.createdPage.isNotEmpty)
+                  _buildAuditRow('Created On Page', widget.delivery.createdPage),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.delivery.lastUpdatedBy),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.lastupdatedDate.toDate())),
+                if (widget.delivery.lastUpdatedPage.isNotEmpty)
+                  _buildAuditRow('Last Updated Page', widget.delivery.lastUpdatedPage),
               ],
             ),
           ),

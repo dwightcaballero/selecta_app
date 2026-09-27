@@ -14,6 +14,8 @@ class Purchaseorder {
     required this.invoiceAmount,
     required this.invoiceDate,
     this.imagePath = '',
+    this.createdPage = '',
+    this.lastUpdatedPage = '',
   });
 
   Purchaseorder.fromJson(Map<String, Object?> json)
@@ -30,6 +32,8 @@ class Purchaseorder {
         invoiceAmount: json['invoiceAmount']! as double,
         invoiceDate: json['invoiceDate']! as Timestamp,
         imagePath: json['imagePath'] as String? ?? '',
+        createdPage: json['createdPage'] as String? ?? '',
+        lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
       );
 
   factory Purchaseorder.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -48,6 +52,8 @@ class Purchaseorder {
         invoiceAmount: data?['invoiceAmount'],
         invoiceDate: data?['invoiceDate'],
         imagePath: data?['imagePath'] ?? '',
+        createdPage: data?['createdPage'] as String? ?? '',
+        lastUpdatedPage: data?['lastUpdatedPage'] as String? ?? '',
       );
     } else {
       return Purchaseorder.empty();
@@ -66,6 +72,8 @@ class Purchaseorder {
   Timestamp orderDate;
   double overpayment;
   Timestamp invoiceDate;
+  String createdPage;
+  String lastUpdatedPage;
 
   static Purchaseorder empty() => Purchaseorder(
     invoiceNumber: '',
@@ -80,6 +88,8 @@ class Purchaseorder {
     invoiceAmount: 0.0,
     invoiceDate: Timestamp.now(),
     imagePath: '',
+    createdPage: '',
+    lastUpdatedPage: '',
   );
 
   Purchaseorder copyWith({
@@ -95,6 +105,8 @@ class Purchaseorder {
     Timestamp? lastupdatedDate,
     double? invoiceAmount,
     String? imagePath,
+    String? createdPage,
+    String? lastUpdatedPage,
   }) {
     return Purchaseorder(
       invoiceNumber: invoiceNumber ?? this.invoiceNumber,
@@ -109,6 +121,8 @@ class Purchaseorder {
       invoiceAmount: invoiceAmount ?? this.invoiceAmount,
       invoiceDate: invoiceDate ?? this.invoiceDate,
       imagePath: imagePath ?? this.imagePath,
+      createdPage: createdPage ?? this.createdPage,
+      lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
     );
   }
 
@@ -126,6 +140,8 @@ class Purchaseorder {
       'invoiceAmount': invoiceAmount,
       'invoiceDate': invoiceDate,
       'imagePath': imagePath,
+      'createdPage': createdPage,
+      'lastUpdatedPage': lastUpdatedPage,
     };
   }
 }

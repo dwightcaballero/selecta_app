@@ -117,6 +117,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
         isVerifiedByDealer: newStatus,
         lastUpdatedBy: authService.value.currentUser?.displayName ?? '',
         lastupdatedDate: Timestamp.now(),
+        lastUpdatedPage: AppPages.breakdown,
       );
 
       db.updateBreakdown(widget.breakdownID, updatedRecord);
@@ -124,6 +125,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
         Helperfunctions.formatTimestampForDisplay(updatedRecord.breakdownDate),
         widget.breakdown.toJson(),
         updatedRecord.toJson(),
+        page: AppPages.breakdown,
       );
 
       if (mounted) {
@@ -160,10 +162,16 @@ class _BreakdownPageState extends State<BreakdownPage> {
       lastUpdatedBy: authService.value.currentUser!.displayName!,
       createdDate: Timestamp.now(),
       lastupdatedDate: Timestamp.now(),
+      createdPage: AppPages.breakdown,
+      lastUpdatedPage: AppPages.breakdown,
     );
 
     db.addBreakdown(newRecord);
-    Helperfunctions.logCreate(Helperfunctions.formatTimestampForDisplay(newRecord.breakdownDate), newRecord.toJson());
+    Helperfunctions.logCreate(
+      Helperfunctions.formatTimestampForDisplay(newRecord.breakdownDate),
+      newRecord.toJson(),
+      page: AppPages.breakdown,
+    );
     ShowMessage.success(context, 'Successfully created a new breakdown record!');
     Navigator.pop(context);
   }
@@ -191,10 +199,17 @@ class _BreakdownPageState extends State<BreakdownPage> {
       lastUpdatedBy: authService.value.currentUser!.displayName!,
       createdDate: widget.breakdown.createdDate,
       lastupdatedDate: Timestamp.now(),
+      createdPage: widget.breakdown.createdPage,
+      lastUpdatedPage: AppPages.breakdown,
     );
 
     db.updateBreakdown(widget.breakdownID, newRecord);
-    Helperfunctions.logUpdate(Helperfunctions.formatTimestampForDisplay(newRecord.breakdownDate), widget.breakdown.toJson(), newRecord.toJson());
+    Helperfunctions.logUpdate(
+      Helperfunctions.formatTimestampForDisplay(newRecord.breakdownDate),
+      widget.breakdown.toJson(),
+      newRecord.toJson(),
+      page: AppPages.breakdown,
+    );
     ShowMessage.success(context, 'Successfully updated breakdown record!');
     Navigator.pop(context);
   }
@@ -631,9 +646,13 @@ class _BreakdownPageState extends State<BreakdownPage> {
               children: [
                 _buildAuditRow('Created By', widget.breakdown.createdBy),
                 _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.breakdown.createdDate.toDate())),
+                if (widget.breakdown.createdPage.isNotEmpty)
+                  _buildAuditRow('Created On Page', widget.breakdown.createdPage),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.breakdown.lastUpdatedBy),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.breakdown.lastupdatedDate.toDate())),
+                if (widget.breakdown.lastUpdatedPage.isNotEmpty)
+                  _buildAuditRow('Last Updated Page', widget.breakdown.lastUpdatedPage),
                 const Divider(height: 12),
                 _buildAuditRow('Verified by Dealer', widget.breakdown.isVerifiedByDealer ? 'Yes' : 'No'),
               ],

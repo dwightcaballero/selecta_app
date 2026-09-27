@@ -197,7 +197,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
         style: const TextStyle(fontSize: 13.5),
         decoration: InputDecoration(
-          hintText: 'Search user, store, message...',
+          hintText: 'Search user, page, store, message...',
           hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
           prefixIcon: Icon(Icons.search, size: 18, color: colorScheme.primary),
           suffixIcon: _searchQuery.isNotEmpty
@@ -312,37 +312,76 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
                           ),
                           const SizedBox(height: 6),
 
-                          // Metadata: User & Role
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
+                          // Metadata: User, Role & Page
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 6,
+                            runSpacing: 4,
                             children: [
-                              CircleAvatar(
-                                radius: 8,
-                                backgroundColor: colorScheme.primaryContainer,
-                                child: Text(
-                                  log.loggedBy.isNotEmpty ? log.loggedBy[0].toUpperCase() : '?',
-                                  style: TextStyle(
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    color: colorScheme.onPrimaryContainer,
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 8,
+                                    backgroundColor: colorScheme.primaryContainer,
+                                    child: Text(
+                                      log.loggedBy.isNotEmpty ? log.loggedBy[0].toUpperCase() : '?',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: colorScheme.onPrimaryContainer,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    log.loggedBy,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  if (log.loggedRole.isNotEmpty) ...[
+                                    Text(
+                                      ' • ${log.loggedRole}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                log.loggedBy,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              if (log.loggedRole.isNotEmpty) ...[
-                                Text(
-                                  ' • ${log.loggedRole}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.75),
+                              if (log.page.isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.layers_outlined,
+                                        size: 11,
+                                        color: colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        log.page,
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w500,
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -544,6 +583,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
                 log.details.toLowerCase().contains(_searchQuery.toLowerCase()) ||
                 log.loggedBy.toLowerCase().contains(_searchQuery.toLowerCase()) ||
                 log.loggedRole.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                log.page.toLowerCase().contains(_searchQuery.toLowerCase()) ||
                 log.dealerName.toLowerCase().contains(_searchQuery.toLowerCase());
 
             if (matchesAction && matchesSearch) {

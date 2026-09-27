@@ -161,7 +161,7 @@ class Helperfunctions {
     return filepath.split('/').last;
   }
 
-  static Future<void> logTransaction(String message, String details, String logAction) async {
+  static Future<void> logTransaction(String message, String details, String logAction, {String page = ''}) async {
     Users? user = await KVariables.getUser();
     TransactionLog log;
     if (user != null) {
@@ -173,6 +173,7 @@ class Helperfunctions {
         loggedDate: Timestamp.now(),
         message: message,
         details: details,
+        page: page,
       );
     } else {
       log = TransactionLog(
@@ -183,6 +184,7 @@ class Helperfunctions {
         loggedDate: Timestamp.now(),
         message: message,
         details: details,
+        page: page,
       );
     }
 
@@ -191,7 +193,14 @@ class Helperfunctions {
   }
 
   // audit metadata fields excluded from create/update log details since they're redundant with the log's own loggedBy/loggedDate
-  static const List<String> _auditFieldsToSkip = ['createdBy', 'lastUpdatedBy', 'createdDate', 'lastupdatedDate'];
+  static const List<String> _auditFieldsToSkip = [
+    'createdBy',
+    'lastUpdatedBy',
+    'createdDate',
+    'lastupdatedDate',
+    'createdPage',
+    'lastUpdatedPage',
+  ];
 
   static String _formatFieldValue(Object? value) {
     if (value == null) return '(empty)';
@@ -208,12 +217,17 @@ class Helperfunctions {
   }
 
   /// Logs the creation of a record, capturing all of its field values.
-  static Future<void> logCreate(String identifier, Map<String, Object?> newData) async {
-    await logTransaction(identifier, _formatRecordDetails(newData), LogAction.create);
+  static Future<void> logCreate(String identifier, Map<String, Object?> newData, {String page = ''}) async {
+    await logTransaction(identifier, _formatRecordDetails(newData), LogAction.create, page: page);
   }
 
   /// Logs an update to a record, capturing only the fields whose values actually changed.
-  static Future<void> logUpdate(String identifier, Map<String, Object?> oldData, Map<String, Object?> newData) async {
+  static Future<void> logUpdate(
+    String identifier,
+    Map<String, Object?> oldData,
+    Map<String, Object?> newData, {
+    String page = '',
+  }) async {
     final List<String> changes = [];
     for (final key in newData.keys) {
       if (_auditFieldsToSkip.contains(key)) continue;
@@ -224,12 +238,17 @@ class Helperfunctions {
       }
     }
 
-    await logTransaction(identifier, changes.isEmpty ? 'No field changes detected.' : changes.join('\n'), LogAction.update);
+    await logTransaction(
+      identifier,
+      changes.isEmpty ? 'No field changes detected.' : changes.join('\n'),
+      LogAction.update,
+      page: page,
+    );
   }
 
   /// Logs the deletion of a record, capturing all of its field values at the time of deletion.
-  static Future<void> logDelete(String identifier, Map<String, Object?> oldData) async {
-    await logTransaction(identifier, _formatRecordDetails(oldData), LogAction.delete);
+  static Future<void> logDelete(String identifier, Map<String, Object?> oldData, {String page = ''}) async {
+    await logTransaction(identifier, _formatRecordDetails(oldData), LogAction.delete, page: page);
   }
 
   static Future<void> showLoading({required BuildContext context, required bool showLoading}) async {

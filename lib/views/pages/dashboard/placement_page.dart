@@ -202,6 +202,7 @@ class _PlacementPageState extends State<PlacementPage> {
         'Placement Update - ${updated.storeName}',
         'Placed $placedCount of ${listPlacement.length} products for $currentMonthLabel.',
         LogAction.update,
+        page: AppPages.placement,
       );
 
       if (!mounted) return;

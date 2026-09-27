@@ -8,6 +8,8 @@ class Expenses {
   String lastUpdatedBy;
   Timestamp createdDate;
   Timestamp lastupdatedDate;
+  String createdPage;
+  String lastUpdatedPage;
 
   Expenses({
     required this.description,
@@ -17,6 +19,8 @@ class Expenses {
     required this.lastUpdatedBy,
     required this.createdDate,
     required this.lastupdatedDate,
+    this.createdPage = '',
+    this.lastUpdatedPage = '',
   });
 
   static Expenses empty() => Expenses(
@@ -27,6 +31,8 @@ class Expenses {
     lastUpdatedBy: '',
     createdDate: Timestamp.now(),
     lastupdatedDate: Timestamp.now(),
+    createdPage: '',
+    lastUpdatedPage: '',
   );
 
   Expenses.fromJson(Map<String, Object?> json)
@@ -38,6 +44,8 @@ class Expenses {
         lastUpdatedBy: json['lastUpdatedBy']! as String,
         createdDate: json['createdDate']! as Timestamp,
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
+        createdPage: json['createdPage'] as String? ?? '',
+        lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
       );
 
   factory Expenses.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -51,6 +59,8 @@ class Expenses {
         lastUpdatedBy: data?['lastUpdatedBy'],
         createdDate: data?['createdDate'],
         lastupdatedDate: data?['lastupdatedDate'],
+        createdPage: data?['createdPage'] as String? ?? '',
+        lastUpdatedPage: data?['lastUpdatedPage'] as String? ?? '',
       );
     } else {
       return Expenses.empty();
@@ -65,6 +75,8 @@ class Expenses {
     String? lastUpdatedBy,
     Timestamp? createdDate,
     Timestamp? lastupdatedDate,
+    String? createdPage,
+    String? lastUpdatedPage,
   }) {
     return Expenses(
       description: description ?? this.description,
@@ -74,6 +86,8 @@ class Expenses {
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
+      createdPage: createdPage ?? this.createdPage,
+      lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
     );
   }
 
@@ -86,6 +100,8 @@ class Expenses {
       'lastUpdatedBy': lastUpdatedBy,
       'createdDate': createdDate,
       'lastupdatedDate': lastupdatedDate,
+      'createdPage': createdPage,
+      'lastUpdatedPage': lastUpdatedPage,
     };
   }
 }

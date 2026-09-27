@@ -65,9 +65,11 @@ class _ExpensesPageState extends State<ExpensesPage> {
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: Timestamp.now(),
         lastupdatedDate: Timestamp.now(),
+        createdPage: AppPages.expenses,
+        lastUpdatedPage: AppPages.expenses,
       );
       db.addExpenses(newRecord);
-      await Helperfunctions.logCreate(txtDescription.text, newRecord.toJson());
+      await Helperfunctions.logCreate(txtDescription.text, newRecord.toJson(), page: AppPages.expenses);
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully created expense record for [${txtDescription.text}]!');
@@ -92,9 +94,11 @@ class _ExpensesPageState extends State<ExpensesPage> {
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: widget.expense.createdDate,
         lastupdatedDate: Timestamp.now(),
+        createdPage: widget.expense.createdPage,
+        lastUpdatedPage: AppPages.expenses,
       );
       db.updateExpenses(widget.recID, expenses);
-      await Helperfunctions.logUpdate(expenses.description, widget.expense.toJson(), expenses.toJson());
+      await Helperfunctions.logUpdate(expenses.description, widget.expense.toJson(), expenses.toJson(), page: AppPages.expenses);
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully updated expense record for [${expenses.description}]!');
@@ -111,7 +115,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
       return;
     }
     db.deleteExpenses(widget.recID);
-    await Helperfunctions.logDelete(widget.expense.description, widget.expense.toJson());
+    await Helperfunctions.logDelete(widget.expense.description, widget.expense.toJson(), page: AppPages.expenses);
 
     if (mounted) {
       ShowMessage.success(context, 'Successfully deleted expense record for [${widget.expense.description}]!');
@@ -299,9 +303,13 @@ class _ExpensesPageState extends State<ExpensesPage> {
               children: [
                 _buildAuditRow('Created By', widget.expense.createdBy),
                 _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.expense.createdDate.toDate())),
+                if (widget.expense.createdPage.isNotEmpty)
+                  _buildAuditRow('Created On Page', widget.expense.createdPage),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.expense.lastUpdatedBy),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.expense.lastupdatedDate.toDate())),
+                if (widget.expense.lastUpdatedPage.isNotEmpty)
+                  _buildAuditRow('Last Updated Page', widget.expense.lastUpdatedPage),
               ],
             ),
           ),

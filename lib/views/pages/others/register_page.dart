@@ -96,7 +96,7 @@ class _RegisterPageState extends State<RegisterPage> {
       final newRecord = Users(email: email, username: username, role: role, dealerName: dealerName);
 
       db.addUser(newRecord);
-      await Helperfunctions.logCreate(username, newRecord.toJson());
+      await Helperfunctions.logCreate(username, newRecord.toJson(), page: AppPages.register);
 
       await authService.value.updateUsername(username: username);
       await authService.value.signOut();

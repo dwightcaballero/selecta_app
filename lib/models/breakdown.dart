@@ -24,6 +24,8 @@ class Breakdown {
   Timestamp createdDate;
   Timestamp lastupdatedDate;
   bool isVerifiedByDealer;
+  String createdPage;
+  String lastUpdatedPage;
 
   Breakdown({
     required this.breakdownDate,
@@ -47,6 +49,8 @@ class Breakdown {
     required this.createdDate,
     required this.lastupdatedDate,
     this.isVerifiedByDealer = false,
+    this.createdPage = '',
+    this.lastUpdatedPage = '',
   });
 
   static Breakdown empty() => Breakdown(
@@ -72,6 +76,8 @@ class Breakdown {
     createdDate: Timestamp.now(),
     lastupdatedDate: Timestamp.now(),
     isVerifiedByDealer: false,
+    createdPage: '',
+    lastUpdatedPage: '',
   );
 
   Breakdown.fromJson(Map<String, Object?> json)
@@ -98,6 +104,8 @@ class Breakdown {
         createdDate: json['createdDate']! as Timestamp,
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
         isVerifiedByDealer: (json['isVerifiedByDealer'] as bool?) ?? false,
+        createdPage: json['createdPage'] as String? ?? '',
+        lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
       );
 
   factory Breakdown.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -126,6 +134,8 @@ class Breakdown {
         createdDate: data?['createdDate'],
         lastupdatedDate: data?['lastupdatedDate'],
         isVerifiedByDealer: (data?['isVerifiedByDealer'] as bool?) ?? false,
+        createdPage: data?['createdPage'] as String? ?? '',
+        lastUpdatedPage: data?['lastUpdatedPage'] as String? ?? '',
       );
     } else {
       return Breakdown.empty();
@@ -155,6 +165,8 @@ class Breakdown {
     Timestamp? createdDate,
     Timestamp? lastupdatedDate,
     bool? isVerifiedByDealer,
+    String? createdPage,
+    String? lastUpdatedPage,
   }) {
     return Breakdown(
       breakdownDate: breakdownDate ?? this.breakdownDate,
@@ -180,6 +192,8 @@ class Breakdown {
       createdDate: createdDate ?? this.createdDate,
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
       isVerifiedByDealer: isVerifiedByDealer ?? this.isVerifiedByDealer,
+      createdPage: createdPage ?? this.createdPage,
+      lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
     );
   }
 
@@ -208,6 +222,8 @@ class Breakdown {
       'createdDate': createdDate,
       'lastupdatedDate': lastupdatedDate,
       'isVerifiedByDealer': isVerifiedByDealer,
+      'createdPage': createdPage,
+      'lastUpdatedPage': lastUpdatedPage,
     };
   }
 }

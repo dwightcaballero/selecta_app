@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/configuration.dart';
 import 'package:flutter_app/services/configuration_service.dart';
@@ -128,11 +129,13 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           'Configuration - Merch Blitz Schedule',
           oldMap,
           newMap,
+          page: AppPages.configuration,
         );
       } else {
         await Helperfunctions.logCreate(
           'Configuration - Merch Blitz Schedule',
           newMap,
+          page: AppPages.configuration,
         );
       }
 

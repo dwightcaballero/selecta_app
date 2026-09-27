@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/purchaseorder.dart';
 import 'package:flutter_app/services/auth_service.dart';
@@ -150,10 +151,16 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         invoiceAmount: 0,
         imagePath: imageFilePath,
         invoiceDate: Timestamp.fromDate(_selectedInvoiceDate),
+        createdPage: AppPages.purchaseOrder,
+        lastUpdatedPage: AppPages.purchaseOrder,
       );
 
       db.addPurchaseorder(newPurchaseorder);
-      await Helperfunctions.logCreate(Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate), newPurchaseorder.toJson());
+      await Helperfunctions.logCreate(
+        Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate),
+        newPurchaseorder.toJson(),
+        page: AppPages.purchaseOrder,
+      );
 
       // Mark all checked overpayments as settled
       if (_selectedOverpaymentIds.isNotEmpty) {
@@ -165,11 +172,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             order.isSettled = true;
             order.lastUpdatedBy = currentUserDisplayName;
             order.lastupdatedDate = Timestamp.now();
+            order.lastUpdatedPage = AppPages.purchaseOrder;
             db.updatePurchaseorder(doc.id, order);
             await Helperfunctions.logUpdate(
               order.invoiceNumber.isNotEmpty ? order.invoiceNumber : Helperfunctions.formatTimestampForDisplay(order.orderDate),
               prevJson,
               order.toJson(),
+              page: AppPages.purchaseOrder,
             );
           }
         }
@@ -210,6 +219,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         invoiceAmount: invoiceAmount,
         imagePath: imageFilePath,
         invoiceDate: Timestamp.fromDate(_selectedInvoiceDate),
+        createdPage: widget.purchaseorder.createdPage,
+        lastUpdatedPage: AppPages.purchaseOrder,
       );
 
       db.updatePurchaseorder(widget.purchaseorderID, updatedPurchaseorder);
@@ -219,6 +230,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             : Helperfunctions.formatTimestampForDisplay(updatedPurchaseorder.orderDate),
         widget.purchaseorder.toJson(),
         updatedPurchaseorder.toJson(),
+        page: AppPages.purchaseOrder,
       );
 
       if (mounted) {
@@ -239,6 +251,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           ? widget.purchaseorder.invoiceNumber
           : Helperfunctions.formatTimestampForDisplay(widget.purchaseorder.orderDate),
       widget.purchaseorder.toJson(),
+      page: AppPages.purchaseOrder,
     );
 
     if (mounted) {
@@ -1077,9 +1090,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               children: [
                 _buildAuditRow('Created By', widget.purchaseorder.createdBy),
                 _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.purchaseorder.createdDate.toDate())),
+                if (widget.purchaseorder.createdPage.isNotEmpty)
+                  _buildAuditRow('Created On Page', widget.purchaseorder.createdPage),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.purchaseorder.lastUpdatedBy),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.purchaseorder.lastupdatedDate.toDate())),
+                if (widget.purchaseorder.lastUpdatedPage.isNotEmpty)
+                  _buildAuditRow('Last Updated Page', widget.purchaseorder.lastUpdatedPage),
               ],
             ),
           ),

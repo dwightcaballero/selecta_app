@@ -148,7 +148,7 @@ class _PjpListPageState extends State<PjpListPage> {
       final removedStoreIDs = _originalStoreIDs.difference(_editableStoreIDs.toSet()).toList();
       await db.updatePjpSequenceOrder(_selectedDay, _editableStoreIDs, removedHapiStoreIDs: removedStoreIDs);
       final storeNames = _editableStoreIDs.map((id) => _editableStoresById[id]?.storeName ?? id).join(', ');
-      Helperfunctions.logTransaction('PJP Resequence - $_selectedDay', 'New order: $storeNames', LogAction.update);
+      Helperfunctions.logTransaction('PJP Resequence - $_selectedDay', 'New order: $storeNames', LogAction.update, page: AppPages.pjpList);
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully updated PJP sequence for $_selectedDay!');
       setState(() {

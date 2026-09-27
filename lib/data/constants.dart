@@ -89,4 +89,22 @@ class PjpScheduleDays {
   static const List<String> all = [monday, tuesday, wednesday, thursday, friday, saturday, sunday];
 }
 
+class AppPages {
+  static const delivery = "Delivery";
+  static const scanning = "Scanning";
+  static const returnPage = "Return";
+  static const credit = "Credit";
+  static const pjp = "PJP";
+  static const pjpList = "PJP List";
+  static const placement = "Placement";
+  static const tasks = "Tasks";
+  static const purchaseOrder = "Purchase Order";
+  static const expenses = "Expenses";
+  static const hapiStore = "Hapi Store";
+  static const badOrder = "Bad Order";
+  static const breakdown = "Breakdown";
+  static const configuration = "Configuration";
+  static const register = "Register";
+}
+
 // ₱

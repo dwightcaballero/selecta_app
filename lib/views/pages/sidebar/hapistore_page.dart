@@ -196,7 +196,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
         longitude: lng,
       );
       db.addHapiStore(newHs);
-      Helperfunctions.logCreate(newHs.storeName, newHs.toJson());
+      Helperfunctions.logCreate(newHs.storeName, newHs.toJson(), page: AppPages.hapiStore);
       ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
       Navigator.pop(context);
     } else {
@@ -220,7 +220,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
         clearLocation: lat == null || lng == null,
       );
       db.updateHapiStore(widget.hapiStoreID, updatedHS);
-      Helperfunctions.logUpdate(updatedHS.storeName, widget.hapistore.toJson(), updatedHS.toJson());
+      Helperfunctions.logUpdate(updatedHS.storeName, widget.hapistore.toJson(), updatedHS.toJson(), page: AppPages.hapiStore);
       ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
       Navigator.pop(context);
     } else {
@@ -230,7 +230,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   void onDelete() {
     db.deleteHapiStore(widget.hapiStoreID);
-    Helperfunctions.logDelete(widget.hapistore.storeName, widget.hapistore.toJson());
+    Helperfunctions.logDelete(widget.hapistore.storeName, widget.hapistore.toJson(), page: AppPages.hapiStore);
     ShowMessage.success(context, 'Successfully deleted Hapi Store [${widget.hapistore.storeName}]!');
     Navigator.pop(context);
   }

@@ -8,6 +8,7 @@ class TransactionLog {
   Timestamp loggedDate;
   String message;
   String details;
+  String page;
 
   TransactionLog({
     required this.dealerName,
@@ -17,6 +18,7 @@ class TransactionLog {
     required this.loggedDate,
     required this.message,
     required this.details,
+    this.page = '',
   });
 
   static TransactionLog empty() => TransactionLog(
@@ -27,6 +29,7 @@ class TransactionLog {
     loggedDate: Timestamp.now(),
     message: '',
     details: '',
+    page: '',
   );
 
   TransactionLog.fromJson(Map<String, Object?> json)
@@ -38,6 +41,7 @@ class TransactionLog {
         loggedDate: json['loggedDate']! as Timestamp,
         message: json['message']! as String,
         details: json['details']! as String,
+        page: json['page'] as String? ?? '',
       );
 
   factory TransactionLog.fromSnapshot(
@@ -53,6 +57,7 @@ class TransactionLog {
         loggedDate: data?['loggedDate'],
         message: data?['message'],
         details: data?['details'],
+        page: data?['page'] as String? ?? '',
       );
     } else {
       return TransactionLog.empty();
@@ -67,6 +72,7 @@ class TransactionLog {
     Timestamp? loggedDate,
     String? message,
     String? details,
+    String? page,
   }) {
     return TransactionLog(
       dealerName: dealerName ?? this.dealerName,
@@ -76,6 +82,7 @@ class TransactionLog {
       loggedDate: loggedDate ?? this.loggedDate,
       message: message ?? this.message,
       details: details ?? this.details,
+      page: page ?? this.page,
     );
   }
 
@@ -88,6 +95,7 @@ class TransactionLog {
       'loggedDate': loggedDate,
       'message': message,
       'details': details,
+      'page': page,
     };
   }
 }

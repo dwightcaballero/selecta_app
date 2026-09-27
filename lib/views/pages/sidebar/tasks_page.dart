@@ -137,12 +137,14 @@ class _TasksPageState extends State<TasksPage> {
         lastUpdatedBy: _userName,
         createdDate: Timestamp.now(),
         lastupdatedDate: Timestamp.now(),
+        createdPage: AppPages.tasks,
+        lastUpdatedPage: AppPages.tasks,
       );
 
       final docRef = await db.addTasks(newTask);
       newTask.taskID = docRef.id;
 
-      await Helperfunctions.logCreate(txtTitle.text.trim(), newTask.toJson());
+      await Helperfunctions.logCreate(txtTitle.text.trim(), newTask.toJson(), page: AppPages.tasks);
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully created task [${txtTitle.text.trim()}]!');
@@ -179,10 +181,11 @@ class _TasksPageState extends State<TasksPage> {
         isTaskDone: _isTaskDone,
         lastUpdatedBy: _userName,
         lastupdatedDate: Timestamp.now(),
+        lastUpdatedPage: AppPages.tasks,
       );
 
       await db.updateTasks(widget.taskID, updatedTask);
-      await Helperfunctions.logUpdate(updatedTask.taskTitle, widget.task.toJson(), updatedTask.toJson());
+      await Helperfunctions.logUpdate(updatedTask.taskTitle, widget.task.toJson(), updatedTask.toJson(), page: AppPages.tasks);
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully updated task [${updatedTask.taskTitle}]!');
@@ -207,7 +210,7 @@ class _TasksPageState extends State<TasksPage> {
 
     try {
       await db.deleteTasks(widget.taskID);
-      await Helperfunctions.logDelete(widget.task.taskTitle, widget.task.toJson());
+      await Helperfunctions.logDelete(widget.task.taskTitle, widget.task.toJson(), page: AppPages.tasks);
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully deleted task [${widget.task.taskTitle}]!');
@@ -468,9 +471,13 @@ class _TasksPageState extends State<TasksPage> {
               children: [
                 _buildAuditRow('Created By', widget.task.createdBy.isNotEmpty ? widget.task.createdBy : 'N/A'),
                 _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.task.createdDate.toDate())),
+                if (widget.task.createdPage.isNotEmpty)
+                  _buildAuditRow('Created On Page', widget.task.createdPage),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.task.lastUpdatedBy.isNotEmpty ? widget.task.lastUpdatedBy : 'N/A'),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.task.lastupdatedDate.toDate())),
+                if (widget.task.lastUpdatedPage.isNotEmpty)
+                  _buildAuditRow('Last Updated Page', widget.task.lastUpdatedPage),
               ],
             ),
           ),

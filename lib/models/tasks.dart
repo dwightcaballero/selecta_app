@@ -11,6 +11,8 @@ class Tasks {
   String lastUpdatedBy;
   Timestamp createdDate;
   Timestamp lastupdatedDate;
+  String createdPage;
+  String lastUpdatedPage;
 
   Tasks({
     required this.taskID,
@@ -23,6 +25,8 @@ class Tasks {
     required this.lastUpdatedBy,
     required this.createdDate,
     required this.lastupdatedDate,
+    this.createdPage = '',
+    this.lastUpdatedPage = '',
   });
 
   static Tasks empty() => Tasks(
@@ -36,6 +40,8 @@ class Tasks {
     lastUpdatedBy: '',
     createdDate: Timestamp.now(),
     lastupdatedDate: Timestamp.now(),
+    createdPage: '',
+    lastUpdatedPage: '',
   );
 
   Tasks.fromJson(Map<String, Object?> json)
@@ -56,6 +62,8 @@ class Tasks {
         lastupdatedDate: (json['lastupdatedDate'] is Timestamp)
             ? json['lastupdatedDate'] as Timestamp
             : Timestamp.now(),
+        createdPage: json['createdPage'] as String? ?? '',
+        lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
       );
 
   factory Tasks.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -78,6 +86,8 @@ class Tasks {
         lastupdatedDate: (data?['lastupdatedDate'] is Timestamp)
             ? data!['lastupdatedDate'] as Timestamp
             : Timestamp.now(),
+        createdPage: data?['createdPage'] as String? ?? '',
+        lastUpdatedPage: data?['lastUpdatedPage'] as String? ?? '',
       );
     } else {
       return Tasks.empty();
@@ -95,6 +105,8 @@ class Tasks {
     String? lastUpdatedBy,
     Timestamp? createdDate,
     Timestamp? lastupdatedDate,
+    String? createdPage,
+    String? lastUpdatedPage,
   }) {
     return Tasks(
       taskID: taskID ?? this.taskID,
@@ -107,6 +119,8 @@ class Tasks {
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
+      createdPage: createdPage ?? this.createdPage,
+      lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
     );
   }
 
@@ -122,6 +136,8 @@ class Tasks {
       'lastUpdatedBy': lastUpdatedBy,
       'createdDate': createdDate,
       'lastupdatedDate': lastupdatedDate,
+      'createdPage': createdPage,
+      'lastUpdatedPage': lastUpdatedPage,
     };
   }
 }

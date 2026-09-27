@@ -19,6 +19,8 @@ class Delivery {
   String lastUpdatedBy;
   Timestamp createdDate;
   Timestamp lastupdatedDate;
+  String createdPage;
+  String lastUpdatedPage;
 
   Placement? placement;
 
@@ -38,6 +40,8 @@ class Delivery {
     required this.lastUpdatedBy,
     required this.createdDate,
     required this.lastupdatedDate,
+    this.createdPage = '',
+    this.lastUpdatedPage = '',
   });
 
   static Delivery empty() => Delivery(
@@ -56,6 +60,8 @@ class Delivery {
     lastUpdatedBy: '',
     createdDate: Timestamp.now(),
     lastupdatedDate: Timestamp.now(),
+    createdPage: '',
+    lastUpdatedPage: '',
   );
 
   Delivery.fromJson(Map<String, Object?> json)
@@ -75,6 +81,8 @@ class Delivery {
         lastUpdatedBy: json['lastUpdatedBy']! as String,
         createdDate: json['createdDate']! as Timestamp,
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
+        createdPage: json['createdPage'] as String? ?? '',
+        lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
       );
 
   factory Delivery.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -96,6 +104,8 @@ class Delivery {
         lastUpdatedBy: data?['lastUpdatedBy'],
         createdDate: data?['createdDate'],
         lastupdatedDate: data?['lastupdatedDate'],
+        createdPage: data?['createdPage'] as String? ?? '',
+        lastUpdatedPage: data?['lastUpdatedPage'] as String? ?? '',
       );
     } else {
       return Delivery.empty();
@@ -120,6 +130,8 @@ class Delivery {
     String? lastUpdatedBy,
     Timestamp? createdDate,
     Timestamp? lastupdatedDate,
+    String? createdPage,
+    String? lastUpdatedPage,
   }) {
     return Delivery(
       storeName: storeName ?? this.storeName,
@@ -137,6 +149,8 @@ class Delivery {
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
+      createdPage: createdPage ?? this.createdPage,
+      lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
     );
   }
 
@@ -157,6 +171,8 @@ class Delivery {
       'lastUpdatedBy': lastUpdatedBy,
       'createdDate': createdDate,
       'lastupdatedDate': lastupdatedDate,
+      'createdPage': createdPage,
+      'lastUpdatedPage': lastUpdatedPage,
     };
   }
 }
@@ -178,4 +194,6 @@ class DeliveryModelString {
   static String lastUpdatedBy = 'lastUpdatedBy';
   static String createdDate = 'createdDate';
   static String lastupdatedDate = 'lastupdatedDate';
+  static String createdPage = 'createdPage';
+  static String lastUpdatedPage = 'lastUpdatedPage';
 }

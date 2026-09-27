@@ -135,9 +135,9 @@ class _ScanningPageState extends State<ScanningPage> {
       final bool isNewRecord = _scanning.id.isEmpty;
       await _scanningServices.saveScanning(newRecord);
       if (isNewRecord) {
-        await Helperfunctions.logCreate(newRecord.storeName, newRecord.toJson());
+        await Helperfunctions.logCreate(newRecord.storeName, newRecord.toJson(), page: AppPages.scanning);
       } else {
-        await Helperfunctions.logUpdate(newRecord.storeName, _scanning.toJson(), newRecord.toJson());
+        await Helperfunctions.logUpdate(newRecord.storeName, _scanning.toJson(), newRecord.toJson(), page: AppPages.scanning);
       }
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully saved the scanning record!\n[${newRecord.storeName.isNotEmpty ? newRecord.storeName : "Pullout"}]');
@@ -166,7 +166,7 @@ class _ScanningPageState extends State<ScanningPage> {
 
     try {
       await _scanningServices.deleteScanning(_scanning.id);
-      await Helperfunctions.logDelete(_scanning.storeName, _scanning.toJson());
+      await Helperfunctions.logDelete(_scanning.storeName, _scanning.toJson(), page: AppPages.scanning);
       if (!mounted) return;
       ShowMessage.success(context, 'Scanning record deleted.');
       Navigator.pop(context);

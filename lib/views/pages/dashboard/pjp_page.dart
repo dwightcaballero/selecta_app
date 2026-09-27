@@ -532,6 +532,7 @@ class _PjpPageState extends State<PjpPage> {
         'PJP Visit Completed - ${_currentHapistore.storeName}',
         'Completed all 5 PJP criteria for ${widget.selectedDay}',
         LogAction.update,
+        page: AppPages.pjp,
       );
 
       if (!mounted) return;

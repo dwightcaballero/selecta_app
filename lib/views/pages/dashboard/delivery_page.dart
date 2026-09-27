@@ -112,6 +112,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: Timestamp.now(),
         lastupdatedDate: Timestamp.now(),
+        createdPage: AppPages.delivery,
+        lastUpdatedPage: AppPages.delivery,
       );
       db.addDelivery(newRecord);
 
@@ -126,7 +128,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       await placementService.savePlacement(placement);
 
       // log transaction
-      await Helperfunctions.logCreate(dropdownHapiStore.text, newRecord.toJson());
+      await Helperfunctions.logCreate(dropdownHapiStore.text, newRecord.toJson(), page: AppPages.delivery);
 
       // send text message to the store if user opted to send a text message
       if (sendText) {
@@ -280,11 +282,18 @@ class _DeliveryPageState extends State<DeliveryPage> {
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: widget.delivery.createdDate,
         lastupdatedDate: Timestamp.now(),
+        createdPage: widget.delivery.createdPage,
+        lastUpdatedPage: AppPages.delivery,
       );
       db.updateDelivery(widget.deliveryID, updatedDelivery);
 
       // log transaction
-      await Helperfunctions.logUpdate(dropdownHapiStore.text, widget.delivery.toJson(), updatedDelivery.toJson());
+      await Helperfunctions.logUpdate(
+        dropdownHapiStore.text,
+        widget.delivery.toJson(),
+        updatedDelivery.toJson(),
+        page: AppPages.delivery,
+      );
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully updated delivery record!\n[${widget.delivery.storeName}]');
@@ -304,7 +313,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     db.deleteDelivery(widget.deliveryID);
 
     // log transaction
-    await Helperfunctions.logDelete(dropdownHapiStore.text, widget.delivery.toJson());
+    await Helperfunctions.logDelete(dropdownHapiStore.text, widget.delivery.toJson(), page: AppPages.delivery);
 
     if (mounted) {
       ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]');
@@ -1206,9 +1215,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
               children: [
                 _buildAuditRow('Created By', widget.delivery.createdBy),
                 _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.createdDate.toDate())),
+                if (widget.delivery.createdPage.isNotEmpty)
+                  _buildAuditRow('Created On Page', widget.delivery.createdPage),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.delivery.lastUpdatedBy),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.lastupdatedDate.toDate())),
+                if (widget.delivery.lastUpdatedPage.isNotEmpty)
+                  _buildAuditRow('Last Updated Page', widget.delivery.lastUpdatedPage),
               ],
             ),
           ),

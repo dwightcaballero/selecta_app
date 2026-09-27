@@ -9,6 +9,8 @@ class BadOrder {
   String lastUpdatedBy;
   Timestamp createdDate;
   Timestamp lastupdatedDate;
+  String createdPage;
+  String lastUpdatedPage;
 
   BadOrder({
     required this.description,
@@ -19,6 +21,8 @@ class BadOrder {
     required this.lastUpdatedBy,
     required this.createdDate,
     required this.lastupdatedDate,
+    this.createdPage = '',
+    this.lastUpdatedPage = '',
   });
 
   static BadOrder empty() => BadOrder(
@@ -30,6 +34,8 @@ class BadOrder {
     lastUpdatedBy: '',
     createdDate: Timestamp.now(),
     lastupdatedDate: Timestamp.now(),
+    createdPage: '',
+    lastUpdatedPage: '',
   );
 
   BadOrder.fromJson(Map<String, Object?> json)
@@ -42,6 +48,8 @@ class BadOrder {
         lastUpdatedBy: json['lastUpdatedBy']! as String,
         createdDate: json['createdDate']! as Timestamp,
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
+        createdPage: json['createdPage'] as String? ?? '',
+        lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
       );
 
   factory BadOrder.fromSnapshot(
@@ -58,6 +66,8 @@ class BadOrder {
         lastUpdatedBy: data?['lastUpdatedBy'],
         createdDate: data?['createdDate'],
         lastupdatedDate: data?['lastupdatedDate'],
+        createdPage: data?['createdPage'] as String? ?? '',
+        lastUpdatedPage: data?['lastUpdatedPage'] as String? ?? '',
       );
     } else {
       return BadOrder.empty();
@@ -73,6 +83,8 @@ class BadOrder {
     String? lastUpdatedBy,
     Timestamp? createdDate,
     Timestamp? lastupdatedDate,
+    String? createdPage,
+    String? lastUpdatedPage,
   }) {
     return BadOrder(
       description: description ?? this.description,
@@ -83,6 +95,8 @@ class BadOrder {
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
+      createdPage: createdPage ?? this.createdPage,
+      lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
     );
   }
 
@@ -96,6 +110,8 @@ class BadOrder {
       'lastUpdatedBy': lastUpdatedBy,
       'createdDate': createdDate,
       'lastupdatedDate': lastupdatedDate,
+      'createdPage': createdPage,
+      'lastUpdatedPage': lastUpdatedPage,
     };
   }
 }

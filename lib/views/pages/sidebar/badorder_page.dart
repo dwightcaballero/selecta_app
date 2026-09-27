@@ -72,9 +72,11 @@ class _BadOrderPageState extends State<BadOrderPage> {
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: Timestamp.now(),
         lastupdatedDate: Timestamp.now(),
+        createdPage: AppPages.badOrder,
+        lastUpdatedPage: AppPages.badOrder,
       );
       db.addBadOrder(newRecord);
-      Helperfunctions.logCreate(dropDownController.text, newRecord.toJson());
+      Helperfunctions.logCreate(dropDownController.text, newRecord.toJson(), page: AppPages.badOrder);
       ShowMessage.success(context, 'Successfully created bad order record for [${dropDownController.text}]!');
       Navigator.pop(context);
     } else {
@@ -88,7 +90,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
       return;
     }
     db.deleteBadOrder(widget.recID);
-    Helperfunctions.logDelete(widget.badorder.hapistore, widget.badorder.toJson());
+    Helperfunctions.logDelete(widget.badorder.hapistore, widget.badorder.toJson(), page: AppPages.badOrder);
     ShowMessage.success(context, 'Successfully deleted bad order record for [${widget.badorder.hapistore}]!');
     Navigator.pop(context);
   }
@@ -108,9 +110,11 @@ class _BadOrderPageState extends State<BadOrderPage> {
         lastUpdatedBy: authService.value.currentUser!.displayName!,
         createdDate: widget.badorder.createdDate,
         lastupdatedDate: Timestamp.now(),
+        createdPage: widget.badorder.createdPage,
+        lastUpdatedPage: AppPages.badOrder,
       );
       db.updateBadOrder(widget.recID, newRecord);
-      Helperfunctions.logUpdate(dropDownController.text, widget.badorder.toJson(), newRecord.toJson());
+      Helperfunctions.logUpdate(dropDownController.text, widget.badorder.toJson(), newRecord.toJson(), page: AppPages.badOrder);
       ShowMessage.success(context, 'Successfully updated bad order record for [${dropDownController.text}]!');
       Navigator.pop(context);
     } else {
@@ -343,9 +347,13 @@ class _BadOrderPageState extends State<BadOrderPage> {
               children: [
                 _buildAuditRow('Created By', widget.badorder.createdBy),
                 _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.badorder.createdDate.toDate())),
+                if (widget.badorder.createdPage.isNotEmpty)
+                  _buildAuditRow('Created On Page', widget.badorder.createdPage),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.badorder.lastUpdatedBy),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.badorder.lastupdatedDate.toDate())),
+                if (widget.badorder.lastUpdatedPage.isNotEmpty)
+                  _buildAuditRow('Last Updated Page', widget.badorder.lastUpdatedPage),
               ],
             ),
           ),

@@ -62,6 +62,8 @@ class _ReturnPageState extends State<ReturnPage> {
         lastUpdatedBy: authService.value.currentUser?.displayName ?? authService.value.currentUser?.email ?? 'Admin',
         createdDate: widget.delivery.createdDate,
         lastupdatedDate: Timestamp.now(),
+        createdPage: widget.delivery.createdPage,
+        lastUpdatedPage: AppPages.returnPage,
       );
 
       db.updateDelivery(widget.recID, updatedDelivery);
@@ -70,7 +72,12 @@ class _ReturnPageState extends State<ReturnPage> {
 
       Navigator.pop(context);
 
-      await Helperfunctions.logUpdate('[REDELIVER] ${widget.delivery.storeName}', widget.delivery.toJson(), updatedDelivery.toJson());
+      await Helperfunctions.logUpdate(
+        '[REDELIVER] ${widget.delivery.storeName}',
+        widget.delivery.toJson(),
+        updatedDelivery.toJson(),
+        page: AppPages.returnPage,
+      );
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to reschedule delivery: $e');
     } finally {
@@ -97,7 +104,11 @@ class _ReturnPageState extends State<ReturnPage> {
 
       Navigator.pop(context);
 
-      await Helperfunctions.logDelete('[DELETE] ${widget.delivery.storeName}', widget.delivery.toJson());
+      await Helperfunctions.logDelete(
+        '[DELETE] ${widget.delivery.storeName}',
+        widget.delivery.toJson(),
+        page: AppPages.returnPage,
+      );
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to delete record: $e');
     } finally {
@@ -331,9 +342,13 @@ class _ReturnPageState extends State<ReturnPage> {
               children: [
                 _buildAuditRow('Created By', widget.delivery.createdBy),
                 _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.createdDate.toDate())),
+                if (widget.delivery.createdPage.isNotEmpty)
+                  _buildAuditRow('Created On Page', widget.delivery.createdPage),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.delivery.lastUpdatedBy),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.lastupdatedDate.toDate())),
+                if (widget.delivery.lastUpdatedPage.isNotEmpty)
+                  _buildAuditRow('Last Updated Page', widget.delivery.lastUpdatedPage),
               ],
             ),
           ),
