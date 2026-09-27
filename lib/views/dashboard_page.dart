@@ -747,7 +747,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final percentage = total == 0 ? 0.0 : scanned / total;
 
     return _buildCardWrapper(
-      title: 'Store Scanning',
+      title: 'Scanning',
       icon: Icons.qr_code_scanner_outlined,
       accent: accent,
       nextPage: const ScanninglistPage(),
@@ -891,12 +891,13 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
 
-          // Drawer Navigation Items
-          StreamBuilder<int>(
-            stream: _tasksCountStream,
-            builder: (context, snapshot) {
-              return _buildDrawerItem(Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badgeCount: snapshot.data ?? 0);
-            },
+          // 1. Operations
+          _buildDrawerSectionHeader('Operations'),
+          _buildDrawerItem(
+            Icons.qr_code_scanner_outlined,
+            'Scanning',
+            const ScanninglistPage(),
+            badgeCount: dashboardDTO.totalNotScannedCount + dashboardDTO.totalUnassignedCount,
           ),
           StreamBuilder<int>(
             stream: _merchBlitzCountStream,
@@ -904,13 +905,12 @@ class _DashboardPageState extends State<DashboardPage> {
               return _buildDrawerItem(Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzListPage(), badgeCount: snapshot.data ?? 0);
             },
           ),
-          _buildDrawerItem(
-            Icons.qr_code_scanner_outlined,
-            'Scanning',
-            const ScanninglistPage(),
-            badgeCount: dashboardDTO.totalNotScannedCount + dashboardDTO.totalUnassignedCount,
+          StreamBuilder<int>(
+            stream: _tasksCountStream,
+            builder: (context, snapshot) {
+              return _buildDrawerItem(Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badgeCount: snapshot.data ?? 0);
+            },
           ),
-          _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(Icons.assignment_return_outlined, 'Returns', const ReturnlistPage(), badgeCount: dashboardDTO.returnedDeliveryCount),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
@@ -919,19 +919,61 @@ class _DashboardPageState extends State<DashboardPage> {
 
           const Divider(indent: 16, endIndent: 16),
 
-          _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
+          // 2. KPI Section
+          _buildDrawerSectionHeader('KPI Section'),
+          _buildDrawerItem(Icons.attach_money, 'Sales', const SalesPage()),
+          _buildDrawerItem(Icons.shopping_cart_outlined, 'Buying Stores', const BuyinglistPage()),
+          _buildDrawerItem(Icons.speed_outlined, 'Throughput', ThruputPage(dashboardDTO: dashboardDTO)),
+          _buildDrawerItem(Icons.grid_view_outlined, 'Placement', const PlacementlistPage()),
+          _buildDrawerItem(Icons.qr_code_scanner_outlined, 'Scanning', const ScanninglistPage()),
+          _buildDrawerItem(Icons.trending_up_outlined, 'Expansion', const ExpansionPage()),
+
+          const Divider(indent: 16, endIndent: 16),
+
+          // 3. Settings Section
+          _buildDrawerSectionHeader('Settings Section'),
+          _buildDrawerItem(
+            Icons.sync_rounded,
+            'Sync Data',
+            null,
+            onTap: () {
+              if (!isSyncing) syncDashboard();
+            },
+          ),
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
+          _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
+          _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
 
           const Divider(indent: 16, endIndent: 16),
 
-          _buildDrawerItem(Icons.logout_rounded, 'Sign Out', null, isLogout: true),
+          // 4. Logout
+          _buildDrawerItem(Icons.logout_rounded, 'Logout', null, isLogout: true),
         ],
       ),
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, Widget? nextPage, {bool isLogout = false, int badgeCount = 0, Color? badgeColor}) {
+  Widget _buildDrawerSectionHeader(String title) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        title,
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant, letterSpacing: 0.5),
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem(
+    IconData icon,
+    String title,
+    Widget? nextPage, {
+    bool isLogout = false,
+    int badgeCount = 0,
+    Color? badgeColor,
+    VoidCallback? onTap,
+  }) {
     return ListTile(
       leading: Icon(icon, color: isLogout ? Colors.red : null, size: 22),
       title: Text(
@@ -950,7 +992,9 @@ class _DashboardPageState extends State<DashboardPage> {
           : null,
       onTap: () async {
         Navigator.pop(context);
-        if (isLogout) {
+        if (onTap != null) {
+          onTap();
+        } else if (isLogout) {
           onLogout();
         } else if (nextPage != null) {
           await Navigator.push(context, MaterialPageRoute(builder: (_) => nextPage));

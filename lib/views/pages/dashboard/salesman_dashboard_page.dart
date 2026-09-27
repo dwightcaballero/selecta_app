@@ -12,9 +12,11 @@ import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/services/tasks_services.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
+import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
@@ -435,22 +437,11 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           ),
 
           // Drawer Navigation Items (Field Activities & Reports)
-          _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
-          _buildDrawerItem(Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
-          StreamBuilder<int>(
-            stream: _tasksCountStream,
-            builder: (context, snapshot) {
-              return _buildDrawerItem(Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badgeCount: snapshot.data ?? 0);
-            },
-          ),
-          StreamBuilder<int>(
-            stream: _merchBlitzCountStream,
-            builder: (context, snapshot) {
-              return _buildDrawerItem(Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzListPage(), badgeCount: snapshot.data ?? 0);
-            },
-          ),
+          _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
+          _buildDrawerItem(Icons.shopping_cart_outlined, 'Buying Stores', const BuyinglistPage()),
+          _buildDrawerItem(Icons.grid_view_outlined, 'Placement', const PlacementlistPage()),
 
           const Divider(indent: 16, endIndent: 16),
 
@@ -590,15 +581,6 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'End of Day',
-                            icon: Icons.today_outlined,
-                            iconColor: const Color(0xFFD97706),
-                            nextPage: const EndofdayPage(),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
                           child: StreamBuilder<int>(
                             stream: _merchBlitzCountStream,
                             builder: (context, snapshot) {
@@ -610,6 +592,15 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                                 nextPage: const MerchBlitzListPage(),
                               );
                             },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildQuickAccessCard(
+                            label: 'End of Day',
+                            icon: Icons.today_outlined,
+                            iconColor: const Color(0xFFD97706),
+                            nextPage: const EndofdayPage(),
                           ),
                         ),
                       ],
