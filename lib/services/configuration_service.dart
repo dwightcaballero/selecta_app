@@ -3,6 +3,7 @@ import 'package:flutter_app/models/configuration.dart';
 
 // ignore: constant_identifier_names
 const String CONFIGURATIONS_COLLECTION_REF = 'configurations';
+// ignore: constant_identifier_names
 const String DEFAULT_CONFIG_DOC_ID = 'app_config';
 
 class ConfigurationService {

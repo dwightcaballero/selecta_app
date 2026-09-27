@@ -53,27 +53,20 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     final now = DateTime.now();
     int tempYear = _selectedMonth.year;
 
-    final result = await showDialog<bool>(
+    await showDialog<bool>(
       context: context,
       builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final colorScheme = Theme.of(context).colorScheme;
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
               titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               title: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.chevron_left),
-                    onPressed: () => setDialogState(() => tempYear--),
-                  ),
+                  IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => setDialogState(() => tempYear--)),
                   Text('$tempYear', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                  IconButton(
-                    icon: const Icon(Icons.chevron_right),
-                    onPressed: tempYear >= now.year ? null : () => setDialogState(() => tempYear++),
-                  ),
+                  IconButton(icon: const Icon(Icons.chevron_right), onPressed: tempYear >= now.year ? null : () => setDialogState(() => tempYear++)),
                 ],
               ),
               content: SizedBox(
@@ -96,13 +89,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                           child: ChoiceChip(
                             showCheckmark: false,
                             label: Center(
-                              child: Text(
-                                monthName,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                ),
-                              ),
+                              child: Text(monthName, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
                             ),
                             selected: isSelected,
                             onSelected: isFuture
@@ -175,10 +162,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                 children: [
                   Icon(Icons.calendar_month_outlined, size: 17, color: colorScheme.primary),
                   const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
-                  ),
+                  Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
                   const SizedBox(width: 4),
                   Icon(Icons.arrow_drop_down, size: 18, color: colorScheme.onSurfaceVariant),
                   if (!isCurrentMonth && !_isAllMonths) ...[
@@ -190,10 +174,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                       }),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                         child: Text(
                           'This Month',
                           style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
@@ -215,8 +196,6 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
       ),
     );
   }
-
-
 
   Widget _buildSearchAndSortBar() {
     final colorScheme = Theme.of(context).colorScheme;
@@ -274,62 +253,28 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
               height: 42,
               width: 42,
               decoration: BoxDecoration(
-                color: _sortBy != 'newest'
-                    ? colorScheme.primary.withValues(alpha: 0.12)
-                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                color: _sortBy != 'newest' ? colorScheme.primary.withValues(alpha: 0.12) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _sortBy != 'newest'
-                      ? colorScheme.primary
-                      : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                ),
+                border: Border.all(color: _sortBy != 'newest' ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5)),
               ),
-              child: Icon(
-                Icons.sort_rounded,
-                size: 20,
-                color: _sortBy != 'newest' ? colorScheme.primary : colorScheme.onSurfaceVariant,
-              ),
+              child: Icon(Icons.sort_rounded, size: 20, color: _sortBy != 'newest' ? colorScheme.primary : colorScheme.onSurfaceVariant),
             ),
             itemBuilder: (context) => [
               const PopupMenuItem(
                 value: 'newest',
-                child: Row(
-                  children: [
-                    Icon(Icons.arrow_downward_rounded, size: 16),
-                    SizedBox(width: 8),
-                    Text('Date: Newest First'),
-                  ],
-                ),
+                child: Row(children: [Icon(Icons.arrow_downward_rounded, size: 16), SizedBox(width: 8), Text('Date: Newest First')]),
               ),
               const PopupMenuItem(
                 value: 'oldest',
-                child: Row(
-                  children: [
-                    Icon(Icons.arrow_upward_rounded, size: 16),
-                    SizedBox(width: 8),
-                    Text('Date: Oldest First'),
-                  ],
-                ),
+                child: Row(children: [Icon(Icons.arrow_upward_rounded, size: 16), SizedBox(width: 8), Text('Date: Oldest First')]),
               ),
               const PopupMenuItem(
                 value: 'amount_high',
-                child: Row(
-                  children: [
-                    Icon(Icons.trending_down_rounded, size: 16),
-                    SizedBox(width: 8),
-                    Text('Amount: Highest First'),
-                  ],
-                ),
+                child: Row(children: [Icon(Icons.trending_down_rounded, size: 16), SizedBox(width: 8), Text('Amount: Highest First')]),
               ),
               const PopupMenuItem(
                 value: 'amount_low',
-                child: Row(
-                  children: [
-                    Icon(Icons.trending_up_rounded, size: 16),
-                    SizedBox(width: 8),
-                    Text('Amount: Lowest First'),
-                  ],
-                ),
+                child: Row(children: [Icon(Icons.trending_up_rounded, size: 16), SizedBox(width: 8), Text('Amount: Lowest First')]),
               ),
             ],
           ),
@@ -338,12 +283,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     );
   }
 
-  Widget _buildFilterChips({
-    required int totalCount,
-    required int pendingCount,
-    required int overpaymentCount,
-    required int settledCount,
-  }) {
+  Widget _buildFilterChips({required int totalCount, required int pendingCount, required int overpaymentCount, required int settledCount}) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
@@ -372,10 +312,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
           ? Container(
               width: 7,
               height: 7,
-              decoration: BoxDecoration(
-                color: dotColor,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
             )
           : null,
       label: Text(
@@ -383,9 +320,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-          color: isSelected
-              ? theme.colorScheme.onPrimary
-              : theme.colorScheme.onSurfaceVariant,
+          color: isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurfaceVariant,
         ),
       ),
       selected: isSelected,
@@ -404,20 +339,10 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
           const SizedBox(width: 6),
           Text(
             title,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.3,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, letterSpacing: 0.3, color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: Divider(
-              height: 1,
-              color: colorScheme.outlineVariant.withValues(alpha: 0.4),
-            ),
-          ),
+          Expanded(child: Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.4))),
         ],
       ),
     );
@@ -462,10 +387,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => Helperfunctions.navigateTo(
-          context,
-          PurchaseorderPage(purchaseorderID: orderId, purchaseorder: order),
-        ),
+        onTap: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: orderId, purchaseorder: order)),
         onLongPress: () {
           if (order.invoiceNumber.trim().isNotEmpty) {
             Clipboard.setData(ClipboardData(text: order.invoiceNumber.trim()));
@@ -554,10 +476,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                         Helperfunctions.formatDoubleAmountForDisplay(order.orderAmount),
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: colorScheme.primary),
                       ),
-                      Text(
-                        'Order Target',
-                        style: TextStyle(fontSize: 10.5, color: colorScheme.onSurfaceVariant),
-                      ),
+                      Text('Order Target', style: TextStyle(fontSize: 10.5, color: colorScheme.onSurfaceVariant)),
                     ],
                   ),
                   const SizedBox(width: 4),
@@ -581,10 +500,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4), shape: BoxShape.circle),
               child: Icon(Icons.receipt_long_outlined, size: 40, color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(height: 16),
@@ -611,9 +527,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
             Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
             const SizedBox(height: 10),
             Text(
-              _searchQuery.isNotEmpty
-                  ? 'No orders match "$_searchQuery"'
-                  : 'No orders match the selected filter',
+              _searchQuery.isNotEmpty ? 'No orders match "$_searchQuery"' : 'No orders match the selected filter',
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const SizedBox(height: 10),
@@ -639,12 +553,12 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     return Scaffold(
       appBar: const CustomAppbar(title: 'Purchase Orders', subtitle: 'Invoices & Monthly Tracking'),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Helperfunctions.navigateTo(
-          context,
-          PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty()),
-        ),
+        onPressed: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty())),
         icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Add Order', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text(
+          'Add Order',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Theme.of(context).colorScheme.primary,
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -698,9 +612,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
             }
 
             final dateStr = Helperfunctions.formatTimestampForDisplay(order.orderDate).toLowerCase();
-            final matchesSearch = _searchQuery.isEmpty ||
-                order.invoiceNumber.toLowerCase().contains(_searchQuery) ||
-                dateStr.contains(_searchQuery);
+            final matchesSearch = _searchQuery.isEmpty || order.invoiceNumber.toLowerCase().contains(_searchQuery) || dateStr.contains(_searchQuery);
 
             return matchesFilter && matchesSearch;
           }).toList();
@@ -746,41 +658,36 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                 child: monthDocs.isEmpty
                     ? _buildEmptyState()
                     : filteredDocs.isEmpty
-                        ? _buildNoSearchResultsState()
-                        : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 88),
-                            itemCount: filteredDocs.length,
-                            separatorBuilder: (_, index) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final doc = filteredDocs[index];
-                              final order = doc.data() as Purchaseorder;
+                    ? _buildNoSearchResultsState()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 88),
+                        itemCount: filteredDocs.length,
+                        separatorBuilder: (_, index) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final doc = filteredDocs[index];
+                          final order = doc.data() as Purchaseorder;
 
-                              // If viewing all months and sorted by date, group with month headers
-                              if (_isAllMonths && isDateSorted) {
-                                final currentMonth = DateFormat('MMMM yyyy').format(order.orderDate.toDate());
-                                final bool showMonthHeader = index == 0 ||
-                                    DateFormat('MMMM yyyy').format((filteredDocs[index - 1].data() as Purchaseorder).orderDate.toDate()) != currentMonth;
+                          // If viewing all months and sorted by date, group with month headers
+                          if (_isAllMonths && isDateSorted) {
+                            final currentMonth = DateFormat('MMMM yyyy').format(order.orderDate.toDate());
+                            final bool showMonthHeader =
+                                index == 0 ||
+                                DateFormat('MMMM yyyy').format((filteredDocs[index - 1].data() as Purchaseorder).orderDate.toDate()) != currentMonth;
 
-                                if (showMonthHeader) {
-                                  return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      _buildMonthHeader(currentMonth),
-                                      _buildOrderCard(
-                                        orderId: doc.id,
-                                        order: order,
-                                      ),
-                                    ],
-                                  );
-                                }
-                              }
-
-                              return _buildOrderCard(
-                                orderId: doc.id,
-                                order: order,
+                            if (showMonthHeader) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildMonthHeader(currentMonth),
+                                  _buildOrderCard(orderId: doc.id, order: order),
+                                ],
                               );
-                            },
-                          ),
+                            }
+                          }
+
+                          return _buildOrderCard(orderId: doc.id, order: order);
+                        },
+                      ),
               ),
             ],
           );

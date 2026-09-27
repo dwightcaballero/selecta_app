@@ -54,12 +54,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
     if (mounted) setState(() {});
   }
 
-  Widget _buildSummaryCard({
-    required double totalCredit,
-    required int totalAccounts,
-    required double filteredCredit,
-    required int filteredCount,
-  }) {
+  Widget _buildSummaryCard({required double totalCredit, required int totalAccounts, required double filteredCredit, required int filteredCount}) {
     final colorScheme = Theme.of(context).colorScheme;
     final isFiltered = _searchQuery.isNotEmpty && filteredCount != totalAccounts;
 
@@ -73,13 +68,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.primary.withValues(alpha: 0.25),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: colorScheme.primary.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         children: [
@@ -102,10 +91,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)),
                 child: Column(
                   children: [
                     Text(isFiltered ? 'Matching' : 'Stores', style: const TextStyle(color: Colors.white70, fontSize: 11)),
@@ -122,10 +108,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
+              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -202,18 +185,11 @@ class _CreditlistPageState extends State<CreditlistPage> {
                 value: sort,
                 child: Row(
                   children: [
-                    Icon(
-                      sort.icon,
-                      size: 18,
-                      color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                    ),
+                    Icon(sort.icon, size: 18, color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant),
                     const SizedBox(width: 10),
                     Text(
                       sort.label,
-                      style: TextStyle(
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                        color: isSelected ? colorScheme.primary : null,
-                      ),
+                      style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: isSelected ? colorScheme.primary : null),
                     ),
                   ],
                 ),
@@ -253,10 +229,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
               Container(
                 width: 44,
                 height: 44,
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
+                decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                 child: Icon(Icons.credit_card_outlined, color: colorScheme.primary, size: 22),
               ),
               const SizedBox(width: 12),
@@ -276,9 +249,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
                         Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
                         Text(
-                          delivery.deliveryDate != null
-                              ? Helperfunctions.formatDateForDisplay(delivery.deliveryDate!.toDate())
-                              : 'No Date',
+                          delivery.deliveryDate != null ? Helperfunctions.formatDateForDisplay(delivery.deliveryDate!.toDate()) : 'No Date',
                           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                         ),
                       ],
@@ -319,25 +290,15 @@ class _CreditlistPageState extends State<CreditlistPage> {
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+                    decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
                     child: Text(
                       'Unpaid',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red.shade700,
-                      ),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red.shade700),
                     ),
                   ),
                 ],
               ),
-              if (isDealer) ...[
-                const SizedBox(width: 4),
-                Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
-              ],
+              if (isDealer) ...[const SizedBox(width: 4), Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant)],
             ],
           ),
         ),
@@ -355,10 +316,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.12), shape: BoxShape.circle),
               child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 48),
             ),
             const SizedBox(height: 16),
@@ -437,6 +395,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
           // Calculate total outstanding amount
           final totalCredit = allDocs.fold<double>(
             0.0,
+            // ignore: avoid_types_as_parameter_names
             (sum, doc) => sum + ((doc.data() as Delivery).creditAmount),
           );
 
@@ -466,10 +425,8 @@ class _CreditlistPageState extends State<CreditlistPage> {
             }
           });
 
-          final filteredCredit = filteredDocs.fold<double>(
-            0.0,
-            (sum, doc) => sum + ((doc.data() as Delivery).creditAmount),
-          );
+          // ignore: avoid_types_as_parameter_names
+          final filteredCredit = filteredDocs.fold<double>(0.0, (sum, doc) => sum + ((doc.data() as Delivery).creditAmount));
 
           return Column(
             children: [

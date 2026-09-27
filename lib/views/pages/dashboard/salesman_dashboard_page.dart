@@ -229,7 +229,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
         ShowMessage.success(context, 'Switched role to $newRole');
         Navigator.of(context).pushAndRemoveUntil(
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) => newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
+            pageBuilder: (_, _, _) => newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
             transitionDuration: Duration.zero,
             reverseTransitionDuration: Duration.zero,
           ),

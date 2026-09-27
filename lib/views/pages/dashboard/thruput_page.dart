@@ -37,10 +37,7 @@ class ThruputPage extends StatelessWidget {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), shape: BoxShape.circle),
                 child: Icon(Icons.speed_outlined, color: colorScheme.primary, size: 20),
               ),
               const SizedBox(width: 10),
@@ -48,10 +45,7 @@ class ThruputPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Throughput Progress',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
+                    Text('Throughput Progress', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                     Text(
                       '$currentMonth • Target: ${Helperfunctions.formatDoubleAmountForDisplay(_targetThruput)} / store',
                       style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
@@ -67,11 +61,7 @@ class ThruputPage extends StatelessWidget {
                 ),
                 child: Text(
                   '${(progress * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: isOnTarget ? Colors.green : colorScheme.primary,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isOnTarget ? Colors.green : colorScheme.primary),
                 ),
               ),
             ],
@@ -130,13 +120,7 @@ class ThruputPage extends StatelessWidget {
     );
   }
 
-  Widget _buildSection(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    Widget? trailing,
-    required List<Widget> children,
-  }) {
+  Widget _buildSection(BuildContext context, {required String title, required IconData icon, Widget? trailing, required List<Widget> children}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
@@ -155,7 +139,7 @@ class ThruputPage extends StatelessWidget {
                 Expanded(
                   child: Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                 ),
-                if (trailing != null) trailing,
+                ?trailing,
               ],
             ),
           ),
@@ -211,12 +195,8 @@ class ThruputPage extends StatelessWidget {
     final totalStores = dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount;
     final conversionRate = totalStores == 0 ? 0.0 : (dashboardDTO.buyingCount / totalStores * 100);
 
-    final averageSale = dashboardDTO.totaltransactionCount == 0
-        ? 0.0
-        : dashboardDTO.totalBuyingSales / dashboardDTO.totaltransactionCount;
-    final averageTransactions = dashboardDTO.buyingCount == 0
-        ? 0.0
-        : dashboardDTO.totaltransactionCount / dashboardDTO.buyingCount;
+    final averageSale = dashboardDTO.totaltransactionCount == 0 ? 0.0 : dashboardDTO.totalBuyingSales / dashboardDTO.totaltransactionCount;
+    final averageTransactions = dashboardDTO.buyingCount == 0 ? 0.0 : dashboardDTO.totaltransactionCount / dashboardDTO.buyingCount;
 
     final remainingThruput = (_targetThruput - safeThruput).clamp(0.0, _targetThruput);
     final progress = (_targetThruput == 0 ? 0.0 : (safeThruput / _targetThruput)).clamp(0.0, 1.0);
@@ -227,13 +207,7 @@ class ThruputPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
-          _buildThruputSummary(
-            context,
-            safeThruput: safeThruput,
-            progress: progress,
-            remainingThruput: remainingThruput,
-            isOnTarget: isOnTarget,
-          ),
+          _buildThruputSummary(context, safeThruput: safeThruput, progress: progress, remainingThruput: remainingThruput, isOnTarget: isOnTarget),
           const SizedBox(height: 18),
           _buildSection(
             context,
@@ -241,26 +215,14 @@ class ThruputPage extends StatelessWidget {
             icon: Icons.storefront_outlined,
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
               child: Text(
                 '${conversionRate.toStringAsFixed(1)}% Active',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
               ),
             ),
             children: [
-              _buildMetricRow(
-                context,
-                label: 'Total accounts',
-                value: '$totalStores stores',
-                icon: Icons.business_outlined,
-              ),
+              _buildMetricRow(context, label: 'Total accounts', value: '$totalStores stores', icon: Icons.business_outlined),
               const Divider(height: 1, indent: 16, endIndent: 16),
               _buildMetricRow(
                 context,
@@ -295,12 +257,7 @@ class ThruputPage extends StatelessWidget {
                 valueColor: Theme.of(context).colorScheme.primary,
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
-              _buildMetricRow(
-                context,
-                label: 'Total transactions',
-                value: '${dashboardDTO.totaltransactionCount}',
-                icon: Icons.receipt_outlined,
-              ),
+              _buildMetricRow(context, label: 'Total transactions', value: '${dashboardDTO.totaltransactionCount}', icon: Icons.receipt_outlined),
               const Divider(height: 1, indent: 16, endIndent: 16),
               _buildMetricRow(
                 context,

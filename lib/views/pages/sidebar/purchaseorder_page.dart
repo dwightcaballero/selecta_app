@@ -167,9 +167,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             order.lastupdatedDate = Timestamp.now();
             db.updatePurchaseorder(doc.id, order);
             await Helperfunctions.logUpdate(
-              order.invoiceNumber.isNotEmpty
-                  ? order.invoiceNumber
-                  : Helperfunctions.formatTimestampForDisplay(order.orderDate),
+              order.invoiceNumber.isNotEmpty ? order.invoiceNumber : Helperfunctions.formatTimestampForDisplay(order.orderDate),
               prevJson,
               order.toJson(),
             );
@@ -357,7 +355,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                 ],
               ),
             ),
-            if (trailing != null) trailing,
+            ?trailing,
           ],
         ),
       ),
@@ -482,7 +480,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   Widget _buildUnsettledOverpaymentsCard() {
     if (!isNewRecord) return const SizedBox.shrink();
     if (_isLoadingOverpayments) {
-      return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
+      return const Center(
+        child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()),
+      );
     }
     if (_unsettledOverpayments.isEmpty) return const SizedBox.shrink();
 
@@ -529,14 +529,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                     }
                   });
                 },
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                ),
-                child: Text(
-                  isAllSelected ? 'Deselect All' : 'Select All',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                ),
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2)),
+                child: Text(isAllSelected ? 'Deselect All' : 'Select All', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -551,7 +545,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _unsettledOverpayments.length,
-              separatorBuilder: (_, __) => Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+              separatorBuilder: (_, _) => Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
               itemBuilder: (context, index) {
                 final doc = _unsettledOverpayments[index];
                 final order = doc.data();
@@ -614,16 +608,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                           children: [
                             Text(
                               Helperfunctions.formatDoubleAmountForDisplay(order.overpayment),
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange.shade800,
-                              ),
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
                             ),
-                            const Text(
-                              'Overpayment',
-                              style: TextStyle(fontSize: 10, color: Colors.grey),
-                            ),
+                            const Text('Overpayment', style: TextStyle(fontSize: 10, color: Colors.grey)),
                           ],
                         ),
                       ],
@@ -648,10 +635,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('Purchase Order Amount', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
-                    Text(
-                      Helperfunctions.formatDoubleAmountForDisplay(orderAmt),
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-                    ),
+                    Text(Helperfunctions.formatDoubleAmountForDisplay(orderAmt), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -663,9 +647,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                       style: TextStyle(fontSize: 12.5, color: Colors.orange.shade900),
                     ),
                     Text(
-                      selectedTotal > 0
-                          ? '- ${Helperfunctions.formatDoubleAmountForDisplay(selectedTotal)}'
-                          : '₱ 0.00',
+                      selectedTotal > 0 ? '- ${Helperfunctions.formatDoubleAmountForDisplay(selectedTotal)}' : '₱ 0.00',
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.bold,
@@ -681,10 +663,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Guided Payment Amount',
-                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                        ),
+                        const Text('Guided Payment Amount', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
                         Text(
                           '(Read-only guide)',
                           style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant, fontStyle: FontStyle.italic),
@@ -693,11 +672,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                     ),
                     Text(
                       Helperfunctions.formatDoubleAmountForDisplay(guidedNet),
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.primary,
-                      ),
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: colorScheme.primary),
                     ),
                   ],
                 ),

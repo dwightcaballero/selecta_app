@@ -113,10 +113,7 @@ class _SalesPageState extends State<SalesPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), shape: BoxShape.circle),
                 child: Icon(Icons.point_of_sale_outlined, color: colorScheme.primary),
               ),
               const SizedBox(width: 12),
@@ -126,21 +123,14 @@ class _SalesPageState extends State<SalesPage> {
                   children: [
                     Text(
                       currentMonthLabel,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.primary,
-                      ),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.primary),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       Helperfunctions.formatDoubleAmountForDisplay(totalInvoicedSales),
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
                     ),
-                    Text(
-                      'Total invoiced sales',
-                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                    ),
+                    Text('Total invoiced sales', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -184,9 +174,7 @@ class _SalesPageState extends State<SalesPage> {
                 style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
               ),
               Text(
-                remainingAmount == 0
-                    ? 'Goal achieved! 🎉'
-                    : 'Rem: ${Helperfunctions.formatDoubleAmountForDisplay(remainingAmount)}',
+                remainingAmount == 0 ? 'Goal achieved! 🎉' : 'Rem: ${Helperfunctions.formatDoubleAmountForDisplay(remainingAmount)}',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -207,12 +195,7 @@ class _SalesPageState extends State<SalesPage> {
     );
   }
 
-  Widget _buildSection(
-    BuildContext context, {
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-  }) {
+  Widget _buildSection(BuildContext context, {required String title, required IconData icon, required List<Widget> children}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
@@ -228,10 +211,7 @@ class _SalesPageState extends State<SalesPage> {
               children: [
                 Icon(icon, size: 19, color: colorScheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text(title, style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -242,13 +222,7 @@ class _SalesPageState extends State<SalesPage> {
     );
   }
 
-  Widget _buildMetricRow(
-    BuildContext context, {
-    required String label,
-    required String value,
-    required IconData icon,
-    Color? valueColor,
-  }) {
+  Widget _buildMetricRow(BuildContext context, {required String label, required String value, required IconData icon, Color? valueColor}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -288,10 +262,7 @@ class _SalesPageState extends State<SalesPage> {
               children: [
                 Icon(Icons.inventory_2_outlined, size: 19, color: colorScheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  'Invoices (${orders.length})',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('Invoices (${orders.length})', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -343,7 +314,7 @@ class _SalesPageState extends State<SalesPage> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: orders.length,
-              separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
+              separatorBuilder: (_, _) => const Divider(height: 1, indent: 16, endIndent: 16),
               itemBuilder: (context, index) {
                 final order = orders[index];
                 final dateStr = DateFormat('MMM d, yyyy').format(order.invoiceDate.toDate());
@@ -359,10 +330,7 @@ class _SalesPageState extends State<SalesPage> {
                     order.invoiceNumber.isEmpty ? 'No Invoice #' : order.invoiceNumber,
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                   ),
-                  subtitle: Text(
-                    dateStr,
-                    style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                  ),
+                  subtitle: Text(dateStr, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                   trailing: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -395,93 +363,84 @@ class _SalesPageState extends State<SalesPage> {
         child: isLoading
             ? const Center(child: CircularProgressIndicator())
             : errorMessage != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
-                          const SizedBox(height: 12),
-                          Text(errorMessage!, textAlign: TextAlign.center),
-                          const SizedBox(height: 16),
-                          FilledButton.tonalIcon(
-                            onPressed: _loadPurchaseOrders,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _buildSummaryCard(context),
-                      const SizedBox(height: 20),
-                      _buildSection(
-                        context,
-                        title: 'Sales Overview',
-                        icon: Icons.receipt_long_outlined,
-                        children: [
-                          _buildMetricRow(
-                            context,
-                            label: 'Purchase orders total',
-                            value: Helperfunctions.formatDoubleAmountForDisplay(totalPurchaseOrder),
-                            icon: Icons.shopping_bag_outlined,
-                          ),
-                          _buildMetricRow(
-                            context,
-                            label: 'Invoiced sales total',
-                            value: Helperfunctions.formatDoubleAmountForDisplay(totalInvoicedSales),
-                            icon: Icons.payments_outlined,
-                            valueColor: Theme.of(context).colorScheme.primary,
-                          ),
-                          _buildMetricRow(
-                            context,
-                            label: 'Invoice count',
-                            value: '$totalInvoiceCount',
-                            icon: Icons.receipt_outlined,
-                          ),
-                          _buildMetricRow(
-                            context,
-                            label: 'Total overpayment',
-                            value: Helperfunctions.formatDoubleAmountForDisplay(totalOverpayment),
-                            icon: Icons.money_off_csred_outlined,
-                            valueColor: totalOverpayment > 0 ? Theme.of(context).colorScheme.error : null,
-                          ),
-                        ],
-                      ),
+                      Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
+                      const SizedBox(height: 12),
+                      Text(errorMessage!, textAlign: TextAlign.center),
                       const SizedBox(height: 16),
-                      _buildSection(
-                        context,
-                        title: 'Average Per Invoice',
-                        icon: Icons.analytics_outlined,
-                        children: [
-                          _buildMetricRow(
-                            context,
-                            label: 'Purchase order average',
-                            value: Helperfunctions.formatDoubleAmountForDisplay(averagePurchaseOrder),
-                            icon: Icons.shopping_bag_outlined,
-                          ),
-                          _buildMetricRow(
-                            context,
-                            label: 'Invoiced amount average',
-                            value: Helperfunctions.formatDoubleAmountForDisplay(averageInvoicedAmount),
-                            icon: Icons.trending_up_outlined,
-                          ),
-                          _buildMetricRow(
-                            context,
-                            label: 'Overpayment average',
-                            value: Helperfunctions.formatDoubleAmountForDisplay(averageOverpayment),
-                            icon: Icons.price_check_outlined,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInvoicesSection(context),
+                      FilledButton.tonalIcon(onPressed: _loadPurchaseOrders, icon: const Icon(Icons.refresh), label: const Text('Retry')),
                     ],
                   ),
+                ),
+              )
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                children: [
+                  _buildSummaryCard(context),
+                  const SizedBox(height: 20),
+                  _buildSection(
+                    context,
+                    title: 'Sales Overview',
+                    icon: Icons.receipt_long_outlined,
+                    children: [
+                      _buildMetricRow(
+                        context,
+                        label: 'Purchase orders total',
+                        value: Helperfunctions.formatDoubleAmountForDisplay(totalPurchaseOrder),
+                        icon: Icons.shopping_bag_outlined,
+                      ),
+                      _buildMetricRow(
+                        context,
+                        label: 'Invoiced sales total',
+                        value: Helperfunctions.formatDoubleAmountForDisplay(totalInvoicedSales),
+                        icon: Icons.payments_outlined,
+                        valueColor: Theme.of(context).colorScheme.primary,
+                      ),
+                      _buildMetricRow(context, label: 'Invoice count', value: '$totalInvoiceCount', icon: Icons.receipt_outlined),
+                      _buildMetricRow(
+                        context,
+                        label: 'Total overpayment',
+                        value: Helperfunctions.formatDoubleAmountForDisplay(totalOverpayment),
+                        icon: Icons.money_off_csred_outlined,
+                        valueColor: totalOverpayment > 0 ? Theme.of(context).colorScheme.error : null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSection(
+                    context,
+                    title: 'Average Per Invoice',
+                    icon: Icons.analytics_outlined,
+                    children: [
+                      _buildMetricRow(
+                        context,
+                        label: 'Purchase order average',
+                        value: Helperfunctions.formatDoubleAmountForDisplay(averagePurchaseOrder),
+                        icon: Icons.shopping_bag_outlined,
+                      ),
+                      _buildMetricRow(
+                        context,
+                        label: 'Invoiced amount average',
+                        value: Helperfunctions.formatDoubleAmountForDisplay(averageInvoicedAmount),
+                        icon: Icons.trending_up_outlined,
+                      ),
+                      _buildMetricRow(
+                        context,
+                        label: 'Overpayment average',
+                        value: Helperfunctions.formatDoubleAmountForDisplay(averageOverpayment),
+                        icon: Icons.price_check_outlined,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInvoicesSection(context),
+                ],
+              ),
       ),
     );
   }
