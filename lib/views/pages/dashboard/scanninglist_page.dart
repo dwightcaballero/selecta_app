@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/models/scanning.dart';
+import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/services/scanning_services.dart';
 import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
 import 'package:flutter_app/views/pages/dashboard/scanning_page.dart';
@@ -19,6 +20,7 @@ class ScanninglistPage extends StatefulWidget {
 
 class _ScanninglistPageState extends State<ScanninglistPage> {
   List<Scanning> scanningList = [];
+  Map<String, Hapistore> _storesMap = {};
 
   int _currentIndex = 0;
   bool _isLoading = true;
@@ -43,31 +45,61 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     super.dispose();
   }
 
-  void _copyToClipboard(String text, String label) {
-    Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Text('Copied $label to clipboard'),
-          ],
-        ),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   Future<void> prefetchData() async {
     if (mounted) setState(() => _isLoading = true);
-    var scannings = await ScanningServices.getAllScannings();
+    final results = await Future.wait([
+      ScanningServices.getAllScannings(),
+      HapiStoreService.getListHapiStores(forceRefresh: true),
+    ]);
+    final scannings = results[0] as List<Scanning>;
+    final stores = results[1] as List<Hapistore>;
+
     if (!mounted) return;
+
+    final storesMap = <String, Hapistore>{};
+    final assignedStoreNames = <String>{};
+
+    for (final store in stores) {
+      if (store.storeName.trim().isNotEmpty) {
+        storesMap[store.storeName.trim().toLowerCase()] = store;
+      }
+    }
+
+    for (final s in scannings) {
+      if (s.barcode.trim().isNotEmpty && s.status != ScanningStatus.pullout && s.storeName.trim().isNotEmpty) {
+        assignedStoreNames.add(s.storeName.trim().toLowerCase());
+      }
+    }
+
+    final combinedList = List<Scanning>.from(scannings);
+
+    // Identify unassigned stores (stores with no barcode saved in the database)
+    for (final store in stores) {
+      final name = store.storeName.trim();
+      if (name.isEmpty) continue;
+      final key = name.toLowerCase();
+      if (!assignedStoreNames.contains(key)) {
+        final alreadyInList = combinedList.any(
+          (s) => s.status == ScanningStatus.unassigned && s.storeName.trim().toLowerCase() == key,
+        );
+        if (!alreadyInList) {
+          combinedList.add(
+            Scanning(
+              id: '',
+              barcode: '',
+              storeName: store.storeName,
+              scannedDate: null,
+              scannedBy: '',
+              status: ScanningStatus.unassigned,
+            ),
+          );
+        }
+      }
+    }
+
     setState(() {
-      scanningList = scannings;
+      _storesMap = storesMap;
+      scanningList = combinedList;
       _isLoading = false;
     });
   }
@@ -76,7 +108,13 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     List<Scanning> filtered = scanningList.where((scanning) => scanning.status == status).toList();
     if (_searchQuery.isNotEmpty) {
       filtered = filtered.where((scanning) {
-        return scanning.storeName.toLowerCase().contains(_searchQuery) || scanning.barcode.toLowerCase().contains(_searchQuery);
+        final store = _storesMap[scanning.storeName.trim().toLowerCase()];
+        final address = store?.storeAddress.toLowerCase() ?? '';
+        final contact = store?.storeContact.toLowerCase() ?? '';
+        return scanning.storeName.toLowerCase().contains(_searchQuery) ||
+            scanning.barcode.toLowerCase().contains(_searchQuery) ||
+            address.contains(_searchQuery) ||
+            contact.contains(_searchQuery);
       }).toList();
     }
     filtered.sort(_compareScannings);
@@ -87,10 +125,13 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     final comparison = switch (_sort) {
       _ScanningSort.storeNameAscending ||
       _ScanningSort.storeNameDescending => first.storeName.toLowerCase().compareTo(second.storeName.toLowerCase()),
-      _ScanningSort.barcodeAscending || _ScanningSort.barcodeDescending => first.barcode.compareTo(second.barcode),
+      _ScanningSort.barcodeAscending || _ScanningSort.barcodeDescending =>
+        first.barcode.compareTo(second.barcode) != 0
+            ? first.barcode.compareTo(second.barcode)
+            : first.storeName.toLowerCase().compareTo(second.storeName.toLowerCase()),
       _ScanningSort.scannedDateAscending || _ScanningSort.scannedDateDescending =>
         first.scannedDate == null
-            ? (second.scannedDate == null ? 0 : -1)
+            ? (second.scannedDate == null ? first.storeName.toLowerCase().compareTo(second.storeName.toLowerCase()) : -1)
             : (second.scannedDate == null ? 1 : first.scannedDate!.compareTo(second.scannedDate!)),
     };
 
@@ -101,7 +142,108 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
   }
 
   void _openScanning(Scanning scanning) async {
+    if (scanning.status == ScanningStatus.unassigned || scanning.barcode.isEmpty) {
+      await _assignBarcodeToStore(scanning.storeName);
+      return;
+    }
     await Navigator.push(context, MaterialPageRoute(builder: (context) => ScanningPage(initialBarcode: scanning.barcode)));
+    prefetchData();
+  }
+
+  Future<void> _assignBarcodeToStore(String storeName) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.link_rounded, color: Colors.orange.shade800, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Assign Barcode', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          Text(storeName, style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant), overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Choose how you want to provide the barcode for this store:',
+                  style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Icon(Icons.qr_code_scanner_rounded, color: colorScheme.primary),
+                  ),
+                  title: const Text('Scan with Camera', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Scan the physical barcode on the freezer'),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                  ),
+                  onTap: () => Navigator.pop(sheetContext, 'scan'),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: colorScheme.secondary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Icon(Icons.keyboard_outlined, color: colorScheme.secondary),
+                  ),
+                  title: const Text('Enter Manually', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Type the barcode digits manually'),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                  ),
+                  onTap: () => Navigator.pop(sheetContext, 'manual'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (action == null || !mounted) return;
+
+    String? barcode;
+    if (action == 'scan') {
+      barcode = await Navigator.push<String>(context, MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()));
+    } else if (action == 'manual') {
+      barcode = await showDialog<String>(context: context, builder: (context) => const _ManualBarcodeDialog());
+    }
+
+    if (barcode == null || barcode.isEmpty || !mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ScanningPage(initialBarcode: barcode!, initialStoreName: storeName),
+      ),
+    );
     prefetchData();
   }
 
@@ -195,6 +337,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     }
 
     if (scannings.isEmpty) {
+      final isUnassigned = status == ScanningStatus.unassigned;
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
@@ -203,11 +346,25 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.qr_code_scanner_outlined, size: 48, color: colorScheme.onSurfaceVariant),
+                Icon(
+                  isUnassigned ? Icons.check_circle_outline : Icons.qr_code_scanner_outlined,
+                  size: 48,
+                  color: isUnassigned ? Colors.green : colorScheme.onSurfaceVariant,
+                ),
                 const SizedBox(height: 12),
-                Text(_searchQuery.isNotEmpty ? 'No matching records' : 'No $status records', style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  _searchQuery.isNotEmpty
+                      ? 'No matching records'
+                      : (isUnassigned ? 'All stores have barcodes' : 'No $status records'),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const SizedBox(height: 4),
-                Text('Scanning records will appear here when available.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                Text(
+                  isUnassigned
+                      ? 'Every registered store has a barcode saved in the database.'
+                      : 'Scanning records will appear here when available.',
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
+                ),
               ],
             ),
           ),
@@ -218,11 +375,13 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     final statusColor = switch (status) {
       ScanningStatus.scanned => Colors.green,
       ScanningStatus.pullout => colorScheme.error,
+      ScanningStatus.unassigned => Colors.orange.shade800,
       _ => colorScheme.tertiary,
     };
     final statusIcon = switch (status) {
       ScanningStatus.scanned => Icons.check_circle_outline,
       ScanningStatus.pullout => Icons.outbox_outlined,
+      ScanningStatus.unassigned => Icons.link_off_rounded,
       _ => Icons.qr_code_2_outlined,
     };
 
@@ -237,6 +396,8 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
         }
 
         final scanning = scannings[index - 1];
+        final isUnassigned = scanning.status == ScanningStatus.unassigned;
+        final store = _storesMap[scanning.storeName.trim().toLowerCase()];
 
         return Card(
           margin: EdgeInsets.zero,
@@ -270,10 +431,29 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(4),
-                          onTap: () => _copyToClipboard(scanning.barcode, 'barcode ${scanning.barcode}'),
-                          child: Row(
+                        if (isUnassigned) ...[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.link_off_rounded, size: 14, color: Colors.orange.shade800),
+                              const SizedBox(width: 4),
+                              Text(
+                                'No barcode in database',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.orange.shade800),
+                              ),
+                            ],
+                          ),
+                          if (store != null && store.storeAddress.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              store.storeAddress,
+                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ] else ...[
+                          Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.qr_code_2_rounded, size: 13, color: colorScheme.onSurfaceVariant),
@@ -282,20 +462,30 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                                 scanning.barcode,
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.primary),
                               ),
-                              const SizedBox(width: 4),
-                              Icon(Icons.copy_rounded, size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          scanning.scannedDate == null ? 'Not scanned yet' : DateFormat('MMM d, yyyy hh:mm a').format(scanning.scannedDate!.toDate()),
-                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                        ),
+                          const SizedBox(height: 3),
+                          Text(
+                            scanning.scannedDate == null ? 'Not scanned yet' : DateFormat('MMM d, yyyy hh:mm a').format(scanning.scannedDate!.toDate()),
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
+                  if (isUnassigned)
+                    FilledButton.tonal(
+                      onPressed: () => _assignBarcodeToStore(scanning.storeName),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: const Text('Assign', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    )
+                  else
+                    Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
                 ],
               ),
             ),
@@ -311,6 +501,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     final scannedCount = scanningList.where((s) => s.status == ScanningStatus.scanned).length;
     final totalActive = notScannedCount + scannedCount;
     final overallProgress = totalActive > 0 ? scannedCount / totalActive : 0.0;
+    final isUnassigned = status == ScanningStatus.unassigned;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -328,6 +519,8 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                     ? Icons.task_alt_rounded
                     : status == ScanningStatus.pullout
                     ? Icons.outbox_outlined
+                    : status == ScanningStatus.unassigned
+                    ? Icons.link_off_rounded
                     : Icons.pending_actions_rounded,
                 color: statusColor,
                 size: 22,
@@ -338,17 +531,19 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$status records',
+                      isUnassigned ? 'Unassigned stores' : '$status records',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                     ),
                     Text(
-                      '$count ${count == 1 ? 'record' : 'records'}',
+                      isUnassigned
+                          ? '$count ${count == 1 ? 'store without barcode' : 'stores without barcode'}'
+                          : '$count ${count == 1 ? 'record' : 'records'}',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
               ),
-              if (totalActive > 0)
+              if (!isUnassigned && status != ScanningStatus.pullout && totalActive > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
@@ -363,7 +558,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                 ),
             ],
           ),
-          if (totalActive > 0) ...[
+          if (!isUnassigned && status != ScanningStatus.pullout && totalActive > 0) ...[
             const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
@@ -386,6 +581,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     final notScannedCount = scanningList.where((s) => s.status == ScanningStatus.notScanned).length;
     final scannedCount = scanningList.where((s) => s.status == ScanningStatus.scanned).length;
     final pulloutCount = scanningList.where((s) => s.status == ScanningStatus.pullout).length;
+    final unassignedCount = scanningList.where((s) => s.status == ScanningStatus.unassigned).length;
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
@@ -416,7 +612,12 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: prefetchData,
-                child: _scanningListView(const [ScanningStatus.notScanned, ScanningStatus.scanned, ScanningStatus.pullout][_currentIndex]),
+                child: _scanningListView(const [
+                  ScanningStatus.notScanned,
+                  ScanningStatus.scanned,
+                  ScanningStatus.pullout,
+                  ScanningStatus.unassigned,
+                ][_currentIndex]),
               ),
             ),
           ],
@@ -481,6 +682,21 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
               child: const Icon(Icons.outbox),
             ),
             label: 'Pullout',
+          ),
+          NavigationDestination(
+            icon: Badge.count(
+              count: unassignedCount,
+              isLabelVisible: unassignedCount > 0,
+              backgroundColor: Colors.orange.shade800,
+              child: const Icon(Icons.link_off_outlined),
+            ),
+            selectedIcon: Badge.count(
+              count: unassignedCount,
+              isLabelVisible: unassignedCount > 0,
+              backgroundColor: Colors.orange.shade800,
+              child: const Icon(Icons.link_off_rounded),
+            ),
+            label: 'Unassigned',
           ),
         ],
       ),

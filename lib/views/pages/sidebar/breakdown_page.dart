@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/breakdown.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/breakdown_service.dart';
@@ -23,6 +24,7 @@ class BreakdownPage extends StatefulWidget {
 class _BreakdownPageState extends State<BreakdownPage> {
   final BreakdownTotal breakdownTotal = BreakdownTotal();
   final BreakdownService db = BreakdownService();
+  bool isDealer = false;
   final TextEditingController txt1 = TextEditingController();
   final TextEditingController txt10 = TextEditingController();
   final TextEditingController txt100 = TextEditingController();
@@ -57,6 +59,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
   @override
   void initState() {
     super.initState();
+    _checkDealer();
 
     if (widget.breakdownID.isNotEmpty) {
       txt1000.text = widget.breakdown.b1000 != 0 ? widget.breakdown.b1000.toString() : '';
@@ -77,6 +80,60 @@ class _BreakdownPageState extends State<BreakdownPage> {
       }
 
       recompute();
+    }
+  }
+
+  void _checkDealer() async {
+    final dealer = await KVariables.getIsDealer();
+    if (mounted) {
+      setState(() {
+        isDealer = dealer;
+      });
+    }
+  }
+
+  void onVerify() async {
+    if (!isDealer || widget.breakdownID.isEmpty) return;
+
+    final bool isCurrentlyVerified = widget.breakdown.isVerifiedByDealer;
+    final bool newStatus = !isCurrentlyVerified;
+
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: newStatus ? 'Verify Breakdown' : 'Unverify Breakdown',
+      message: newStatus
+          ? 'Are you sure you want to mark this cash breakdown as verified?'
+          : 'Are you sure you want to unmark this cash breakdown as verified?',
+      icon: newStatus ? Icons.verified_outlined : Icons.remove_moderator_outlined,
+      confirmText: newStatus ? 'Verify' : 'Unverify',
+    );
+
+    if (confirmed) {
+      setState(() {
+        widget.breakdown.isVerifiedByDealer = newStatus;
+      });
+
+      final updatedRecord = widget.breakdown.copyWith(
+        isVerifiedByDealer: newStatus,
+        lastUpdatedBy: authService.value.currentUser?.displayName ?? '',
+        lastupdatedDate: Timestamp.now(),
+      );
+
+      db.updateBreakdown(widget.breakdownID, updatedRecord);
+      Helperfunctions.logUpdate(
+        Helperfunctions.formatTimestampForDisplay(updatedRecord.breakdownDate),
+        widget.breakdown.toJson(),
+        updatedRecord.toJson(),
+      );
+
+      if (mounted) {
+        ShowMessage.success(
+          context,
+          newStatus
+              ? 'Breakdown has been marked as verified!'
+              : 'Breakdown verification has been removed.',
+        );
+      }
     }
   }
 
@@ -287,6 +344,24 @@ class _BreakdownPageState extends State<BreakdownPage> {
                 ),
             ],
           ),
+          if (widget.breakdown.isVerifiedByDealer) ...[
+            const Divider(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.verified, size: 16, color: Colors.green.shade700),
+                const SizedBox(width: 6),
+                Text(
+                  'Verified by Dealer',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -559,6 +634,8 @@ class _BreakdownPageState extends State<BreakdownPage> {
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.breakdown.lastUpdatedBy),
                 _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.breakdown.lastupdatedDate.toDate())),
+                const Divider(height: 12),
+                _buildAuditRow('Verified by Dealer', widget.breakdown.isVerifiedByDealer ? 'Yes' : 'No'),
               ],
             ),
           ),
@@ -598,35 +675,62 @@ class _BreakdownPageState extends State<BreakdownPage> {
           border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
         ),
-        child: FilledButton.icon(
-          onPressed: () async {
-            final bool isBalanced = widget.breakdown.discrepancy == 0;
-            final double disc = widget.breakdown.discrepancy.abs();
-            final String baseMsg = isUpdating ? ConfirmMessage.update : ConfirmMessage.save;
-            final String message = isBalanced
-                ? baseMsg
-                : '$baseMsg\n\n⚠️ Note: Discrepancy is ${Helperfunctions.formatDoubleAmountForDisplay(disc)} (${widget.breakdown.discrepancy > 0 ? "Overpaid" : "Shortage"}).';
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          spacing: 8,
+          children: [
+            if (isDealer && isUpdating)
+              OutlinedButton.icon(
+                onPressed: onVerify,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48.0),
+                  foregroundColor: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
+                  side: BorderSide(
+                    color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade400 : colorScheme.primary,
+                    width: 1.5,
+                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: Icon(
+                  widget.breakdown.isVerifiedByDealer ? Icons.verified : Icons.verified_outlined,
+                  size: 20,
+                ),
+                label: Text(
+                  widget.breakdown.isVerifiedByDealer ? 'Breakdown Verified (Tap to Unverify)' : 'Mark as Verified',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+              ),
+            FilledButton.icon(
+              onPressed: () async {
+                final bool isBalanced = widget.breakdown.discrepancy == 0;
+                final double disc = widget.breakdown.discrepancy.abs();
+                final String baseMsg = isUpdating ? ConfirmMessage.update : ConfirmMessage.save;
+                final String message = isBalanced
+                    ? baseMsg
+                    : '$baseMsg\n\n⚠️ Note: Discrepancy is ${Helperfunctions.formatDoubleAmountForDisplay(disc)} (${widget.breakdown.discrepancy > 0 ? "Overpaid" : "Shortage"}).';
 
-            final confirmed = await ShowMessage.confirm(
-              context,
-              title: isUpdating ? ConfirmTitle.update : ConfirmTitle.save,
-              message: message,
-              icon: isUpdating ? Icons.check_circle_outline : Icons.save_outlined,
-              confirmText: isUpdating ? 'Update' : 'Save',
-            );
-            if (confirmed) {
-              isUpdating ? onUpdate() : onSave();
-            }
-          },
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(double.infinity, 50.0),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-          icon: Icon(isUpdating ? Icons.check_circle_outline : Icons.save_outlined, size: 20),
-          label: Text(
-            isUpdating ? 'Update Breakdown Record' : 'Save Breakdown Record',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+                final confirmed = await ShowMessage.confirm(
+                  context,
+                  title: isUpdating ? ConfirmTitle.update : ConfirmTitle.save,
+                  message: message,
+                  icon: isUpdating ? Icons.check_circle_outline : Icons.save_outlined,
+                  confirmText: isUpdating ? 'Update' : 'Save',
+                );
+                if (confirmed) {
+                  isUpdating ? onUpdate() : onSave();
+                }
+              },
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50.0),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              icon: Icon(isUpdating ? Icons.check_circle_outline : Icons.save_outlined, size: 20),
+              label: Text(
+                isUpdating ? 'Update Breakdown Record' : 'Save Breakdown Record',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
       ),
     );

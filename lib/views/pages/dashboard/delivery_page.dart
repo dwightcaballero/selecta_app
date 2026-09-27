@@ -11,6 +11,7 @@ import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/models/placement.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/delivery_service.dart';
+import 'package:flutter_app/services/breakdown_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/services/placement_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
@@ -35,6 +36,10 @@ class DeliveryPage extends StatefulWidget {
 class _DeliveryPageState extends State<DeliveryPage> {
   final DeliveryService db = DeliveryService();
   final PlacementService placementService = PlacementService();
+  final BreakdownService breakdownService = BreakdownService();
+  bool hasBreakdownForDay = false;
+  bool get isSalesmanLocked => !isDealer && hasBreakdownForDay;
+
   double discrepancy = 0;
   TextEditingController dropdownHapiStore = TextEditingController();
   TextEditingController dropdownStatus = TextEditingController();
@@ -80,6 +85,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void onSave() async {
+    if (isSalesmanLocked) {
+      ShowMessage.error(context, 'Editing is disabled. A cash breakdown is already recorded for this day.');
+      return;
+    }
     if (_formkey.currentState!.validate()) {
       // save image
       String imageFilePath = '';
@@ -155,12 +164,27 @@ class _DeliveryPageState extends State<DeliveryPage> {
       setState(() {
         _selectedDate = dateTime;
       });
+      await _checkBreakdownStatus();
+    }
+  }
+
+  Future<void> _checkBreakdownStatus() async {
+    DateTime dateToCheck = widget.deliveryID.isNotEmpty && widget.delivery.deliveryDate != null
+        ? widget.delivery.deliveryDate!.toDate()
+        : _selectedDate;
+    final String breakdownId = await breakdownService.getIDofBreakdown(dateToCheck);
+    if (mounted) {
+      setState(() {
+        hasBreakdownForDay = breakdownId.isNotEmpty;
+      });
     }
   }
 
   void prefetchData() async {
+    isDealer = await KVariables.getIsDealer();
+    await _checkBreakdownStatus();
+
     if (widget.deliveryID.isNotEmpty) {
-      isDealer = await KVariables.getIsDealer();
       networkImagePath = widget.delivery.imagePath;
 
       listDropdownStatus = [
@@ -207,6 +231,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void onUpdate() async {
+    if (isSalesmanLocked) {
+      ShowMessage.error(context, 'Editing is disabled. A cash breakdown is already recorded for this day.');
+      return;
+    }
     var listError = validate();
     if (listError.isEmpty) {
       double returnAmount = 0;
@@ -319,7 +347,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   Widget hapistoreDropdown() {
     return HapistorePickerField(
       controller: dropdownHapiStore,
-      enabled: isDealer,
+      enabled: isDealer && !isSalesmanLocked,
       label: 'Hapi Store',
       validator: (value) => value == null || value.isEmpty ? 'Please select a Hapi Store' : null,
       onChanged: () {
@@ -500,10 +528,14 @@ class _DeliveryPageState extends State<DeliveryPage> {
             controller: txtOrderAmount,
             prefixIcon: Icons.attach_money,
             iconColor: Colors.blue,
-            isEnabled: isDealer,
+            isEnabled: isDealer && !isSalesmanLocked,
           ),
           if (widget.deliveryID.isEmpty)
-            _buildDatePickerField(label: 'Delivery Date', selectedDate: _selectedDate, onTap: onChangeDate)
+            _buildDatePickerField(
+              label: 'Delivery Date',
+              selectedDate: _selectedDate,
+              onTap: isSalesmanLocked ? () {} : onChangeDate,
+            )
           else
             _buildDeliveryStatusSelector(),
         ],
@@ -570,11 +602,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ),
             ],
             selected: {currentStatus},
-            onSelectionChanged: (Set<String> newSelection) {
-              setState(() {
-                dropdownStatus.text = newSelection.first;
-              });
-            },
+            onSelectionChanged: isSalesmanLocked
+                ? null
+                : (Set<String> newSelection) {
+                    setState(() {
+                      dropdownStatus.text = newSelection.first;
+                    });
+                  },
           ),
         ),
       ],
@@ -597,6 +631,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             prefixIcon: Icons.payments_outlined,
             iconColor: Colors.green,
             isRequired: false,
+            isEnabled: !isSalesmanLocked,
           ),
           _buildMoneyField(
             label: 'Online Amount',
@@ -604,6 +639,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             prefixIcon: Icons.account_balance_outlined,
             iconColor: Colors.blue,
             isRequired: false,
+            isEnabled: !isSalesmanLocked,
           ),
           _buildMoneyField(
             label: 'Credit Amount',
@@ -611,6 +647,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             prefixIcon: Icons.credit_card_outlined,
             iconColor: Colors.purple,
             isRequired: false,
+            isEnabled: !isSalesmanLocked,
           ),
           _buildMoneyField(
             label: 'Return Amount',
@@ -618,6 +655,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             prefixIcon: Icons.assignment_return_outlined,
             iconColor: Colors.red,
             isRequired: false,
+            isEnabled: !isSalesmanLocked,
           ),
         ],
       ),
@@ -716,22 +754,22 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ActionChip(
                 avatar: const Icon(Icons.payments_outlined, size: 16),
                 label: const Text('Full Cash'),
-                onPressed: () => _quickFillPayment(target: 'cash'),
+                onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'cash'),
               ),
               ActionChip(
                 avatar: const Icon(Icons.account_balance_outlined, size: 16),
                 label: const Text('Full Online'),
-                onPressed: () => _quickFillPayment(target: 'online'),
+                onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'online'),
               ),
               ActionChip(
                 avatar: const Icon(Icons.credit_card_outlined, size: 16),
                 label: const Text('Full Credit'),
-                onPressed: () => _quickFillPayment(target: 'credit'),
+                onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'credit'),
               ),
               ActionChip(
                 avatar: const Icon(Icons.restart_alt, size: 16),
                 label: const Text('Clear All'),
-                onPressed: () => _quickFillPayment(target: 'clear'),
+                onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'clear'),
               ),
             ],
           ),
@@ -848,6 +886,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         controller: txtRemarks,
         prefixIcon: Icons.notes_outlined,
         minLines: 3,
+        isEnabled: !isSalesmanLocked,
         isRequired:
             (dropdownStatus.text == DeliveryStatus.returned || (dropdownStatus.text == DeliveryStatus.delivered && txtReturnAmount.text.isNotEmpty)),
       ),
@@ -860,9 +899,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
     required IconData prefixIcon,
     int minLines = 3,
     bool isRequired = true,
+    bool isEnabled = true,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return TextFormField(
+      enabled: isEnabled,
       controller: controller,
       keyboardType: TextInputType.multiline,
       minLines: minLines,
@@ -1063,7 +1104,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ),
             )
           : InkWell(
-              onTap: isDealer ? showImageSourceSelector : null,
+              onTap: (isDealer && !isSalesmanLocked) ? showImageSourceSelector : null,
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 width: double.infinity,
@@ -1111,7 +1152,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
               title: const Text('Send Text Message?', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
               subtitle: const Text('Notify store contact about the pending order', style: TextStyle(fontSize: 12)),
               value: sendText,
-              onChanged: (val) => setState(() => sendText = val),
+              onChanged: isSalesmanLocked ? null : (val) => setState(() => sendText = val),
             ),
           ),
           AnimatedSize(
@@ -1120,7 +1161,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
             child: sendText
                 ? Padding(
                     padding: const EdgeInsets.only(top: 14.0),
-                    child: _buildTextAreaField(label: 'Text Message', controller: txtSMS, prefixIcon: Icons.message_outlined, minLines: 4),
+                    child: _buildTextAreaField(
+                      label: 'Text Message',
+                      controller: txtSMS,
+                      prefixIcon: Icons.message_outlined,
+                      minLines: 4,
+                      isEnabled: !isSalesmanLocked,
+                    ),
                   )
                 : const SizedBox.shrink(),
           ),
@@ -1201,22 +1248,27 @@ class _DeliveryPageState extends State<DeliveryPage> {
         ),
         child: widget.deliveryID.isEmpty
             ? FilledButton.icon(
-                onPressed: () async {
-                  final confirmed = await ShowMessage.confirm(
-                    context,
-                    title: ConfirmTitle.save,
-                    message: ConfirmMessage.save,
-                    icon: Icons.save_outlined,
-                    confirmText: 'Save',
-                  );
-                  if (confirmed) onSave();
-                },
+                onPressed: isSalesmanLocked
+                    ? null
+                    : () async {
+                        final confirmed = await ShowMessage.confirm(
+                          context,
+                          title: ConfirmTitle.save,
+                          message: ConfirmMessage.save,
+                          icon: Icons.save_outlined,
+                          confirmText: 'Save',
+                        );
+                        if (confirmed) onSave();
+                      },
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50.0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('Save Delivery Record', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                icon: Icon(isSalesmanLocked ? Icons.lock_outline : Icons.save_outlined),
+                label: Text(
+                  isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Save Delivery Record',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               )
             : Row(
                 children: [
@@ -1250,22 +1302,27 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   Expanded(
                     flex: isDealer ? 2 : 1,
                     child: FilledButton.icon(
-                      onPressed: () async {
-                        final confirmed = await ShowMessage.confirm(
-                          context,
-                          title: ConfirmTitle.update,
-                          message: ConfirmMessage.update,
-                          icon: Icons.check_circle_outline,
-                          confirmText: 'Update',
-                        );
-                        if (confirmed) onUpdate();
-                      },
+                      onPressed: isSalesmanLocked
+                          ? null
+                          : () async {
+                              final confirmed = await ShowMessage.confirm(
+                                context,
+                                title: ConfirmTitle.update,
+                                message: ConfirmMessage.update,
+                                icon: Icons.check_circle_outline,
+                                confirmText: 'Update',
+                              );
+                              if (confirmed) onUpdate();
+                            },
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      icon: const Icon(Icons.check_circle_outline, size: 20),
-                      label: const Text('Update Delivery', style: TextStyle(fontWeight: FontWeight.bold)),
+                      icon: Icon(isSalesmanLocked ? Icons.lock_outline : Icons.check_circle_outline, size: 20),
+                      label: Text(
+                        isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Update Delivery',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
                 ],
@@ -1318,13 +1375,15 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 if (unplacedCount > 0) ...[
                   const SizedBox(width: 10),
                   FilledButton.tonalIcon(
-                    onPressed: () {
-                      setState(() {
-                        for (var placement in listPlacement) {
-                          placement.isPlaced = true;
-                        }
-                      });
-                    },
+                    onPressed: isSalesmanLocked
+                        ? null
+                        : () {
+                            setState(() {
+                              for (var placement in listPlacement) {
+                                placement.isPlaced = true;
+                              }
+                            });
+                          },
                     style: FilledButton.styleFrom(
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
@@ -1362,9 +1421,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 ),
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  onTap: isLocked
-                      ? () => ShowMessage.error(context, '${item.itemName} is already placed for this month.')
-                      : () => setState(() => item.isPlaced = !item.isPlaced),
+                  onTap: isSalesmanLocked
+                      ? null
+                      : (isLocked
+                          ? () => ShowMessage.error(context, '${item.itemName} is already placed for this month.')
+                          : () => setState(() => item.isPlaced = !item.isPlaced)),
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.asset(
@@ -1396,11 +1457,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           value: isPlaced,
                           activeColor: colorScheme.primary,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                          onChanged: (value) {
-                            setState(() {
-                              item.isPlaced = value ?? false;
-                            });
-                          },
+                          onChanged: isSalesmanLocked
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    item.isPlaced = value ?? false;
+                                  });
+                                },
                         ),
                 ),
               );
@@ -1430,6 +1493,33 @@ class _DeliveryPageState extends State<DeliveryPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 16,
               children: [
+                if (isSalesmanLocked)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.amber.shade300, width: 1.2),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.amber.shade900,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 // 1. Order & Store Info Card
                 _buildOrderAndStoreCard(),
 

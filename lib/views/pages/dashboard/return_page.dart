@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/delivery_service.dart';
@@ -23,8 +24,24 @@ class ReturnPage extends StatefulWidget {
 class _ReturnPageState extends State<ReturnPage> {
   final DeliveryService db = DeliveryService();
   bool _isProcessing = false;
+  bool _isDealer = false;
+
+  @override
+  void initState() {
+    super.initState();
+    prefetchData();
+  }
+
+  void prefetchData() async {
+    _isDealer = await KVariables.getIsDealer();
+    if (mounted) setState(() {});
+  }
 
   void onUpdate({DateTime? rescheduleDate}) async {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to redeliver orders.');
+      return;
+    }
     if (_isProcessing) return;
     setState(() => _isProcessing = true);
 
@@ -62,6 +79,10 @@ class _ReturnPageState extends State<ReturnPage> {
   }
 
   void onDelete() async {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to delete return records.');
+      return;
+    }
     if (_isProcessing) return;
     setState(() => _isProcessing = true);
 
@@ -85,6 +106,10 @@ class _ReturnPageState extends State<ReturnPage> {
   }
 
   Future<void> _showRedeliverDialog() async {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to reschedule deliveries.');
+      return;
+    }
     DateTime selectedDate = DateTime.now();
     final confirmed = await showDialog<bool>(
       context: context,
@@ -481,6 +506,7 @@ class _ReturnPageState extends State<ReturnPage> {
   }
 
   Widget _buildStickyBottomBar() {
+    if (!_isDealer) return const SizedBox.shrink();
     final colorScheme = Theme.of(context).colorScheme;
     return SafeArea(
       child: Container(
@@ -550,6 +576,33 @@ class _ReturnPageState extends State<ReturnPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           spacing: 16,
           children: [
+            if (!_isDealer)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.shade300, width: 1.2),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'View-Only: Only dealers are authorized to redeliver or delete returned orders.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.amber.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             // 1. Return Overview Hero Card
             _buildReturnOverviewCard(),
 

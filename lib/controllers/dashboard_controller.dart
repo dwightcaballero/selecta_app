@@ -62,11 +62,29 @@ class DashboardController {
     // DASHBOARD: total stores opened this month
     dashboardDTO.totalExpansionCount = (await HapiStoreService.getListHapiStoresWithOpeningDateInCurrentMonth()).length;
 
-    // DASHBOARD: total scanned and not scanned stores
+    // DASHBOARD: total scanned, not scanned, and unassigned stores
     var listScannings = await ScanningServices.getAllScannings();
     listScannings = listScannings.where((scanning) => scanning.status != ScanningStatus.pullout).toList();
     dashboardDTO.totalScanCount = listScannings.where((scanning) => scanning.status == ScanningStatus.scanned).length;
-    dashboardDTO.totalNotScannedCount = listScannings.length - dashboardDTO.totalScanCount;
+    dashboardDTO.totalNotScannedCount = listScannings.where((scanning) => scanning.status == ScanningStatus.notScanned).length;
+
+    final assignedStoreNames = <String>{};
+    for (final s in listScannings) {
+      if (s.barcode.trim().isNotEmpty && s.storeName.trim().isNotEmpty) {
+        assignedStoreNames.add(s.storeName.trim().toLowerCase());
+      }
+    }
+
+    int unassignedCount = 0;
+    for (final store in listStores) {
+      final name = store.storeName.trim();
+      if (name.isEmpty) continue;
+      if (!assignedStoreNames.contains(name.toLowerCase())) {
+        unassignedCount++;
+      }
+    }
+    unassignedCount += listScannings.where((s) => s.status == ScanningStatus.unassigned).length;
+    dashboardDTO.totalUnassignedCount = unassignedCount;
 
     // SAVE: dashboard data
     String jsonString = jsonEncode(dashboardDTO.toJson());

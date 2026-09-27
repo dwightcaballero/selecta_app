@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/tasks.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/tasks_services.dart';
@@ -28,6 +29,7 @@ class _TasksPageState extends State<TasksPage> {
   final TextEditingController txtStoreName = TextEditingController();
   final TextEditingController txtDescription = TextEditingController();
 
+  bool _isDealer = false;
   DateTime _selectedDeadline = DateTime.now().add(const Duration(hours: 4));
   bool _isTaskDone = false;
   bool _isLoading = false;
@@ -36,6 +38,9 @@ class _TasksPageState extends State<TasksPage> {
 
   bool get _hasUnsavedChanges {
     if (isEditMode) {
+      if (!_isDealer) {
+        return _isTaskDone != widget.task.isTaskDone;
+      }
       return txtTitle.text.trim() != widget.task.taskTitle ||
           txtDescription.text.trim() != widget.task.taskDescription ||
           txtStoreName.text.trim() != widget.task.storeName ||
@@ -50,7 +55,17 @@ class _TasksPageState extends State<TasksPage> {
   @override
   void initState() {
     super.initState();
+    _checkDealerRole();
     _prefetchData();
+  }
+
+  void _checkDealerRole() async {
+    final isDealer = await KVariables.getIsDealer();
+    if (mounted) {
+      setState(() {
+        _isDealer = isDealer;
+      });
+    }
   }
 
   @override
@@ -96,6 +111,11 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Future<void> onSave() async {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to create tasks');
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
       ShowMessage.error(context, 'Please complete all required fields');
       return;
@@ -145,10 +165,10 @@ class _TasksPageState extends State<TasksPage> {
 
     try {
       final updatedTask = widget.task.copyWith(
-        taskTitle: txtTitle.text.trim(),
-        taskDescription: txtDescription.text.trim(),
-        taskDeadline: Timestamp.fromDate(_selectedDeadline),
-        storeName: txtStoreName.text.trim(),
+        taskTitle: _isDealer ? txtTitle.text.trim() : widget.task.taskTitle,
+        taskDescription: _isDealer ? txtDescription.text.trim() : widget.task.taskDescription,
+        taskDeadline: _isDealer ? Timestamp.fromDate(_selectedDeadline) : widget.task.taskDeadline,
+        storeName: _isDealer ? txtStoreName.text.trim() : widget.task.storeName,
         isTaskDone: _isTaskDone,
         lastUpdatedBy: _userName,
         lastupdatedDate: Timestamp.now(),
@@ -171,6 +191,11 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Future<void> onDelete() async {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to delete tasks');
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -227,6 +252,7 @@ class _TasksPageState extends State<TasksPage> {
     return HapistorePickerField(
       controller: txtStoreName,
       label: 'Hapi Store *',
+      enabled: _isDealer,
       validator: (value) => value == null || value.trim().isEmpty ? 'Please select a Target Store' : null,
       onChanged: () {
         setState(() {});
@@ -284,9 +310,9 @@ class _TasksPageState extends State<TasksPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildDeadlinePresets(),
+        if (_isDealer) _buildDeadlinePresets(),
         InkWell(
-          onTap: _pickDeadline,
+          onTap: _isDealer ? _pickDeadline : null,
           borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -296,11 +322,19 @@ class _TasksPageState extends State<TasksPage> {
                 width: isOverdue ? 1.5 : 1.0,
               ),
               borderRadius: BorderRadius.circular(10),
-              color: isOverdue ? (isDark ? Colors.red.withValues(alpha: 0.12) : Colors.red.withValues(alpha: 0.04)) : null,
+              color: isOverdue
+                  ? (isDark ? Colors.red.withValues(alpha: 0.12) : Colors.red.withValues(alpha: 0.04))
+                  : (!_isDealer ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.25) : null),
             ),
             child: Row(
               children: [
-                Icon(Icons.event_outlined, size: 20, color: isOverdue ? overdueColor : colorScheme.primary),
+                Icon(
+                  Icons.event_outlined,
+                  size: 20,
+                  color: isOverdue
+                      ? overdueColor
+                      : (_isDealer ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -310,7 +344,11 @@ class _TasksPageState extends State<TasksPage> {
                       const SizedBox(height: 2),
                       Text(
                         formattedDate,
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isOverdue ? overdueColor : null),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isOverdue ? overdueColor : colorScheme.onSurface,
+                        ),
                       ),
                     ],
                   ),
@@ -328,7 +366,8 @@ class _TasksPageState extends State<TasksPage> {
                       style: TextStyle(color: overdueColor, fontSize: 11, fontWeight: FontWeight.bold),
                     ),
                   ),
-                Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.onSurfaceVariant),
+                if (_isDealer)
+                  Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.onSurfaceVariant),
               ],
             ),
           ),
@@ -373,27 +412,66 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
-  Widget _buildAuditInfo() {
-    if (!isEditMode) return const SizedBox.shrink();
+  Widget _buildAuditCard() {
     final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        leading: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
+        ),
+        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+        initiallyExpanded: false,
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
-          if (widget.task.createdBy.isNotEmpty)
-            Text(
-              'Created by: ${widget.task.createdBy} on ${Helperfunctions.formatTimestampForDisplay(widget.task.createdDate)}',
-              style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(10),
             ),
-          if (widget.task.lastUpdatedBy.isNotEmpty)
-            Text(
-              'Last updated by: ${widget.task.lastUpdatedBy} on ${Helperfunctions.formatTimestampForDisplay(widget.task.lastupdatedDate)}',
-              style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 8,
+              children: [
+                _buildAuditRow('Created By', widget.task.createdBy.isNotEmpty ? widget.task.createdBy : 'N/A'),
+                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.task.createdDate.toDate())),
+                const Divider(height: 12),
+                _buildAuditRow('Last Updated By', widget.task.lastUpdatedBy.isNotEmpty ? widget.task.lastUpdatedBy : 'N/A'),
+                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.task.lastupdatedDate.toDate())),
+              ],
             ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAuditRow(String label, String value) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 120,
+          child: Text(
+            label,
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
+          ),
+        ),
+        Expanded(
+          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+        ),
+      ],
     );
   }
 
@@ -446,11 +524,16 @@ class _TasksPageState extends State<TasksPage> {
                           children: [
                             TextFormField(
                               controller: txtTitle,
+                              enabled: _isDealer,
                               textInputAction: TextInputAction.next,
                               decoration: InputDecoration(
                                 labelText: 'Task Title *',
                                 hintText: 'e.g. Stock inventory, Inspect cooler...',
-                                prefixIcon: Icon(Icons.title_rounded, size: 20, color: colorScheme.primary),
+                                prefixIcon: Icon(
+                                  Icons.title_rounded,
+                                  size: 20,
+                                  color: _isDealer ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                                ),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                               ),
@@ -469,6 +552,7 @@ class _TasksPageState extends State<TasksPage> {
                             const SizedBox(height: 16),
                             TextFormField(
                               controller: txtDescription,
+                              enabled: _isDealer,
                               maxLines: 4,
                               minLines: 3,
                               decoration: InputDecoration(
@@ -476,7 +560,11 @@ class _TasksPageState extends State<TasksPage> {
                                 hintText: 'Provide details, instructions, or steps to fulfill this task...',
                                 prefixIcon: Padding(
                                   padding: const EdgeInsets.only(bottom: 40),
-                                  child: Icon(Icons.notes_rounded, size: 20, color: colorScheme.primary),
+                                  child: Icon(
+                                    Icons.notes_rounded,
+                                    size: 20,
+                                    color: _isDealer ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -491,41 +579,46 @@ class _TasksPageState extends State<TasksPage> {
                       // Status Section
                       _buildSectionCard(title: 'Task Status', icon: Icons.checklist_rounded, child: _buildStatusToggle()),
 
-                      const SizedBox(height: 8),
-                      _buildAuditInfo(),
+                      if (isEditMode) ...[
+                        const SizedBox(height: 16),
+                        _buildAuditCard(),
+                      ],
+
                       const SizedBox(height: 24),
 
                       // Action Buttons
                       if (isEditMode)
                         Row(
                           children: [
-                            Expanded(
-                              flex: 1,
-                              child: OutlinedButton.icon(
-                                onPressed: () async {
-                                  final confirmed = await ShowMessage.confirm(
-                                    context,
-                                    title: ConfirmTitle.delete,
-                                    message: 'Are you sure you want to delete task [${widget.task.taskTitle}]?',
-                                    isDestructive: true,
-                                    icon: Icons.delete_outline,
-                                    confirmText: 'Delete',
-                                  );
-                                  if (confirmed) onDelete();
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size(0, 50.0),
-                                  foregroundColor: isDark ? Colors.red.shade400 : Colors.red.shade700,
-                                  side: BorderSide(color: isDark ? Colors.red.shade400.withValues(alpha: 0.6) : Colors.red.shade300, width: 1.2),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            if (_isDealer) ...[
+                              Expanded(
+                                flex: 1,
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final confirmed = await ShowMessage.confirm(
+                                      context,
+                                      title: ConfirmTitle.delete,
+                                      message: 'Are you sure you want to delete task [${widget.task.taskTitle}]?',
+                                      isDestructive: true,
+                                      icon: Icons.delete_outline,
+                                      confirmText: 'Delete',
+                                    );
+                                    if (confirmed) onDelete();
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 50.0),
+                                    foregroundColor: isDark ? Colors.red.shade400 : Colors.red.shade700,
+                                    side: BorderSide(color: isDark ? Colors.red.shade400.withValues(alpha: 0.6) : Colors.red.shade300, width: 1.2),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  icon: const Icon(Icons.delete_outline, size: 20),
+                                  label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
-                                icon: const Icon(Icons.delete_outline, size: 20),
-                                label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
                               ),
-                            ),
-                            const SizedBox(width: 12),
+                              const SizedBox(width: 12),
+                            ],
                             Expanded(
-                              flex: 2,
+                              flex: _isDealer ? 2 : 1,
                               child: FilledButton.icon(
                                 onPressed: () async {
                                   final confirmed = await ShowMessage.confirm(
@@ -547,7 +640,7 @@ class _TasksPageState extends State<TasksPage> {
                             ),
                           ],
                         )
-                      else
+                      else if (_isDealer)
                         FilledButton.icon(
                           onPressed: onSave,
                           style: FilledButton.styleFrom(

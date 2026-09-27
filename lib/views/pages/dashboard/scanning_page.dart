@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/scanning.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/scanning_services.dart';
@@ -27,6 +28,7 @@ class _ScanningPageState extends State<ScanningPage> {
   final TextEditingController _dropdownHapiStore = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _hasCheckedDatabase = false;
+  bool _isDealer = false;
   Scanning _scanning = Scanning.empty();
   final ScanningServices _scanningServices = ScanningServices();
   String _selectedStatus = ScanningStatus.notScanned;
@@ -51,6 +53,7 @@ class _ScanningPageState extends State<ScanningPage> {
   }
 
   void prefetchData() async {
+    _isDealer = await KVariables.getIsDealer();
     _scanning = await _scanningServices.getScanningByBarcode(widget.initialBarcode) ?? Scanning.empty();
     _selectedStatus = _scanning.status.isEmpty ? ScanningStatus.notScanned : _scanning.status;
     _dropdownHapiStore.text = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
@@ -146,6 +149,11 @@ class _ScanningPageState extends State<ScanningPage> {
   }
 
   Future<void> _onDelete() async {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to delete scanning records.');
+      return;
+    }
+
     final confirmed = await ShowMessage.confirm(
       context,
       title: 'Delete scanning record',
@@ -444,7 +452,7 @@ class _ScanningPageState extends State<ScanningPage> {
         appBar: CustomAppbar(
           title: _scanning.id.isEmpty ? 'New Scanning Record' : 'Edit Scanning Record',
           actions: [
-            if (_scanning.id.isNotEmpty)
+            if (_scanning.id.isNotEmpty && _isDealer)
               IconButton(
                 icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
                 tooltip: 'Delete scanning record',

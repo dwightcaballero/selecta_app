@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Breakdown {
   Timestamp breakdownDate;
-
   double bankDepositAmount;
   double breakdownAmount;
   double expectedAmount;
@@ -24,6 +23,7 @@ class Breakdown {
   String lastUpdatedBy;
   Timestamp createdDate;
   Timestamp lastupdatedDate;
+  bool isVerifiedByDealer;
 
   Breakdown({
     required this.breakdownDate,
@@ -46,6 +46,7 @@ class Breakdown {
     required this.lastUpdatedBy,
     required this.createdDate,
     required this.lastupdatedDate,
+    this.isVerifiedByDealer = false,
   });
 
   static Breakdown empty() => Breakdown(
@@ -70,6 +71,7 @@ class Breakdown {
     lastUpdatedBy: '',
     createdDate: Timestamp.now(),
     lastupdatedDate: Timestamp.now(),
+    isVerifiedByDealer: false,
   );
 
   Breakdown.fromJson(Map<String, Object?> json)
@@ -95,11 +97,10 @@ class Breakdown {
         lastUpdatedBy: json['lastUpdatedBy']! as String,
         createdDate: json['createdDate']! as Timestamp,
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
+        isVerifiedByDealer: (json['isVerifiedByDealer'] as bool?) ?? false,
       );
 
-  factory Breakdown.fromSnapshot(
-    DocumentSnapshot<Map<String, dynamic>> document,
-  ) {
+  factory Breakdown.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     if (document.data() != null) {
       final data = document.data();
       return Breakdown(
@@ -124,6 +125,7 @@ class Breakdown {
         lastUpdatedBy: data?['lastUpdatedBy'],
         createdDate: data?['createdDate'],
         lastupdatedDate: data?['lastupdatedDate'],
+        isVerifiedByDealer: (data?['isVerifiedByDealer'] as bool?) ?? false,
       );
     } else {
       return Breakdown.empty();
@@ -152,6 +154,7 @@ class Breakdown {
     String? lastUpdatedBy,
     Timestamp? createdDate,
     Timestamp? lastupdatedDate,
+    bool? isVerifiedByDealer,
   }) {
     return Breakdown(
       breakdownDate: breakdownDate ?? this.breakdownDate,
@@ -176,6 +179,7 @@ class Breakdown {
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
+      isVerifiedByDealer: isVerifiedByDealer ?? this.isVerifiedByDealer,
     );
   }
 
@@ -203,6 +207,7 @@ class Breakdown {
       'lastUpdatedBy': lastUpdatedBy,
       'createdDate': createdDate,
       'lastupdatedDate': lastupdatedDate,
+      'isVerifiedByDealer': isVerifiedByDealer,
     };
   }
 }

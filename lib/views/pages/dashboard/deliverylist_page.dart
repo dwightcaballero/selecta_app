@@ -40,7 +40,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   void prefetchData() async {
     isDealer = await KVariables.getIsDealer();
-    returnedDeliveryCount = await DeliveryService.getCountReturnedDeliveriesOnOtherDays();
+    if (isDealer) {
+      returnedDeliveryCount = await DeliveryService.getCountReturnedDeliveriesOnOtherDays();
+    }
     if (mounted) setState(() {});
   }
 
@@ -145,7 +147,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   Widget _buildReturnedAlertBanner() {
-    if (returnedDeliveryCount == null || returnedDeliveryCount == 0) {
+    if (!isDealer || returnedDeliveryCount == null || returnedDeliveryCount == 0) {
       return const SizedBox.shrink();
     }
 

@@ -4,10 +4,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/notifiers.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
+import 'package:flutter_app/models/users.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/views/pages/dashboard/expansion_page.dart';
 import 'package:flutter_app/views/pages/dashboard/overpaymentlist_page.dart';
@@ -43,6 +45,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   DashboardDTO dashboardDTO = DashboardDTO.empty();
+  Users? _currentUser;
   bool isDealer = false;
   bool isSyncing = false;
   String lastSyncDateTime = '';
@@ -61,8 +64,11 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void prefetchData() async {
-    isDealer = await KVariables.getIsDealer();
+    _currentUser = await KVariables.getUser();
+    isDealer = _currentUser?.role == BusinessRole.dealer;
+    lastSyncDateTime = await DashboardController.getLastSync();
     _syncDashboardFromSharedPreferences();
+    if (mounted) setState(() {});
   }
 
   Future<void> syncDashboard() async {
@@ -149,46 +155,85 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildWelcomeBanner() {
     final colorScheme = Theme.of(context).colorScheme;
-    final user = authService.value.currentUser;
+    final displayName = _currentUser?.username ?? authService.value.currentUser?.displayName ?? (isDealer ? 'Dealer' : 'Salesman');
+    final hasSyncTime = lastSyncDateTime.isNotEmpty && lastSyncDateTime != 'Never';
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(Icons.waving_hand_rounded, color: colorScheme.primary, size: 24),
+            decoration: BoxDecoration(
+              color: (isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isDealer ? Icons.store_rounded : Icons.badge_outlined,
+              color: isDealer ? colorScheme.primary : colorScheme.tertiary,
+              size: 24,
+            ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Welcome, ${user?.displayName ?? 'Salesman'}!', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 2),
-                Text(
-                  lastSyncDateTime.isNotEmpty ? 'Last synced: $lastSyncDateTime' : 'Ready to take orders',
-                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Welcome, $displayName!',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: (isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        isDealer ? 'Dealer' : 'Salesman',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isDealer ? colorScheme.primary : colorScheme.tertiary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(Icons.sync_rounded, size: 15, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        hasSyncTime ? 'Last synced: $lastSyncDateTime' : 'Not synced yet',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: (isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              isDealer ? 'Dealer' : 'Salesman',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isDealer ? colorScheme.primary : colorScheme.tertiary),
             ),
           ),
         ],
@@ -223,7 +268,7 @@ class _DashboardPageState extends State<DashboardPage> {
             _buildQuickAccessCard(
               label: 'Scanning',
               icon: Icons.qr_code_scanner_outlined,
-              count: dashboardDTO.totalNotScannedCount,
+              count: dashboardDTO.totalNotScannedCount + dashboardDTO.totalUnassignedCount,
               color: Theme.of(context).colorScheme.primary,
               nextPage: const ScanninglistPage(),
             ),

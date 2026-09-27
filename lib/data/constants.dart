@@ -41,6 +41,7 @@ class ScanningStatus {
   static const scanned = "Scanned";
   static const notScanned = "Not Scanned";
   static const pullout = "Pullout";
+  static const unassigned = "Unassigned";
 }
 
 class ConfirmMessage {

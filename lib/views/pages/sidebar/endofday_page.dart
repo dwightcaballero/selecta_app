@@ -312,16 +312,33 @@ class _EndofdayPageState extends State<EndofdayPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: hasBreakdown ? Colors.green.withValues(alpha: 0.12) : Colors.orange.withValues(alpha: 0.12),
+                  color: hasBreakdown
+                      ? (breakdown?.isVerifiedByDealer == true
+                          ? Colors.teal.withValues(alpha: 0.15)
+                          : Colors.green.withValues(alpha: 0.12))
+                      : Colors.orange.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  hasBreakdown ? 'Breakdown Recorded' : 'Breakdown Pending',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: hasBreakdown ? Colors.green.shade700 : Colors.orange.shade800,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasBreakdown && breakdown?.isVerifiedByDealer == true) ...[
+                      Icon(Icons.verified, size: 12, color: Colors.teal.shade700),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      hasBreakdown
+                          ? (breakdown?.isVerifiedByDealer == true ? 'Verified by Dealer' : 'Breakdown Recorded')
+                          : 'Breakdown Pending',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: hasBreakdown
+                            ? (breakdown?.isVerifiedByDealer == true ? Colors.teal.shade700 : Colors.green.shade700)
+                            : Colors.orange.shade800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

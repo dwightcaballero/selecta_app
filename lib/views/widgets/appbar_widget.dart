@@ -8,6 +8,7 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
   final Widget? leading;
   final Color? backgroundColor;
+  final bool? centerTitle;
 
   static const Color borderLight = Color(0xFFE2E8F0);
 
@@ -20,6 +21,7 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
     this.actions,
     this.leading,
     this.backgroundColor,
+    this.centerTitle,
   });
 
   @override
@@ -55,12 +57,14 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
     final subtitleColor = isWhiteOrTransparent ? const Color(0xFF64748B) : Colors.white.withValues(alpha: 0.85);
     final iconColor = isWhiteOrTransparent ? const Color(0xFF0F172A) : Colors.white;
 
+    final isCentered = centerTitle ?? true;
+
     return AppBar(
       elevation: 0,
       scrolledUnderElevation: 0,
       backgroundColor: effectiveColor,
-      centerTitle: true,
-      leadingWidth: 64,
+      centerTitle: isCentered,
+      leadingWidth: 60,
       leading: leading != null
           ? Center(child: leading)
           : (showBackButton && Navigator.canPop(context)
@@ -75,6 +79,7 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
                 : null),
       title: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: isCentered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
           Text(
             title,

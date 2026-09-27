@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
+import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/others/loading_page.dart';
 import 'package:flutter_app/views/pages/others/welcome_page.dart';
 
@@ -15,17 +17,33 @@ class AuthPage extends StatelessWidget {
         return StreamBuilder(
           stream: authService.authStateChanges,
           builder: (BuildContext context, AsyncSnapshot snapshot) {
-            Widget widget;
             if (snapshot.connectionState == ConnectionState.waiting) {
-              widget = LoadingPage();
+              return const LoadingPage();
             } else if (snapshot.hasData) {
-              widget = DashboardPage();
+              return const _RoleBasedDashboardRouter();
             } else {
-              widget = WelcomePage();
+              return const WelcomePage();
             }
-            return widget;
           },
         );
+      },
+    );
+  }
+}
+
+class _RoleBasedDashboardRouter extends StatelessWidget {
+  const _RoleBasedDashboardRouter();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: KVariables.getIsDealer(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LoadingPage();
+        }
+        final isDealer = snapshot.data ?? true;
+        return isDealer ? const DashboardPage() : const SalesmanDashboardPage();
       },
     );
   }

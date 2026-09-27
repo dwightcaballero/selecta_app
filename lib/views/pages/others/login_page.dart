@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/user_services.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
+import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/others/register_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
@@ -57,8 +59,11 @@ class _LoginPageState extends State<LoginPage> {
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully logged in!');
+        final isDealer = record?.role == BusinessRole.dealer;
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const DashboardPage()),
+          MaterialPageRoute(
+            builder: (context) => isDealer ? const DashboardPage() : const SalesmanDashboardPage(),
+          ),
           (Route<dynamic> route) => false,
         );
       }

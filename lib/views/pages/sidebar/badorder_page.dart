@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/badorder.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/services/auth_service.dart';
@@ -30,7 +31,10 @@ class _BadOrderPageState extends State<BadOrderPage> {
   final TextEditingController txtDescription = TextEditingController();
 
   final _formKey = GlobalKey<FormState>();
+  bool _isDealer = false;
   DateTime _selectedDate = DateTime.now();
+
+  bool get isReadOnly => widget.recID.isNotEmpty && !_isDealer;
 
   @override
   void dispose() {
@@ -46,13 +50,15 @@ class _BadOrderPageState extends State<BadOrderPage> {
     prefetchData();
   }
 
-  void prefetchData() {
+  void prefetchData() async {
+    _isDealer = await KVariables.getIsDealer();
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.badorder.description;
       txtAmount.text = Helperfunctions.formatDoubleAmountForField(widget.badorder.badorderAmount);
       _selectedDate = widget.badorder.badorderDate.toDate();
       dropDownController.text = widget.badorder.hapistore;
     }
+    if (mounted) setState(() {});
   }
 
   void onSave() {
@@ -77,6 +83,10 @@ class _BadOrderPageState extends State<BadOrderPage> {
   }
 
   void onDelete() {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to delete bad order records.');
+      return;
+    }
     db.deleteBadOrder(widget.recID);
     Helperfunctions.logDelete(widget.badorder.hapistore, widget.badorder.toJson());
     ShowMessage.success(context, 'Successfully deleted bad order record for [${widget.badorder.hapistore}]!');
@@ -84,6 +94,10 @@ class _BadOrderPageState extends State<BadOrderPage> {
   }
 
   void onUpdate() {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to update bad order records.');
+      return;
+    }
     if (_formKey.currentState!.validate()) {
       BadOrder newRecord = widget.badorder.copyWith(
         description: txtDescription.text,
@@ -185,12 +199,13 @@ class _BadOrderPageState extends State<BadOrderPage> {
       icon: Icons.notes_outlined,
       child: TextFormField(
         controller: txtDescription,
+        readOnly: isReadOnly,
         keyboardType: TextInputType.multiline,
         minLines: 3,
         maxLines: null,
         decoration: InputDecoration(
           labelText: 'Description / Remarks',
-          hintText: 'Specify damaged items, expiry dates, or batch details...',
+          hintText: isReadOnly ? '' : 'Specify damaged items, expiry dates, or batch details...',
           alignLabelWithHint: true,
           prefixIcon: Icon(Icons.notes_outlined, size: 20, color: colorScheme.primary),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -218,6 +233,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
 
         return DropdownMenuFormField<String>(
           controller: dropDownController,
+          enabled: !isReadOnly,
           initialSelection: dropDownController.text,
           label: const Text('Hapi Store'),
           leadingIcon: const Icon(Icons.storefront_outlined, size: 20),
@@ -241,9 +257,10 @@ class _BadOrderPageState extends State<BadOrderPage> {
   Widget _buildMoneyField({required String label, required TextEditingController controller, required IconData prefixIcon}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Focus(
-      onFocusChange: (hasFocus) => onFocusChange(hasFocus, controller),
+      onFocusChange: isReadOnly ? null : (hasFocus) => onFocusChange(hasFocus, controller),
       child: TextFormField(
         controller: controller,
+        readOnly: isReadOnly,
         textAlign: TextAlign.end,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
@@ -268,7 +285,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
   Widget _buildDatePickerField({required String label, required DateTime selectedDate, required VoidCallback onTap}) {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: onTap,
+      onTap: isReadOnly ? null : onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -358,7 +375,10 @@ class _BadOrderPageState extends State<BadOrderPage> {
 
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
-    bool isUpdating = widget.recID.isNotEmpty;
+    final bool isUpdating = widget.recID.isNotEmpty;
+    if (isUpdating && !_isDealer) {
+      return const SizedBox.shrink();
+    }
 
     return SafeArea(
       child: Container(
@@ -371,33 +391,35 @@ class _BadOrderPageState extends State<BadOrderPage> {
         child: isUpdating
             ? Row(
                 children: [
-                  Expanded(
-                    flex: 1,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final confirmed = await ShowMessage.confirm(
-                          context,
-                          title: ConfirmTitle.delete,
-                          message: 'Are you sure you want to delete this bad order record for [${widget.badorder.hapistore}]?',
-                          isDestructive: true,
-                          icon: Icons.delete_outline,
-                          confirmText: 'Delete',
-                        );
-                        if (confirmed) onDelete();
-                      },
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 50.0),
-                        foregroundColor: Colors.red.shade700,
-                        side: BorderSide(color: Colors.red.shade300, width: 1.2),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  if (_isDealer) ...[
+                    Expanded(
+                      flex: 1,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final confirmed = await ShowMessage.confirm(
+                            context,
+                            title: ConfirmTitle.delete,
+                            message: 'Are you sure you want to delete this bad order record for [${widget.badorder.hapistore}]?',
+                            isDestructive: true,
+                            icon: Icons.delete_outline,
+                            confirmText: 'Delete',
+                          );
+                          if (confirmed) onDelete();
+                        },
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 50.0),
+                          foregroundColor: Colors.red.shade700,
+                          side: BorderSide(color: Colors.red.shade300, width: 1.2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                        label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
-                      icon: const Icon(Icons.delete_outline, size: 20),
-                      label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                  ),
-                  const SizedBox(width: 12),
+                    const SizedBox(width: 12),
+                  ],
                   Expanded(
-                    flex: 2,
+                    flex: _isDealer ? 2 : 1,
                     child: FilledButton.icon(
                       onPressed: () async {
                         final confirmed = await ShowMessage.confirm(
@@ -454,6 +476,33 @@ class _BadOrderPageState extends State<BadOrderPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             spacing: 16,
             children: [
+              if (isReadOnly)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.shade300, width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'View-Only: Only dealers are authorized to edit or delete existing bad order records.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.amber.shade900,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               // 1. Incident Details Card
               _buildIncidentDetailsCard(),
 

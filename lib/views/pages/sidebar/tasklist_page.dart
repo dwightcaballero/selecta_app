@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/tasks.dart';
 import 'package:flutter_app/services/tasks_services.dart';
 import 'package:flutter_app/views/pages/sidebar/tasks_page.dart';
@@ -24,6 +25,7 @@ typedef TaskListPage = TasklistPage;
 class _TasklistPageState extends State<TasklistPage> {
   final TasksService db = TasksService();
 
+  bool _isDealer = false;
   late final Stream<QuerySnapshot> _tasksStream;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -33,10 +35,20 @@ class _TasklistPageState extends State<TasklistPage> {
   @override
   void initState() {
     super.initState();
+    _checkDealerRole();
     _tasksStream = db.getListTasks();
     if (widget.initialStoreName != null && widget.initialStoreName!.isNotEmpty) {
       _searchController.text = widget.initialStoreName!;
       _searchQuery = widget.initialStoreName!.trim().toLowerCase();
+    }
+  }
+
+  void _checkDealerRole() async {
+    final isDealer = await KVariables.getIsDealer();
+    if (mounted) {
+      setState(() {
+        _isDealer = isDealer;
+      });
     }
   }
 
@@ -48,6 +60,7 @@ class _TasklistPageState extends State<TasklistPage> {
   }
 
   void _navigateToAddTask() {
+    if (!_isDealer) return;
     Helperfunctions.navigateTo(
       context,
       TasksPage(
@@ -654,16 +667,20 @@ class _TasklistPageState extends State<TasklistPage> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Keep track of assignments and store duties by adding your first task.',
+              _isDealer
+                  ? 'Keep track of assignments and store duties by adding your first task.'
+                  : 'No tasks currently assigned or scheduled.',
               style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _navigateToAddTask,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add First Task'),
-            ),
+            if (_isDealer) ...[
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: _navigateToAddTask,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add First Task'),
+              ),
+            ],
           ],
         ),
       ),
@@ -724,15 +741,17 @@ class _TasklistPageState extends State<TasklistPage> {
         title: 'Tasks',
         subtitle: 'Store & Operational Tasks',
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToAddTask,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          'Add Task',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-      ),
+      floatingActionButton: _isDealer
+          ? FloatingActionButton.extended(
+              onPressed: _navigateToAddTask,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text(
+                'Add Task',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+            )
+          : null,
       body: StreamBuilder<QuerySnapshot>(
         stream: _tasksStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
