@@ -1,15 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app/controllers/endofday_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/breakdown.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/breakdown_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 
 class BreakdownPage extends StatefulWidget {
   const BreakdownPage({super.key, required this.breakdownID, required this.breakdown});
@@ -22,8 +20,9 @@ class BreakdownPage extends StatefulWidget {
 }
 
 class _BreakdownPageState extends State<BreakdownPage> {
-  final BreakdownTotal breakdownTotal = BreakdownTotal();
-  final BreakdownService db = BreakdownService();
+  // Controller managing calculations, verification, and audit logging
+  final EndOfDayController _controller = EndOfDayController();
+  BreakdownTotal breakdownTotal = BreakdownTotal();
   bool isDealer = false;
   final TextEditingController txt1 = TextEditingController();
   final TextEditingController txt10 = TextEditingController();
@@ -84,7 +83,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
   }
 
   void _checkDealer() async {
-    final dealer = await KVariables.getIsDealer();
+    final dealer = await _controller.checkIsDealer();
     if (mounted) {
       setState(() {
         isDealer = dealer;
@@ -113,19 +112,10 @@ class _BreakdownPageState extends State<BreakdownPage> {
         widget.breakdown.isVerifiedByDealer = newStatus;
       });
 
-      final updatedRecord = widget.breakdown.copyWith(
-        isVerifiedByDealer: newStatus,
-        lastUpdatedBy: authService.value.currentUser?.displayName ?? '',
-        lastupdatedDate: Timestamp.now(),
-        lastUpdatedPage: AppPages.breakdown,
-      );
-
-      db.updateBreakdown(widget.breakdownID, updatedRecord);
-      Helperfunctions.logUpdate(
-        Helperfunctions.formatTimestampForDisplay(updatedRecord.breakdownDate),
-        widget.breakdown.toJson(),
-        updatedRecord.toJson(),
-        page: AppPages.breakdown,
+      await _controller.toggleVerification(
+        breakdownId: widget.breakdownID,
+        currentRecord: widget.breakdown,
+        newStatus: newStatus,
       );
 
       if (mounted) {
@@ -139,9 +129,9 @@ class _BreakdownPageState extends State<BreakdownPage> {
     }
   }
 
-  void onSave() {
+  void onSave() async {
     recompute();
-    Breakdown newRecord = Breakdown(
+    final newRecord = Breakdown(
       breakdownDate: widget.breakdown.breakdownDate,
       bankDepositAmount: txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text),
       breakdownAmount: widget.breakdown.breakdownAmount,
@@ -158,27 +148,25 @@ class _BreakdownPageState extends State<BreakdownPage> {
       c10: txt10.text.isEmpty ? 0 : int.parse(txt10.text),
       c5: txt5.text.isEmpty ? 0 : int.parse(txt5.text),
       c1: txt1.text.isEmpty ? 0 : int.parse(txt1.text),
-      createdBy: authService.value.currentUser!.displayName!,
-      lastUpdatedBy: authService.value.currentUser!.displayName!,
+      createdBy: _controller.currentUserName,
+      lastUpdatedBy: _controller.currentUserName,
       createdDate: Timestamp.now(),
       lastupdatedDate: Timestamp.now(),
       createdPage: AppPages.breakdown,
       lastUpdatedPage: AppPages.breakdown,
     );
 
-    db.addBreakdown(newRecord);
-    Helperfunctions.logCreate(
-      Helperfunctions.formatTimestampForDisplay(newRecord.breakdownDate),
-      newRecord.toJson(),
-      page: AppPages.breakdown,
-    );
-    ShowMessage.success(context, 'Successfully created a new breakdown record!');
-    Navigator.pop(context);
+    await _controller.saveBreakdown(record: newRecord);
+
+    if (mounted) {
+      ShowMessage.success(context, 'Successfully created a new breakdown record!');
+      Navigator.pop(context);
+    }
   }
 
-  void onUpdate() {
+  void onUpdate() async {
     recompute();
-    Breakdown newRecord = widget.breakdown.copyWith(
+    final updatedRecord = widget.breakdown.copyWith(
       breakdownDate: widget.breakdown.breakdownDate,
       breakdownAmount: widget.breakdown.breakdownAmount,
       expectedAmount: widget.breakdown.expectedAmount,
@@ -196,58 +184,52 @@ class _BreakdownPageState extends State<BreakdownPage> {
       c5: txt5.text.isEmpty ? 0 : int.parse(txt5.text),
       c1: txt1.text.isEmpty ? 0 : int.parse(txt1.text),
       createdBy: widget.breakdown.createdBy,
-      lastUpdatedBy: authService.value.currentUser!.displayName!,
+      lastUpdatedBy: _controller.currentUserName,
       createdDate: widget.breakdown.createdDate,
       lastupdatedDate: Timestamp.now(),
       createdPage: widget.breakdown.createdPage,
       lastUpdatedPage: AppPages.breakdown,
     );
 
-    db.updateBreakdown(widget.breakdownID, newRecord);
-    Helperfunctions.logUpdate(
-      Helperfunctions.formatTimestampForDisplay(newRecord.breakdownDate),
-      widget.breakdown.toJson(),
-      newRecord.toJson(),
-      page: AppPages.breakdown,
+    await _controller.updateBreakdown(
+      breakdownId: widget.breakdownID,
+      originalRecord: widget.breakdown,
+      updatedRecord: updatedRecord,
     );
-    ShowMessage.success(context, 'Successfully updated breakdown record!');
-    Navigator.pop(context);
+
+    if (mounted) {
+      ShowMessage.success(context, 'Successfully updated breakdown record!');
+      Navigator.pop(context);
+    }
   }
 
   void recompute() {
-    if (withBankDeposit) {
-      widget.breakdown.bankDepositAmount = txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text);
-    } else {
-      widget.breakdown.bankDepositAmount = 0;
+    final double bankAmt = txtBankDeposit.text.isEmpty ? 0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text);
+    if (!withBankDeposit) {
       txtBankDeposit.text = '';
     }
 
-    breakdownTotal.total1000 = txt1000.text.isEmpty ? 0 : double.parse(txt1000.text) * 1000;
-    breakdownTotal.total500 = txt500.text.isEmpty ? 0 : double.parse(txt500.text) * 500;
-    breakdownTotal.total200 = txt200.text.isEmpty ? 0 : double.parse(txt200.text) * 200;
-    breakdownTotal.total100 = txt100.text.isEmpty ? 0 : double.parse(txt100.text) * 100;
-    breakdownTotal.total50 = txt50.text.isEmpty ? 0 : double.parse(txt50.text) * 50;
-    breakdownTotal.totalB20 = txtB20.text.isEmpty ? 0 : double.parse(txtB20.text) * 20;
-    breakdownTotal.totalC20 = txtC20.text.isEmpty ? 0 : double.parse(txtC20.text) * 20;
-    breakdownTotal.total10 = txt10.text.isEmpty ? 0 : double.parse(txt10.text) * 10;
-    breakdownTotal.total5 = txt5.text.isEmpty ? 0 : double.parse(txt5.text) * 5;
-    breakdownTotal.total1 = txt1.text.isEmpty ? 0 : double.parse(txt1.text) * 1;
-    breakdownTotal.totalCent = txtCent.text.isEmpty ? 0 : double.parse(txtCent.text) * .01;
+    final result = _controller.recompute(
+      withBankDeposit: withBankDeposit,
+      bankDepositAmount: bankAmt,
+      b1000: txt1000.text.isEmpty ? 0 : int.parse(txt1000.text),
+      b500: txt500.text.isEmpty ? 0 : int.parse(txt500.text),
+      b200: txt200.text.isEmpty ? 0 : int.parse(txt200.text),
+      b100: txt100.text.isEmpty ? 0 : int.parse(txt100.text),
+      b50: txt50.text.isEmpty ? 0 : int.parse(txt50.text),
+      b20: txtB20.text.isEmpty ? 0 : int.parse(txtB20.text),
+      c20: txtC20.text.isEmpty ? 0 : int.parse(txtC20.text),
+      c10: txt10.text.isEmpty ? 0 : int.parse(txt10.text),
+      c5: txt5.text.isEmpty ? 0 : int.parse(txt5.text),
+      c1: txt1.text.isEmpty ? 0 : int.parse(txt1.text),
+      cent: txtCent.text.isEmpty ? 0 : int.parse(txtCent.text),
+      expectedAmount: widget.breakdown.expectedAmount,
+    );
 
-    widget.breakdown.breakdownAmount =
-        breakdownTotal.total1000 +
-        breakdownTotal.total500 +
-        breakdownTotal.total200 +
-        breakdownTotal.total100 +
-        breakdownTotal.total50 +
-        breakdownTotal.totalB20 +
-        breakdownTotal.totalC20 +
-        breakdownTotal.total10 +
-        breakdownTotal.total5 +
-        breakdownTotal.total1 +
-        breakdownTotal.totalCent;
-
-    widget.breakdown.discrepancy = (widget.breakdown.bankDepositAmount + widget.breakdown.breakdownAmount) - widget.breakdown.expectedAmount;
+    breakdownTotal = result.breakdownTotal;
+    widget.breakdown.bankDepositAmount = withBankDeposit ? bankAmt : 0;
+    widget.breakdown.breakdownAmount = result.breakdownAmount;
+    widget.breakdown.discrepancy = result.discrepancy;
 
     setState(() {});
   }
@@ -615,72 +597,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
     );
   }
 
-  Widget _buildAuditCard() {
-    final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
-        ),
-        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 8,
-              children: [
-                _buildAuditRow('Created By', widget.breakdown.createdBy),
-                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.breakdown.createdDate.toDate())),
-                if (widget.breakdown.createdPage.isNotEmpty)
-                  _buildAuditRow('Created On Page', widget.breakdown.createdPage),
-                const Divider(height: 12),
-                _buildAuditRow('Last Updated By', widget.breakdown.lastUpdatedBy),
-                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.breakdown.lastupdatedDate.toDate())),
-                if (widget.breakdown.lastUpdatedPage.isNotEmpty)
-                  _buildAuditRow('Last Updated Page', widget.breakdown.lastUpdatedPage),
-                const Divider(height: 12),
-                _buildAuditRow('Verified by Dealer', widget.breakdown.isVerifiedByDealer ? 'Yes' : 'No'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuditRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-        ),
-      ],
-    );
-  }
 
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
@@ -777,24 +694,24 @@ class _BreakdownPageState extends State<BreakdownPage> {
             _buildBankDepositCard(),
 
             // 4. Audit & History Card (when viewing existing breakdown)
-            if (widget.breakdownID.isNotEmpty) _buildAuditCard(),
+            if (widget.breakdownID.isNotEmpty)
+              AuditHistoryWidget(
+                createdBy: widget.breakdown.createdBy,
+                createdDate: widget.breakdown.createdDate,
+                createdPage: widget.breakdown.createdPage,
+                lastUpdatedBy: widget.breakdown.lastUpdatedBy,
+                lastUpdatedDate: widget.breakdown.lastupdatedDate,
+                lastUpdatedPage: widget.breakdown.lastUpdatedPage,
+                additionalRows: [
+                  AuditHistoryRow(
+                    label: 'Verified by Dealer',
+                    value: widget.breakdown.isVerifiedByDealer ? 'Yes' : 'No',
+                  ),
+                ],
+              ),
           ],
         ),
       ),
     );
   }
-}
-
-class BreakdownTotal {
-  double total1 = 0;
-  double total10 = 0;
-  double total100 = 0;
-  double total1000 = 0;
-  double total200 = 0;
-  double total5 = 0;
-  double total50 = 0;
-  double total500 = 0;
-  double totalB20 = 0;
-  double totalC20 = 0;
-  double totalCent = 0;
 }

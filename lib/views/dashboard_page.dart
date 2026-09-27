@@ -1,46 +1,36 @@
-import 'dart:convert';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/notifiers.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/models/users.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/views/pages/dashboard/expansion_page.dart';
-import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/sales_page.dart';
-import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
-import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/creditlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/expansion_page.dart';
 import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/sales_page.dart';
+import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
+import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/thruput_page.dart';
+import 'package:flutter_app/views/pages/others/auth_page.dart';
+import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/configuration_page.dart';
 import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
 import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
-import 'package:flutter_app/services/tasks_services.dart';
 import 'package:flutter_app/views/pages/sidebar/hapistorelist_page.dart';
-import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
-import 'package:flutter_app/views/pages/dashboard/thruput_page.dart';
-import 'package:flutter_app/services/purchaseorder_service.dart';
-import 'package:flutter_app/views/pages/others/auth_page.dart';
-import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/purchaseorderlist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/transactionlog_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -50,9 +40,9 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  final TasksService _tasksService = TasksService();
-  final HapiStoreService _hapiStoreService = HapiStoreService();
-  final PurchaseOrderService _purchaseOrderService = PurchaseOrderService();
+  // Controller handling dashboard sync, data caching, live count streams, and role switching
+  final DashboardController _controller = DashboardController();
+
   late final Stream<int> _tasksCountStream;
   late final Stream<int> _merchBlitzCountStream;
   late final Stream<int> _purchaseOrdersAwaitingCountStream;
@@ -65,9 +55,9 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    _tasksCountStream = _tasksService.getPendingAndOverdueCountStream();
-    _merchBlitzCountStream = _hapiStoreService.getUnsurveyedMerchBlitzCountStream(forDealer: true);
-    _purchaseOrdersAwaitingCountStream = _purchaseOrderService.getAwaitingInvoiceCountStream();
+    _tasksCountStream = _controller.getTasksPendingAndOverdueCountStream();
+    _merchBlitzCountStream = _controller.getMerchBlitzCountStream(forDealer: true);
+    _purchaseOrdersAwaitingCountStream = _controller.getPurchaseOrdersAwaitingCountStream();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       prefetchData();
     });
@@ -78,14 +68,16 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!showLoading && mounted) setState(() {});
   }
 
+  // Load user info and cached metrics via DashboardController
   void prefetchData() async {
-    _currentUser = await KVariables.getUser();
+    _currentUser = await _controller.getCurrentUser();
     isDealer = _currentUser?.role == BusinessRole.dealer;
     lastSyncDateTime = await DashboardController.getLastSync();
     await _syncDashboardFromSharedPreferences();
     if (mounted) setState(() {});
   }
 
+  // Compute fresh dashboard totals and refresh view
   Future<void> syncDashboard() async {
     if (!mounted) return;
 
@@ -120,6 +112,7 @@ class _DashboardPageState extends State<DashboardPage> {
     await syncDashboard();
   }
 
+  // Synchronize dashboard state from local cache via controller
   Future<void> _syncDashboardFromSharedPreferences() async {
     final isToday = await DashboardController.isLastSyncToday();
     if (!isToday) {
@@ -127,29 +120,22 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final jsonString = prefs.getString('dashboard_DTO');
-    if (jsonString == null || !mounted) {
+    final cachedDashboard = await _controller.getCachedDashboardData();
+    if (cachedDashboard == null || !mounted) {
       await syncDashboard();
       return;
     }
 
-    try {
-      final json = jsonDecode(jsonString) as Map<String, dynamic>;
-      final cachedDashboard = DashboardDTO.fromJson(json);
-      final cachedLastSync = await DashboardController.getLastSync();
-      if (!mounted) return;
+    final cachedLastSync = await DashboardController.getLastSync();
+    if (!mounted) return;
 
-      setState(() {
-        dashboardDTO = cachedDashboard;
-        lastSyncDateTime = cachedLastSync;
-      });
-    } on FormatException {
-      // Ignore a stale or malformed cache; the next manual refresh rebuilds it.
-      await syncDashboard();
-    }
+    setState(() {
+      dashboardDTO = cachedDashboard;
+      lastSyncDateTime = cachedLastSync;
+    });
   }
 
+  // Logout via DashboardController
   void onLogout() async {
     final confirmed = await ShowMessage.confirm(
       context,
@@ -162,13 +148,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
     if (confirmed) {
       try {
-        await authService.value.signOut();
+        await _controller.signOut();
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const AuthPage()), (_) => false);
         }
-      } on FirebaseAuthException catch (e) {
+      } catch (e) {
         if (mounted) {
-          ShowMessage.error(context, e.message ?? 'There was a problem upon signing out');
+          ShowMessage.error(context, 'There was a problem upon signing out');
         }
       }
     }
@@ -227,29 +213,9 @@ class _DashboardPageState extends State<DashboardPage> {
     showLoading(true);
     try {
       final isCurrentlyDealer = isDealer;
-      final newRole = isCurrentlyDealer ? BusinessRole.salesman : BusinessRole.dealer;
+      final newRole = await _controller.switchUserRole(isCurrentlyDealer);
 
-      // 1. Update Firebase Firestore
-      final currentEmail = FirebaseAuth.instance.currentUser?.email;
-      if (currentEmail != null && currentEmail.isNotEmpty) {
-        final query = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: currentEmail).limit(1).get();
-        if (query.docs.isNotEmpty) {
-          await FirebaseFirestore.instance.collection('users').doc(query.docs.first.id).update({'role': newRole});
-        }
-      }
-
-      // 2. Update SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final currentUser = await KVariables.getUser();
-      if (currentUser != null) {
-        final updatedUser = currentUser.copyWith(role: newRole);
-        await prefs.setString('user_data', jsonEncode(updatedUser.toJson()));
-      }
-      await prefs.setString(SharedPrefKeys.role, newRole);
-
-      HapiStoreService.invalidateCache();
-
-      // 3. Switch screens without animations
+      // Switch screens without animations
       if (mounted) {
         await showLoading(false);
         if (!mounted) return;
@@ -292,7 +258,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildWelcomeBanner() {
     final colorScheme = Theme.of(context).colorScheme;
-    final displayName = _currentUser?.username ?? authService.value.currentUser?.displayName ?? (isDealer ? 'Dealer' : 'Salesman');
+    final displayName = _currentUser?.username ?? (isDealer ? 'Dealer' : 'Salesman');
     final hasSyncTime = lastSyncDateTime.isNotEmpty && lastSyncDateTime != 'Never';
 
     return GestureDetector(
@@ -863,7 +829,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildDrawer() {
     final colorScheme = Theme.of(context).colorScheme;
-    final user = authService.value.currentUser;
 
     return Drawer(
       child: ListView(
@@ -883,10 +848,10 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  user?.displayName ?? 'User',
+                  _currentUser?.username ?? (isDealer ? 'Dealer' : 'Salesman'),
                   style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
                 ),
-                Text(user?.email ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                Text(_currentUser?.email ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
               ],
             ),
           ),

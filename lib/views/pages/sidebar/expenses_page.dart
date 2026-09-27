@@ -1,15 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app/controllers/expenses_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/expenses.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/expenses_services.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 
 class ExpensesPage extends StatefulWidget {
   const ExpensesPage({super.key, required this.recID, required this.expense});
@@ -22,7 +19,9 @@ class ExpensesPage extends StatefulWidget {
 }
 
 class _ExpensesPageState extends State<ExpensesPage> {
-  final ExpensesService db = ExpensesService();
+  // Controller managing data mutations, role verification, and audit logging
+  final ExpensesController _controller = ExpensesController();
+
   final TextEditingController txtAmount = TextEditingController();
   final TextEditingController txtDescription = TextEditingController();
 
@@ -45,8 +44,9 @@ class _ExpensesPageState extends State<ExpensesPage> {
     prefetchData();
   }
 
+  // Load user role and initial form values
   void prefetchData() async {
-    _isDealer = await KVariables.getIsDealer();
+    _isDealer = await _controller.checkIsDealer();
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.expense.description;
       txtAmount.text = Helperfunctions.formatDoubleAmountForField(widget.expense.expenseAmount);
@@ -55,71 +55,77 @@ class _ExpensesPageState extends State<ExpensesPage> {
     if (mounted) setState(() {});
   }
 
-  void onSave() async {
+  // Create new expense record through controller
+  Future<void> onSave() async {
     if (_formKey.currentState!.validate()) {
-      Expenses newRecord = Expenses(
-        description: txtDescription.text,
-        expenseAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
-        expenseDate: Timestamp.fromDate(_selectedDate),
-        createdBy: authService.value.currentUser!.displayName!,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: Timestamp.now(),
-        lastupdatedDate: Timestamp.now(),
-        createdPage: AppPages.expenses,
-        lastUpdatedPage: AppPages.expenses,
-      );
-      db.addExpenses(newRecord);
-      await Helperfunctions.logCreate(txtDescription.text, newRecord.toJson(), page: AppPages.expenses);
-
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully created expense record for [${txtDescription.text}]!');
-        Navigator.pop(context);
+      try {
+        await _controller.createExpense(
+          description: txtDescription.text,
+          amount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
+          selectedDate: _selectedDate,
+        );
+        if (mounted) {
+          ShowMessage.success(context, 'Successfully created expense record for [${txtDescription.text}]!');
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to create record: $e');
+        }
       }
     } else {
       ShowMessage.error(context, 'Please fill up all required fields');
     }
   }
 
-  void onUpdate() async {
+  // Update existing expense record through controller (dealer only)
+  Future<void> onUpdate() async {
     if (!_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to edit expense records.');
       return;
     }
     if (_formKey.currentState!.validate()) {
-      Expenses expenses = widget.expense.copyWith(
-        description: txtDescription.text,
-        expenseAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
-        expenseDate: Timestamp.fromDate(_selectedDate),
-        createdBy: widget.expense.createdBy,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: widget.expense.createdDate,
-        lastupdatedDate: Timestamp.now(),
-        createdPage: widget.expense.createdPage,
-        lastUpdatedPage: AppPages.expenses,
-      );
-      db.updateExpenses(widget.recID, expenses);
-      await Helperfunctions.logUpdate(expenses.description, widget.expense.toJson(), expenses.toJson(), page: AppPages.expenses);
-
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully updated expense record for [${expenses.description}]!');
-        Navigator.pop(context);
+      try {
+        await _controller.updateExpense(
+          recID: widget.recID,
+          existingRecord: widget.expense,
+          description: txtDescription.text,
+          amount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
+          selectedDate: _selectedDate,
+        );
+        if (mounted) {
+          ShowMessage.success(context, 'Successfully updated expense record for [${txtDescription.text}]!');
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to update record: $e');
+        }
       }
     } else {
       ShowMessage.error(context, 'Please fill up all required fields');
     }
   }
 
-  void onDelete() async {
+  // Delete expense record through controller (dealer only)
+  Future<void> onDelete() async {
     if (!_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to delete expense records.');
       return;
     }
-    db.deleteExpenses(widget.recID);
-    await Helperfunctions.logDelete(widget.expense.description, widget.expense.toJson(), page: AppPages.expenses);
-
-    if (mounted) {
-      ShowMessage.success(context, 'Successfully deleted expense record for [${widget.expense.description}]!');
-      Navigator.pop(context);
+    try {
+      await _controller.deleteExpense(
+        recID: widget.recID,
+        existingRecord: widget.expense,
+      );
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully deleted expense record for [${widget.expense.description}]!');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to delete record: $e');
+      }
     }
   }
 
@@ -272,70 +278,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
     );
   }
 
-  Widget _buildAuditCard() {
-    final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
-        ),
-        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 8,
-              children: [
-                _buildAuditRow('Created By', widget.expense.createdBy),
-                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.expense.createdDate.toDate())),
-                if (widget.expense.createdPage.isNotEmpty)
-                  _buildAuditRow('Created On Page', widget.expense.createdPage),
-                const Divider(height: 12),
-                _buildAuditRow('Last Updated By', widget.expense.lastUpdatedBy),
-                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.expense.lastupdatedDate.toDate())),
-                if (widget.expense.lastUpdatedPage.isNotEmpty)
-                  _buildAuditRow('Last Updated Page', widget.expense.lastUpdatedPage),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuditRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-        ),
-      ],
-    );
-  }
 
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
@@ -472,7 +415,15 @@ class _ExpensesPageState extends State<ExpensesPage> {
               _buildExpenseDetailsCard(),
 
               // 2. Audit & History Card (if editing)
-              if (widget.recID.isNotEmpty) _buildAuditCard(),
+              if (widget.recID.isNotEmpty)
+                AuditHistoryWidget(
+                  createdBy: widget.expense.createdBy,
+                  createdDate: widget.expense.createdDate,
+                  createdPage: widget.expense.createdPage,
+                  lastUpdatedBy: widget.expense.lastUpdatedBy,
+                  lastUpdatedDate: widget.expense.lastupdatedDate,
+                  lastUpdatedPage: widget.expense.lastUpdatedPage,
+                ),
             ],
           ),
         ),

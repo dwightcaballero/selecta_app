@@ -1,17 +1,15 @@
-import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/user_services.dart';
+import 'package:flutter_app/controllers/login_controller.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/others/register_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/snackbar_widget.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+/// User login presentation page with form inputs, password visibility toggling,
+/// and dialog-driven password recovery.
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -20,6 +18,9 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  // Controller managing authentication, profile synchronization, and error translation
+  final LoginController _controller = LoginController();
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -33,6 +34,7 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  /// Handles user sign-in submission via controller
   Future<void> _login() async {
     if (!(_formKey.currentState?.validate() ?? false)) {
       SnackBarWidget.error(context, 'Please enter a valid email and password.');
@@ -43,36 +45,28 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      if (!mounted) return;
-
-      await authService.value.signIn(email: _emailController.text.trim(), password: _passwordController.text);
-
-      UserService db = UserService();
-      var record = await db.getUserByEmail(_emailController.text.trim());
-      if (record != null) {
-        await authService.value.updateUsername(username: record.username);
-
-        final SharedPreferences prefs = await SharedPreferences.getInstance();
-        String jsonString = jsonEncode(record.toJson());
-        await prefs.setString('user_data', jsonString);
-      }
+      final result = await _controller.login(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully logged in!');
-        final isDealer = record?.role == BusinessRole.dealer;
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (context) => isDealer ? const DashboardPage() : const SalesmanDashboardPage(),
+            builder: (context) => result.isDealer ? const DashboardPage() : const SalesmanDashboardPage(),
           ),
           (Route<dynamic> route) => false,
         );
       }
     } on FirebaseAuthException catch (error) {
-      if (!mounted) return;
-      SnackBarWidget.error(context, _friendlyFirebaseMessage(error));
-    } catch (error) {
-      if (!mounted) return;
-      SnackBarWidget.error(context, 'Unable to sign in. Please try again.');
+      if (mounted) {
+        SnackBarWidget.error(context, _controller.getFriendlyErrorMessage(error));
+      }
+    } catch (_) {
+      if (mounted) {
+        SnackBarWidget.error(context, 'Unable to sign in. Please try again.');
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -80,6 +74,7 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  /// Prompts user with dialog and triggers reset password link via controller
   Future<void> _handleForgotPassword() async {
     final resetController = TextEditingController(text: _emailController.text.trim());
     final colorScheme = Theme.of(context).colorScheme;
@@ -138,30 +133,15 @@ class _LoginPageState extends State<LoginPage> {
 
     if (emailToSend != null && mounted) {
       try {
-        await authService.value.resetPassword(email: emailToSend);
+        await _controller.sendPasswordResetEmail(emailToSend);
         if (mounted) {
           SnackBarWidget.success(context, 'Password reset email sent to $emailToSend');
         }
-      } catch (e) {
+      } catch (_) {
         if (mounted) {
           SnackBarWidget.error(context, 'Could not send reset email. Verify address and try again.');
         }
       }
-    }
-  }
-
-  String _friendlyFirebaseMessage(FirebaseAuthException error) {
-    switch (error.code) {
-      case 'user-not-found':
-      case 'wrong-password':
-      case 'invalid-credential':
-        return 'Invalid email or password.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please try again later.';
-      case 'network-request-failed':
-        return 'Network connection error. Check your internet.';
-      default:
-        return 'Unable to sign in. Please verify your details.';
     }
   }
 

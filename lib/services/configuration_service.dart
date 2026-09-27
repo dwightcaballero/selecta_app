@@ -32,6 +32,11 @@ class ConfigurationService {
     return doc.data() ?? Configuration.empty();
   }
 
+  Future<bool> configurationExists([String docId = DEFAULT_CONFIG_DOC_ID]) async {
+    final doc = await _configRef.doc(docId).get();
+    return doc.exists;
+  }
+
   Future<void> saveConfiguration(Configuration config, [String docId = DEFAULT_CONFIG_DOC_ID]) async {
     await _configRef.doc(docId).set(config, SetOptions(merge: true));
   }

@@ -1,16 +1,17 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/controllers/return_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 import 'package:flutter_app/views/widgets/imageviewer_page.dart';
 import 'package:intl/intl.dart';
 
+/// Presentation view for inspecting, redelivering, or deleting a returned delivery order.
+///
+/// Authentication checks, model updates, image deletions, and service interactions
+/// are delegated to [ReturnController].
 class ReturnPage extends StatefulWidget {
   const ReturnPage({super.key, required this.recID, required this.delivery});
 
@@ -22,7 +23,7 @@ class ReturnPage extends StatefulWidget {
 }
 
 class _ReturnPageState extends State<ReturnPage> {
-  final DeliveryService db = DeliveryService();
+  final ReturnController _controller = ReturnController();
   bool _isProcessing = false;
   bool _isDealer = false;
 
@@ -33,7 +34,7 @@ class _ReturnPageState extends State<ReturnPage> {
   }
 
   void prefetchData() async {
-    _isDealer = await KVariables.getIsDealer();
+    _isDealer = await _controller.checkIsDealer();
     if (mounted) setState(() {});
   }
 
@@ -46,38 +47,15 @@ class _ReturnPageState extends State<ReturnPage> {
     setState(() => _isProcessing = true);
 
     try {
-      final targetDate = rescheduleDate != null ? Timestamp.fromDate(rescheduleDate) : Timestamp.now();
-      final updatedDelivery = widget.delivery.copyWith(
-        storeName: widget.delivery.storeName,
-        remarks: '',
-        transactionStatus: DeliveryStatus.pending,
-        orderAmount: widget.delivery.orderAmount,
-        returnAmount: 0,
-        creditAmount: widget.delivery.creditAmount,
-        cashAmount: widget.delivery.cashAmount,
-        onlineAmount: widget.delivery.onlineAmount,
-        deliveryDate: targetDate,
-        creditStatus: '',
-        createdBy: widget.delivery.createdBy,
-        lastUpdatedBy: authService.value.currentUser?.displayName ?? authService.value.currentUser?.email ?? 'Admin',
-        createdDate: widget.delivery.createdDate,
-        lastupdatedDate: Timestamp.now(),
-        createdPage: widget.delivery.createdPage,
-        lastUpdatedPage: AppPages.returnPage,
+      final updatedDelivery = await _controller.rescheduleDelivery(
+        deliveryId: widget.recID,
+        delivery: widget.delivery,
+        rescheduleDate: rescheduleDate,
       );
 
-      db.updateDelivery(widget.recID, updatedDelivery);
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully rescheduled delivery for [${updatedDelivery.storeName}]!');
-
       Navigator.pop(context);
-
-      await Helperfunctions.logUpdate(
-        '[REDELIVER] ${widget.delivery.storeName}',
-        widget.delivery.toJson(),
-        updatedDelivery.toJson(),
-        page: AppPages.returnPage,
-      );
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to reschedule delivery: $e');
     } finally {
@@ -94,21 +72,15 @@ class _ReturnPageState extends State<ReturnPage> {
     setState(() => _isProcessing = true);
 
     try {
-      if (widget.delivery.imagePath.isNotEmpty) {
-        await Helperfunctions.deleteImage(context, widget.delivery.imagePath);
-      }
+      await _controller.deleteReturn(
+        context: context,
+        deliveryId: widget.recID,
+        delivery: widget.delivery,
+      );
 
-      db.deleteDelivery(widget.recID);
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully deleted delivery record!\n[${widget.delivery.storeName}]');
-
       Navigator.pop(context);
-
-      await Helperfunctions.logDelete(
-        '[DELETE] ${widget.delivery.storeName}',
-        widget.delivery.toJson(),
-        page: AppPages.returnPage,
-      );
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to delete record: $e');
     } finally {
@@ -311,70 +283,7 @@ class _ReturnPageState extends State<ReturnPage> {
     );
   }
 
-  Widget _buildAuditCard() {
-    final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
-        ),
-        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 8,
-              children: [
-                _buildAuditRow('Created By', widget.delivery.createdBy),
-                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.createdDate.toDate())),
-                if (widget.delivery.createdPage.isNotEmpty)
-                  _buildAuditRow('Created On Page', widget.delivery.createdPage),
-                const Divider(height: 12),
-                _buildAuditRow('Last Updated By', widget.delivery.lastUpdatedBy),
-                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.lastupdatedDate.toDate())),
-                if (widget.delivery.lastUpdatedPage.isNotEmpty)
-                  _buildAuditRow('Last Updated Page', widget.delivery.lastUpdatedPage),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuditRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-        ),
-      ],
-    );
-  }
 
   Widget _buildProofCard() {
     if (widget.delivery.imagePath.isEmpty) return const SizedBox.shrink();
@@ -631,7 +540,14 @@ class _ReturnPageState extends State<ReturnPage> {
             _buildPaymentDetailsCard(),
 
             // 5. Audit & History Card
-            _buildAuditCard(),
+            AuditHistoryWidget(
+              createdBy: widget.delivery.createdBy,
+              createdDate: widget.delivery.createdDate,
+              createdPage: widget.delivery.createdPage,
+              lastUpdatedBy: widget.delivery.lastUpdatedBy,
+              lastUpdatedDate: widget.delivery.lastupdatedDate,
+              lastUpdatedPage: widget.delivery.lastUpdatedPage,
+            ),
           ],
         ),
       ),

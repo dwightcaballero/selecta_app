@@ -3,17 +3,14 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/controllers/purchaseorder_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/purchaseorder.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/purchaseorder_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/imageviewer_page.dart';
-import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 
 class PurchaseorderPage extends StatefulWidget {
   const PurchaseorderPage({super.key, required this.purchaseorderID, required this.purchaseorder});
@@ -26,7 +23,8 @@ class PurchaseorderPage extends StatefulWidget {
 }
 
 class _PurchaseorderPageState extends State<PurchaseorderPage> {
-  final PurchaseOrderService db = PurchaseOrderService();
+  // Controller managing data operations, calculations, and scanner
+  final PurchaseOrderController _controller = PurchaseOrderController();
   final TextEditingController invoiceAmountController = TextEditingController();
   final TextEditingController orderAmountController = TextEditingController();
   final TextEditingController orderNumberController = TextEditingController();
@@ -72,7 +70,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   Future<void> _loadUnsettledOverpayments() async {
     setState(() => _isLoadingOverpayments = true);
     try {
-      final records = await db.getUnsettledOverpayments();
+      final records = await _controller.getUnsettledOverpayments();
       if (mounted) {
         setState(() {
           _unsettledOverpayments = records;
@@ -87,13 +85,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   double get _totalSelectedOverpayments {
-    double total = 0;
-    for (final doc in _unsettledOverpayments) {
-      if (_selectedOverpaymentIds.contains(doc.id)) {
-        total += doc.data().overpayment;
-      }
-    }
-    return total;
+    return _controller.calculateTotalSelectedOverpayments(
+      unsettledDocs: _unsettledOverpayments,
+      selectedIds: _selectedOverpaymentIds,
+    );
   }
 
   double get _guidedNetAmount {
@@ -133,56 +128,15 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
   void onSave() async {
     if (_formKey.currentState!.validate()) {
-      String imageFilePath = '';
-      if (_pickedImage != null) {
-        imageFilePath = await Helperfunctions.saveImage(context, _pickedImage!);
-      }
-
-      final newPurchaseorder = Purchaseorder(
-        invoiceNumber: '',
+      await _controller.savePurchaseOrder(
+        context: context,
         orderAmount: Helperfunctions.formatStringAmountToDouble(orderAmountController.text),
-        orderDate: Timestamp.fromDate(_selectedOrderDate),
-        overpayment: 0,
-        isSettled: null,
-        createdBy: authService.value.currentUser?.displayName ?? 'User',
-        lastUpdatedBy: authService.value.currentUser?.displayName ?? 'User',
-        createdDate: Timestamp.now(),
-        lastupdatedDate: Timestamp.now(),
-        invoiceAmount: 0,
-        imagePath: imageFilePath,
-        invoiceDate: Timestamp.fromDate(_selectedInvoiceDate),
-        createdPage: AppPages.purchaseOrder,
-        lastUpdatedPage: AppPages.purchaseOrder,
+        selectedOrderDate: _selectedOrderDate,
+        selectedInvoiceDate: _selectedInvoiceDate,
+        pickedImage: _pickedImage,
+        selectedOverpaymentIds: _selectedOverpaymentIds,
+        unsettledOverpayments: _unsettledOverpayments,
       );
-
-      db.addPurchaseorder(newPurchaseorder);
-      await Helperfunctions.logCreate(
-        Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate),
-        newPurchaseorder.toJson(),
-        page: AppPages.purchaseOrder,
-      );
-
-      // Mark all checked overpayments as settled
-      if (_selectedOverpaymentIds.isNotEmpty) {
-        final currentUserDisplayName = authService.value.currentUser?.displayName ?? 'User';
-        for (final doc in _unsettledOverpayments) {
-          if (_selectedOverpaymentIds.contains(doc.id)) {
-            final order = doc.data();
-            final prevJson = order.toJson();
-            order.isSettled = true;
-            order.lastUpdatedBy = currentUserDisplayName;
-            order.lastupdatedDate = Timestamp.now();
-            order.lastUpdatedPage = AppPages.purchaseOrder;
-            db.updatePurchaseorder(doc.id, order);
-            await Helperfunctions.logUpdate(
-              order.invoiceNumber.isNotEmpty ? order.invoiceNumber : Helperfunctions.formatTimestampForDisplay(order.orderDate),
-              prevJson,
-              order.toJson(),
-              page: AppPages.purchaseOrder,
-            );
-          }
-        }
-      }
 
       if (mounted) {
         final msg = _selectedOverpaymentIds.isNotEmpty
@@ -197,61 +151,36 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   void onUpdate() async {
     if (_formKey.currentState!.validate()) {
       final double invoiceAmount = Helperfunctions.formatStringAmountToDouble(invoiceAmountController.text);
-      final double overpayment = widget.purchaseorder.orderAmount - invoiceAmount;
+      try {
+        await _controller.updatePurchaseOrder(
+          context: context,
+          purchaseOrderId: widget.purchaseorderID,
+          currentOrder: widget.purchaseorder,
+          invoiceNumber: orderNumberController.text,
+          invoiceAmount: invoiceAmount,
+          selectedOrderDate: _selectedOrderDate,
+          selectedInvoiceDate: _selectedInvoiceDate,
+          pickedImage: _pickedImage,
+          networkImagePath: networkImagePath,
+        );
 
-      if (invoiceAmount > widget.purchaseorder.orderAmount) {
-        ShowMessage.error(context, 'Invoice amount cannot exceed the order amount.');
-        return;
-      }
-
-      final String imageFilePath = await Helperfunctions.updateImage(context, _pickedImage, networkImagePath, widget.purchaseorder.imagePath);
-
-      final updatedPurchaseorder = Purchaseorder(
-        invoiceNumber: orderNumberController.text.trim().toUpperCase(),
-        orderAmount: widget.purchaseorder.orderAmount,
-        orderDate: Timestamp.fromDate(_selectedOrderDate),
-        overpayment: overpayment > 0 ? overpayment : 0,
-        isSettled: overpayment > 0 ? (widget.purchaseorder.isSettled ?? false) : null,
-        createdBy: widget.purchaseorder.createdBy,
-        lastUpdatedBy: authService.value.currentUser?.displayName ?? 'User',
-        createdDate: widget.purchaseorder.createdDate,
-        lastupdatedDate: Timestamp.now(),
-        invoiceAmount: invoiceAmount,
-        imagePath: imageFilePath,
-        invoiceDate: Timestamp.fromDate(_selectedInvoiceDate),
-        createdPage: widget.purchaseorder.createdPage,
-        lastUpdatedPage: AppPages.purchaseOrder,
-      );
-
-      db.updatePurchaseorder(widget.purchaseorderID, updatedPurchaseorder);
-      await Helperfunctions.logUpdate(
-        updatedPurchaseorder.invoiceNumber.isNotEmpty
-            ? updatedPurchaseorder.invoiceNumber
-            : Helperfunctions.formatTimestampForDisplay(updatedPurchaseorder.orderDate),
-        widget.purchaseorder.toJson(),
-        updatedPurchaseorder.toJson(),
-        page: AppPages.purchaseOrder,
-      );
-
-      if (mounted) {
-        ShowMessage.success(context, 'Purchase order updated successfully!');
-        Navigator.pop(context);
+        if (mounted) {
+          ShowMessage.success(context, 'Purchase order updated successfully!');
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
+        }
       }
     }
   }
 
   void onDelete() async {
-    if (widget.purchaseorder.imagePath.isNotEmpty) {
-      await Helperfunctions.deleteImage(context, widget.purchaseorder.imagePath);
-    }
-
-    db.deletePurchaseorder(widget.purchaseorderID);
-    await Helperfunctions.logDelete(
-      widget.purchaseorder.invoiceNumber.isNotEmpty
-          ? widget.purchaseorder.invoiceNumber
-          : Helperfunctions.formatTimestampForDisplay(widget.purchaseorder.orderDate),
-      widget.purchaseorder.toJson(),
-      page: AppPages.purchaseOrder,
+    await _controller.deletePurchaseOrder(
+      context: context,
+      purchaseOrderId: widget.purchaseorderID,
+      order: widget.purchaseorder,
     );
 
     if (mounted) {
@@ -910,18 +839,15 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     final hasImageData = _pickedImage != null || networkImagePath.isNotEmpty;
 
     Future<void> startScan() async {
-      ImageScanResult? scannedData;
       try {
-        scannedData = await FlutterDocScanner().getScannedDocumentAsImages(page: 1);
-      } on PlatformException catch (error) {
-        if (mounted) {
-          ShowMessage.error(context, error.message ?? 'Error while scanning document');
+        final scannedFile = await _controller.scanDocument();
+        if (scannedFile != null) {
+          await pickImageFromFile(scannedFile);
         }
-      }
-
-      if (scannedData != null && scannedData.images.isNotEmpty) {
-        final filePath = scannedData.images.first.replaceFirst('file://', '');
-        await pickImageFromFile(File(filePath));
+      } catch (error) {
+        if (mounted) {
+          ShowMessage.error(context, error.toString().replaceAll('Exception: ', ''));
+        }
       }
     }
 
@@ -1058,71 +984,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
   }
 
-  Widget _buildAuditCard() {
-    final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
-        ),
-        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              spacing: 8,
-              children: [
-                _buildAuditRow('Created By', widget.purchaseorder.createdBy),
-                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.purchaseorder.createdDate.toDate())),
-                if (widget.purchaseorder.createdPage.isNotEmpty)
-                  _buildAuditRow('Created On Page', widget.purchaseorder.createdPage),
-                const Divider(height: 12),
-                _buildAuditRow('Last Updated By', widget.purchaseorder.lastUpdatedBy),
-                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.purchaseorder.lastupdatedDate.toDate())),
-                if (widget.purchaseorder.lastUpdatedPage.isNotEmpty)
-                  _buildAuditRow('Last Updated Page', widget.purchaseorder.lastUpdatedPage),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuditRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-        ),
-      ],
-    );
-  }
 
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1226,7 +1088,15 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               if (isNewRecord) _buildUnsettledOverpaymentsCard(),
               if (!isNewRecord) _buildInvoiceCard(),
               if (!isNewRecord) _buildAttachmentCard(),
-              if (!isNewRecord) _buildAuditCard(),
+              if (!isNewRecord)
+                AuditHistoryWidget(
+                  createdBy: widget.purchaseorder.createdBy,
+                  createdDate: widget.purchaseorder.createdDate,
+                  createdPage: widget.purchaseorder.createdPage,
+                  lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
+                  lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
+                  lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+                ),
               const SizedBox(height: 8),
             ],
           ),

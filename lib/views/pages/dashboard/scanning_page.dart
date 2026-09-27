@@ -1,19 +1,19 @@
 import 'package:barcode_widget/barcode_widget.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app/controllers/scanning_controller.dart';
 import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/scanning.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/scanning_services.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
 import 'package:intl/intl.dart';
 
+/// Presentation view for creating, editing, and deleting freezer barcode records.
+///
+/// Barcode persistence, status resolution, dealer authorization checks,
+/// and audit transaction logging are managed by [ScanningController].
 class ScanningPage extends StatefulWidget {
   const ScanningPage({super.key, required this.initialBarcode, this.initialStoreName});
 
@@ -25,12 +25,12 @@ class ScanningPage extends StatefulWidget {
 }
 
 class _ScanningPageState extends State<ScanningPage> {
+  final ScanningController _controller = ScanningController();
   final TextEditingController _dropdownHapiStore = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _hasCheckedDatabase = false;
   bool _isDealer = false;
   Scanning _scanning = Scanning.empty();
-  final ScanningServices _scanningServices = ScanningServices();
   String _selectedStatus = ScanningStatus.notScanned;
 
   bool get _hasUnsavedChanges {
@@ -53,8 +53,8 @@ class _ScanningPageState extends State<ScanningPage> {
   }
 
   void prefetchData() async {
-    _isDealer = await KVariables.getIsDealer();
-    _scanning = await _scanningServices.getScanningByBarcode(widget.initialBarcode) ?? Scanning.empty();
+    _isDealer = await _controller.checkIsDealer();
+    _scanning = await _controller.getScanningByBarcode(widget.initialBarcode) ?? Scanning.empty();
     _selectedStatus = _scanning.status.isEmpty ? ScanningStatus.notScanned : _scanning.status;
     _dropdownHapiStore.text = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
     _hasCheckedDatabase = true;
@@ -99,46 +99,14 @@ class _ScanningPageState extends State<ScanningPage> {
       return;
     }
 
-    String scannedBy = '';
-    String storeName = _dropdownHapiStore.text;
-    Timestamp? scannedDate;
-
-    switch (_selectedStatus) {
-      case ScanningStatus.notScanned:
-        scannedDate = null;
-        scannedBy = '';
-        break;
-      case ScanningStatus.scanned:
-        scannedDate = Timestamp.now();
-        scannedBy = authService.value.currentUser?.displayName ?? '';
-        break;
-      case ScanningStatus.pullout:
-        scannedDate = Timestamp.now();
-        scannedBy = '';
-        storeName = '';
-        break;
-      default:
-        scannedDate = _scanning.scannedDate;
-        scannedBy = _scanning.scannedBy;
-    }
-
-    final newRecord = Scanning(
-      id: _scanning.id,
-      barcode: widget.initialBarcode,
-      storeName: storeName,
-      scannedDate: scannedDate,
-      scannedBy: scannedBy,
-      status: _selectedStatus,
-    );
-
     try {
-      final bool isNewRecord = _scanning.id.isEmpty;
-      await _scanningServices.saveScanning(newRecord);
-      if (isNewRecord) {
-        await Helperfunctions.logCreate(newRecord.storeName, newRecord.toJson(), page: AppPages.scanning);
-      } else {
-        await Helperfunctions.logUpdate(newRecord.storeName, _scanning.toJson(), newRecord.toJson(), page: AppPages.scanning);
-      }
+      final newRecord = await _controller.saveScanningRecord(
+        existing: _scanning,
+        barcode: widget.initialBarcode,
+        storeName: _dropdownHapiStore.text,
+        status: _selectedStatus,
+      );
+
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully saved the scanning record!\n[${newRecord.storeName.isNotEmpty ? newRecord.storeName : "Pullout"}]');
       Navigator.pop(context);
@@ -165,8 +133,7 @@ class _ScanningPageState extends State<ScanningPage> {
     if (!confirmed || !mounted) return;
 
     try {
-      await _scanningServices.deleteScanning(_scanning.id);
-      await Helperfunctions.logDelete(_scanning.storeName, _scanning.toJson(), page: AppPages.scanning);
+      await _controller.deleteScanningRecord(_scanning);
       if (!mounted) return;
       ShowMessage.success(context, 'Scanning record deleted.');
       Navigator.pop(context);

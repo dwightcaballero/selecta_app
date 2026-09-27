@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_app/controllers/scanning_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/models/scanning.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
-import 'package:flutter_app/services/scanning_services.dart';
-import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
 import 'package:flutter_app/views/pages/dashboard/scanning_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
+import 'package:intl/intl.dart';
 
-enum _ScanningSort { storeNameAscending, storeNameDescending, barcodeAscending, barcodeDescending, scannedDateAscending, scannedDateDescending }
-
+/// Presentation view for the freezer barcode scanning list.
+///
+/// Data hydration, unassigned store resolution, search filtering,
+/// and comparator sorting are delegated to [ScanningController].
 class ScanninglistPage extends StatefulWidget {
   const ScanninglistPage({super.key});
 
@@ -19,12 +20,14 @@ class ScanninglistPage extends StatefulWidget {
 }
 
 class _ScanninglistPageState extends State<ScanninglistPage> {
+  final ScanningController _controller = ScanningController();
+
   List<Scanning> scanningList = [];
   Map<String, Hapistore> _storesMap = {};
 
   int _currentIndex = 0;
   bool _isLoading = true;
-  _ScanningSort _sort = _ScanningSort.storeNameAscending;
+  ScanningSort _sort = ScanningSort.storeNameAscending;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
@@ -47,98 +50,25 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
 
   Future<void> prefetchData() async {
     if (mounted) setState(() => _isLoading = true);
-    final results = await Future.wait([
-      ScanningServices.getAllScannings(),
-      HapiStoreService.getListHapiStores(forceRefresh: true),
-    ]);
-    final scannings = results[0] as List<Scanning>;
-    final stores = results[1] as List<Hapistore>;
+    final data = await _controller.loadScanningData();
 
     if (!mounted) return;
 
-    final storesMap = <String, Hapistore>{};
-    final assignedStoreNames = <String>{};
-
-    for (final store in stores) {
-      if (store.storeName.trim().isNotEmpty) {
-        storesMap[store.storeName.trim().toLowerCase()] = store;
-      }
-    }
-
-    for (final s in scannings) {
-      if (s.barcode.trim().isNotEmpty && s.status != ScanningStatus.pullout && s.storeName.trim().isNotEmpty) {
-        assignedStoreNames.add(s.storeName.trim().toLowerCase());
-      }
-    }
-
-    final combinedList = List<Scanning>.from(scannings);
-
-    // Identify unassigned stores (stores with no barcode saved in the database)
-    for (final store in stores) {
-      final name = store.storeName.trim();
-      if (name.isEmpty) continue;
-      final key = name.toLowerCase();
-      if (!assignedStoreNames.contains(key)) {
-        final alreadyInList = combinedList.any(
-          (s) => s.status == ScanningStatus.unassigned && s.storeName.trim().toLowerCase() == key,
-        );
-        if (!alreadyInList) {
-          combinedList.add(
-            Scanning(
-              id: '',
-              barcode: '',
-              storeName: store.storeName,
-              scannedDate: null,
-              scannedBy: '',
-              status: ScanningStatus.unassigned,
-            ),
-          );
-        }
-      }
-    }
-
     setState(() {
-      _storesMap = storesMap;
-      scanningList = combinedList;
+      _storesMap = data.storesMap;
+      scanningList = data.scannings;
       _isLoading = false;
     });
   }
 
   List<Scanning> _filteredAndSorted(String status) {
-    List<Scanning> filtered = scanningList.where((scanning) => scanning.status == status).toList();
-    if (_searchQuery.isNotEmpty) {
-      filtered = filtered.where((scanning) {
-        final store = _storesMap[scanning.storeName.trim().toLowerCase()];
-        final address = store?.storeAddress.toLowerCase() ?? '';
-        final contact = store?.storeContact.toLowerCase() ?? '';
-        return scanning.storeName.toLowerCase().contains(_searchQuery) ||
-            scanning.barcode.toLowerCase().contains(_searchQuery) ||
-            address.contains(_searchQuery) ||
-            contact.contains(_searchQuery);
-      }).toList();
-    }
-    filtered.sort(_compareScannings);
-    return filtered;
-  }
-
-  int _compareScannings(Scanning first, Scanning second) {
-    final comparison = switch (_sort) {
-      _ScanningSort.storeNameAscending ||
-      _ScanningSort.storeNameDescending => first.storeName.toLowerCase().compareTo(second.storeName.toLowerCase()),
-      _ScanningSort.barcodeAscending || _ScanningSort.barcodeDescending =>
-        first.barcode.compareTo(second.barcode) != 0
-            ? first.barcode.compareTo(second.barcode)
-            : first.storeName.toLowerCase().compareTo(second.storeName.toLowerCase()),
-      _ScanningSort.scannedDateAscending || _ScanningSort.scannedDateDescending =>
-        first.scannedDate == null
-            ? (second.scannedDate == null ? first.storeName.toLowerCase().compareTo(second.storeName.toLowerCase()) : -1)
-            : (second.scannedDate == null ? 1 : first.scannedDate!.compareTo(second.scannedDate!)),
-    };
-
-    return switch (_sort) {
-      _ScanningSort.storeNameDescending || _ScanningSort.barcodeDescending || _ScanningSort.scannedDateDescending => -comparison,
-      _ => comparison,
-    };
+    return _controller.filterAndSortScannings(
+      scannings: scanningList,
+      storesMap: _storesMap,
+      status: status,
+      searchQuery: _searchQuery,
+      sort: _sort,
+    );
   }
 
   void _openScanning(Scanning scanning) async {
@@ -264,22 +194,22 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
   }
 
   Widget _buildSortMenu() {
-    return PopupMenuButton<_ScanningSort>(
+    return PopupMenuButton<ScanningSort>(
       icon: const Icon(Icons.sort_rounded, color: Colors.white),
       tooltip: 'Sort scannings',
       onSelected: (sort) => setState(() => _sort = sort),
       itemBuilder: (context) => [
-        _buildSortOption(_ScanningSort.storeNameAscending, 'Store Name', true),
-        _buildSortOption(_ScanningSort.storeNameDescending, 'Store Name', false),
-        _buildSortOption(_ScanningSort.barcodeAscending, 'Barcode', true),
-        _buildSortOption(_ScanningSort.barcodeDescending, 'Barcode', false),
-        _buildSortOption(_ScanningSort.scannedDateAscending, 'Scanned Date', true),
-        _buildSortOption(_ScanningSort.scannedDateDescending, 'Scanned Date', false),
+        _buildSortOption(ScanningSort.storeNameAscending, 'Store Name', true),
+        _buildSortOption(ScanningSort.storeNameDescending, 'Store Name', false),
+        _buildSortOption(ScanningSort.barcodeAscending, 'Barcode', true),
+        _buildSortOption(ScanningSort.barcodeDescending, 'Barcode', false),
+        _buildSortOption(ScanningSort.scannedDateAscending, 'Scanned Date', true),
+        _buildSortOption(ScanningSort.scannedDateDescending, 'Scanned Date', false),
       ],
     );
   }
 
-  PopupMenuItem<_ScanningSort> _buildSortOption(_ScanningSort sort, String label, bool ascending) {
+  PopupMenuItem<ScanningSort> _buildSortOption(ScanningSort sort, String label, bool ascending) {
     return PopupMenuItem(
       value: sort,
       child: Row(

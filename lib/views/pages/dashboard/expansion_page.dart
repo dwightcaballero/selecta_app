@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/expansion_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
+/// Presentation view displaying new store expansion tracking and KPI metrics.
+///
+/// Data fetching, sorting by opening date, progress calculations, and search filtering
+/// are managed by [ExpansionController], decoupling presentation from database queries.
 class ExpansionPage extends StatefulWidget {
   const ExpansionPage({super.key});
 
@@ -14,7 +18,8 @@ class ExpansionPage extends StatefulWidget {
 }
 
 class _ExpansionPageState extends State<ExpansionPage> {
-  static const int monthlyTarget = 8;
+  final ExpansionController _controller = ExpansionController();
+  static const int monthlyTarget = ExpansionController.monthlyTarget;
 
   List<Hapistore> storesThisMonth = [];
   List<Hapistore> storesPastThreeMonths = [];
@@ -46,15 +51,14 @@ class _ExpansionPageState extends State<ExpansionPage> {
     });
 
     try {
-      final listHapiStores = await HapiStoreService.getListHapiStoresOpenedWithinPastThreeMonths();
-      final listHapiStoresThisMonth = await HapiStoreService.getListHapiStoresWithOpeningDateInCurrentMonth();
+      final data = await _controller.loadExpansionData(target: monthlyTarget);
       if (!mounted) return;
 
       setState(() {
-        storesThisMonth = listHapiStoresThisMonth..sort(_sortByOpeningDate);
-        storesPastThreeMonths = listHapiStores..sort(_sortByOpeningDate);
-        totalExpansionPastThreeMonths = listHapiStores.length;
-        totalExpansionThisMonth = listHapiStoresThisMonth.length;
+        storesThisMonth = data.storesThisMonth;
+        storesPastThreeMonths = data.storesPastThreeMonths;
+        totalExpansionPastThreeMonths = data.totalExpansionPastThreeMonths;
+        totalExpansionThisMonth = data.totalExpansionThisMonth;
         isLoading = false;
       });
     } catch (error) {
@@ -66,25 +70,9 @@ class _ExpansionPageState extends State<ExpansionPage> {
     }
   }
 
-  int _sortByOpeningDate(Hapistore first, Hapistore second) {
-    final firstDate = first.openingDate?.toDate();
-    final secondDate = second.openingDate?.toDate();
-    if (firstDate == null && secondDate == null) return first.storeName.compareTo(second.storeName);
-    if (firstDate == null) return 1;
-    if (secondDate == null) return -1;
-    // Newest opening date first
-    return secondDate.compareTo(firstDate);
-  }
-
   List<Hapistore> get _currentStoreList {
     final list = _selectedPeriod == 0 ? storesThisMonth : storesPastThreeMonths;
-    if (_searchQuery.trim().isEmpty) return list;
-    final query = _searchQuery.trim().toLowerCase();
-    return list.where((s) {
-      final nameMatches = s.storeName.toLowerCase().contains(query);
-      final addressMatches = s.storeAddress.toLowerCase().contains(query);
-      return nameMatches || addressMatches;
-    }).toList();
+    return _controller.filterStores(stores: list, searchQuery: _searchQuery);
   }
 
   Widget _buildProgressSummary() {

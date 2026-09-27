@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/placement_controller.dart';
 import 'package:flutter_app/models/placement.dart';
-import 'package:flutter_app/services/placement_service.dart';
 import 'package:flutter_app/views/pages/dashboard/placement_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
-enum _PlacementSort {
-  storeNameAscending,
-  storeNameDescending,
-  progressCountAscending,
-  progressCountDescending,
-}
-
+/// Presentation view for the store placement checklist overview.
+///
+/// Data fetching, sorting, and completion/search filtering are handled by
+/// [PlacementController], while direct Firestore communication stays in the service layer.
 class PlacementlistPage extends StatefulWidget {
   const PlacementlistPage({super.key});
 
@@ -20,9 +17,10 @@ class PlacementlistPage extends StatefulWidget {
 }
 
 class _PlacementlistPageState extends State<PlacementlistPage> {
+  final PlacementController _controller = PlacementController();
   int _currentIndex = 0; // 0 = Complete, 1 = Incomplete
   List<Placement> listPlacement = [];
-  _PlacementSort _sort = _PlacementSort.storeNameAscending;
+  PlacementSort _sort = PlacementSort.storeNameAscending;
   bool _isLoading = true;
   String? _errorMessage;
   final TextEditingController _searchController = TextEditingController();
@@ -48,7 +46,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
       });
     }
     try {
-      final placements = await PlacementService.getListPlacementForAllStores();
+      final placements = await _controller.loadAllPlacements();
       if (!mounted) return;
       setState(() {
         listPlacement = placements;
@@ -68,33 +66,12 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
   int get _incompleteCount => listPlacement.where((p) => !p.isFinished).length;
 
   List<Placement> _filteredAndSorted(bool isFinished) {
-    List<Placement> filtered = listPlacement.where((p) {
-      final matchesStatus = p.isFinished == isFinished;
-      final matchesSearch = _searchQuery.isEmpty ||
-          p.storeName.toLowerCase().contains(_searchQuery.toLowerCase());
-      return matchesStatus && matchesSearch;
-    }).toList();
-
-    filtered.sort(_compareStores);
-    return filtered;
-  }
-
-  int _compareStores(Placement first, Placement second) {
-    final comparison = switch (_sort) {
-      _PlacementSort.storeNameAscending ||
-      _PlacementSort.storeNameDescending =>
-        first.storeName.toLowerCase().compareTo(second.storeName.toLowerCase()),
-      _PlacementSort.progressCountAscending ||
-      _PlacementSort.progressCountDescending =>
-        first.progressCount.compareTo(second.progressCount),
-    };
-
-    return switch (_sort) {
-      _PlacementSort.storeNameDescending ||
-      _PlacementSort.progressCountDescending =>
-        -comparison,
-      _ => comparison,
-    };
+    return _controller.filterAndSortPlacements(
+      placements: listPlacement,
+      isFinished: isFinished,
+      searchQuery: _searchQuery,
+      sort: _sort,
+    );
   }
 
   void _openPlacement(Placement placement) async {
@@ -106,21 +83,21 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
   }
 
   Widget _buildSortMenu() {
-    return PopupMenuButton<_PlacementSort>(
+    return PopupMenuButton<PlacementSort>(
       icon: const Icon(Icons.sort_rounded, color: Colors.white),
       tooltip: 'Sort placements',
       onSelected: (sort) => setState(() => _sort = sort),
       itemBuilder: (context) => [
-        _buildSortOption(_PlacementSort.storeNameAscending, 'Store Name', 'A to Z', Icons.sort_by_alpha_rounded),
-        _buildSortOption(_PlacementSort.storeNameDescending, 'Store Name', 'Z to A', Icons.sort_by_alpha_rounded),
-        _buildSortOption(_PlacementSort.progressCountDescending, 'Progress', 'Highest first', Icons.trending_up_rounded),
-        _buildSortOption(_PlacementSort.progressCountAscending, 'Progress', 'Lowest first', Icons.trending_down_rounded),
+        _buildSortOption(PlacementSort.storeNameAscending, 'Store Name', 'A to Z', Icons.sort_by_alpha_rounded),
+        _buildSortOption(PlacementSort.storeNameDescending, 'Store Name', 'Z to A', Icons.sort_by_alpha_rounded),
+        _buildSortOption(PlacementSort.progressCountDescending, 'Progress', 'Highest first', Icons.trending_up_rounded),
+        _buildSortOption(PlacementSort.progressCountAscending, 'Progress', 'Lowest first', Icons.trending_down_rounded),
       ],
     );
   }
 
-  PopupMenuItem<_PlacementSort> _buildSortOption(
-    _PlacementSort sort,
+  PopupMenuItem<PlacementSort> _buildSortOption(
+    PlacementSort sort,
     String label,
     String subtitle,
     IconData icon,

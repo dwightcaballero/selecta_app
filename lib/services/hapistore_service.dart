@@ -59,6 +59,19 @@ class HapiStoreService {
     });
   }
 
+  Future<void> updateLastPjpVisit(String hapiStoreID, [Timestamp? timestamp]) async {
+    invalidateCache();
+    await _firestore.collection(HAPISTORE_COLLECTION_REF).doc(hapiStoreID).update({
+      'lastPjpVisit': timestamp ?? Timestamp.now(),
+    });
+  }
+
+  Future<Hapistore?> getHapiStoreById(String hapiStoreID) async {
+    final doc = await _firestore.collection(HAPISTORE_COLLECTION_REF).doc(hapiStoreID).get();
+    if (!doc.exists || doc.data() == null) return null;
+    return Hapistore.fromJson(doc.data()!);
+  }
+
   void deleteHapiStore(String hapiStoreID) {
     invalidateCache();
     _hapistoresRef.doc(hapiStoreID).delete();

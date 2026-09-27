@@ -39,6 +39,12 @@ class ScanningServices {
     }
   }
 
+  // Get scanning records for a specific store
+  Future<List<Scanning>> getScanningsByStoreName(String storeName) async {
+    final snapshot = await _scanningRef.where('storeName', isEqualTo: storeName).get();
+    return snapshot.docs.map((doc) => doc.data().copyWith(id: doc.id)).toList();
+  }
+
   // Get all scanning records
   static Future<List<Scanning>> getAllScannings() async {
     final querySnapshot = await FirebaseFirestore.instance

@@ -1,17 +1,13 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app/controllers/badorder_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/badorder.dart';
 import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/badorder_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 
 class BadOrderPage extends StatefulWidget {
   const BadOrderPage({super.key, required this.recID, required this.badorder});
@@ -24,8 +20,9 @@ class BadOrderPage extends StatefulWidget {
 }
 
 class _BadOrderPageState extends State<BadOrderPage> {
-  final BadOrderService db = BadOrderService();
-  final HapiStoreService dbHS = HapiStoreService();
+  // Controller managing data mutations, role verification, and store streams
+  final BadOrderController _controller = BadOrderController();
+
   final TextEditingController dropDownController = TextEditingController();
   final TextEditingController txtAmount = TextEditingController();
   final TextEditingController txtDescription = TextEditingController();
@@ -50,8 +47,9 @@ class _BadOrderPageState extends State<BadOrderPage> {
     prefetchData();
   }
 
+  // Load user role and initial form values
   void prefetchData() async {
-    _isDealer = await KVariables.getIsDealer();
+    _isDealer = await _controller.checkIsDealer();
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.badorder.description;
       txtAmount.text = Helperfunctions.formatDoubleAmountForField(widget.badorder.badorderAmount);
@@ -61,62 +59,74 @@ class _BadOrderPageState extends State<BadOrderPage> {
     if (mounted) setState(() {});
   }
 
-  void onSave() {
+  // Create new bad order record through controller
+  Future<void> onSave() async {
     if (_formKey.currentState!.validate()) {
-      BadOrder newRecord = BadOrder(
-        description: txtDescription.text,
-        hapistore: dropDownController.text,
-        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
-        badorderDate: Timestamp.fromDate(_selectedDate),
-        createdBy: authService.value.currentUser!.displayName!,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: Timestamp.now(),
-        lastupdatedDate: Timestamp.now(),
-        createdPage: AppPages.badOrder,
-        lastUpdatedPage: AppPages.badOrder,
-      );
-      db.addBadOrder(newRecord);
-      Helperfunctions.logCreate(dropDownController.text, newRecord.toJson(), page: AppPages.badOrder);
-      ShowMessage.success(context, 'Successfully created bad order record for [${dropDownController.text}]!');
-      Navigator.pop(context);
+      try {
+        await _controller.createBadOrder(
+          hapistore: dropDownController.text,
+          description: txtDescription.text,
+          amount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
+          selectedDate: _selectedDate,
+        );
+        if (mounted) {
+          ShowMessage.success(context, 'Successfully created bad order record for [${dropDownController.text}]!');
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to create record: $e');
+        }
+      }
     } else {
       ShowMessage.error(context, 'Please fill up all required fields');
     }
   }
 
-  void onDelete() {
+  // Delete bad order record through controller (dealer only)
+  Future<void> onDelete() async {
     if (!_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to delete bad order records.');
       return;
     }
-    db.deleteBadOrder(widget.recID);
-    Helperfunctions.logDelete(widget.badorder.hapistore, widget.badorder.toJson(), page: AppPages.badOrder);
-    ShowMessage.success(context, 'Successfully deleted bad order record for [${widget.badorder.hapistore}]!');
-    Navigator.pop(context);
+    try {
+      await _controller.deleteBadOrder(recID: widget.recID, existingRecord: widget.badorder);
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully deleted bad order record for [${widget.badorder.hapistore}]!');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to delete record: $e');
+      }
+    }
   }
 
-  void onUpdate() {
+  // Update existing bad order record through controller (dealer only)
+  Future<void> onUpdate() async {
     if (!_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to update bad order records.');
       return;
     }
     if (_formKey.currentState!.validate()) {
-      BadOrder newRecord = widget.badorder.copyWith(
-        description: txtDescription.text,
-        hapistore: dropDownController.text,
-        badorderAmount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
-        badorderDate: Timestamp.fromDate(_selectedDate),
-        createdBy: widget.badorder.createdBy,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: widget.badorder.createdDate,
-        lastupdatedDate: Timestamp.now(),
-        createdPage: widget.badorder.createdPage,
-        lastUpdatedPage: AppPages.badOrder,
-      );
-      db.updateBadOrder(widget.recID, newRecord);
-      Helperfunctions.logUpdate(dropDownController.text, widget.badorder.toJson(), newRecord.toJson(), page: AppPages.badOrder);
-      ShowMessage.success(context, 'Successfully updated bad order record for [${dropDownController.text}]!');
-      Navigator.pop(context);
+      try {
+        await _controller.updateBadOrder(
+          recID: widget.recID,
+          existingRecord: widget.badorder,
+          hapistore: dropDownController.text,
+          description: txtDescription.text,
+          amount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
+          selectedDate: _selectedDate,
+        );
+        if (mounted) {
+          ShowMessage.success(context, 'Successfully updated bad order record for [${dropDownController.text}]!');
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to update record: $e');
+        }
+      }
     } else {
       ShowMessage.error(context, 'Please fill up all required fields');
     }
@@ -226,7 +236,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
 
   Widget _buildHapistoreDropdown() {
     return StreamBuilder(
-      stream: dbHS.getListHapiStoresAsStream(),
+      stream: _controller.getHapiStoresStream(),
       builder: (BuildContext context, AsyncSnapshot snapshot) {
         final listHapiStore = snapshot.data?.docs ?? [];
         List<DropdownMenuEntry<String>> listDropdownItems = [];
@@ -316,70 +326,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
     );
   }
 
-  Widget _buildAuditCard() {
-    final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
-        ),
-        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 8,
-              children: [
-                _buildAuditRow('Created By', widget.badorder.createdBy),
-                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.badorder.createdDate.toDate())),
-                if (widget.badorder.createdPage.isNotEmpty)
-                  _buildAuditRow('Created On Page', widget.badorder.createdPage),
-                const Divider(height: 12),
-                _buildAuditRow('Last Updated By', widget.badorder.lastUpdatedBy),
-                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.badorder.lastupdatedDate.toDate())),
-                if (widget.badorder.lastUpdatedPage.isNotEmpty)
-                  _buildAuditRow('Last Updated Page', widget.badorder.lastUpdatedPage),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuditRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-        ),
-      ],
-    );
-  }
 
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
@@ -518,7 +465,15 @@ class _BadOrderPageState extends State<BadOrderPage> {
               _buildDescriptionCard(),
 
               // 3. Audit & History Card (if updating)
-              if (widget.recID.isNotEmpty) _buildAuditCard(),
+              if (widget.recID.isNotEmpty)
+                AuditHistoryWidget(
+                  createdBy: widget.badorder.createdBy,
+                  createdDate: widget.badorder.createdDate,
+                  createdPage: widget.badorder.createdPage,
+                  lastUpdatedBy: widget.badorder.lastUpdatedBy,
+                  lastUpdatedDate: widget.badorder.lastupdatedDate,
+                  lastUpdatedPage: widget.badorder.lastUpdatedPage,
+                ),
             ],
           ),
         ),

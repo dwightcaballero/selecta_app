@@ -1,14 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter_app/controllers/purchaseorder_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/purchaseorder.dart';
-import 'package:flutter_app/services/purchaseorder_service.dart';
 import 'package:flutter_app/views/pages/sidebar/purchaseorder_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
+/// Presentation page for displaying, filtering, and sorting purchase orders.
 class PurchaseorderlistPage extends StatefulWidget {
   const PurchaseorderlistPage({super.key});
 
@@ -17,7 +16,8 @@ class PurchaseorderlistPage extends StatefulWidget {
 }
 
 class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
-  final PurchaseOrderService db = PurchaseOrderService();
+  // Controller managing business logic and streams
+  final PurchaseOrderController _controller = PurchaseOrderController();
 
   late final Stream<QuerySnapshot> _ordersStream;
   final TextEditingController _searchController = TextEditingController();
@@ -32,7 +32,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
   @override
   void initState() {
     super.initState();
-    _ordersStream = db.getListPurchaseordersAsStream();
+    _ordersStream = _controller.getPurchaseOrdersStream();
   }
 
   @override
@@ -42,6 +42,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     super.dispose();
   }
 
+  /// Increments or decrements month selection
   void _changeMonth(int delta) {
     setState(() {
       _isAllMonths = false;
@@ -49,6 +50,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     });
   }
 
+  /// Dialog for selecting year and month
   Future<void> _pickMonthYear() async {
     final now = DateTime.now();
     int tempYear = _selectedMonth.year;
@@ -129,74 +131,71 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     );
   }
 
+  /// Horizontal bar allowing month-by-month navigation
   Widget _buildMonthNavigator() {
     final colorScheme = Theme.of(context).colorScheme;
     final now = DateTime.now();
     final bool isCurrentMonth = !_isAllMonths && _selectedMonth.year == now.year && _selectedMonth.month == now.month;
-    final String label = _isAllMonths ? 'All Months' : DateFormat('MMMM yyyy').format(_selectedMonth);
+    final String displayText = _isAllMonths ? 'All Months' : DateFormat('MMMM yyyy').format(_selectedMonth);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
-            icon: const Icon(Icons.chevron_left, size: 22),
-            visualDensity: VisualDensity.compact,
-            tooltip: 'Previous Month',
+            icon: const Icon(Icons.chevron_left_rounded),
+            tooltip: 'Previous month',
             onPressed: () => _changeMonth(-1),
+            visualDensity: VisualDensity.compact,
           ),
-          InkWell(
-            onTap: _pickMonthYear,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.calendar_month_outlined, size: 17, color: colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
-                  const SizedBox(width: 4),
-                  Icon(Icons.arrow_drop_down, size: 18, color: colorScheme.onSurfaceVariant),
-                  if (!isCurrentMonth && !_isAllMonths) ...[
+          Expanded(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: _pickMonthYear,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _isAllMonths ? Icons.all_inclusive_rounded : Icons.calendar_month_outlined,
+                      size: 16,
+                      color: colorScheme.primary,
+                    ),
                     const SizedBox(width: 6),
-                    InkWell(
-                      onTap: () => setState(() {
-                        _isAllMonths = false;
-                        _selectedMonth = DateTime(now.year, now.month);
-                      }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                        child: Text(
-                          'This Month',
-                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                        ),
+                    Text(
+                      displayText,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
                       ),
                     ),
+                    const SizedBox(width: 4),
+                    Icon(Icons.arrow_drop_down, size: 18, color: colorScheme.onSurfaceVariant),
                   ],
-                ],
+                ),
               ),
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.chevron_right, size: 22),
+            icon: const Icon(Icons.chevron_right_rounded),
+            tooltip: 'Next month',
+            onPressed: isCurrentMonth ? null : () => _changeMonth(1),
             visualDensity: VisualDensity.compact,
-            tooltip: 'Next Month',
-            onPressed: (_isAllMonths || isCurrentMonth) ? null : () => _changeMonth(1),
           ),
         ],
       ),
     );
   }
 
+  /// Search and sort toolbar
   Widget _buildSearchAndSortBar() {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
@@ -283,6 +282,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     );
   }
 
+  /// Status filter chips
   Widget _buildFilterChips({required int totalCount, required int pendingCount, required int overpaymentCount, required int settledCount}) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -348,7 +348,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     );
   }
 
-  /// Clean, breathable order card focused on clear hierarchy.
+  /// Order card with status indicators, amounts, and navigation
   Widget _buildOrderCard({required String orderId, required Purchaseorder order}) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
@@ -361,66 +361,54 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
 
     if (!hasInvoice) {
       badgeColor = Colors.orange.shade800;
-      badgeText = 'Awaiting Invoice';
+      badgeText = 'Pending Invoice';
       badgeIcon = Icons.hourglass_top_rounded;
     } else if (order.isSettled == true) {
       badgeColor = Colors.green.shade700;
       badgeText = 'Settled';
-      badgeIcon = Icons.verified_rounded;
+      badgeIcon = Icons.check_circle_outline_rounded;
     } else if (order.overpayment > 0) {
       badgeColor = Colors.red.shade700;
-      badgeText = 'Overpaid: ${Helperfunctions.formatDoubleAmountForDisplay(order.overpayment)}';
-      badgeIcon = Icons.warning_amber_rounded;
+      badgeText = 'Overpayment: ${Helperfunctions.formatDoubleAmountForDisplay(order.overpayment)}';
+      badgeIcon = Icons.arrow_outward_rounded;
     } else {
-      badgeColor = Colors.teal.shade700;
-      badgeText = 'Balanced';
-      badgeIcon = Icons.check_circle_outline_rounded;
+      badgeColor = Colors.blue.shade700;
+      badgeText = 'Invoiced';
+      badgeIcon = Icons.receipt_outlined;
     }
 
     return Card(
       elevation: 0,
-      margin: EdgeInsets.zero,
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: orderId, purchaseorder: order)),
-        onLongPress: () {
-          if (order.invoiceNumber.trim().isNotEmpty) {
-            Clipboard.setData(ClipboardData(text: order.invoiceNumber.trim()));
-            HapticFeedback.lightImpact();
-            ShowMessage.success(context, 'Copied invoice #${order.invoiceNumber.trim()} to clipboard');
-          }
-        },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top Row: Date Pill & Status Pill
+              // Top line: Date and Status Badge
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.calendar_today_rounded, size: 12, color: colorScheme.onSurfaceVariant),
+                      Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
-                      Text(
-                        dateStr,
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
-                      ),
+                      Text(dateStr, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     ],
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: badgeColor.withValues(alpha: 0.09),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: badgeColor.withValues(alpha: 0.25)),
+                      color: badgeColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -436,10 +424,9 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
 
-              const SizedBox(height: 8),
-
-              // Main Row: Invoice # (left) and Order Target Amount (right)
+              // Main row: Invoice # and Order target amount
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -573,72 +560,29 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
 
           final allDocs = snapshot.data?.docs ?? [];
 
-          // 1. Filter documents by selected month (unless viewing all months)
-          final monthDocs = allDocs.where((doc) {
-            if (_isAllMonths) return true;
-            final order = doc.data() as Purchaseorder;
-            final orderDate = order.orderDate.toDate();
-            return orderDate.year == _selectedMonth.year && orderDate.month == _selectedMonth.month;
-          }).toList();
+          // 1. Filter documents by selected month via controller
+          final monthDocs = _controller.filterByMonth(
+            docs: allDocs,
+            selectedMonth: _selectedMonth,
+            isAllMonths: _isAllMonths,
+          );
 
-          int pendingCount = 0;
-          int overpaymentCount = 0;
-          int settledCount = 0;
+          // 2. Compute metrics via controller
+          final counts = _controller.calculateCounts(monthDocs);
 
-          for (final doc in monthDocs) {
-            final order = doc.data() as Purchaseorder;
-            final hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
-            if (!hasInvoice) {
-              pendingCount++;
-            } else if (order.isSettled == true) {
-              settledCount++;
-            } else if (order.overpayment > 0) {
-              overpaymentCount++;
-            }
-          }
-
-          // 3. Filter by search query and category chips
-          final filteredDocs = monthDocs.where((doc) {
-            final order = doc.data() as Purchaseorder;
-            final hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
-
-            bool matchesFilter = true;
-            if (_selectedFilter == 'Pending') {
-              matchesFilter = !hasInvoice;
-            } else if (_selectedFilter == 'Overpayment') {
-              matchesFilter = order.overpayment > 0 && order.isSettled != true;
-            } else if (_selectedFilter == 'Settled') {
-              matchesFilter = order.isSettled == true;
-            }
-
-            final dateStr = Helperfunctions.formatTimestampForDisplay(order.orderDate).toLowerCase();
-            final matchesSearch = _searchQuery.isEmpty || order.invoiceNumber.toLowerCase().contains(_searchQuery) || dateStr.contains(_searchQuery);
-
-            return matchesFilter && matchesSearch;
-          }).toList();
-
-          // 4. Apply dynamic sorting
-          filteredDocs.sort((a, b) {
-            final orderA = a.data() as Purchaseorder;
-            final orderB = b.data() as Purchaseorder;
-            switch (_sortBy) {
-              case 'oldest':
-                return orderA.orderDate.compareTo(orderB.orderDate);
-              case 'amount_high':
-                return orderB.orderAmount.compareTo(orderA.orderAmount);
-              case 'amount_low':
-                return orderA.orderAmount.compareTo(orderB.orderAmount);
-              case 'newest':
-              default:
-                return orderB.orderDate.compareTo(orderA.orderDate);
-            }
-          });
+          // 3. Filter by search query, category chips, and sort via controller
+          final filteredDocs = _controller.filterAndSortOrders(
+            docs: monthDocs,
+            selectedFilter: _selectedFilter,
+            searchQuery: _searchQuery,
+            sortBy: _sortBy,
+          );
 
           final bool isDateSorted = _sortBy == 'newest' || _sortBy == 'oldest';
 
           return Column(
             children: [
-              // Month Selector Bar (< September 2026 >)
+              // Month Selector Bar
               _buildMonthNavigator(),
 
               // Search & Sort Bar
@@ -646,10 +590,10 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
 
               // Filter Chips for the current month
               _buildFilterChips(
-                totalCount: monthDocs.length,
-                pendingCount: pendingCount,
-                overpaymentCount: overpaymentCount,
-                settledCount: settledCount,
+                totalCount: counts.total,
+                pendingCount: counts.pending,
+                overpaymentCount: counts.overpayment,
+                settledCount: counts.settled,
               ),
               const SizedBox(height: 6),
 

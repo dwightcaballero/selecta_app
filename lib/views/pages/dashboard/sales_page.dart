@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/sales_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/purchaseorder.dart';
-import 'package:flutter_app/services/purchaseorder_service.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
@@ -13,21 +13,24 @@ class SalesPage extends StatefulWidget {
 }
 
 class _SalesPageState extends State<SalesPage> {
-  static const double _monthlyTarget = 1000000.0; // ₱1,000,000 target
+  // Controller managing sales aggregation, targets, and filtering
+  final SalesController _controller = SalesController();
 
-  List<Purchaseorder> purchaseOrders = [];
-  double totalPurchaseOrder = 0;
-  double totalInvoicedSales = 0;
-  double totalOverpayment = 0;
-  int totalInvoiceCount = 0;
-  double averagePurchaseOrder = 0;
-  double averageInvoicedAmount = 0;
-  double averageOverpayment = 0;
-
+  SalesSummary _summary = SalesSummary.empty();
   bool isLoading = true;
   String? errorMessage;
   String searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+
+  // Getters delegating directly to controller-managed summary
+  List<Purchaseorder> get purchaseOrders => _summary.purchaseOrders;
+  double get totalPurchaseOrder => _summary.totalPurchaseOrder;
+  double get totalInvoicedSales => _summary.totalInvoicedSales;
+  double get totalOverpayment => _summary.totalOverpayment;
+  int get totalInvoiceCount => _summary.totalInvoiceCount;
+  double get averagePurchaseOrder => _summary.averagePurchaseOrder;
+  double get averageInvoicedAmount => _summary.averageInvoicedAmount;
+  double get averageOverpayment => _summary.averageOverpayment;
 
   @override
   void initState() {
@@ -41,6 +44,7 @@ class _SalesPageState extends State<SalesPage> {
     super.dispose();
   }
 
+  // Load sales data via SalesController
   Future<void> _loadPurchaseOrders() async {
     setState(() {
       isLoading = true;
@@ -48,31 +52,10 @@ class _SalesPageState extends State<SalesPage> {
     });
 
     try {
-      final orders = await PurchaseOrderService.getPurchaseOrdersForCurrentMonth();
-      double purchaseOrderTotal = 0;
-      double invoicedSalesTotal = 0;
-      double overpaymentTotal = 0;
-
-      for (final order in orders) {
-        purchaseOrderTotal += order.orderAmount;
-        invoicedSalesTotal += order.invoiceAmount;
-        overpaymentTotal += order.overpayment;
-      }
-
-      // Sort newest invoice first
-      orders.sort((a, b) => b.invoiceDate.compareTo(a.invoiceDate));
-
+      final summary = await _controller.getSalesSummary();
       if (!mounted) return;
-
       setState(() {
-        purchaseOrders = orders;
-        totalPurchaseOrder = purchaseOrderTotal;
-        totalInvoicedSales = invoicedSalesTotal;
-        totalOverpayment = overpaymentTotal;
-        totalInvoiceCount = orders.length;
-        averagePurchaseOrder = totalInvoiceCount == 0 ? 0 : totalPurchaseOrder / totalInvoiceCount;
-        averageInvoicedAmount = totalInvoiceCount == 0 ? 0 : totalInvoicedSales / totalInvoiceCount;
-        averageOverpayment = totalInvoiceCount == 0 ? 0 : totalOverpayment / totalInvoiceCount;
+        _summary = summary;
         isLoading = false;
       });
     } catch (e) {
@@ -84,20 +67,15 @@ class _SalesPageState extends State<SalesPage> {
     }
   }
 
-  List<Purchaseorder> get _filteredOrders {
-    if (searchQuery.trim().isEmpty) return purchaseOrders;
-    final query = searchQuery.trim().toLowerCase();
-    return purchaseOrders.where((order) {
-      return order.invoiceNumber.toLowerCase().contains(query);
-    }).toList();
-  }
+  // Filter purchase orders using SalesController
+  List<Purchaseorder> get _filteredOrders => _controller.filterOrders(_summary.purchaseOrders, searchQuery);
 
   Widget _buildSummaryCard(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final currentMonthLabel = DateFormat('MMMM yyyy').format(DateTime.now());
-    final progress = (totalInvoicedSales / _monthlyTarget).clamp(0.0, 1.0);
-    final remainingAmount = (_monthlyTarget - totalInvoicedSales).clamp(0.0, _monthlyTarget);
-    final fulfillmentRatio = totalPurchaseOrder > 0 ? (totalInvoicedSales / totalPurchaseOrder * 100) : 0.0;
+    final progress = _controller.calculateTargetProgress(totalInvoicedSales);
+    final remainingAmount = _controller.calculateRemainingAmount(totalInvoicedSales);
+    final fulfillmentRatio = _controller.calculateFulfillmentRatio(totalInvoicedSales, totalPurchaseOrder);
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -170,7 +148,7 @@ class _SalesPageState extends State<SalesPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Target: ${Helperfunctions.formatDoubleAmountForDisplay(_monthlyTarget)} (${(progress * 100).toStringAsFixed(1)}%)',
+                'Target: ${Helperfunctions.formatDoubleAmountForDisplay(SalesController.monthlyTarget)} (${(progress * 100).toStringAsFixed(1)}%)',
                 style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
               ),
               Text(

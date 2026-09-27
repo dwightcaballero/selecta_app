@@ -1,10 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/services/auth_service.dart';
+import 'package:flutter_app/controllers/account_settings_controller.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
-final _formkey = GlobalKey<FormState>();
 
+/// Presentation page for confirming and executing permanent user account deletion.
 class DeleteAccountPage extends StatefulWidget {
   const DeleteAccountPage({super.key});
 
@@ -13,64 +13,64 @@ class DeleteAccountPage extends StatefulWidget {
 }
 
 class _DeleteAccountPageState extends State<DeleteAccountPage> {
-  TextEditingController textEditingControllerEmail = TextEditingController();
-  TextEditingController textEditingControllerPassword = TextEditingController();
+  final AccountSettingsController _controller = AccountSettingsController();
+  final _formKey = GlobalKey<FormState>();
+
+  final TextEditingController textEditingControllerEmail = TextEditingController();
+  final TextEditingController textEditingControllerPassword = TextEditingController();
   String errormessage = '';
+
+  @override
+  void dispose() {
+    textEditingControllerEmail.dispose();
+    textEditingControllerPassword.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
-        title: Text('Delete Account'),
+        title: const Text('Delete Account'),
       ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(20.0),
           child: Form(
-            key: _formkey,
+            key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextFormField(
                   autovalidateMode: AutovalidateMode.onUserInteraction,
-                  // validator: (value) => value == null || value.isEmpty ? 'Email should not be blank.' : null,
-                  validator: (value) {
-                    if (value == null || value.isEmpty){
-                      return 'Email should not be blank.';
-                    }
-
-                    // Regex validation for format
-                    final emailRegex = RegExp(r'^\S+@\S+\.\S+$');
-                    if (!emailRegex.hasMatch(value)) {
-                      return 'Please enter a valid email address.';
-                    }
-
-                    return null;
-                  },
+                  validator: _controller.validateEmail,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    hintText: "Email",),
+                    hintText: "Email",
+                  ),
                   controller: textEditingControllerEmail,
                 ),
-                SizedBox(height: 10,),
+                const SizedBox(height: 10),
                 TextFormField(
                   validator: (value) => value == null || value.isEmpty ? 'Password should not be blank.' : null,
                   autovalidateMode: AutovalidateMode.onUserInteraction,
+                  obscureText: true,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    hintText: "Password",),
+                    hintText: "Password",
+                  ),
                   controller: textEditingControllerPassword,
                 ),
-                if (errormessage.isNotEmpty)...[
-                  SizedBox(height: 10),
-                  Text('* $errormessage', style: TextStyle(color: Colors.red),),
+                if (errormessage.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text('* $errormessage', style: const TextStyle(color: Colors.red)),
                 ],
-                Spacer(),
+                const Spacer(),
                 FilledButton(
-                  onPressed: () => deleteAccount(),
-                  style: FilledButton.styleFrom(minimumSize: Size(double.infinity, 40.0)),
-                  child: Text("Delete Account"),
+                  onPressed: deleteAccount,
+                  style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 40.0)),
+                  child: const Text("Delete Account"),
                 ),
               ],
             ),
@@ -80,26 +80,39 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
     );
   }
 
+  /// Validates form and initiates account deletion via controller
   void deleteAccount() async {
-    if (_formkey.currentState!.validate()){
+    if (_formKey.currentState?.validate() ?? false) {
       try {
-        await authService.value.deleteAccount(email: textEditingControllerEmail.text, password: textEditingControllerPassword.text);
-        showSuccess();
+        await _controller.deleteAccount(
+          email: textEditingControllerEmail.text,
+          password: textEditingControllerPassword.text,
+        );
+        if (mounted) {
+          showSuccess();
+        }
       } on FirebaseAuthException catch (e) {
-        setState(() {
-          errormessage = e.message ?? 'Something went wrong.';
-        });
+        if (mounted) {
+          setState(() {
+            errormessage = _controller.getFriendlyErrorMessage(e);
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            errormessage = e.toString();
+          });
+        }
       }
-    }
-    else{
+    } else {
       setState(() {
-          errormessage = '';
-        });
+        errormessage = '';
+      });
     }
   }
 
-  void showSuccess(){
+  void showSuccess() {
     ShowMessage.success(context, 'Account deleted successfully!');
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => AuthPage()));
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AuthPage()));
   }
 }

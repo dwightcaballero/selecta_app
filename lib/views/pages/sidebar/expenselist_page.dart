@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/expenses_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/expenses.dart';
-import 'package:flutter_app/services/expenses_services.dart';
 import 'package:flutter_app/views/pages/sidebar/expenses_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
@@ -15,7 +15,8 @@ class ExpenselistPage extends StatefulWidget {
 }
 
 class _ExpenselistPageState extends State<ExpenselistPage> {
-  final ExpensesService db = ExpensesService();
+  // Controller managing expense streams, filtering, and data aggregation
+  final ExpensesController _controller = ExpensesController();
 
   late final Stream<QuerySnapshot> _expensesStream;
   final TextEditingController _searchController = TextEditingController();
@@ -26,7 +27,7 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
   @override
   void initState() {
     super.initState();
-    _expensesStream = db.getListExpenses();
+    _expensesStream = _controller.getExpensesStream();
   }
 
   @override
@@ -325,29 +326,15 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
             return _buildEmptyState();
           }
 
-          int thisMonthCount = 0;
-          double periodTotalAmount = 0;
-          final List<QueryDocumentSnapshot> filteredDocs = [];
-
-          for (var doc in allDocs) {
-            final expense = doc.data() as Expenses;
-            final date = expense.expenseDate.toDate();
-            final isThisMonth = date.year == now.year && date.month == now.month;
-
-            if (isThisMonth) thisMonthCount++;
-
-            final matchesPeriod = _selectedPeriod == 'All' || isThisMonth;
-            final matchesSearch = _searchQuery.isEmpty ||
-                expense.description.toLowerCase().contains(_searchQuery.toLowerCase());
-
-            if (matchesPeriod) {
-              periodTotalAmount += expense.expenseAmount;
-            }
-
-            if (matchesPeriod && matchesSearch) {
-              filteredDocs.add(doc);
-            }
-          }
+          final filterResult = _controller.filterExpenses(
+            docs: allDocs,
+            selectedPeriod: _selectedPeriod,
+            searchQuery: _searchQuery,
+            now: now,
+          );
+          final filteredDocs = filterResult.filteredDocs;
+          final periodTotalAmount = filterResult.periodTotalAmount;
+          final thisMonthCount = filterResult.thisMonthCount;
 
           return Column(
             children: [

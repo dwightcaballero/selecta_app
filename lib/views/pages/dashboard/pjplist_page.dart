@@ -1,16 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/controllers/pjp_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/pages/dashboard/pjp_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
+/// Presentation view for the Permanent Journey Plan (PJP) weekly store schedule.
+///
+/// Route reordering, store filtering, persistence, and audit logging are
+/// delegated to [PjpController].
 class PjpListPage extends StatefulWidget {
   const PjpListPage({super.key});
 
@@ -19,17 +21,7 @@ class PjpListPage extends StatefulWidget {
 }
 
 class _PjpListPageState extends State<PjpListPage> {
-  final HapiStoreService db = HapiStoreService();
-
-  static const List<String> _weekdayNames = [
-    PjpScheduleDays.monday,
-    PjpScheduleDays.tuesday,
-    PjpScheduleDays.wednesday,
-    PjpScheduleDays.thursday,
-    PjpScheduleDays.friday,
-    PjpScheduleDays.saturday,
-    PjpScheduleDays.sunday,
-  ];
+  final PjpController _controller = PjpController();
 
   List<String> _editableStoreIDs = [];
   Map<String, Hapistore> _editableStoresById = {};
@@ -42,13 +34,12 @@ class _PjpListPageState extends State<PjpListPage> {
   @override
   void initState() {
     super.initState();
-    // DateTime.weekday is 1 (Monday) .. 7 (Sunday), matching _weekdayNames indices.
-    _selectedDay = _weekdayNames[DateTime.now().weekday - 1];
+    _selectedDay = _controller.getDefaultDay();
     _prefetchData();
   }
 
   void _prefetchData() async {
-    _isDealer = await KVariables.getIsDealer();
+    _isDealer = await _controller.checkIsDealer();
     if (mounted) setState(() {});
   }
 
@@ -73,16 +64,7 @@ class _PjpListPageState extends State<PjpListPage> {
 
   // Stores without a pjpSequence yet are appended alphabetically after the sequenced ones.
   List<QueryDocumentSnapshot> _sortedDocs(List<QueryDocumentSnapshot> docs) {
-    final sorted = [...docs];
-    sorted.sort((a, b) {
-      final seqA = (a.data() as Hapistore).pjpSequence;
-      final seqB = (b.data() as Hapistore).pjpSequence;
-      if (seqA != null && seqB != null) return seqA.compareTo(seqB);
-      if (seqA != null) return -1;
-      if (seqB != null) return 1;
-      return (a.data() as Hapistore).storeName.compareTo((b.data() as Hapistore).storeName);
-    });
-    return sorted;
+    return _controller.sortStoreDocs(docs);
   }
 
   void _onDayChanged(String? day) {
@@ -131,7 +113,7 @@ class _PjpListPageState extends State<PjpListPage> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _AddStoreSheet(db: db, excludedStoreIDs: _editableStoreIDs.toSet()),
+      builder: (_) => _AddStoreSheet(controller: _controller, excludedStoreIDs: _editableStoreIDs.toSet()),
     );
 
     if (selected != null) {
@@ -145,10 +127,12 @@ class _PjpListPageState extends State<PjpListPage> {
   Future<void> _saveOrder() async {
     setState(() => _isSaving = true);
     try {
-      final removedStoreIDs = _originalStoreIDs.difference(_editableStoreIDs.toSet()).toList();
-      await db.updatePjpSequenceOrder(_selectedDay, _editableStoreIDs, removedHapiStoreIDs: removedStoreIDs);
-      final storeNames = _editableStoreIDs.map((id) => _editableStoresById[id]?.storeName ?? id).join(', ');
-      Helperfunctions.logTransaction('PJP Resequence - $_selectedDay', 'New order: $storeNames', LogAction.update, page: AppPages.pjpList);
+      await _controller.savePjpSequenceOrder(
+        selectedDay: _selectedDay,
+        orderedStoreIDs: _editableStoreIDs,
+        originalStoreIDs: _originalStoreIDs,
+        storesById: _editableStoresById,
+      );
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully updated PJP sequence for $_selectedDay!');
       setState(() {
@@ -167,7 +151,7 @@ class _PjpListPageState extends State<PjpListPage> {
 
   Widget _buildDayChips() {
     final colorScheme = Theme.of(context).colorScheme;
-    final todayName = _weekdayNames[DateTime.now().weekday - 1];
+    final todayName = PjpController.weekdayNames[DateTime.now().weekday - 1];
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 12, 0, 4),
@@ -176,10 +160,10 @@ class _PjpListPageState extends State<PjpListPage> {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: _weekdayNames.length,
+          itemCount: PjpController.weekdayNames.length,
           separatorBuilder: (_, _) => const SizedBox(width: 8),
           itemBuilder: (context, index) {
-            final day = _weekdayNames[index];
+            final day = PjpController.weekdayNames[index];
             final isSelected = day == _selectedDay;
             final isToday = day == todayName;
             final shortDay = day.substring(0, 3);
@@ -531,7 +515,7 @@ class _PjpListPageState extends State<PjpListPage> {
 
   Widget _buildBody() {
     return StreamBuilder<QuerySnapshot>(
-      stream: db.getListHapiStoresByPjpScheduleAsStream(_selectedDay),
+      stream: _controller.getStoresForDayStream(_selectedDay),
       builder: (context, snapshot) {
         if (snapshot.hasError) return _buildErrorState();
         if (snapshot.connectionState == ConnectionState.waiting && !_isEditing) {
@@ -546,25 +530,19 @@ class _PjpListPageState extends State<PjpListPage> {
 
         if (docs.isEmpty) return _buildEmptyState();
 
-        int completedCount = 0;
-        final now = DateTime.now();
-        for (final doc in docs) {
-          final hapistore = doc.data() as Hapistore;
-          if (hapistore.lastPjpVisit != null && Helperfunctions.isSameWeek(hapistore.lastPjpVisit!.toDate(), now)) {
-            completedCount++;
-          }
-        }
+        final progress = _controller.calculatePjpProgress(docs);
 
         return Column(
           children: [
-            _buildProgressHeader(completedCount, docs.length),
+            _buildProgressHeader(progress.completed, progress.total),
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
                 itemCount: docs.length,
                 itemBuilder: (context, index) {
                   final hapiStoreID = docs[index].id;
-                  final hapistore = docs[index].data() as Hapistore;
+                  final raw = docs[index].data();
+                  final hapistore = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
                   return _buildStoreTile(index: index, hapiStoreID: hapiStoreID, hapistore: hapistore);
                 },
               ),
@@ -587,7 +565,7 @@ class _PjpListPageState extends State<PjpListPage> {
               icon: const Icon(Icons.edit_outlined, color: Colors.white),
               tooltip: 'Rearrange stores',
               onPressed: () async {
-                final snapshot = await db.getListHapiStoresByPjpScheduleAsStream(_selectedDay).first;
+                final snapshot = await _controller.getStoresForDayStream(_selectedDay).first;
                 if (!mounted) return;
                 _startEditing(_sortedDocs(snapshot.docs));
               },
@@ -640,9 +618,9 @@ class _PjpListPageState extends State<PjpListPage> {
 }
 
 class _AddStoreSheet extends StatefulWidget {
-  const _AddStoreSheet({required this.db, required this.excludedStoreIDs});
+  const _AddStoreSheet({required this.controller, required this.excludedStoreIDs});
 
-  final HapiStoreService db;
+  final PjpController controller;
   final Set<String> excludedStoreIDs;
 
   @override
@@ -701,7 +679,7 @@ class _AddStoreSheetState extends State<_AddStoreSheet> {
               const SizedBox(height: 12),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: widget.db.getListHapiStoresAsStream(),
+                  stream: widget.controller.getAllStoresStream(),
                   builder: (context, snapshot) {
                     if (snapshot.hasError) {
                       return const Center(child: Text('Unable to load stores'));
@@ -711,15 +689,11 @@ class _AddStoreSheetState extends State<_AddStoreSheet> {
                     }
 
                     final allDocs = snapshot.data?.docs ?? [];
-                    final docs = allDocs.where((doc) {
-                      if (widget.excludedStoreIDs.contains(doc.id)) return false;
-                      final rawData = doc.data();
-                      final store = rawData is Hapistore ? rawData : Hapistore.fromJson(rawData as Map<String, Object?>);
-                      if (_searchQuery.isEmpty) return true;
-                      return store.storeName.toLowerCase().contains(_searchQuery) ||
-                          store.storeAddress.toLowerCase().contains(_searchQuery) ||
-                          store.storeContact.contains(_searchQuery);
-                    }).toList();
+                    final docs = widget.controller.filterStoresForAddPicker(
+                      allDocs: allDocs,
+                      excludedStoreIDs: widget.excludedStoreIDs,
+                      searchQuery: _searchQuery,
+                    );
 
                     if (docs.isEmpty) {
                       return Center(

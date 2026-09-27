@@ -1,25 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/variables.dart';
+import 'package:flutter_app/controllers/merchblitz_controller.dart';
 import 'package:flutter_app/models/configuration.dart';
 import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/configuration_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/pages/sidebar/configuration_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
-
-enum StoreSortOption {
-  nameAsc('Name (A - Z)'),
-  nameDesc('Name (Z - A)'),
-  openingDateDesc('Opening Date (Newest)'),
-  openingDateAsc('Opening Date (Oldest)'),
-  surveyDateDesc('Survey Date (Latest)');
-
-  final String label;
-  const StoreSortOption(this.label);
-}
 
 class MerchBlitzListPage extends StatefulWidget {
   const MerchBlitzListPage({super.key, this.initialSearchQuery});
@@ -31,8 +18,8 @@ class MerchBlitzListPage extends StatefulWidget {
 }
 
 class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
-  final ConfigurationService _configService = ConfigurationService();
-  final HapiStoreService _hapiStoreService = HapiStoreService();
+  // Controller managing business logic, role checking, filtering, and data updates
+  final MerchBlitzController _controller = MerchBlitzController();
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -52,8 +39,9 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     _checkUserRole();
   }
 
+  // Check if current logged-in user is dealer via controller
   Future<void> _checkUserRole() async {
-    final isDealer = await KVariables.getIsDealer();
+    final isDealer = await _controller.checkIsDealer();
     if (mounted) {
       setState(() {
         _isDealer = isDealer;
@@ -72,15 +60,7 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     super.dispose();
   }
 
-  DateTime _startOfDay(DateTime dt) => DateTime(dt.year, dt.month, dt.day, 0, 0, 0);
-  DateTime _endOfDay(DateTime dt) => DateTime(dt.year, dt.month, dt.day, 23, 59, 59, 999);
-
-  bool _isTodayInBlitz(DateTime start, DateTime end) {
-    final now = DateTime.now();
-    final s = _startOfDay(start);
-    final e = _endOfDay(end);
-    return !now.isBefore(s) && !now.isAfter(e);
-  }
+  // --- Confirmation dialogs & Controller delegation ---
 
   Future<void> _confirmSalesmanSurvey(String storeId, Hapistore store) async {
     final confirmed = await ShowMessage.confirm(
@@ -93,11 +73,7 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
 
     if (confirmed) {
       try {
-        await _hapiStoreService.updateMerchBlitzStatus(
-          storeId,
-          status: MerchBlitzStatus.forFinalSurvey,
-          timestamp: Timestamp.now(),
-        );
+        await _controller.submitForFinalSurvey(storeId);
         if (mounted) {
           ShowMessage.success(context, '"${store.storeName}" submitted for final survey!');
         }
@@ -120,11 +96,7 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
 
     if (confirmed) {
       try {
-        await _hapiStoreService.updateMerchBlitzStatus(
-          storeId,
-          status: MerchBlitzStatus.surveyed,
-          timestamp: Timestamp.now(),
-        );
+        await _controller.approveFinalSurvey(storeId);
         if (mounted) {
           ShowMessage.success(context, '"${store.storeName}" marked as surveyed!');
         }
@@ -148,11 +120,7 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
 
     if (confirmed) {
       try {
-        await _hapiStoreService.updateMerchBlitzStatus(
-          storeId,
-          status: MerchBlitzStatus.pendingSurvey,
-          timestamp: null,
-        );
+        await _controller.revertToPending(storeId);
         if (mounted) {
           ShowMessage.success(context, '"${store.storeName}" returned to Pending Survey.');
         }
@@ -175,11 +143,7 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
 
     if (confirmed) {
       try {
-        await _hapiStoreService.updateMerchBlitzStatus(
-          storeId,
-          status: MerchBlitzStatus.forFinalSurvey,
-          timestamp: store.lastMerchBlitzDate ?? Timestamp.now(),
-        );
+        await _controller.revertToFinalSurvey(storeId, store.lastMerchBlitzDate);
         if (mounted) {
           ShowMessage.success(context, '"${store.storeName}" moved back to For Final Survey.');
         }
@@ -885,62 +849,21 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     );
   }
 
+  // Delegate filtering and sorting to MerchBlitzController
   List<QueryDocumentSnapshot> _filterAndSortStores({
     required List<QueryDocumentSnapshot> docs,
     required DateTime startDate,
     required DateTime endDate,
   }) {
-    final filtered = docs.where((doc) {
-      final raw = doc.data();
-      final store = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
-      final storeStatus = store.getMerchBlitzStatus(startDate, endDate);
-
-      // Non-dealers only see Pending Survey
-      final targetTabIndex = _isDealer ? _selectedTabIndex : 0;
-
-      if (targetTabIndex == 0 && storeStatus != MerchBlitzStatus.pendingSurvey) return false;
-      if (targetTabIndex == 1 && storeStatus != MerchBlitzStatus.forFinalSurvey) return false;
-      if (targetTabIndex == 2 && storeStatus != MerchBlitzStatus.surveyed) return false;
-
-      if (_searchQuery.isNotEmpty) {
-        final name = store.storeName.toLowerCase();
-        final address = store.storeAddress.toLowerCase();
-        final contact = store.storeContact.toLowerCase();
-        if (!name.contains(_searchQuery) && !address.contains(_searchQuery) && !contact.contains(_searchQuery)) {
-          return false;
-        }
-      }
-
-      return true;
-    }).toList();
-
-    filtered.sort((a, b) {
-      final rawA = a.data();
-      final rawB = b.data();
-      final storeA = rawA is Hapistore ? rawA : Hapistore.fromJson(rawA as Map<String, Object?>);
-      final storeB = rawB is Hapistore ? rawB : Hapistore.fromJson(rawB as Map<String, Object?>);
-
-      switch (_sortOption) {
-        case StoreSortOption.nameAsc:
-          return storeA.storeName.toLowerCase().compareTo(storeB.storeName.toLowerCase());
-        case StoreSortOption.nameDesc:
-          return storeB.storeName.toLowerCase().compareTo(storeA.storeName.toLowerCase());
-        case StoreSortOption.openingDateDesc:
-          final dateA = storeA.openingDate?.toDate() ?? DateTime(1970);
-          final dateB = storeB.openingDate?.toDate() ?? DateTime(1970);
-          return dateB.compareTo(dateA);
-        case StoreSortOption.openingDateAsc:
-          final dateA = storeA.openingDate?.toDate() ?? DateTime(2099);
-          final dateB = storeB.openingDate?.toDate() ?? DateTime(2099);
-          return dateA.compareTo(dateB);
-        case StoreSortOption.surveyDateDesc:
-          final dateA = storeA.lastMerchBlitzDate?.toDate() ?? DateTime(1970);
-          final dateB = storeB.lastMerchBlitzDate?.toDate() ?? DateTime(1970);
-          return dateB.compareTo(dateA);
-      }
-    });
-
-    return filtered;
+    return _controller.filterAndSortStores(
+      docs: docs,
+      startDate: startDate,
+      endDate: endDate,
+      isDealer: _isDealer,
+      selectedTabIndex: _selectedTabIndex,
+      searchQuery: _searchQuery,
+      sortOption: _sortOption,
+    );
   }
 
   @override
@@ -953,34 +876,25 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     }
 
     return StreamBuilder<Configuration?>(
-      stream: _configService.getConfigurationStream(),
+      stream: _controller.getConfigurationStream(),
       builder: (context, configSnapshot) {
         final config = configSnapshot.data ?? Configuration.empty();
         final startDate = config.merchBlitzStartDate.toDate();
         final endDate = config.merchBlitzEndDate.toDate();
-        final isActiveToday = _isTodayInBlitz(startDate, endDate);
+        final isActiveToday = _controller.isTodayInBlitz(startDate, endDate);
 
         return StreamBuilder<QuerySnapshot>(
-          stream: _hapiStoreService.getListHapiStoresAsStream(),
+          stream: _controller.getStoresStream(),
           builder: (context, storesSnapshot) {
             final allDocs = storesSnapshot.data?.docs ?? [];
-
-            int pendingCount = 0;
-            int forFinalSurveyCount = 0;
-            int surveyedCount = 0;
-
-            for (final doc in allDocs) {
-              final raw = doc.data();
-              final store = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
-              final status = store.getMerchBlitzStatus(startDate, endDate);
-              if (status == MerchBlitzStatus.pendingSurvey) {
-                pendingCount++;
-              } else if (status == MerchBlitzStatus.forFinalSurvey) {
-                forFinalSurveyCount++;
-              } else if (status == MerchBlitzStatus.surveyed) {
-                surveyedCount++;
-              }
-            }
+            final counts = _controller.calculateStatusCounts(
+              docs: allDocs,
+              startDate: startDate,
+              endDate: endDate,
+            );
+            final pendingCount = counts.pending;
+            final forFinalSurveyCount = counts.forFinal;
+            final surveyedCount = counts.surveyed;
 
             final visibleDocs = _filterAndSortStores(docs: allDocs, startDate: startDate, endDate: endDate);
 

@@ -1,16 +1,9 @@
-import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/models/users.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
-import 'package:flutter_app/services/tasks_services.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
@@ -26,7 +19,6 @@ import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class SalesmanDashboardPage extends StatefulWidget {
   const SalesmanDashboardPage({super.key});
@@ -36,8 +28,9 @@ class SalesmanDashboardPage extends StatefulWidget {
 }
 
 class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
-  final TasksService _tasksService = TasksService();
-  final HapiStoreService _hapiStoreService = HapiStoreService();
+  // Controller managing data syncing, live count streams, role switching, and user state
+  final DashboardController _controller = DashboardController();
+
   late final Stream<int> _tasksCountStream;
   late final Stream<int> _merchBlitzCountStream;
   Users? _currentUser;
@@ -49,24 +42,17 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
   @override
   void initState() {
     super.initState();
-    _tasksCountStream = _tasksService.getPendingAndOverdueCountStream();
-    _merchBlitzCountStream = _hapiStoreService.getUnsurveyedMerchBlitzCountStream();
+    _tasksCountStream = _controller.getTasksPendingAndOverdueCountStream();
+    _merchBlitzCountStream = _controller.getMerchBlitzCountStream();
     _loadInitialData();
   }
 
+  // Load cached dashboard metrics and user data via DashboardController
   Future<void> _loadInitialData() async {
     try {
-      final user = await KVariables.getUser();
+      final user = await _controller.getCurrentUser();
       final lastSync = await DashboardController.getLastSync();
-      final prefs = await SharedPreferences.getInstance();
-      final cachedJson = prefs.getString('dashboard_DTO');
-
-      DashboardDTO dto = DashboardDTO.empty();
-      if (cachedJson != null && cachedJson.isNotEmpty) {
-        try {
-          dto = DashboardDTO.fromJson(jsonDecode(cachedJson));
-        } catch (_) {}
-      }
+      final dto = await _controller.getCachedDashboardData() ?? DashboardDTO.empty();
 
       if (mounted) {
         setState(() {
@@ -83,6 +69,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     }
   }
 
+  // Fetch fresh metrics and recalculate dashboard totals
   Future<void> _syncDashboard() async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
@@ -109,6 +96,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     }
   }
 
+  // Log out through DashboardController
   Future<void> _onLogout() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -138,13 +126,13 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
 
     if (confirmed == true && mounted) {
       try {
-        await authService.value.signOut();
+        await _controller.signOut();
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const AuthPage()), (_) => false);
         }
-      } on FirebaseAuthException catch (e) {
+      } catch (e) {
         if (mounted) {
-          ShowMessage.error(context, e.message ?? 'Error signing out.');
+          ShowMessage.error(context, 'Error signing out.');
         }
       }
     }
@@ -202,30 +190,10 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
   Future<void> _performRoleSwitch() async {
     setState(() => _isLoading = true);
     try {
-      final isCurrentlyDealer = await KVariables.getIsDealer();
-      final newRole = isCurrentlyDealer ? BusinessRole.salesman : BusinessRole.dealer;
+      final isCurrentlyDealer = await _controller.isCurrentUserDealer();
+      final newRole = await _controller.switchUserRole(isCurrentlyDealer);
 
-      // 1. Update Firebase Firestore
-      final currentEmail = FirebaseAuth.instance.currentUser?.email;
-      if (currentEmail != null && currentEmail.isNotEmpty) {
-        final query = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: currentEmail).limit(1).get();
-        if (query.docs.isNotEmpty) {
-          await FirebaseFirestore.instance.collection('users').doc(query.docs.first.id).update({'role': newRole});
-        }
-      }
-
-      // 2. Update SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final currentUser = await KVariables.getUser();
-      if (currentUser != null) {
-        final updatedUser = currentUser.copyWith(role: newRole);
-        await prefs.setString('user_data', jsonEncode(updatedUser.toJson()));
-      }
-      await prefs.setString(SharedPrefKeys.role, newRole);
-
-      HapiStoreService.invalidateCache();
-
-      // 3. Switch screens without animations
+      // Switch screens without animations
       if (mounted) {
         setState(() => _isLoading = false);
         ShowMessage.success(context, 'Switched role to $newRole');
@@ -265,7 +233,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
 
   Widget _buildWelcomeBanner() {
     final colorScheme = Theme.of(context).colorScheme;
-    final displayName = _currentUser?.username ?? authService.value.currentUser?.displayName ?? 'Salesman';
+    final displayName = _currentUser?.username ?? 'Salesman';
     final hasSyncTime = _lastSyncDateTime.isNotEmpty && _lastSyncDateTime != 'Never';
 
     return GestureDetector(
@@ -365,14 +333,11 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
         onTap: () async {
           await Helperfunctions.navigateThenWait(context, nextPage);
           if (mounted) {
-            final prefs = await SharedPreferences.getInstance();
-            final cachedJson = prefs.getString('dashboard_DTO');
-            if (cachedJson != null && cachedJson.isNotEmpty) {
-              try {
-                setState(() {
-                  _dashboardDTO = DashboardDTO.fromJson(jsonDecode(cachedJson));
-                });
-              } catch (_) {}
+            final cached = await _controller.getCachedDashboardData();
+            if (cached != null) {
+              setState(() {
+                _dashboardDTO = cached;
+              });
             }
           }
         },
@@ -408,7 +373,6 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
 
   Widget _buildDrawer() {
     final colorScheme = Theme.of(context).colorScheme;
-    final user = authService.value.currentUser;
 
     return Drawer(
       child: ListView(
@@ -428,10 +392,10 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  user?.displayName ?? _currentUser?.username ?? 'Salesman',
+                  _currentUser?.username ?? 'Salesman',
                   style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
                 ),
-                Text(user?.email ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                Text(_currentUser?.email ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
               ],
             ),
           ),

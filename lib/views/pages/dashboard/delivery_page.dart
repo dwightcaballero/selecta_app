@@ -1,27 +1,18 @@
 import 'dart:io';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app/controllers/delivery_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/data.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/placement.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/services/breakdown_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
-import 'package:flutter_app/services/placement_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
+import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
 import 'package:flutter_app/views/widgets/imageviewer_page.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:another_telephony/telephony.dart';
-import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
-import 'package:intl/intl.dart';
 
 class DeliveryPage extends StatefulWidget {
   const DeliveryPage({super.key, required this.deliveryID, required this.delivery});
@@ -34,9 +25,7 @@ class DeliveryPage extends StatefulWidget {
 }
 
 class _DeliveryPageState extends State<DeliveryPage> {
-  final DeliveryService db = DeliveryService();
-  final PlacementService placementService = PlacementService();
-  final BreakdownService breakdownService = BreakdownService();
+  final DeliveryController _controller = DeliveryController();
   bool hasBreakdownForDay = false;
   bool get isSalesmanLocked => !isDealer && hasBreakdownForDay;
 
@@ -90,65 +79,28 @@ class _DeliveryPageState extends State<DeliveryPage> {
       return;
     }
     if (_formkey.currentState!.validate()) {
-      // save image
-      String imageFilePath = '';
-      if (image != null) {
-        imageFilePath = await Helperfunctions.saveImage(context, image!);
-      }
+      try {
+        final newRecord = await _controller.createDelivery(
+          context: context,
+          storeName: dropdownHapiStore.text,
+          orderAmountText: txtOrderAmount.text,
+          selectedDate: _selectedDate,
+          imageFile: image,
+          placements: listPlacement,
+          placementId: placementID,
+          sendText: sendText,
+          smsMessage: txtSMS.text,
+        );
 
-      Delivery newRecord = Delivery(
-        storeName: dropdownHapiStore.text,
-        remarks: '',
-        transactionStatus: DeliveryStatus.pending,
-        imagePath: imageFilePath,
-        orderAmount: Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text),
-        returnAmount: 0,
-        creditAmount: 0,
-        cashAmount: 0,
-        onlineAmount: 0,
-        deliveryDate: Timestamp.fromDate(_selectedDate),
-        creditStatus: CreditStatus.unpaid,
-        createdBy: authService.value.currentUser!.displayName!,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: Timestamp.now(),
-        lastupdatedDate: Timestamp.now(),
-        createdPage: AppPages.delivery,
-        lastUpdatedPage: AppPages.delivery,
-      );
-      db.addDelivery(newRecord);
-
-      final placement = Placement.fromFlags(
-        storeName: newRecord.storeName,
-        deliveryDate: newRecord.deliveryDate!,
-        flags: listPlacement.map((placement) => placement.isPlaced).toList(),
-        id: placementID,
-      );
-      placement.progressCount = listPlacement.where((placement) => placement.isPlaced).length;
-      placement.isFinished = placement.progressCount == 12;
-      await placementService.savePlacement(placement);
-
-      // log transaction
-      await Helperfunctions.logCreate(dropdownHapiStore.text, newRecord.toJson(), page: AppPages.delivery);
-
-      // send text message to the store if user opted to send a text message
-      if (sendText) {
-        String storeContact = await HapiStoreService.getContactByStoreName(dropdownHapiStore.text);
-        storeContact = storeContact.replaceFirst('09', '+639');
-
-        final Telephony telephony = Telephony.instance;
-        bool? permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
-
-        if (permissionsGranted ?? false) {
-          telephony.sendSms(to: storeContact, message: txtSMS.text, isMultipart: true);
+        if (mounted) {
+          ShowMessage.success(context, 'Successfully created a new delivery record!\n[${newRecord.storeName}]');
+          Navigator.pop(context); // go back to previous page
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Error creating delivery record: $e');
         }
       }
-
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully created a new delivery record!\n[${dropdownHapiStore.text}]');
-        Navigator.pop(context); // go back to previous page
-      }
-
-      setState(() {});
     } else {
       ShowMessage.error(context, 'Please fill up the required fields');
     }
@@ -174,16 +126,16 @@ class _DeliveryPageState extends State<DeliveryPage> {
     DateTime dateToCheck = widget.deliveryID.isNotEmpty && widget.delivery.deliveryDate != null
         ? widget.delivery.deliveryDate!.toDate()
         : _selectedDate;
-    final String breakdownId = await breakdownService.getIDofBreakdown(dateToCheck);
+    final bool hasBreakdown = await _controller.checkBreakdownStatus(dateToCheck);
     if (mounted) {
       setState(() {
-        hasBreakdownForDay = breakdownId.isNotEmpty;
+        hasBreakdownForDay = hasBreakdown;
       });
     }
   }
 
   void prefetchData() async {
-    isDealer = await KVariables.getIsDealer();
+    isDealer = await _controller.checkIsDealer();
     await _checkBreakdownStatus();
 
     if (widget.deliveryID.isNotEmpty) {
@@ -209,27 +161,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       onStoreSelected();
     }
 
-    setState(() {});
-  }
-
-  List<String> validate() {
-    List<String> listError = [];
-    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
-    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
-    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
-    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
-
-    Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmount;
-    Decimal orderAmount = Decimal.parse(widget.delivery.orderAmount.toString());
-
-    if (dropdownStatus.text == DeliveryStatus.delivered && totalAmount != orderAmount) {
-      listError.add('Total amount does not match the order amount!');
-    }
-    if ((returnAmount != Decimal.zero || dropdownStatus.text == DeliveryStatus.returned) && txtRemarks.text.isEmpty) {
-      listError.add('Please enter a remark for return details!');
-    }
-
-    return listError;
+    if (mounted) setState(() {});
   }
 
   void onUpdate() async {
@@ -237,90 +169,60 @@ class _DeliveryPageState extends State<DeliveryPage> {
       ShowMessage.error(context, 'Editing is disabled. A cash breakdown is already recorded for this day.');
       return;
     }
-    var listError = validate();
+    final listError = _controller.validateDeliveryForm(
+      status: dropdownStatus.text,
+      orderAmount: widget.delivery.orderAmount,
+      cash: txtCashAmount.text,
+      online: txtOnlineAmount.text,
+      credit: txtCreditAmount.text,
+      returnAmount: txtReturnAmount.text,
+      remarks: txtRemarks.text,
+    );
     if (listError.isEmpty) {
-      double returnAmount = 0;
-      double creditAmount = 0;
-      double onlineAmount = 0;
-      double cashAmount = 0;
-      String remark = txtRemarks.text;
+      try {
+        final updatedDelivery = await _controller.updateDelivery(
+          context: context,
+          deliveryId: widget.deliveryID,
+          currentDelivery: widget.delivery,
+          storeName: dropdownHapiStore.text,
+          status: dropdownStatus.text,
+          remarks: txtRemarks.text,
+          orderAmountText: txtOrderAmount.text,
+          cashAmountText: txtCashAmount.text,
+          onlineAmountText: txtOnlineAmount.text,
+          creditAmountText: txtCreditAmount.text,
+          returnAmountText: txtReturnAmount.text,
+          imageFile: image,
+          networkImagePath: networkImagePath,
+        );
 
-      switch (dropdownStatus.text) {
-        case DeliveryStatus.pending:
-          widget.delivery.orderAmount = Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text);
-          remark = '';
-          break;
-
-        case DeliveryStatus.delivered:
-          returnAmount = Helperfunctions.formatStringAmountToDouble(txtReturnAmount.text);
-          creditAmount = Helperfunctions.formatStringAmountToDouble(txtCreditAmount.text);
-          onlineAmount = Helperfunctions.formatStringAmountToDouble(txtOnlineAmount.text);
-          cashAmount = Helperfunctions.formatStringAmountToDouble(txtCashAmount.text);
-          break;
-
-        case DeliveryStatus.returned:
-          returnAmount = widget.delivery.orderAmount;
-          break;
-        default:
+        if (mounted) {
+          ShowMessage.success(context, 'Successfully updated delivery record!\n[${updatedDelivery.storeName}]');
+          Navigator.pop(context); // go back to previous page
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Error updating delivery record: $e');
+        }
       }
-
-      // update image data
-      String imageFilePath = await Helperfunctions.updateImage(context, image, networkImagePath, widget.delivery.imagePath);
-
-      Delivery updatedDelivery = widget.delivery.copyWith(
-        storeName: dropdownHapiStore.text,
-        remarks: remark,
-        transactionStatus: dropdownStatus.text,
-        imagePath: imageFilePath,
-        orderAmount: widget.delivery.orderAmount,
-        returnAmount: returnAmount,
-        creditAmount: creditAmount,
-        cashAmount: cashAmount,
-        onlineAmount: onlineAmount,
-        deliveryDate: widget.delivery.deliveryDate,
-        createdBy: widget.delivery.createdBy,
-        lastUpdatedBy: authService.value.currentUser!.displayName!,
-        createdDate: widget.delivery.createdDate,
-        lastupdatedDate: Timestamp.now(),
-        createdPage: widget.delivery.createdPage,
-        lastUpdatedPage: AppPages.delivery,
-      );
-      db.updateDelivery(widget.deliveryID, updatedDelivery);
-
-      // log transaction
-      await Helperfunctions.logUpdate(
-        dropdownHapiStore.text,
-        widget.delivery.toJson(),
-        updatedDelivery.toJson(),
-        page: AppPages.delivery,
-      );
-
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully updated delivery record!\n[${widget.delivery.storeName}]');
-        Navigator.pop(context); // go back to previous page
-      }
-
-      setState(() {});
     } else {
       if (mounted) ShowMessage.listError(context, listError);
     }
   }
 
   void onDelete() async {
-    if (widget.delivery.imagePath.isNotEmpty) {
-      await Helperfunctions.deleteImage(context, widget.delivery.imagePath);
+    try {
+      await _controller.deleteDelivery(context: context, deliveryId: widget.deliveryID, delivery: widget.delivery);
+
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]');
+        Navigator.pop(context); // go back to previous page
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Error deleting delivery record: $e');
+      }
     }
-    db.deleteDelivery(widget.deliveryID);
-
-    // log transaction
-    await Helperfunctions.logDelete(dropdownHapiStore.text, widget.delivery.toJson(), page: AppPages.delivery);
-
-    if (mounted) {
-      ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]');
-      Navigator.pop(context); // go back to previous page
-    }
-
-    setState(() {});
   }
 
   void onFocusChange(bool hasFocus, TextEditingController controller) {
@@ -334,23 +236,20 @@ class _DeliveryPageState extends State<DeliveryPage> {
       }
     } else {
       if (!hasFocus) {
-        setState(() => computeDiscrepancy());
+        computeDiscrepancy();
       }
     }
   }
 
   void computeDiscrepancy() {
-    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
-    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
-    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
-    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
-
-    Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmount;
-    Decimal orderAmount = Decimal.parse(widget.delivery.orderAmount.toString());
-
-    discrepancy = (totalAmount - orderAmount).toDouble();
-
-    setState(() {});
+    discrepancy = _controller.computeDiscrepancy(
+      orderAmount: widget.delivery.orderAmount,
+      cash: txtCashAmount.text,
+      online: txtOnlineAmount.text,
+      credit: txtCreditAmount.text,
+      returnAmount: txtReturnAmount.text,
+    );
+    if (mounted) setState(() {});
   }
 
   Widget hapistoreDropdown() {
@@ -373,114 +272,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void onStoreSelected() async {
-    txtSMS.text =
-        '[SELECTA DELIVERY]\n\nGood day ${dropdownHapiStore.text}! This is to confirm that your order worth (${txtOrderAmount.text}) is now pending for delivery.\n\nPlease expect your stocks to arrive in a few hours. Thank you for choosing Selecta Ice Cream. Have a sweet day!';
+    txtSMS.text = _controller.generateSmsMessage(storeName: dropdownHapiStore.text, formattedOrderAmount: txtOrderAmount.text);
 
     if (dropdownHapiStore.text.isNotEmpty) {
-      // Prefetch placements for the current store within the current month
-      listPlacement = KData.getListPlacement();
-      if (dropdownHapiStore.text.isNotEmpty) {
-        var savedPlacement = await placementService.getPlacementByStoreAndDate(dropdownHapiStore.text, DateTime.now());
-        if (savedPlacement != null) {
-          placementID = savedPlacement.id;
-          for (var placement in listPlacement) {
-            switch (placement.itemCode) {
-              case 'cotc1':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc1) {
-                  placement.isPlaced = savedPlacement.cotc1;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc2':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc2) {
-                  placement.isPlaced = savedPlacement.cotc2;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc3':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc3) {
-                  placement.isPlaced = savedPlacement.cotc3;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc4':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc4) {
-                  placement.isPlaced = savedPlacement.cotc4;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc5':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc5) {
-                  placement.isPlaced = savedPlacement.cotc5;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc6':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc6) {
-                  placement.isPlaced = savedPlacement.cotc6;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc7':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc7) {
-                  placement.isPlaced = savedPlacement.cotc7;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc8':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc8) {
-                  placement.isPlaced = savedPlacement.cotc8;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc9':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc9) {
-                  placement.isPlaced = savedPlacement.cotc9;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc10':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc10) {
-                  placement.isPlaced = savedPlacement.cotc10;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc11':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc11) {
-                  placement.isPlaced = savedPlacement.cotc11;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              case 'cotc12':
-                // Retrieve from the saved placement based on item code
-                if (savedPlacement.cotc12) {
-                  placement.isPlaced = savedPlacement.cotc12;
-                  placement.isPlacedFromDB = true;
-                }
-                break;
-              default:
-                // Handle default case
-                break;
-            }
-          }
-        } else {
-          savedPlacement = Placement.empty();
-        }
+      final result = await _controller.loadPlacementsForStore(dropdownHapiStore.text);
+      if (mounted) {
+        setState(() {
+          placementID = result.placementId;
+          listPlacement = result.placements;
+        });
       }
+    } else {
+      if (mounted) setState(() {});
     }
-
-    setState(() {});
   }
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child, Widget? trailing}) {
@@ -540,11 +344,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             isEnabled: isDealer && !isSalesmanLocked,
           ),
           if (widget.deliveryID.isEmpty)
-            _buildDatePickerField(
-              label: 'Delivery Date',
-              selectedDate: _selectedDate,
-              onTap: isSalesmanLocked ? () {} : onChangeDate,
-            )
+            _buildDatePickerField(label: 'Delivery Date', selectedDate: _selectedDate, onTap: isSalesmanLocked ? () {} : onChangeDate)
           else
             _buildDeliveryStatusSelector(),
         ],
@@ -801,11 +601,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   Widget _buildPaymentSummary() {
     final colorScheme = Theme.of(context).colorScheme;
-    Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(txtCashAmount.text);
-    Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(txtOnlineAmount.text);
-    Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(txtCreditAmount.text);
-    Decimal returnAmount = Helperfunctions.formatStringAmountToDecimal(txtReturnAmount.text);
-    Decimal totalCollected = cashAmount + onlineAmount + creditAmount + returnAmount;
+    final double totalCollected = _controller.computeTotalCollected(
+      cash: txtCashAmount.text,
+      online: txtOnlineAmount.text,
+      credit: txtCreditAmount.text,
+      returnAmount: txtReturnAmount.text,
+    );
     double orderAmt = widget.delivery.orderAmount;
     bool isBalanced = discrepancy == 0;
     bool isOver = discrepancy > 0;
@@ -835,7 +636,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     Text('Total Accounted', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 2),
                     Text(
-                      Helperfunctions.formatDoubleAmountForDisplay(totalCollected.toDouble()),
+                      Helperfunctions.formatDoubleAmountForDisplay(totalCollected),
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                   ],
@@ -1185,70 +986,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
     );
   }
 
-  Widget _buildAuditCard() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
-        ),
-        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 8,
-              children: [
-                _buildAuditRow('Created By', widget.delivery.createdBy),
-                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.createdDate.toDate())),
-                if (widget.delivery.createdPage.isNotEmpty)
-                  _buildAuditRow('Created On Page', widget.delivery.createdPage),
-                const Divider(height: 12),
-                _buildAuditRow('Last Updated By', widget.delivery.lastUpdatedBy),
-                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.lastupdatedDate.toDate())),
-                if (widget.delivery.lastUpdatedPage.isNotEmpty)
-                  _buildAuditRow('Last Updated Page', widget.delivery.lastUpdatedPage),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuditRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-        ),
-      ],
-    );
-  }
-
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
     return SafeArea(
@@ -1360,11 +1097,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         ),
         child: Text(
           '$placedCount/12 placed',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: placedCount == 12 ? colorScheme.primary : colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: placedCount == 12 ? colorScheme.primary : colorScheme.onSurfaceVariant),
         ),
       ),
       child: Column(
@@ -1437,8 +1170,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   onTap: isSalesmanLocked
                       ? null
                       : (isLocked
-                          ? () => ShowMessage.error(context, '${item.itemName} is already placed for this month.')
-                          : () => setState(() => item.isPlaced = !item.isPlaced)),
+                            ? () => ShowMessage.error(context, '${item.itemName} is already placed for this month.')
+                            : () => setState(() => item.isPlaced = !item.isPlaced)),
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.asset(
@@ -1456,13 +1189,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   ),
                   title: Text(item.itemName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   subtitle: Text(
-                    isLocked
-                        ? 'Locked (saved in DB)'
-                        : (isPlaced ? 'Placed and ready' : 'Pending placement'),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                    ),
+                    isLocked ? 'Locked (saved in DB)' : (isPlaced ? 'Placed and ready' : 'Pending placement'),
+                    style: TextStyle(fontSize: 12, color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant),
                   ),
                   trailing: isLocked
                       ? Icon(Icons.lock_outline, size: 20, color: colorScheme.primary)
@@ -1522,11 +1250,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         Expanded(
                           child: Text(
                             'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.amber.shade900,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: TextStyle(fontSize: 13, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
                           ),
                         ),
                       ],
@@ -1562,7 +1286,15 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 if (widget.deliveryID.isEmpty) _buildSmsCard(),
 
                 // 6. Audit & History Card (when updating existing record)
-                if (widget.deliveryID.isNotEmpty) _buildAuditCard(),
+                if (widget.deliveryID.isNotEmpty)
+                  AuditHistoryWidget(
+                    createdBy: widget.delivery.createdBy,
+                    createdDate: widget.delivery.createdDate,
+                    createdPage: widget.delivery.createdPage,
+                    lastUpdatedBy: widget.delivery.lastUpdatedBy,
+                    lastUpdatedDate: widget.delivery.lastupdatedDate,
+                    lastUpdatedPage: widget.delivery.lastUpdatedPage,
+                  ),
               ],
             ),
           ),

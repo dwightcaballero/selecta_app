@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/transaction_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/models/transactionlog.dart';
-import 'package:flutter_app/services/transactionlog_service.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
@@ -14,7 +14,8 @@ class TransactionLogPage extends StatefulWidget {
 }
 
 class _TransactionLogPageState extends State<TransactionLogPage> {
-  final TransactionLogService db = TransactionLogService();
+  // Controller managing audit log streams and processing
+  final TransactionController _controller = TransactionController();
 
   late Stream<QuerySnapshot> _logsStream;
   final TextEditingController _searchController = TextEditingController();
@@ -29,7 +30,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
   @override
   void initState() {
     super.initState();
-    _logsStream = db.getLogsForDay(_selectedDate);
+    _logsStream = _controller.getLogsForDayStream(_selectedDate);
   }
 
   @override
@@ -43,7 +44,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
     setState(() {
       _selectedDate = date;
       _expandedLogIds.clear();
-      _logsStream = db.getLogsForDay(_selectedDate);
+      _logsStream = _controller.getLogsForDayStream(_selectedDate);
     });
   }
 
@@ -563,33 +564,15 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
 
           final allDocs = snapshot.data?.docs ?? [];
 
-          // Calculate activity counts for the selected day
-          int createCount = 0;
-          int updateCount = 0;
-          int deleteCount = 0;
+          // Calculate activity counts and filter logs via controller
+          final logResult = _controller.processLogs(
+            allDocs: allDocs,
+            selectedActionFilter: _selectedActionFilter,
+            searchQuery: _searchQuery,
+          );
 
-          final List<QueryDocumentSnapshot> filteredLogs = [];
-
-          for (var doc in allDocs) {
-            final log = doc.data() as TransactionLog;
-
-            if (log.logAction == LogAction.create) createCount++;
-            if (log.logAction == LogAction.update) updateCount++;
-            if (log.logAction == LogAction.delete) deleteCount++;
-
-            final bool matchesAction = _selectedActionFilter == 'All' || log.logAction == _selectedActionFilter;
-            final bool matchesSearch = _searchQuery.isEmpty ||
-                log.message.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                log.details.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                log.loggedBy.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                log.loggedRole.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                log.page.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                log.dealerName.toLowerCase().contains(_searchQuery.toLowerCase());
-
-            if (matchesAction && matchesSearch) {
-              filteredLogs.add(doc);
-            }
-          }
+          final counts = logResult.counts;
+          final filteredLogs = logResult.filteredLogs;
 
           return Column(
             children: [
@@ -603,10 +586,10 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
                     _buildSearchBar(theme),
                     const SizedBox(height: 8),
                     _buildFilterChips(
-                      totalCount: allDocs.length,
-                      createCount: createCount,
-                      updateCount: updateCount,
-                      deleteCount: deleteCount,
+                      totalCount: counts.total,
+                      createCount: counts.create,
+                      updateCount: counts.update,
+                      deleteCount: counts.delete,
                     ),
                   ],
                 ),

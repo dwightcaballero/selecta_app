@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/hapistore_controller.dart';
 import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
 
 /// Reusable store selector field with form validation and instant virtualized picker.
 class HapistorePickerField extends StatefulWidget {
@@ -27,7 +27,7 @@ class HapistorePickerField extends StatefulWidget {
 }
 
 class _HapistorePickerFieldState extends State<HapistorePickerField> {
-  final HapiStoreService _dbHS = HapiStoreService();
+  final HapiStoreController _controller = HapiStoreController();
   List<Hapistore> _stores = [];
   bool _isLoading = false;
   StreamSubscription? _subscription;
@@ -45,21 +45,16 @@ class _HapistorePickerFieldState extends State<HapistorePickerField> {
   }
 
   void _initStores() {
-    final cached = HapiStoreService.cachedStores;
+    final cached = _controller.cachedStores;
     if (cached != null && cached.isNotEmpty) {
       _stores = cached;
     } else {
       _isLoading = true;
     }
 
-    _subscription = _dbHS.getListHapiStoresAsStream().listen(
-      (snapshot) {
+    _subscription = _controller.getHapiStoresListStream().listen(
+      (list) {
         if (!mounted) return;
-        final list = snapshot.docs.map((doc) {
-          final data = doc.data();
-          if (data is Hapistore) return data;
-          return Hapistore.fromJson(data as Map<String, Object?>);
-        }).toList();
         setState(() {
           _stores = list;
           _isLoading = false;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/thruput_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
@@ -6,22 +7,17 @@ import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class ThruputPage extends StatelessWidget {
-  const ThruputPage({super.key, required this.dashboardDTO});
+  ThruputPage({super.key, required this.dashboardDTO});
 
   final DashboardDTO dashboardDTO;
-
-  static const double _targetThruput = 8000;
+  final ThruputController _controller = ThruputController();
 
   Widget _buildThruputSummary(
     BuildContext context, {
-    required double safeThruput,
-    required double progress,
-    required double remainingThruput,
-    required bool isOnTarget,
+    required ThruputMetrics metrics,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final currentMonth = DateFormat('MMMM yyyy').format(DateTime.now());
-    final surplus = (safeThruput - _targetThruput).clamp(0.0, double.infinity);
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -47,7 +43,7 @@ class ThruputPage extends StatelessWidget {
                   children: [
                     Text('Throughput Progress', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                     Text(
-                      '$currentMonth • Target: ${Helperfunctions.formatDoubleAmountForDisplay(_targetThruput)} / store',
+                      '$currentMonth • Target: ${Helperfunctions.formatDoubleAmountForDisplay(ThruputController.targetThruput)} / store',
                       style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                     ),
                   ],
@@ -56,12 +52,12 @@ class ThruputPage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isOnTarget ? Colors.green.withValues(alpha: 0.12) : colorScheme.primary.withValues(alpha: 0.12),
+                  color: metrics.isOnTarget ? Colors.green.withValues(alpha: 0.12) : colorScheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${(progress * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isOnTarget ? Colors.green : colorScheme.primary),
+                  '${(metrics.progress * 100).toStringAsFixed(1)}%',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: metrics.isOnTarget ? Colors.green : colorScheme.primary),
                 ),
               ),
             ],
@@ -70,9 +66,9 @@ class ThruputPage extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: progress,
+              value: metrics.progress,
               minHeight: 8,
-              color: isOnTarget ? Colors.green : colorScheme.primary,
+              color: metrics.isOnTarget ? Colors.green : colorScheme.primary,
               backgroundColor: colorScheme.primary.withValues(alpha: 0.14),
             ),
           ),
@@ -82,17 +78,17 @@ class ThruputPage extends StatelessWidget {
               _buildSummaryValue(
                 context,
                 label: 'Actual Throughput',
-                value: Helperfunctions.formatDoubleAmountForDisplay(safeThruput),
-                valueColor: isOnTarget ? Colors.green : null,
+                value: Helperfunctions.formatDoubleAmountForDisplay(metrics.safeThruput),
+                valueColor: metrics.isOnTarget ? Colors.green : null,
               ),
               const SizedBox(width: 20),
               _buildSummaryValue(
                 context,
-                label: isOnTarget ? 'Status' : 'Remaining to Target',
-                value: isOnTarget
-                    ? (surplus > 0 ? '+${Helperfunctions.formatDoubleAmountForDisplay(surplus)} over' : 'Target reached! 🎉')
-                    : Helperfunctions.formatDoubleAmountForDisplay(remainingThruput),
-                valueColor: isOnTarget ? Colors.green : colorScheme.error,
+                label: metrics.isOnTarget ? 'Status' : 'Remaining to Target',
+                value: metrics.isOnTarget
+                    ? (metrics.surplus > 0 ? '+${Helperfunctions.formatDoubleAmountForDisplay(metrics.surplus)} over' : 'Target reached! 🎉')
+                    : Helperfunctions.formatDoubleAmountForDisplay(metrics.remainingThruput),
+                valueColor: metrics.isOnTarget ? Colors.green : colorScheme.error,
               ),
             ],
           ),
@@ -190,24 +186,15 @@ class ThruputPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Safe calculation preventing NaN crash if buyingCount is 0
-    final safeThruput = dashboardDTO.buyingThruput.isNaN ? 0.0 : dashboardDTO.buyingThruput;
-    final totalStores = dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount;
-    final conversionRate = totalStores == 0 ? 0.0 : (dashboardDTO.buyingCount / totalStores * 100);
-
-    final averageSale = dashboardDTO.totaltransactionCount == 0 ? 0.0 : dashboardDTO.totalBuyingSales / dashboardDTO.totaltransactionCount;
-    final averageTransactions = dashboardDTO.buyingCount == 0 ? 0.0 : dashboardDTO.totaltransactionCount / dashboardDTO.buyingCount;
-
-    final remainingThruput = (_targetThruput - safeThruput).clamp(0.0, _targetThruput);
-    final progress = (_targetThruput == 0 ? 0.0 : (safeThruput / _targetThruput)).clamp(0.0, 1.0);
-    final isOnTarget = safeThruput >= _targetThruput;
+    // Controller calculates all throughput metrics safely
+    final metrics = _controller.calculateMetrics(dashboardDTO);
 
     return Scaffold(
       appBar: const CustomAppbar(title: 'KPI - Throughput', subtitle: 'Store throughput and activity'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
-          _buildThruputSummary(context, safeThruput: safeThruput, progress: progress, remainingThruput: remainingThruput, isOnTarget: isOnTarget),
+          _buildThruputSummary(context, metrics: metrics),
           const SizedBox(height: 18),
           _buildSection(
             context,
@@ -217,12 +204,12 @@ class ThruputPage extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
               child: Text(
-                '${conversionRate.toStringAsFixed(1)}% Active',
+                '${metrics.conversionRate.toStringAsFixed(1)}% Active',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
               ),
             ),
             children: [
-              _buildMetricRow(context, label: 'Total accounts', value: '$totalStores stores', icon: Icons.business_outlined),
+              _buildMetricRow(context, label: 'Total accounts', value: '${metrics.totalStores} stores', icon: Icons.business_outlined),
               const Divider(height: 1, indent: 16, endIndent: 16),
               _buildMetricRow(
                 context,
@@ -262,14 +249,14 @@ class ThruputPage extends StatelessWidget {
               _buildMetricRow(
                 context,
                 label: 'Average sale per transaction',
-                value: Helperfunctions.formatDoubleAmountForDisplay(averageSale),
+                value: Helperfunctions.formatDoubleAmountForDisplay(metrics.averageSale),
                 icon: Icons.trending_up_outlined,
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
               _buildMetricRow(
                 context,
                 label: 'Average transactions per store',
-                value: averageTransactions.toStringAsFixed(1),
+                value: metrics.averageTransactions.toStringAsFixed(1),
                 icon: Icons.analytics_outlined,
               ),
             ],

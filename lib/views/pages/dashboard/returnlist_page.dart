@@ -1,11 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/return_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/views/pages/dashboard/return_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
+/// Presentation view displaying the list of all returned delivery orders.
+///
+/// Purely responsible for rendering UI widgets. Data streaming, return metrics calculation,
+/// and search filtering are handled by [ReturnController], keeping presentation decoupled
+/// from database communication.
 class ReturnlistPage extends StatefulWidget {
   const ReturnlistPage({super.key});
 
@@ -14,7 +19,7 @@ class ReturnlistPage extends StatefulWidget {
 }
 
 class _ReturnlistPageState extends State<ReturnlistPage> {
-  final DeliveryService db = DeliveryService();
+  final ReturnController _controller = ReturnController();
 
   late final Stream<QuerySnapshot> _returnsStream;
   final TextEditingController _searchController = TextEditingController();
@@ -24,7 +29,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   @override
   void initState() {
     super.initState();
-    _returnsStream = db.getListDeliveryWithReturnStatus();
+    _returnsStream = _controller.getReturnsStream();
   }
 
   @override
@@ -329,25 +334,16 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
             return _buildEmptyState();
           }
 
-          // Calculate total returned value and apply search filter
-          double totalReturnedAmount = 0;
-          final List<QueryDocumentSnapshot> filteredDocs = [];
-
-          for (var doc in allDocs) {
-            final delivery = doc.data() as Delivery;
-            final returnAmount = delivery.returnAmount > 0 ? delivery.returnAmount : delivery.orderAmount;
-            totalReturnedAmount += returnAmount;
-            if (_searchQuery.isEmpty ||
-                delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                delivery.remarks.toLowerCase().contains(_searchQuery.toLowerCase())) {
-              filteredDocs.add(doc);
-            }
-          }
+          final metrics = _controller.computeMetrics(allDocs);
+          final filteredDocs = _controller.filterReturns(
+            docs: allDocs,
+            searchQuery: _searchQuery,
+          );
 
           return Column(
             children: [
               // 1. Summary Card
-              _buildSummaryCard(totalAmount: totalReturnedAmount, totalCount: allDocs.length),
+              _buildSummaryCard(totalAmount: metrics.totalAmount, totalCount: metrics.totalCount),
 
               // 2. Search Bar
               _buildSearchBar(),

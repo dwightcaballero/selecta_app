@@ -1,15 +1,17 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/credit_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/imageviewer_page.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 
+/// Presentation view for inspecting and updating an individual store's credit record.
+///
+/// Purely responsible for rendering UI widgets. Persistence, audit logging,
+/// and model mutations are delegated to [CreditController].
 class CreditPage extends StatefulWidget {
   const CreditPage({super.key, required this.recID, required this.delivery});
 
@@ -21,47 +23,34 @@ class CreditPage extends StatefulWidget {
 }
 
 class _CreditPageState extends State<CreditPage> {
-  final DeliveryService db = DeliveryService();
+  /// Shared controller managing credit business logic and update operations.
+  final CreditController _controller = CreditController();
 
+  /// Currently selected status in the UI segmented control.
   late String _selectedStatus;
+
+  /// Whether an update request is currently being processed.
   bool _isUpdating = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedStatus = widget.delivery.creditStatus.isNotEmpty ? widget.delivery.creditStatus : CreditStatus.unpaid;
+    // Resolve initial status via the controller
+    _selectedStatus = _controller.resolveInitialStatus(widget.delivery);
   }
 
-  void onUpdate() {
+  /// Triggers the credit update operation through the controller.
+  Future<void> _onUpdate() async {
     if (_isUpdating) return;
     setState(() => _isUpdating = true);
 
     try {
-      Delivery updatedDelivery = widget.delivery.copyWith(
-        storeName: widget.delivery.storeName,
-        remarks: widget.delivery.remarks,
-        transactionStatus: widget.delivery.transactionStatus,
-        orderAmount: widget.delivery.orderAmount,
-        returnAmount: widget.delivery.returnAmount,
-        creditAmount: widget.delivery.creditAmount,
-        cashAmount: widget.delivery.cashAmount,
-        onlineAmount: widget.delivery.onlineAmount,
-        deliveryDate: widget.delivery.deliveryDate,
-        creditStatus: _selectedStatus,
-        createdBy: widget.delivery.createdBy,
-        lastUpdatedBy: authService.value.currentUser?.displayName ?? 'Admin',
-        createdDate: widget.delivery.createdDate,
-        lastupdatedDate: Timestamp.now(),
-        createdPage: widget.delivery.createdPage,
-        lastUpdatedPage: AppPages.credit,
+      final updatedDelivery = await _controller.updateCreditStatus(
+        deliveryId: widget.recID,
+        currentDelivery: widget.delivery,
+        newCreditStatus: _selectedStatus,
       );
-      db.updateDelivery(widget.recID, updatedDelivery);
-      Helperfunctions.logUpdate(
-        updatedDelivery.storeName,
-        widget.delivery.toJson(),
-        updatedDelivery.toJson(),
-        page: AppPages.credit,
-      );
+
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully updated credit status!\n[${updatedDelivery.storeName}]');
       Navigator.pop(context);
@@ -73,8 +62,14 @@ class _CreditPageState extends State<CreditPage> {
     }
   }
 
+  // ==========================================
+  // UI Building Blocks
+  // ==========================================
+
+  /// Builds a stylized card section with an icon, title, and child content.
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
     final colorScheme = Theme.of(context).colorScheme;
+
     return Card(
       elevation: 0,
       color: colorScheme.surface,
@@ -106,9 +101,10 @@ class _CreditPageState extends State<CreditPage> {
     );
   }
 
+  /// Builds the top overview card displaying the store name and outstanding credit amount.
   Widget _buildCreditOverviewCard() {
     final colorScheme = Theme.of(context).colorScheme;
-    bool isUnpaid = _selectedStatus == CreditStatus.unpaid;
+    final isUnpaid = _selectedStatus == CreditStatus.unpaid;
 
     return Container(
       width: double.infinity,
@@ -160,11 +156,7 @@ class _CreditPageState extends State<CreditPage> {
                   const SizedBox(height: 2),
                   Text(
                     Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount),
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: isUnpaid ? Colors.red.shade700 : Colors.green.shade700,
-                    ),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isUnpaid ? Colors.red.shade700 : Colors.green.shade700),
                   ),
                 ],
               ),
@@ -192,6 +184,7 @@ class _CreditPageState extends State<CreditPage> {
     );
   }
 
+  /// Builds the breakdown list showing cash, online, and returns deductions.
   Widget _buildPaymentBreakdownCard() {
     final colorScheme = Theme.of(context).colorScheme;
     final isUnpaid = _selectedStatus == CreditStatus.unpaid;
@@ -205,9 +198,17 @@ class _CreditPageState extends State<CreditPage> {
           if (widget.delivery.cashAmount > 0)
             _buildDetailRow('Cash Paid', Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.cashAmount), valueColor: Colors.green.shade700),
           if (widget.delivery.onlineAmount > 0)
-            _buildDetailRow('Online Paid', Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.onlineAmount), valueColor: colorScheme.primary),
+            _buildDetailRow(
+              'Online Paid',
+              Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.onlineAmount),
+              valueColor: colorScheme.primary,
+            ),
           if (widget.delivery.returnAmount > 0)
-            _buildDetailRow('Returns Deducted', Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount), valueColor: Colors.orange.shade800),
+            _buildDetailRow(
+              'Returns Deducted',
+              Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount),
+              valueColor: Colors.orange.shade800,
+            ),
           const Divider(height: 20),
           _buildDetailRow(
             'Remaining Credit Balance',
@@ -219,8 +220,10 @@ class _CreditPageState extends State<CreditPage> {
     );
   }
 
+  /// Helper row displaying a title and value side-by-side.
   Widget _buildDetailRow(String label, String value, {Color? valueColor}) {
     final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -236,11 +239,13 @@ class _CreditPageState extends State<CreditPage> {
     );
   }
 
+  /// Builds delivery remarks section if remarks are present.
   Widget _buildRemarksCard() {
     final remarks = widget.delivery.remarks.trim();
     if (remarks.isEmpty) return const SizedBox.shrink();
 
     final colorScheme = Theme.of(context).colorScheme;
+
     return _buildSectionCard(
       title: 'Delivery Remarks',
       icon: Icons.notes_outlined,
@@ -252,14 +257,12 @@ class _CreditPageState extends State<CreditPage> {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
         ),
-        child: Text(
-          remarks,
-          style: TextStyle(fontSize: 13, color: colorScheme.onSurface, height: 1.4),
-        ),
+        child: Text(remarks, style: TextStyle(fontSize: 13, color: colorScheme.onSurface, height: 1.4)),
       ),
     );
   }
 
+  /// Builds image thumbnail preview for the signed delivery receipt.
   Widget _buildAttachmentCard() {
     final imagePath = widget.delivery.imagePath.trim();
     if (imagePath.isEmpty) return const SizedBox.shrink();
@@ -269,10 +272,7 @@ class _CreditPageState extends State<CreditPage> {
       icon: Icons.image_outlined,
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => Helperfunctions.navigateTo(
-          context,
-          ImageViewerPage(image: null, networkImagePath: imagePath),
-        ),
+        onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: null, networkImagePath: imagePath)),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: Stack(
@@ -337,6 +337,7 @@ class _CreditPageState extends State<CreditPage> {
     );
   }
 
+  /// Builds the segmented status selector card (Unpaid vs Paid).
   Widget _buildStatusCard() {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -389,74 +390,12 @@ class _CreditPageState extends State<CreditPage> {
     );
   }
 
-  Widget _buildAuditCard() {
-    final colorScheme = Theme.of(context).colorScheme;
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
-        ),
-        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 8,
-              children: [
-                _buildAuditRow('Created By', widget.delivery.createdBy),
-                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.createdDate.toDate())),
-                if (widget.delivery.createdPage.isNotEmpty)
-                  _buildAuditRow('Created On Page', widget.delivery.createdPage),
-                const Divider(height: 12),
-                _buildAuditRow('Last Updated By', widget.delivery.lastUpdatedBy),
-                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.delivery.lastupdatedDate.toDate())),
-                if (widget.delivery.lastUpdatedPage.isNotEmpty)
-                  _buildAuditRow('Last Updated Page', widget.delivery.lastUpdatedPage),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildAuditRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-        ),
-      ],
-    );
-  }
-
+  /// Builds the persistent bottom bar containing the submit action button.
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
-    final isUnchanged = _selectedStatus == widget.delivery.creditStatus;
+    final isUnchanged = _controller.isStatusUnchanged(currentStatus: widget.delivery.creditStatus, selectedStatus: _selectedStatus);
 
     return SafeArea(
       child: Container(
@@ -480,6 +419,7 @@ class _CreditPageState extends State<CreditPage> {
                     );
                     return;
                   }
+
                   final confirmed = await ShowMessage.confirm(
                     context,
                     title: ConfirmTitle.update,
@@ -487,25 +427,24 @@ class _CreditPageState extends State<CreditPage> {
                     icon: Icons.check_circle_outline,
                     confirmText: 'Update',
                   );
-                  if (confirmed) onUpdate();
+
+                  if (confirmed) {
+                    _onUpdate();
+                  }
                 },
           style: FilledButton.styleFrom(
             minimumSize: const Size(double.infinity, 50.0),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
           icon: _isUpdating
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Icon(Icons.check_circle_outline, size: 20),
           label: Text(
             _isUpdating
                 ? 'Updating...'
                 : isUnchanged
-                    ? 'Current: $_selectedStatus'
-                    : 'Update Credit Record',
+                ? 'Current: $_selectedStatus'
+                : 'Update Credit Record',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ),
@@ -540,7 +479,14 @@ class _CreditPageState extends State<CreditPage> {
             _buildAttachmentCard(),
 
             // 6. Audit History Card
-            _buildAuditCard(),
+            AuditHistoryWidget(
+              createdBy: widget.delivery.createdBy,
+              createdDate: widget.delivery.createdDate,
+              createdPage: widget.delivery.createdPage,
+              lastUpdatedBy: widget.delivery.lastUpdatedBy,
+              lastUpdatedDate: widget.delivery.lastupdatedDate,
+              lastUpdatedPage: widget.delivery.lastUpdatedPage,
+            ),
 
             const SizedBox(height: 8),
           ],

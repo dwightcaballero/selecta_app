@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/delivery_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/views/pages/dashboard/delivery_page.dart';
 import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
+/// Presentation view displaying the list of deliveries for a selected date.
+///
+/// Purely responsible for rendering UI widgets. Data streaming, role checking,
+/// summary calculation, date formatting, and filtering are handled by [DeliveryController],
+/// while direct database calls are managed in the service layer.
 class DeliveryListPage extends StatefulWidget {
   const DeliveryListPage({super.key});
 
@@ -17,7 +21,7 @@ class DeliveryListPage extends StatefulWidget {
 }
 
 class _DeliveryListPageState extends State<DeliveryListPage> {
-  final DeliveryService db = DeliveryService();
+  final DeliveryController _controller = DeliveryController();
   bool isDealer = false;
   int? returnedDeliveryCount;
 
@@ -39,9 +43,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   void prefetchData() async {
-    isDealer = await KVariables.getIsDealer();
+    isDealer = await _controller.checkIsDealer();
     if (isDealer) {
-      returnedDeliveryCount = await DeliveryService.getCountReturnedDeliveriesOnOtherDays();
+      returnedDeliveryCount = await _controller.getCountReturnedDeliveriesOnOtherDays();
     }
     if (mounted) setState(() {});
   }
@@ -67,20 +71,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     });
   }
 
-  String _dateLabel() {
-    final today = DateTime.now();
-    final selectedDay = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    final currentDay = DateTime(today.year, today.month, today.day);
-
-    if (selectedDay == currentDay) return 'Today, ${DateFormat('d MMM yyyy').format(_selectedDate)}';
-    if (selectedDay == currentDay.subtract(const Duration(days: 1))) {
-      return 'Yesterday, ${DateFormat('d MMM').format(_selectedDate)}';
-    }
-    if (selectedDay == currentDay.add(const Duration(days: 1))) {
-      return 'Tomorrow, ${DateFormat('d MMM').format(_selectedDate)}';
-    }
-    return DateFormat('EEE, d MMM yyyy').format(_selectedDate);
-  }
+  String _dateLabel() => _controller.formatDateLabel(_selectedDate);
 
   Widget _buildDateNavigator(ThemeData theme) {
     final colorScheme = theme.colorScheme;
@@ -187,16 +178,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   Widget _buildInteractiveSummary(List deliveries) {
-    int pending = 0;
-    int delivered = 0;
-    int returned = 0;
-
-    for (final item in deliveries) {
-      final status = (item.data() as Delivery).transactionStatus;
-      if (status == DeliveryStatus.pending) pending++;
-      if (status == DeliveryStatus.delivered) delivered++;
-      if (status == DeliveryStatus.returned) returned++;
-    }
+    final summary = _controller.computeSummaryCounts(deliveries);
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -208,10 +190,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       ),
       child: Row(
         children: [
-          Expanded(child: _summaryItem('All', deliveries.length, Theme.of(context).colorScheme.primary, 'All')),
-          Expanded(child: _summaryItem('Delivered', delivered, Colors.green.shade700, DeliveryStatus.delivered)),
-          Expanded(child: _summaryItem('Pending', pending, Colors.orange.shade800, DeliveryStatus.pending)),
-          Expanded(child: _summaryItem('Returned', returned, Colors.red.shade700, DeliveryStatus.returned)),
+          Expanded(child: _summaryItem('All', summary.all, Theme.of(context).colorScheme.primary, 'All')),
+          Expanded(child: _summaryItem('Delivered', summary.delivered, Colors.green.shade700, DeliveryStatus.delivered)),
+          Expanded(child: _summaryItem('Pending', summary.pending, Colors.orange.shade800, DeliveryStatus.pending)),
+          Expanded(child: _summaryItem('Returned', summary.returned, Colors.red.shade700, DeliveryStatus.returned)),
         ],
       ),
     );
@@ -338,7 +320,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       appBar: const CustomAppbar(title: 'Delivery', subtitle: 'List of Deliveries', showBackButton: true),
       floatingActionButton: isDealer ? floatingActionAddButton() : null,
       body: StreamBuilder(
-        stream: db.getListDeliveryByDate(_selectedDate),
+        stream: _controller.getDeliveriesStream(_selectedDate),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
           if (snapshot.hasError) {
             return const Center(child: Text('Unable to load deliveries. Please try again.'));
@@ -349,13 +331,12 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
           final List allDocs = snapshot.data?.docs ?? [];
 
-          // Filter by status tab & search query
-          final filteredDocs = allDocs.where((doc) {
-            final Delivery delivery = doc.data();
-            final matchesStatus = _selectedStatusFilter == 'All' || delivery.transactionStatus == _selectedStatusFilter;
-            final matchesSearch = _searchQuery.isEmpty || delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase());
-            return matchesStatus && matchesSearch;
-          }).toList();
+          // Filter by status tab & search query via controller
+          final filteredDocs = _controller.filterDeliveries(
+            docs: allDocs,
+            selectedStatus: _selectedStatusFilter,
+            searchQuery: _searchQuery,
+          );
 
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),

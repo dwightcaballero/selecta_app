@@ -1,11 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/account_settings_controller.dart';
 import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+/// Presentation page allowing users to update their display username and role.
 class ChangeusernameRolePage extends StatefulWidget {
   const ChangeusernameRolePage({super.key});
 
@@ -14,37 +14,38 @@ class ChangeusernameRolePage extends StatefulWidget {
 }
 
 class _ChangeusernameRolePageState extends State<ChangeusernameRolePage> {
+  final AccountSettingsController _controller = AccountSettingsController();
   final _formKey = GlobalKey<FormState>();
 
   String? _selectedRole;
-  TextEditingController textEditingControllerUsername = TextEditingController();
+  final TextEditingController textEditingControllerUsername = TextEditingController();
   String errormessage = '';
 
-  List<DropdownMenuItem<String>> listRole = [
+  final List<DropdownMenuItem<String>> listRole = const [
     DropdownMenuItem(value: BusinessRole.dealer, child: Text(BusinessRole.dealer)),
     DropdownMenuItem(value: BusinessRole.salesman, child: Text(BusinessRole.salesman)),
   ];
 
-  Future<void> _getRole() async {
-    final SharedPreferencesAsync asyncPrefs = SharedPreferencesAsync();
-    var role = await asyncPrefs.getString(SharedPrefKeys.role);
-    
-    setState(() {
-      _selectedRole = role;
-    });
+  Future<void> _loadRole() async {
+    final role = await _controller.getStoredRole();
+    if (mounted) {
+      setState(() {
+        _selectedRole = role;
+      });
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    _getRole();
-    textEditingControllerUsername.text = authService.value.currentUser!.displayName ?? '';
+    _loadRole();
+    textEditingControllerUsername.text = _controller.getCurrentUsername();
   }
-  
+
   @override
   void dispose() {
-    super.dispose();
     textEditingControllerUsername.dispose();
+    super.dispose();
   }
 
   @override
@@ -52,7 +53,7 @@ class _ChangeusernameRolePageState extends State<ChangeusernameRolePage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.blue,
-        title: Text('Change Username and Role'),
+        title: const Text('Change Username and Role'),
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -63,21 +64,22 @@ class _ChangeusernameRolePageState extends State<ChangeusernameRolePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextFormField(
-                  validator: (value) => value == null || value.isEmpty ? 'Username should not be blank.' : null,
+                  validator: (value) => value == null || value.trim().isEmpty ? 'Username should not be blank.' : null,
                   autovalidateMode: AutovalidateMode.onUserInteraction,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
-                    hintText: "Username",),
+                    hintText: "Username",
+                  ),
                   controller: textEditingControllerUsername,
                 ),
-                SizedBox(height: 10,),
-                DropdownButtonFormField(
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
                   autovalidateMode: AutovalidateMode.onUserInteraction,
                   borderRadius: BorderRadius.circular(10),
-                  items: listRole, 
+                  items: listRole,
                   initialValue: _selectedRole,
-                  hint: Text('Select a Role'),
-                  decoration: InputDecoration(border: OutlineInputBorder()),
+                  hint: const Text('Select a Role'),
+                  decoration: const InputDecoration(border: OutlineInputBorder()),
                   onChanged: (String? newValue) {
                     setState(() {
                       _selectedRole = newValue;
@@ -88,15 +90,15 @@ class _ChangeusernameRolePageState extends State<ChangeusernameRolePage> {
                     _selectedRole = value;
                   },
                 ),
-                if (errormessage.isNotEmpty)...[
-                  SizedBox(height: 10),
-                  Text('* $errormessage', style: TextStyle(color: Colors.red),),
+                if (errormessage.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text('* $errormessage', style: const TextStyle(color: Colors.red)),
                 ],
-                SizedBox(height: 10,),
+                const SizedBox(height: 10),
                 FilledButton(
-                  onPressed: () => changeUsername(),
-                  style: FilledButton.styleFrom(minimumSize: Size(double.infinity, 40.0)),
-                  child: Text("Submit"),
+                  onPressed: changeUsername,
+                  style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 40.0)),
+                  child: const Text("Submit"),
                 ),
               ],
             ),
@@ -106,26 +108,36 @@ class _ChangeusernameRolePageState extends State<ChangeusernameRolePage> {
     );
   }
 
+  /// Triggers username and role update through controller
   void changeUsername() async {
-    if (_formKey.currentState!.validate()){
+    if (_formKey.currentState?.validate() ?? false) {
       try {
-        await authService.value.updateUsername(username: textEditingControllerUsername.text);
+        await _controller.updateUsernameAndRole(
+          username: textEditingControllerUsername.text,
+          role: _selectedRole ?? '',
+        );
 
-        final SharedPreferencesAsync asyncPrefs = SharedPreferencesAsync();
-        await asyncPrefs.setString(SharedPrefKeys.role, _selectedRole!);
-
-        await authService.value.signOut();
-        showSuccess();
+        if (mounted) {
+          showSuccess();
+        }
       } on FirebaseAuthException catch (e) {
-        setState(() {
-          errormessage = e.message ?? 'Something went wrong.';
-        });
+        if (mounted) {
+          setState(() {
+            errormessage = _controller.getFriendlyErrorMessage(e);
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            errormessage = e.toString();
+          });
+        }
       }
     }
   }
 
-  void showSuccess(){
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => AuthPage()));
+  void showSuccess() {
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const AuthPage()));
     ShowMessage.success(context, 'Username and role changed successfully!');
   }
 }

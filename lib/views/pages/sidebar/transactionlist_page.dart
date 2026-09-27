@@ -1,15 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/transaction_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/pages/dashboard/delivery_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
 import 'package:intl/intl.dart';
 
+/// Presentation page for displaying transactions/deliveries associated with a specific store.
 class TransactionListPage extends StatefulWidget {
   const TransactionListPage({super.key, required this.storeName});
 
@@ -20,10 +20,10 @@ class TransactionListPage extends StatefulWidget {
 }
 
 class _TransactionListPageState extends State<TransactionListPage> {
-  final DeliveryService db = DeliveryService();
-  final HapiStoreService dbHS = HapiStoreService();
-  final TextEditingController dropdownHapiStore = TextEditingController();
+  // Controller managing data streams and calculations
+  final TransactionController _controller = TransactionController();
 
+  final TextEditingController dropdownHapiStore = TextEditingController();
   String _selectedMonthsAgo = MonthsAgo.months1;
 
   @override
@@ -38,6 +38,7 @@ class _TransactionListPageState extends State<TransactionListPage> {
     dropdownHapiStore.text = widget.storeName;
   }
 
+  /// Builds the store picker and timeframe selector card
   Widget _buildFilterCard() {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -91,13 +92,14 @@ class _TransactionListPageState extends State<TransactionListPage> {
     );
   }
 
+  /// Builds the real-time stream of store deliveries
   Widget _buildTransactionStream() {
     if (dropdownHapiStore.text.isEmpty) {
       return _buildSelectStorePrompt();
     }
 
     return StreamBuilder<QuerySnapshot>(
-      stream: db.getListDeliveryByStoreNameAndDateRange(dropdownHapiStore.text, _selectedMonthsAgo),
+      stream: _controller.getStoreDeliveriesStream(dropdownHapiStore.text, _selectedMonthsAgo),
       builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
         if (snapshot.hasError) {
           return _buildErrorState();
@@ -111,11 +113,8 @@ class _TransactionListPageState extends State<TransactionListPage> {
           return _buildEmptyState();
         }
 
-        double totalAmount = 0;
-        for (var doc in allDocs) {
-          final delivery = doc.data() as Delivery;
-          totalAmount += delivery.orderAmount;
-        }
+        // Calculate total via controller
+        final double totalAmount = _controller.calculateTotalDeliveriesAmount(allDocs);
 
         return Column(
           children: [
@@ -175,6 +174,7 @@ class _TransactionListPageState extends State<TransactionListPage> {
     );
   }
 
+  /// Individual transaction card
   Widget _buildTransactionCard({required String deliveryID, required Delivery delivery}) {
     final colorScheme = Theme.of(context).colorScheme;
     final dateStr = delivery.deliveryDate != null

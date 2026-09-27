@@ -29,6 +29,11 @@ class TasksService {
     return _tasksRef.orderBy('taskDeadline', descending: true).snapshots();
   }
 
+  Future<List<Tasks>> getTasksByStoreName(String storeName) async {
+    final snapshot = await _tasksRef.where('storeName', isEqualTo: storeName).get();
+    return snapshot.docs.map((doc) => doc.data() as Tasks).toList();
+  }
+
   Stream<int> getPendingAndOverdueCountStream() {
     return getListTasks().map((snapshot) {
       int count = 0;

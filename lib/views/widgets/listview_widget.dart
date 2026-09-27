@@ -1,24 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/purchaseorder_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/purchaseorder.dart';
-import 'package:flutter_app/services/purchaseorder_service.dart';
 import 'package:flutter_app/views/pages/sidebar/purchaseorder_page.dart';
 
+/// Demo listview widget demonstrating Purchase Order streaming via PurchaseOrderController.
 class ListviewWidget extends StatelessWidget {
   const ListviewWidget({super.key});
 
+  static final PurchaseOrderController _controller = PurchaseOrderController();
+
   @override
   Widget build(BuildContext context) {
-    var db = PurchaseOrderService();
-
     return Scaffold(
       appBar: AppBar(title: const Text("Purchase Order List")),
       body: StreamBuilder<QuerySnapshot>(
-        stream: db.getListPurchaseordersAsStream(),
-        // 2. Pass your stream here
+        stream: _controller.getPurchaseOrdersStream(),
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-          // 3. Handle the connection states
           if (snapshot.hasError) {
             return Center(child: Text("Error: ${snapshot.error}"));
           }
@@ -32,7 +31,6 @@ class ListviewWidget extends StatelessWidget {
           }
           final itemList = snapshot.data?.docs ?? [];
 
-          // 5. Render using ListView.builder
           return ListView.builder(
             itemCount: itemList.length,
             itemBuilder: (context, index) {
@@ -40,11 +38,17 @@ class ListviewWidget extends StatelessWidget {
 
               return InkWell(
                 onTap: () {
-                  Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: itemList[index].id, purchaseorder: purchaseorder));
+                  Helperfunctions.navigateTo(
+                    context,
+                    PurchaseorderPage(
+                      purchaseorderID: itemList[index].id,
+                      purchaseorder: purchaseorder,
+                    ),
+                  );
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: EdgeInsets.only(top: 5.0),
+                  padding: const EdgeInsets.only(top: 5.0),
                   child: Card(
                     child: Padding(
                       padding: const EdgeInsets.all(20.0),
@@ -58,8 +62,8 @@ class ListviewWidget extends StatelessWidget {
                               Text(purchaseorder.overpayment.toString()),
                             ],
                           ),
-                          Spacer(),
-                          Icon(Icons.info, color: Colors.blue),
+                          const Spacer(),
+                          const Icon(Icons.info, color: Colors.blue),
                         ],
                       ),
                     ),
@@ -72,9 +76,15 @@ class ListviewWidget extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: "", purchaseorder: Purchaseorder.empty()));
+          Helperfunctions.navigateTo(
+            context,
+            PurchaseorderPage(
+              purchaseorderID: "",
+              purchaseorder: Purchaseorder.empty(),
+            ),
+          );
         },
-        child: Icon(Icons.add),
+        child: const Icon(Icons.add),
       ),
     );
   }

@@ -1,14 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/tasks_controller.dart';
 import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/models/tasks.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/tasks_services.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 import 'package:intl/intl.dart';
 
 class TasksPage extends StatefulWidget {
@@ -22,7 +19,8 @@ class TasksPage extends StatefulWidget {
 }
 
 class _TasksPageState extends State<TasksPage> {
-  final TasksService db = TasksService();
+  // Controller managing business logic and task CRUD
+  final TasksController _controller = TasksController();
 
   final _formKey = GlobalKey<FormState>();
   final TextEditingController txtTitle = TextEditingController();
@@ -62,7 +60,7 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   void _checkDealerRole() async {
-    final isDealer = await KVariables.getIsDealer();
+    final isDealer = await _controller.checkIsDealer();
     if (mounted) {
       setState(() {
         _isDealer = isDealer;
@@ -90,34 +88,45 @@ class _TasksPageState extends State<TasksPage> {
     }
   }
 
-  String get _userName {
-    return authService.value.currentUser?.displayName ?? 'User';
-  }
-
   Future<void> _pickDeadline() async {
-    final pickedDate = await showDatePicker(context: context, initialDate: _selectedDeadline, firstDate: DateTime(2020), lastDate: DateTime(2050));
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDeadline,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2050),
+    );
 
     if (pickedDate != null && mounted) {
-      final pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_selectedDeadline));
+      final pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_selectedDeadline),
+      );
 
       if (pickedTime != null && mounted) {
         setState(() {
-          _selectedDeadline = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, pickedTime.hour, pickedTime.minute);
+          _selectedDeadline = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            pickedTime.hour,
+            pickedTime.minute,
+          );
         });
       } else if (mounted) {
         setState(() {
-          _selectedDeadline = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, _selectedDeadline.hour, _selectedDeadline.minute);
+          _selectedDeadline = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            _selectedDeadline.hour,
+            _selectedDeadline.minute,
+          );
         });
       }
     }
   }
 
   Future<void> onSave() async {
-    if (!_isDealer) {
-      ShowMessage.error(context, 'Only dealers are authorized to create tasks');
-      return;
-    }
-
     if (!_formKey.currentState!.validate()) {
       ShowMessage.error(context, 'Please complete all required fields');
       return;
@@ -126,25 +135,14 @@ class _TasksPageState extends State<TasksPage> {
     setState(() => _isLoading = true);
 
     try {
-      final newTask = Tasks(
-        taskID: '',
-        taskTitle: txtTitle.text.trim(),
-        taskDescription: txtDescription.text.trim(),
-        taskDeadline: Timestamp.fromDate(_selectedDeadline),
-        storeName: txtStoreName.text.trim(),
+      await _controller.createTask(
+        title: txtTitle.text,
+        description: txtDescription.text,
+        deadline: _selectedDeadline,
+        storeName: txtStoreName.text,
         isTaskDone: _isTaskDone,
-        createdBy: _userName,
-        lastUpdatedBy: _userName,
-        createdDate: Timestamp.now(),
-        lastupdatedDate: Timestamp.now(),
-        createdPage: AppPages.tasks,
-        lastUpdatedPage: AppPages.tasks,
+        isDealer: _isDealer,
       );
-
-      final docRef = await db.addTasks(newTask);
-      newTask.taskID = docRef.id;
-
-      await Helperfunctions.logCreate(txtTitle.text.trim(), newTask.toJson(), page: AppPages.tasks);
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully created task [${txtTitle.text.trim()}]!');
@@ -152,7 +150,7 @@ class _TasksPageState extends State<TasksPage> {
       }
     } catch (e) {
       if (mounted) {
-        ShowMessage.error(context, 'Error creating task: $e');
+        ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -173,27 +171,24 @@ class _TasksPageState extends State<TasksPage> {
     setState(() => _isLoading = true);
 
     try {
-      final updatedTask = widget.task.copyWith(
-        taskTitle: _isDealer ? txtTitle.text.trim() : widget.task.taskTitle,
-        taskDescription: _isDealer ? txtDescription.text.trim() : widget.task.taskDescription,
-        taskDeadline: _isDealer ? Timestamp.fromDate(_selectedDeadline) : widget.task.taskDeadline,
-        storeName: _isDealer ? txtStoreName.text.trim() : widget.task.storeName,
+      await _controller.updateTask(
+        taskID: widget.taskID,
+        originalTask: widget.task,
+        title: txtTitle.text,
+        description: txtDescription.text,
+        deadline: _selectedDeadline,
+        storeName: txtStoreName.text,
         isTaskDone: _isTaskDone,
-        lastUpdatedBy: _userName,
-        lastupdatedDate: Timestamp.now(),
-        lastUpdatedPage: AppPages.tasks,
+        isDealer: _isDealer,
       );
 
-      await db.updateTasks(widget.taskID, updatedTask);
-      await Helperfunctions.logUpdate(updatedTask.taskTitle, widget.task.toJson(), updatedTask.toJson(), page: AppPages.tasks);
-
       if (mounted) {
-        ShowMessage.success(context, 'Successfully updated task [${updatedTask.taskTitle}]!');
+        ShowMessage.success(context, 'Successfully updated task [${txtTitle.text.trim()}]!');
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ShowMessage.error(context, 'Error updating task: $e');
+        ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -201,16 +196,14 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Future<void> onDelete() async {
-    if (!_isDealer) {
-      ShowMessage.error(context, 'Only dealers are authorized to delete tasks');
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
-      await db.deleteTasks(widget.taskID);
-      await Helperfunctions.logDelete(widget.task.taskTitle, widget.task.toJson(), page: AppPages.tasks);
+      await _controller.deleteTask(
+        taskID: widget.taskID,
+        task: widget.task,
+        isDealer: _isDealer,
+      );
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully deleted task [${widget.task.taskTitle}]!');
@@ -218,7 +211,7 @@ class _TasksPageState extends State<TasksPage> {
       }
     } catch (e) {
       if (mounted) {
-        ShowMessage.error(context, 'Error deleting task: $e');
+        ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -441,69 +434,7 @@ class _TasksPageState extends State<TasksPage> {
     );
   }
 
-  Widget _buildAuditCard() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-          child: Icon(Icons.history, size: 18, color: colorScheme.primary),
-        ),
-        title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        initiallyExpanded: false,
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 8,
-              children: [
-                _buildAuditRow('Created By', widget.task.createdBy.isNotEmpty ? widget.task.createdBy : 'N/A'),
-                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.task.createdDate.toDate())),
-                if (widget.task.createdPage.isNotEmpty)
-                  _buildAuditRow('Created On Page', widget.task.createdPage),
-                const Divider(height: 12),
-                _buildAuditRow('Last Updated By', widget.task.lastUpdatedBy.isNotEmpty ? widget.task.lastUpdatedBy : 'N/A'),
-                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.task.lastupdatedDate.toDate())),
-                if (widget.task.lastUpdatedPage.isNotEmpty)
-                  _buildAuditRow('Last Updated Page', widget.task.lastUpdatedPage),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildAuditRow(String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: colorScheme.onSurfaceVariant),
-          ),
-        ),
-        Expanded(
-          child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-        ),
-      ],
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -605,7 +536,17 @@ class _TasksPageState extends State<TasksPage> {
                       // Status Section
                       _buildSectionCard(title: 'Task Status', icon: Icons.checklist_rounded, child: _buildStatusToggle()),
 
-                      if (isEditMode) ...[const SizedBox(height: 16), _buildAuditCard()],
+                      if (isEditMode) ...[
+                        const SizedBox(height: 16),
+                        AuditHistoryWidget(
+                          createdBy: widget.task.createdBy.isNotEmpty ? widget.task.createdBy : 'N/A',
+                          createdDate: widget.task.createdDate,
+                          createdPage: widget.task.createdPage,
+                          lastUpdatedBy: widget.task.lastUpdatedBy.isNotEmpty ? widget.task.lastUpdatedBy : 'N/A',
+                          lastUpdatedDate: widget.task.lastupdatedDate,
+                          lastUpdatedPage: widget.task.lastUpdatedPage,
+                        ),
+                      ],
 
                       const SizedBox(height: 24),
 

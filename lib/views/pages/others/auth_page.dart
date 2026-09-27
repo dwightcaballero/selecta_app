@@ -1,43 +1,44 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/services/auth_service.dart';
+import 'package:flutter_app/controllers/auth_controller.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/others/loading_page.dart';
 import 'package:flutter_app/views/pages/others/welcome_page.dart';
 
+/// Top-level authentication gateway that listens to auth state changes
+/// and routes the user to WelcomePage, DashboardPage, or SalesmanDashboardPage.
 class AuthPage extends StatelessWidget {
   const AuthPage({super.key});
 
+  static final AuthController _controller = AuthController();
+
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
-      valueListenable: authService,
-      builder: (context, authService, child) {
-        return StreamBuilder(
-          stream: authService.authStateChanges,
-          builder: (BuildContext context, AsyncSnapshot snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const LoadingPage();
-            } else if (snapshot.hasData) {
-              return const _RoleBasedDashboardRouter();
-            } else {
-              return const WelcomePage();
-            }
-          },
-        );
+    return StreamBuilder<User?>(
+      stream: _controller.authStateChanges,
+      builder: (BuildContext context, AsyncSnapshot<User?> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LoadingPage();
+        } else if (snapshot.hasData) {
+          return _RoleBasedDashboardRouter(controller: _controller);
+        } else {
+          return const WelcomePage();
+        }
       },
     );
   }
 }
 
 class _RoleBasedDashboardRouter extends StatelessWidget {
-  const _RoleBasedDashboardRouter();
+  final AuthController controller;
+
+  const _RoleBasedDashboardRouter({required this.controller});
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
-      future: KVariables.getIsDealer(),
+      future: controller.checkIsDealer(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const LoadingPage();

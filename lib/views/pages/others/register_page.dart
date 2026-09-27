@@ -1,17 +1,11 @@
-import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/register_controller.dart';
 import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/users.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/dealer_service.dart';
-import 'package:flutter_app/services/user_services.dart';
 import 'package:flutter_app/views/pages/others/login_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/snackbar_widget.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -21,7 +15,9 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final UserService db = UserService();
+  // Controller managing registration, dealer verification, and password policy
+  final RegisterController _controller = RegisterController();
+
   final List<DropdownMenuEntry<String>> dropdownItems = [];
   final TextEditingController dropdowncontroller = TextEditingController();
   final TextEditingController txtConfirmPassword = TextEditingController();
@@ -60,7 +56,8 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
-    if (!_hasValidPassword) {
+    final passwordStatus = _controller.evaluatePassword(txtPassword.text);
+    if (!passwordStatus.isValid) {
       SnackBarWidget.error(context, 'Password must satisfy all security requirements.');
       return;
     }
@@ -74,47 +71,28 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _isLoading = true);
 
     try {
-      final dbDealer = DealerService();
-      final existingDealer = await dbDealer.getDealerByName(txtDealerName.text.trim());
-
-      if (existingDealer == null) {
-        if (mounted) {
-          SnackBarWidget.error(context, 'Dealer name does not exist. Please contact your administrator.');
-        }
-        return;
-      }
-
-      final email = txtEmail.text.trim();
-      final password = txtPassword.text;
       final username = txtUsername.text.trim();
-      final dealerName = txtDealerName.text.trim();
-      final role = dropdowncontroller.text;
-
-      await authService.value.createAccount(email: email, password: password);
-      await authService.value.signIn(email: email, password: password);
-
-      final newRecord = Users(email: email, username: username, role: role, dealerName: dealerName);
-
-      db.addUser(newRecord);
-      await Helperfunctions.logCreate(username, newRecord.toJson(), page: AppPages.register);
-
-      await authService.value.updateUsername(username: username);
-      await authService.value.signOut();
-      await authService.value.signIn(email: email, password: password);
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_data', jsonEncode(newRecord.toJson()));
+      await _controller.register(
+        email: txtEmail.text,
+        password: txtPassword.text,
+        username: username,
+        dealerName: txtDealerName.text,
+        role: dropdowncontroller.text,
+      );
 
       if (!mounted) return;
 
       ShowMessage.success(context, 'Successfully created account [$username]!');
       Navigator.pop(context, 'Successfully created account [$username].');
-      await authService.value.signOut();
+    } on FormatException catch (error) {
+      if (mounted) {
+        SnackBarWidget.error(context, error.message);
+      }
     } on FirebaseAuthException catch (error) {
       if (mounted) {
-        SnackBarWidget.error(context, _friendlyFirebaseMessage(error));
+        SnackBarWidget.error(context, _controller.getFriendlyErrorMessage(error));
       }
-    } catch (error) {
+    } catch (_) {
       if (mounted) {
         SnackBarWidget.error(context, 'Unable to create account. Please try again.');
       }
@@ -125,28 +103,7 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  bool get _hasValidPassword {
-    final password = txtPassword.text;
-    return password.length >= 8 &&
-        password.contains(RegExp(r'[A-Z]')) &&
-        password.contains(RegExp(r'[a-z]')) &&
-        password.contains(RegExp(r'[0-9]'));
-  }
-
-  String? _validateEmail(String? value) {
-    final email = value?.trim() ?? '';
-    final emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
-
-    if (email.isEmpty) {
-      return 'Enter your email address';
-    }
-
-    if (!emailPattern.hasMatch(email)) {
-      return 'Enter a valid email address';
-    }
-
-    return null;
-  }
+  String? _validateEmail(String? value) => _controller.validateEmail(value);
 
   String? _validateConfirmPassword(String? value) {
     if (value == null || value.isEmpty) {
@@ -158,23 +115,6 @@ class _RegisterPageState extends State<RegisterPage> {
     }
 
     return null;
-  }
-
-  String _friendlyFirebaseMessage(FirebaseAuthException error) {
-    switch (error.code) {
-      case 'email-already-in-use':
-        return 'This email is already registered. Please log in.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'weak-password':
-        return 'Password is too weak. Please use a stronger password.';
-      case 'network-request-failed':
-        return 'Network connection issue. Please check your internet connection.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please try again later.';
-      default:
-        return error.message ?? 'Unable to create account. Please try again.';
-    }
   }
 
   InputDecoration _inputDecoration(BuildContext context, {required String label, required IconData icon, Widget? suffixIcon}) {
@@ -266,22 +206,18 @@ class _RegisterPageState extends State<RegisterPage> {
   Widget _passwordStrengthIndicator() {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final password = txtPassword.text;
-    final hasLength = password.length >= 8;
-    final hasUppercase = password.contains(RegExp(r'[A-Z]'));
-    final hasLowercase = password.contains(RegExp(r'[a-z]'));
-    final hasNumber = password.contains(RegExp(r'[0-9]'));
+    final status = _controller.evaluatePassword(txtPassword.text);
 
     final requirements = [
-      (hasLength, '8+ characters'),
-      (hasUppercase, 'Uppercase letter'),
-      (hasLowercase, 'Lowercase letter'),
-      (hasNumber, 'Number (0-9)'),
+      (status.hasMinLength, '8+ characters'),
+      (status.hasUppercase, 'Uppercase letter'),
+      (status.hasLowercase, 'Lowercase letter'),
+      (status.hasNumber, 'Number (0-9)'),
     ];
 
-    final completedCount = requirements.where((item) => item.$1).length;
-    final progress = completedCount / requirements.length;
-    final isFull = completedCount == requirements.length;
+    final completedCount = status.completedCount;
+    final progress = status.progress;
+    final isFull = status.isValid;
 
     Color progressColor;
     if (progress <= 0.25) {
@@ -512,7 +448,7 @@ class _RegisterPageState extends State<RegisterPage> {
                                   if (value == null || value.isEmpty) {
                                     return 'Enter a password';
                                   }
-                                  if (!_hasValidPassword) {
+                                  if (!_controller.evaluatePassword(value).isValid) {
                                     return 'Password does not meet requirements';
                                   }
                                   return null;

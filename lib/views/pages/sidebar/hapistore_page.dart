@@ -1,16 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_app/controllers/hapistore_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+/// Form page for creating, updating, viewing and pinning location of a Hapi Store.
 class HapiStorePage extends StatefulWidget {
   const HapiStorePage({super.key, required this.hapiStoreID, required this.hapistore});
 
@@ -22,17 +22,19 @@ class HapiStorePage extends StatefulWidget {
 }
 
 class _HapiStorePageState extends State<HapiStorePage> {
-  static const String monday = 'Monday';
-  static const String tuesday = 'Tuesday';
-  static const String wednesday = 'Wednesday';
-  static const String thursday = 'Thursday';
-  static const String friday = 'Friday';
-  static const String saturday = 'Saturday';
-  static const String sunday = 'Sunday';
+  static const List<String> _pjpScheduleDays = [
+    PjpScheduleDays.monday,
+    PjpScheduleDays.tuesday,
+    PjpScheduleDays.wednesday,
+    PjpScheduleDays.thursday,
+    PjpScheduleDays.friday,
+    PjpScheduleDays.saturday,
+    PjpScheduleDays.sunday,
+  ];
 
-  static const List<String> _pjpScheduleDays = [monday, tuesday, wednesday, thursday, friday, saturday, sunday];
+  // Controller managing data and location operations
+  final HapiStoreController _controller = HapiStoreController();
 
-  final HapiStoreService db = HapiStoreService();
   late TextEditingController txtAddress;
   late TextEditingController txtContact;
   late TextEditingController txtName;
@@ -76,6 +78,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
     _selectedPjpSchedule = _pjpScheduleDays.contains(widget.hapistore.pjpSchedule) ? widget.hapistore.pjpSchedule : null;
   }
 
+  /// Handles date picker selection
   void onChangeDate() async {
     final DateTime? dateTime = await showDatePicker(
       context: context,
@@ -91,12 +94,14 @@ class _HapiStorePageState extends State<HapiStorePage> {
     }
   }
 
+  /// Clears selected opening date
   void onClearDate() {
     setState(() {
       _selectedOpeningDate = null;
     });
   }
 
+  /// Updates map position and coordinate text controllers
   void _updateCoordinates(double lat, double lng) {
     setState(() {
       _latitude = lat;
@@ -106,6 +111,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
     });
   }
 
+  /// Reacts to manual coordinate text editing
   void _onManualCoordinateChanged() {
     final lat = double.tryParse(txtLatitude.text.trim());
     final lng = double.tryParse(txtLongitude.text.trim());
@@ -123,6 +129,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
     }
   }
 
+  /// Clears coordinates from state and inputs
   void _clearLocation() {
     setState(() {
       _latitude = null;
@@ -132,39 +139,11 @@ class _HapiStorePageState extends State<HapiStorePage> {
     });
   }
 
+  /// Requests current device GPS coordinates via controller
   Future<void> _getCurrentLocation() async {
     setState(() => _isLocating = true);
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          ShowMessage.error(context, 'Location services are disabled. Please enable GPS.');
-        }
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) {
-            ShowMessage.error(context, 'Location permission denied.');
-          }
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          ShowMessage.error(context, 'Location permission is permanently denied. Please allow it in settings.');
-        }
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-
+      final position = await _controller.getCurrentLocation();
       _updateCoordinates(position.latitude, position.longitude);
       _mapController.move(LatLng(position.latitude, position.longitude), 16.0);
 
@@ -173,7 +152,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
       }
     } catch (e) {
       if (mounted) {
-        ShowMessage.error(context, 'Failed to get location: $e');
+        ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       }
     } finally {
       if (mounted) {
@@ -182,11 +161,12 @@ class _HapiStorePageState extends State<HapiStorePage> {
     }
   }
 
-  void onSave() {
+  /// Saves a new Hapi Store
+  void onSave() async {
     if (_formKey.currentState!.validate()) {
       final lat = double.tryParse(txtLatitude.text.trim());
       final lng = double.tryParse(txtLongitude.text.trim());
-      Hapistore newHs = Hapistore(
+      final newHs = Hapistore(
         storeName: txtName.text.trim().toUpperCase(),
         storeAddress: txtAddress.text.trim(),
         storeContact: txtContact.text.trim(),
@@ -195,20 +175,24 @@ class _HapiStorePageState extends State<HapiStorePage> {
         latitude: lat,
         longitude: lng,
       );
-      db.addHapiStore(newHs);
-      Helperfunctions.logCreate(newHs.storeName, newHs.toJson(), page: AppPages.hapiStore);
-      ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
-      Navigator.pop(context);
+
+      await _controller.addStore(newHs);
+
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
+        Navigator.pop(context);
+      }
     } else {
       ShowMessage.error(context, 'Please fill up all required fields');
     }
   }
 
-  void onUpdate() {
+  /// Updates an existing Hapi Store
+  void onUpdate() async {
     if (_formKey.currentState!.validate()) {
       final lat = double.tryParse(txtLatitude.text.trim());
       final lng = double.tryParse(txtLongitude.text.trim());
-      Hapistore updatedHS = widget.hapistore.copyWith(
+      final updatedHS = widget.hapistore.copyWith(
         storeName: txtName.text.trim().toUpperCase(),
         storeAddress: txtAddress.text.trim(),
         storeContact: txtContact.text.trim(),
@@ -219,20 +203,33 @@ class _HapiStorePageState extends State<HapiStorePage> {
         longitude: lng,
         clearLocation: lat == null || lng == null,
       );
-      db.updateHapiStore(widget.hapiStoreID, updatedHS);
-      Helperfunctions.logUpdate(updatedHS.storeName, widget.hapistore.toJson(), updatedHS.toJson(), page: AppPages.hapiStore);
-      ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
-      Navigator.pop(context);
+
+      await _controller.updateStore(
+        id: widget.hapiStoreID,
+        oldStore: widget.hapistore,
+        updatedStore: updatedHS,
+      );
+
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
+        Navigator.pop(context);
+      }
     } else {
       ShowMessage.error(context, 'Please fill up all required fields');
     }
   }
 
-  void onDelete() {
-    db.deleteHapiStore(widget.hapiStoreID);
-    Helperfunctions.logDelete(widget.hapistore.storeName, widget.hapistore.toJson(), page: AppPages.hapiStore);
-    ShowMessage.success(context, 'Successfully deleted Hapi Store [${widget.hapistore.storeName}]!');
-    Navigator.pop(context);
+  /// Deletes the Hapi Store
+  void onDelete() async {
+    await _controller.deleteStore(
+      id: widget.hapiStoreID,
+      store: widget.hapistore,
+    );
+
+    if (mounted) {
+      ShowMessage.success(context, 'Successfully deleted Hapi Store [${widget.hapistore.storeName}]!');
+      Navigator.pop(context);
+    }
   }
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {

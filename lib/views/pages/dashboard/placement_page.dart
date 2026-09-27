@@ -1,13 +1,15 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/controllers/placement_controller.dart';
 import 'package:flutter_app/data/data.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/placement.dart';
-import 'package:flutter_app/services/placement_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
+
+/// Presentation view for inspecting and updating store product placement checklists.
+///
+/// Data hydration, flag mappings, month validation, and Firestore persistence
+/// are managed by [PlacementController].
 
 class PlacementPage extends StatefulWidget {
   final Placement placement;
@@ -18,6 +20,7 @@ class PlacementPage extends StatefulWidget {
 }
 
 class _PlacementPageState extends State<PlacementPage> {
+  final PlacementController _controller = PlacementController();
   late Placement _currentPlacement;
   List<KPlacement> listPlacement = [];
   bool _isSaving = false;
@@ -26,36 +29,20 @@ class _PlacementPageState extends State<PlacementPage> {
   @override
   void initState() {
     super.initState();
-    _setupInitialPlacement();
+    _currentPlacement = _controller.resolveInitialPlacement(widget.placement);
     _initData();
   }
 
-  void _setupInitialPlacement() {
-    final now = DateTime.now();
-    final placementDate = widget.placement.deliveryDate.toDate();
-    final isSameMonth = placementDate.year == now.year && placementDate.month == now.month;
-
-    if (isSameMonth && widget.placement.id.isNotEmpty) {
-      _currentPlacement = widget.placement;
-    } else {
-      // Month rolled over or blank: start clean for the current month
-      _currentPlacement = Placement.empty().copyWith(storeName: widget.placement.storeName, deliveryDate: Timestamp.now());
-    }
-  }
-
   Future<void> _initData() async {
-    prefetchData();
+    listPlacement = _controller.mapPlacementFlags(_currentPlacement);
 
-    // Query for existing record for the current month for this store
     if (_currentPlacement.storeName.isNotEmpty) {
       try {
-        final existing = await PlacementService().getPlacementByStoreAndDate(_currentPlacement.storeName, DateTime.now());
-        if (mounted) {
+        final existing = await _controller.getExistingPlacementForCurrentMonth(_currentPlacement.storeName);
+        if (mounted && existing != null) {
           setState(() {
-            if (existing != null) {
-              _currentPlacement = existing;
-            }
-            prefetchData();
+            _currentPlacement = existing;
+            listPlacement = _controller.mapPlacementFlags(_currentPlacement);
             _isLoading = false;
           });
           return;
@@ -69,59 +56,7 @@ class _PlacementPageState extends State<PlacementPage> {
   }
 
   void prefetchData() {
-    listPlacement = KData.getListPlacement();
-    for (var record in listPlacement) {
-      switch (record.itemCode) {
-        case 'cotc1':
-          record.isPlaced = _currentPlacement.cotc1;
-          record.isPlacedFromDB = _currentPlacement.cotc1;
-          break;
-        case 'cotc2':
-          record.isPlaced = _currentPlacement.cotc2;
-          record.isPlacedFromDB = _currentPlacement.cotc2;
-          break;
-        case 'cotc3':
-          record.isPlaced = _currentPlacement.cotc3;
-          record.isPlacedFromDB = _currentPlacement.cotc3;
-          break;
-        case 'cotc4':
-          record.isPlaced = _currentPlacement.cotc4;
-          record.isPlacedFromDB = _currentPlacement.cotc4;
-          break;
-        case 'cotc5':
-          record.isPlaced = _currentPlacement.cotc5;
-          record.isPlacedFromDB = _currentPlacement.cotc5;
-          break;
-        case 'cotc6':
-          record.isPlaced = _currentPlacement.cotc6;
-          record.isPlacedFromDB = _currentPlacement.cotc6;
-          break;
-        case 'cotc7':
-          record.isPlaced = _currentPlacement.cotc7;
-          record.isPlacedFromDB = _currentPlacement.cotc7;
-          break;
-        case 'cotc8':
-          record.isPlaced = _currentPlacement.cotc8;
-          record.isPlacedFromDB = _currentPlacement.cotc8;
-          break;
-        case 'cotc9':
-          record.isPlaced = _currentPlacement.cotc9;
-          record.isPlacedFromDB = _currentPlacement.cotc9;
-          break;
-        case 'cotc10':
-          record.isPlaced = _currentPlacement.cotc10;
-          record.isPlacedFromDB = _currentPlacement.cotc10;
-          break;
-        case 'cotc11':
-          record.isPlaced = _currentPlacement.cotc11;
-          record.isPlacedFromDB = _currentPlacement.cotc11;
-          break;
-        case 'cotc12':
-          record.isPlaced = _currentPlacement.cotc12;
-          record.isPlacedFromDB = _currentPlacement.cotc12;
-          break;
-      }
-    }
+    listPlacement = _controller.mapPlacementFlags(_currentPlacement);
   }
 
   void _toggleProduct(int index) {
@@ -173,36 +108,9 @@ class _PlacementPageState extends State<PlacementPage> {
     setState(() => _isSaving = true);
 
     try {
-      final placedCount = listPlacement.where((p) => p.isPlaced).length;
-      final isFinished = listPlacement.isNotEmpty && placedCount == listPlacement.length;
-
-      bool getFlag(String code) => listPlacement.where((p) => p.itemCode == code).firstOrNull?.isPlaced ?? false;
-
-      final updated = _currentPlacement.copyWith(
-        deliveryDate: Timestamp.now(), // Ensure deliveryDate is within current month
-        cotc1: getFlag('cotc1'),
-        cotc2: getFlag('cotc2'),
-        cotc3: getFlag('cotc3'),
-        cotc4: getFlag('cotc4'),
-        cotc5: getFlag('cotc5'),
-        cotc6: getFlag('cotc6'),
-        cotc7: getFlag('cotc7'),
-        cotc8: getFlag('cotc8'),
-        cotc9: getFlag('cotc9'),
-        cotc10: getFlag('cotc10'),
-        cotc11: getFlag('cotc11'),
-        cotc12: getFlag('cotc12'),
-        isFinished: isFinished,
-        progressCount: placedCount,
-      );
-
-      await PlacementService().savePlacement(updated);
-
-      await Helperfunctions.logTransaction(
-        'Placement Update - ${updated.storeName}',
-        'Placed $placedCount of ${listPlacement.length} products for $currentMonthLabel.',
-        LogAction.update,
-        page: AppPages.placement,
+      final updated = await _controller.savePlacementProgress(
+        currentPlacement: _currentPlacement,
+        placements: listPlacement,
       );
 
       if (!mounted) return;

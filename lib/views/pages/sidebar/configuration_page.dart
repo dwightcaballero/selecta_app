@@ -1,14 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/controllers/configuration_controller.dart';
 import 'package:flutter_app/models/configuration.dart';
-import 'package:flutter_app/services/configuration_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
+/// Presentation page for configuring app-wide settings such as Merch Blitz campaign schedules.
 class ConfigurationPage extends StatefulWidget {
   const ConfigurationPage({super.key});
 
@@ -17,7 +14,8 @@ class ConfigurationPage extends StatefulWidget {
 }
 
 class _ConfigurationPageState extends State<ConfigurationPage> {
-  final ConfigurationService _configService = ConfigurationService();
+  // Controller managing configuration fetching, validation, and audit logging
+  final ConfigurationController _controller = ConfigurationController();
 
   Configuration? _originalConfig;
   bool _configExistsInDb = false;
@@ -32,25 +30,17 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     _loadConfiguration();
   }
 
+  /// Loads current configuration via controller
   Future<void> _loadConfiguration() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(CONFIGURATIONS_COLLECTION_REF)
-          .doc(DEFAULT_CONFIG_DOC_ID)
-          .get();
-
-      _configExistsInDb = doc.exists;
-      final config = doc.exists && doc.data() != null
-          ? Configuration.fromJson(doc.data()!)
-          : await _configService.getConfiguration();
-      _originalConfig = config;
+      final result = await _controller.loadConfiguration();
 
       if (mounted) {
-        final start = config.merchBlitzStartDate.toDate();
-        final end = config.merchBlitzEndDate.toDate();
         setState(() {
-          _startDate = DateTime(start.year, start.month, start.day);
-          _endDate = DateTime(end.year, end.month, end.day);
+          _originalConfig = result.config;
+          _configExistsInDb = result.existsInDb;
+          _startDate = result.startDate;
+          _endDate = result.endDate;
           _isLoading = false;
         });
       }
@@ -62,6 +52,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     }
   }
 
+  /// Opens date picker for Merch Blitz start date
   Future<void> _pickStartDate() async {
     final pickedDate = await showDatePicker(
       context: context,
@@ -80,6 +71,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     }
   }
 
+  /// Opens date picker for Merch Blitz end date
   Future<void> _pickEndDate() async {
     final pickedDate = await showDatePicker(
       context: context,
@@ -95,59 +87,26 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     }
   }
 
+  /// Saves updated configuration through controller
   Future<void> _saveConfiguration() async {
-    if (_endDate.isBefore(_startDate)) {
-      ShowMessage.error(context, 'Merch Blitz End Date must be after or equal to the Start Date.');
-      return;
-    }
-
     setState(() => _isSaving = true);
 
     try {
-      final newStartDateTs = Timestamp.fromDate(_startDate);
-      final newEndDateTs = Timestamp.fromDate(_endDate);
-      final config = Configuration(
-        merchBlitzStartDate: newStartDateTs,
-        merchBlitzEndDate: newEndDateTs,
+      await _controller.saveConfiguration(
+        startDate: _startDate,
+        endDate: _endDate,
+        originalConfig: _originalConfig,
+        existsInDb: _configExistsInDb,
       );
 
-      await _configService.saveConfiguration(config);
-      HapiStoreService.invalidateCache();
-
-      // Record transaction log for the audit trail
-      final newMap = {
-        'Merch Blitz Start Date': newStartDateTs,
-        'Merch Blitz End Date': newEndDateTs,
-      };
-
-      if (_configExistsInDb && _originalConfig != null) {
-        final oldMap = {
-          'Merch Blitz Start Date': _originalConfig!.merchBlitzStartDate,
-          'Merch Blitz End Date': _originalConfig!.merchBlitzEndDate,
-        };
-        await Helperfunctions.logUpdate(
-          'Configuration - Merch Blitz Schedule',
-          oldMap,
-          newMap,
-          page: AppPages.configuration,
-        );
-      } else {
-        await Helperfunctions.logCreate(
-          'Configuration - Merch Blitz Schedule',
-          newMap,
-          page: AppPages.configuration,
-        );
-      }
-
       _configExistsInDb = true;
-      _originalConfig = config;
 
       if (mounted) {
         ShowMessage.success(context, 'Configuration saved successfully!');
       }
     } catch (e) {
       if (mounted) {
-        ShowMessage.error(context, 'Failed to save configuration: $e');
+        ShowMessage.error(context, e is ArgumentError ? e.message.toString() : 'Failed to save configuration: $e');
       }
     } finally {
       if (mounted) {
@@ -156,7 +115,13 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     }
   }
 
-  Widget _buildDateField({required String label, required DateTime date, required VoidCallback onTap, required IconData icon}) {
+  /// Helper widget for rendering interactive date selection cards
+  Widget _buildDateField({
+    required String label,
+    required DateTime date,
+    required VoidCallback onTap,
+    required IconData icon,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final formattedDate = DateFormat('EEE, d MMM yyyy').format(date);
 
@@ -174,7 +139,10 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Icon(icon, size: 20, color: colorScheme.primary),
             ),
             const SizedBox(width: 14),
@@ -184,7 +152,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                 children: [
                   Text(
                     label,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(formattedDate, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
@@ -252,7 +224,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                           ),
                           const Divider(height: 28),
 
-                          // Start Date
+                          // Start Date Picker
                           _buildDateField(
                             label: 'Merch Blitz Start Date *',
                             date: _startDate,
@@ -262,7 +234,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
                           const SizedBox(height: 14),
 
-                          // End Date
+                          // End Date Picker
                           _buildDateField(
                             label: 'Merch Blitz End Date *',
                             date: _endDate,
@@ -276,7 +248,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
                   const SizedBox(height: 28),
 
-                  // Save Button
+                  // Save Configurations Button
                   FilledButton.icon(
                     onPressed: _isSaving ? null : _saveConfiguration,
                     style: FilledButton.styleFrom(
@@ -284,9 +256,16 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: _isSaving
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
                         : const Icon(Icons.save_rounded, size: 20),
-                    label: Text(_isSaving ? 'Saving...' : 'Save Configurations', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    label: Text(
+                      _isSaving ? 'Saving...' : 'Save Configurations',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
                   ),
                 ],
               ),

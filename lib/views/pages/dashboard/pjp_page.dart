@@ -1,14 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/controllers/pjp_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/models/placement.dart';
 import 'package:flutter_app/models/scanning.dart';
 import 'package:flutter_app/models/tasks.dart';
-import 'package:flutter_app/services/configuration_service.dart';
-import 'package:flutter_app/services/placement_service.dart';
 import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placement_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanning_page.dart';
@@ -17,9 +15,11 @@ import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:intl/intl.dart';
 
+/// Presentation view for inspecting and completing individual PJP store visits.
+///
+/// Geolocation distance calculation, barcode check, placement checklist status,
+/// task queries, and Merch Blitz validation are managed by [PjpController].
 class PjpPage extends StatefulWidget {
   const PjpPage({super.key, required this.hapiStoreID, required this.initialHapistore, required this.selectedDay});
 
@@ -32,7 +32,7 @@ class PjpPage extends StatefulWidget {
 }
 
 class _PjpPageState extends State<PjpPage> {
-  static const double _maxAllowedDistanceMeters = 200.0;
+  final PjpController _controller = PjpController();
 
   late Hapistore _currentHapistore;
 
@@ -111,13 +111,11 @@ class _PjpPageState extends State<PjpPage> {
 
   Future<void> _refreshStoreDoc() async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('hapistores').doc(widget.hapiStoreID).get();
-      if (doc.exists && doc.data() != null) {
-        if (mounted) {
-          setState(() {
-            _currentHapistore = Hapistore.fromJson(doc.data()!);
-          });
-        }
+      final updated = await _controller.refreshStore(widget.hapiStoreID);
+      if (updated != null && mounted) {
+        setState(() {
+          _currentHapistore = updated;
+        });
       }
     } catch (_) {}
   }
@@ -133,254 +131,65 @@ class _PjpPageState extends State<PjpPage> {
       _locationError = null;
     });
 
-    if (_currentHapistore.latitude == null || _currentHapistore.longitude == null) {
-      if (mounted) {
-        setState(() {
-          _locationPassed = false;
-          _isLoadingLocation = false;
-          _locationStatus = 'No store location saved in database.';
-        });
-      }
-      return;
-    }
+    final result = await _controller.checkLocation(_currentHapistore);
+    if (!mounted) return;
 
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          setState(() {
-            _locationPassed = false;
-            _isLoadingLocation = false;
-            _locationError = 'GPS is turned off. Please enable device location services.';
-            _locationStatus = 'GPS services disabled';
-          });
-        }
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) {
-            setState(() {
-              _locationPassed = false;
-              _isLoadingLocation = false;
-              _locationError = 'Location permission denied.';
-              _locationStatus = 'Location permission denied';
-            });
-          }
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) {
-          setState(() {
-            _locationPassed = false;
-            _isLoadingLocation = false;
-            _locationError = 'Location permission permanently denied. Enable in device settings.';
-            _locationStatus = 'Permission permanently denied';
-          });
-        }
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 10)),
-      );
-
-      final distance = Geolocator.distanceBetween(position.latitude, position.longitude, _currentHapistore.latitude!, _currentHapistore.longitude!);
-
-      if (mounted) {
-        setState(() {
-          _isLoadingLocation = false;
-          if (distance <= _maxAllowedDistanceMeters) {
-            _locationPassed = true;
-            _locationStatus = 'Within range (${distance.toStringAsFixed(0)}m away, max ${_maxAllowedDistanceMeters.toStringAsFixed(0)}m)';
-          } else {
-            _locationPassed = false;
-            final distLabel = distance >= 1000 ? '${(distance / 1000).toStringAsFixed(1)}km' : '${distance.toStringAsFixed(0)}m';
-            _locationStatus = 'Out of range ($distLabel away, max ${_maxAllowedDistanceMeters.toStringAsFixed(0)}m)';
-          }
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _locationPassed = false;
-          _isLoadingLocation = false;
-          _locationError = 'Failed to get GPS location: $e';
-          _locationStatus = 'Unable to acquire location';
-        });
-      }
-    }
+    setState(() {
+      _isLoadingLocation = false;
+      _locationPassed = result.passed;
+      _locationStatus = result.status;
+      _locationError = result.error;
+    });
   }
 
   Future<void> _checkScanning() async {
     if (!mounted) return;
     setState(() => _isLoadingScanning = true);
 
-    try {
-      final snapshot = await FirebaseFirestore.instance.collection('scanning').where('storeName', isEqualTo: _currentHapistore.storeName).get();
+    final result = await _controller.checkScanning(_currentHapistore.storeName);
+    if (!mounted) return;
 
-      final scannings = snapshot.docs.map((doc) {
-        var s = Scanning.fromJson(doc.data());
-        return s.copyWith(id: doc.id);
-      }).toList();
-
-      if (!mounted) return;
-
-      _storeScannings = scannings;
-
-      if (scannings.isEmpty) {
-        setState(() {
-          _scanningPassed = false;
-          _isLoadingScanning = false;
-          _scanningStatus = 'No barcode assigned to this store.';
-        });
-        return;
-      }
-
-      final now = DateTime.now();
-      Scanning? scannedThisMonth;
-
-      for (final s in scannings) {
-        if (s.status == ScanningStatus.scanned) {
-          if (s.scannedDate != null) {
-            final date = s.scannedDate!.toDate();
-            if (date.year == now.year && date.month == now.month) {
-              scannedThisMonth = s;
-              break;
-            }
-          } else {
-            scannedThisMonth = s;
-            break;
-          }
-        }
-      }
-
-      setState(() {
-        _isLoadingScanning = false;
-        if (scannedThisMonth != null) {
-          _scanningPassed = true;
-          _scanningStatus = 'Barcode (${scannedThisMonth.barcode}) scanned for ${DateFormat('MMMM yyyy').format(now)}.';
-        } else {
-          _scanningPassed = false;
-          final barcodeList = scannings.map((s) => s.barcode).join(', ');
-          _scanningStatus = 'Barcode(s) [$barcodeList] not yet scanned this month.';
-        }
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _scanningPassed = false;
-          _isLoadingScanning = false;
-          _scanningStatus = 'Failed to load scanning records';
-        });
-      }
-    }
+    setState(() {
+      _isLoadingScanning = false;
+      _scanningPassed = result.passed;
+      _scanningStatus = result.status;
+      _storeScannings = result.storeScannings;
+    });
   }
 
   Future<void> _checkPlacement() async {
     if (!mounted) return;
     setState(() => _isLoadingPlacement = true);
 
-    try {
-      final placements = await PlacementService.getListOfPlacementsWithinCurrentMonth();
-      final matching = placements.where((p) => p.storeName == _currentHapistore.storeName).firstOrNull;
+    final result = await _controller.checkPlacement(
+      store: _currentHapistore,
+      placementViewed: _placementViewed,
+    );
+    if (!mounted) return;
 
-      if (!mounted) return;
-
-      _storePlacement = matching;
-
-      final now = DateTime.now();
-      final lastVisit = _currentHapistore.lastPjpVisit?.toDate();
-      final bool lastVisitWithinWeek = lastVisit != null && Helperfunctions.isSameWeek(lastVisit, now);
-
-      final bool isPassed = _placementViewed || lastVisitWithinWeek || (matching != null && matching.isFinished);
-
-      String statusMsg;
-      if (matching != null && matching.isFinished) {
-        statusMsg = 'Placement checklist completed (${matching.progressCount}/12 placed).';
-      } else if (matching != null && (_placementViewed || matching.progressCount > 0)) {
-        statusMsg = 'Placement checklist updated (${matching.progressCount}/12 placed).';
-      } else if (_placementViewed) {
-        statusMsg = 'Placement record viewed and verified.';
-      } else if (lastVisitWithinWeek) {
-        final dateLabel = DateFormat('EEE, MMM d').format(lastVisit);
-        statusMsg = 'Placement verified (PJP visit completed on $dateLabel).';
-      } else if (matching != null) {
-        statusMsg = 'Placement in progress (${matching.progressCount}/12 placed) — review needed.';
-      } else {
-        statusMsg = 'Placement checklist not yet reviewed for this store.';
+    setState(() {
+      _isLoadingPlacement = false;
+      _placementPassed = result.passed;
+      _placementStatus = result.status;
+      if (result.storePlacement != null) {
+        _storePlacement = result.storePlacement;
       }
-
-      setState(() {
-        _isLoadingPlacement = false;
-        _placementPassed = isPassed;
-        _placementStatus = statusMsg;
-      });
-    } catch (e) {
-      if (mounted) {
-        final now = DateTime.now();
-        final lastVisit = _currentHapistore.lastPjpVisit?.toDate();
-        final bool lastVisitWithinWeek = lastVisit != null && Helperfunctions.isSameWeek(lastVisit, now);
-
-        setState(() {
-          _isLoadingPlacement = false;
-          if (_placementViewed || lastVisitWithinWeek) {
-            _placementPassed = true;
-            _placementStatus = 'Placement verified for this week.';
-          } else {
-            _placementPassed = false;
-            _placementStatus = 'Failed to load placement records';
-          }
-        });
-      }
-    }
+    });
   }
 
   Future<void> _checkTasks() async {
     if (!mounted) return;
     setState(() => _isLoadingTasks = true);
 
-    try {
-      final snapshot = await FirebaseFirestore.instance.collection('tasks').where('storeName', isEqualTo: _currentHapistore.storeName).get();
+    final result = await _controller.checkTasks(_currentHapistore.storeName);
+    if (!mounted) return;
 
-      final tasks = snapshot.docs.map((doc) {
-        var t = Tasks.fromJson(doc.data());
-        if (t.taskID.isEmpty) t.taskID = doc.id;
-        return t;
-      }).toList();
-
-      if (!mounted) return;
-
-      _pendingTasks = tasks.where((t) => !t.isTaskDone).toList();
-
-      setState(() {
-        _isLoadingTasks = false;
-        if (_pendingTasks.isEmpty) {
-          _tasksPassed = true;
-          if (tasks.isEmpty) {
-            _tasksStatus = 'No pending tasks for this store.';
-          } else {
-            _tasksStatus = 'All ${tasks.length} task(s) completed.';
-          }
-        } else {
-          _tasksPassed = false;
-          _tasksStatus = '${_pendingTasks.length} pending / overdue task(s) remaining.';
-        }
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _tasksPassed = false;
-          _isLoadingTasks = false;
-          _tasksStatus = 'Failed to load store tasks';
-        });
-      }
-    }
+    setState(() {
+      _isLoadingTasks = false;
+      _tasksPassed = result.passed;
+      _tasksStatus = result.status;
+      _pendingTasks = result.pendingTasks;
+    });
   }
 
   Future<void> _onLocationAction() async {
@@ -423,26 +232,7 @@ class _PjpPageState extends State<PjpPage> {
 
   Future<void> _onPlacementAction() async {
     final placementToView =
-        _storePlacement ??
-        Placement(
-          id: '',
-          storeName: _currentHapistore.storeName,
-          deliveryDate: Timestamp.now(),
-          cotc1: false,
-          cotc2: false,
-          cotc3: false,
-          cotc4: false,
-          cotc5: false,
-          cotc6: false,
-          cotc7: false,
-          cotc8: false,
-          cotc9: false,
-          cotc10: false,
-          cotc11: false,
-          cotc12: false,
-          isFinished: false,
-          progressCount: 0,
-        );
+        _storePlacement ?? Placement.empty().copyWith(storeName: _currentHapistore.storeName);
 
     await Navigator.push(context, MaterialPageRoute(builder: (context) => PlacementPage(placement: placementToView)));
 
@@ -462,55 +252,14 @@ class _PjpPageState extends State<PjpPage> {
     if (!mounted) return;
     setState(() => _isLoadingMerchBlitz = true);
 
-    try {
-      final config = await ConfigurationService().getConfiguration();
-      final startDate = config.merchBlitzStartDate.toDate();
-      final endDate = config.merchBlitzEndDate.toDate();
+    final result = await _controller.checkMerchBlitz(_currentHapistore);
+    if (!mounted) return;
 
-      final now = DateTime.now();
-      final s = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
-      final e = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
-
-      final isCampaignActive = !now.isBefore(s) && !now.isAfter(e);
-
-      if (!mounted) return;
-
-      if (!isCampaignActive) {
-        setState(() {
-          _isLoadingMerchBlitz = false;
-          _merchBlitzPassed = true;
-          _merchBlitzStatus = 'No active Merch Blitz campaign scheduled for today.';
-        });
-        return;
-      }
-
-      final status = _currentHapistore.getMerchBlitzStatus(startDate, endDate);
-      final bool isSurveyed = status == MerchBlitzStatus.forFinalSurvey || status == MerchBlitzStatus.surveyed;
-
-      setState(() {
-        _isLoadingMerchBlitz = false;
-        _merchBlitzPassed = isSurveyed;
-        if (isSurveyed) {
-          final lastDate = _currentHapistore.lastMerchBlitzDate?.toDate();
-          final dateStr = lastDate != null ? DateFormat('EEE, MMM d • h:mm a').format(lastDate) : '';
-          if (status == MerchBlitzStatus.surveyed) {
-            _merchBlitzStatus = 'Merch Blitz survey completed and verified ($dateStr).';
-          } else {
-            _merchBlitzStatus = 'Merch Blitz survey submitted ($dateStr), awaiting dealer final survey.';
-          }
-        } else {
-          _merchBlitzStatus = 'Store has not yet been surveyed for the Merch Blitz promotion.';
-        }
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoadingMerchBlitz = false;
-          _merchBlitzPassed = false;
-          _merchBlitzStatus = 'Failed to verify Merch Blitz status: $e';
-        });
-      }
-    }
+    setState(() {
+      _isLoadingMerchBlitz = false;
+      _merchBlitzPassed = result.passed;
+      _merchBlitzStatus = result.status;
+    });
   }
 
   Future<void> _onMerchBlitzAction() async {
@@ -526,13 +275,10 @@ class _PjpPageState extends State<PjpPage> {
 
     setState(() => _isCompleting = true);
     try {
-      await FirebaseFirestore.instance.collection('hapistores').doc(widget.hapiStoreID).update({'lastPjpVisit': Timestamp.now()});
-
-      await Helperfunctions.logTransaction(
-        'PJP Visit Completed - ${_currentHapistore.storeName}',
-        'Completed all 5 PJP criteria for ${widget.selectedDay}',
-        LogAction.update,
-        page: AppPages.pjp,
+      await _controller.completeVisit(
+        hapiStoreID: widget.hapiStoreID,
+        store: _currentHapistore,
+        selectedDay: widget.selectedDay,
       );
 
       if (!mounted) return;

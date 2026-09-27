@@ -44,6 +44,20 @@ class UserService {
     _usersRef.doc(userID).update(user.toJson());
   }
 
+  Future<void> updateUserRoleByEmail(String email, String newRole) async {
+    final query = await FirebaseFirestore.instance
+        .collection(USERS_COLLECTION_REF)
+        .where('email', isEqualTo: email)
+        .limit(1)
+        .get();
+    if (query.docs.isNotEmpty) {
+      await FirebaseFirestore.instance
+          .collection(USERS_COLLECTION_REF)
+          .doc(query.docs.first.id)
+          .update({'role': newRole});
+    }
+  }
+
   void deleteUser(String userID) {
     _usersRef.doc(userID).delete();
   }

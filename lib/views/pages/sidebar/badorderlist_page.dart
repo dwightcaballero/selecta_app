@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/badorder_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/badorder.dart';
-import 'package:flutter_app/services/badorder_service.dart';
 import 'package:flutter_app/views/pages/sidebar/badorder_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
@@ -15,7 +15,8 @@ class BadOrderlistPage extends StatefulWidget {
 }
 
 class _BadOrderlistPageState extends State<BadOrderlistPage> {
-  final BadOrderService db = BadOrderService();
+  // Controller managing bad order streams, filtering, and data aggregation
+  final BadOrderController _controller = BadOrderController();
 
   late final Stream<QuerySnapshot> _badOrdersStream;
   final TextEditingController _searchController = TextEditingController();
@@ -26,7 +27,7 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
   @override
   void initState() {
     super.initState();
-    _badOrdersStream = db.getListBadOrder();
+    _badOrdersStream = _controller.getBadOrdersStream();
   }
 
   @override
@@ -333,30 +334,15 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
             return _buildEmptyState();
           }
 
-          int thisMonthCount = 0;
-          double periodTotalAmount = 0;
-          final List<QueryDocumentSnapshot> filteredDocs = [];
-
-          for (var doc in allDocs) {
-            final badorder = doc.data() as BadOrder;
-            final date = badorder.badorderDate.toDate();
-            final isThisMonth = date.year == now.year && date.month == now.month;
-
-            if (isThisMonth) thisMonthCount++;
-
-            final matchesPeriod = _selectedPeriod == 'All' || isThisMonth;
-            final matchesSearch = _searchQuery.isEmpty ||
-                badorder.hapistore.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                badorder.description.toLowerCase().contains(_searchQuery.toLowerCase());
-
-            if (matchesPeriod) {
-              periodTotalAmount += badorder.badorderAmount;
-            }
-
-            if (matchesPeriod && matchesSearch) {
-              filteredDocs.add(doc);
-            }
-          }
+          final filterResult = _controller.filterBadOrders(
+            docs: allDocs,
+            selectedPeriod: _selectedPeriod,
+            searchQuery: _searchQuery,
+            now: now,
+          );
+          final filteredDocs = filterResult.filteredDocs;
+          final periodTotalAmount = filterResult.periodTotalAmount;
+          final thisMonthCount = filterResult.thisMonthCount;
 
           return Column(
             children: [

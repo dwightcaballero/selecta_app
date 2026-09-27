@@ -1,23 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/credit_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/views/pages/dashboard/credit_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
-enum CreditSort {
-  highestAmount('Highest Credit', Icons.arrow_downward),
-  lowestAmount('Lowest Credit', Icons.arrow_upward),
-  oldest('Oldest First (Aging)', Icons.history),
-  newest('Newest First', Icons.calendar_today);
-
-  const CreditSort(this.label, this.icon);
-  final String label;
-  final IconData icon;
-}
-
+/// Presentation view displaying the list of all stores with outstanding credits.
+///
+/// Purely responsible for rendering UI widgets. Data streaming, role checking,
+/// metric computation, filtering, and sorting are handled by [CreditController],
+/// while direct database calls are managed in the service layer.
 class CreditlistPage extends StatefulWidget {
   const CreditlistPage({super.key});
 
@@ -26,14 +18,31 @@ class CreditlistPage extends StatefulWidget {
 }
 
 class _CreditlistPageState extends State<CreditlistPage> {
-  final DeliveryService db = DeliveryService();
+  /// Controller managing credit business logic and calculations.
+  final CreditController _controller = CreditController();
+
+  /// Whether the active user is a dealer (determines navigation to settlement page).
   bool isDealer = true;
 
+  /// Firestore stream providing real-time credit updates.
   late final Stream<QuerySnapshot> _creditStream;
+
+  /// Controllers for the search input.
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+
+  /// Current search query string.
   String _searchQuery = '';
+
+  /// Currently selected sorting option.
   CreditSort _selectedSort = CreditSort.highestAmount;
+
+  @override
+  void initState() {
+    super.initState();
+    _creditStream = _controller.getCreditDeliveriesStream();
+    _prefetchData();
+  }
 
   @override
   void dispose() {
@@ -42,21 +51,22 @@ class _CreditlistPageState extends State<CreditlistPage> {
     super.dispose();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _creditStream = db.getListDeliveryWithCredit();
-    prefetchData();
+  /// Fetches the user role to check dealer privileges.
+  Future<void> _prefetchData() async {
+    final dealer = await _controller.checkIsDealer();
+    if (mounted) {
+      setState(() => isDealer = dealer);
+    }
   }
 
-  void prefetchData() async {
-    isDealer = await KVariables.getIsDealer();
-    if (mounted) setState(() {});
-  }
+  // ==========================================
+  // UI Building Blocks
+  // ==========================================
 
-  Widget _buildSummaryCard({required double totalCredit, required int totalAccounts, required double filteredCredit, required int filteredCount}) {
+  /// Builds the top card displaying total outstanding credit and account counts.
+  Widget _buildSummaryCard(CreditListMetrics metrics) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isFiltered = _searchQuery.isNotEmpty && filteredCount != totalAccounts;
+    final isFiltered = metrics.isFiltered && _searchQuery.isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
@@ -75,6 +85,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Outstanding credit amounts
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -84,11 +95,13 @@ class _CreditlistPageState extends State<CreditlistPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(isFiltered ? filteredCredit : totalCredit),
+                    Helperfunctions.formatDoubleAmountForDisplay(isFiltered ? metrics.filteredCredit : metrics.totalCredit),
                     style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
+
+              // Store count badge
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(10)),
@@ -96,7 +109,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
                   children: [
                     Text(isFiltered ? 'Matching' : 'Stores', style: const TextStyle(color: Colors.white70, fontSize: 11)),
                     Text(
-                      isFiltered ? '$filteredCount / $totalAccounts' : '$totalAccounts',
+                      isFiltered ? '${metrics.filteredCount} / ${metrics.totalAccounts}' : '${metrics.totalAccounts}',
                       style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -104,6 +117,8 @@ class _CreditlistPageState extends State<CreditlistPage> {
               ),
             ],
           ),
+
+          // Search filter context banner
           if (isFiltered) ...[
             const SizedBox(height: 10),
             Container(
@@ -115,7 +130,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
                   const Icon(Icons.filter_alt_outlined, size: 13, color: Colors.white70),
                   const SizedBox(width: 4),
                   Text(
-                    'Overall: ${Helperfunctions.formatDoubleAmountForDisplay(totalCredit)} ($totalAccounts stores)',
+                    'Overall: ${Helperfunctions.formatDoubleAmountForDisplay(metrics.totalCredit)} (${metrics.totalAccounts} stores)',
                     style: const TextStyle(color: Colors.white, fontSize: 11),
                   ),
                 ],
@@ -127,12 +142,15 @@ class _CreditlistPageState extends State<CreditlistPage> {
     );
   }
 
+  /// Builds the search textfield and sorting popup button.
   Widget _buildSearchAndFilterBar() {
     final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
       child: Row(
         children: [
+          // Search text input
           Expanded(
             child: TextField(
               controller: _searchController,
@@ -166,6 +184,8 @@ class _CreditlistPageState extends State<CreditlistPage> {
             ),
           ),
           const SizedBox(width: 8),
+
+          // Sorting menu button
           PopupMenuButton<CreditSort>(
             tooltip: 'Sort credits',
             icon: Container(
@@ -201,8 +221,10 @@ class _CreditlistPageState extends State<CreditlistPage> {
     );
   }
 
-  Widget _buildCreditCard({required String deliveryID, required Delivery delivery}) {
+  /// Builds a clickable card representing an individual store's credit details.
+  Widget _buildCreditCard(CreditRecord record) {
     final colorScheme = Theme.of(context).colorScheme;
+    final delivery = record.delivery;
     final hasRemarks = delivery.remarks.trim().isNotEmpty;
 
     return Card(
@@ -218,7 +240,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
             ? () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => CreditPage(recID: deliveryID, delivery: delivery),
+                  builder: (_) => CreditPage(recID: record.id, delivery: delivery),
                 ),
               )
             : null,
@@ -226,6 +248,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
           padding: const EdgeInsets.all(14.0),
           child: Row(
             children: [
+              // Store credit icon
               Container(
                 width: 44,
                 height: 44,
@@ -233,6 +256,8 @@ class _CreditlistPageState extends State<CreditlistPage> {
                 child: Icon(Icons.credit_card_outlined, color: colorScheme.primary, size: 22),
               ),
               const SizedBox(width: 12),
+
+              // Store name and delivery details
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,6 +305,8 @@ class _CreditlistPageState extends State<CreditlistPage> {
                 ),
               ),
               const SizedBox(width: 8),
+
+              // Credit balance and status pill
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -306,8 +333,10 @@ class _CreditlistPageState extends State<CreditlistPage> {
     );
   }
 
+  /// Builds empty state when no credits exist in the system.
   Widget _buildEmptyState() {
     final colorScheme = Theme.of(context).colorScheme;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -336,8 +365,10 @@ class _CreditlistPageState extends State<CreditlistPage> {
     );
   }
 
+  /// Builds empty state when search filters produce no matches.
   Widget _buildNoSearchResultsState() {
     final colorScheme = Theme.of(context).colorScheme;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
       child: Center(
@@ -356,8 +387,10 @@ class _CreditlistPageState extends State<CreditlistPage> {
     );
   }
 
+  /// Builds the error state widget.
   Widget _buildErrorState() {
     final colorScheme = Theme.of(context).colorScheme;
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -392,67 +425,28 @@ class _CreditlistPageState extends State<CreditlistPage> {
             return _buildEmptyState();
           }
 
-          // Calculate total outstanding amount
-          final totalCredit = allDocs.fold<double>(
-            0.0,
-            // ignore: avoid_types_as_parameter_names
-            (sum, doc) => sum + ((doc.data() as Delivery).creditAmount),
-          );
-
-          final filteredDocs = allDocs.where((doc) {
-            final delivery = doc.data() as Delivery;
-            if (_searchQuery.isEmpty) return true;
-            return delivery.storeName.toLowerCase().contains(_searchQuery.toLowerCase());
-          }).toList();
-
-          // Apply selected sort
-          filteredDocs.sort((a, b) {
-            final delA = a.data() as Delivery;
-            final delB = b.data() as Delivery;
-            switch (_selectedSort) {
-              case CreditSort.highestAmount:
-                return delB.creditAmount.compareTo(delA.creditAmount);
-              case CreditSort.lowestAmount:
-                return delA.creditAmount.compareTo(delB.creditAmount);
-              case CreditSort.oldest:
-                final dateA = delA.deliveryDate?.toDate() ?? DateTime(1970);
-                final dateB = delB.deliveryDate?.toDate() ?? DateTime(1970);
-                return dateA.compareTo(dateB);
-              case CreditSort.newest:
-                final dateA = delA.deliveryDate?.toDate() ?? DateTime(1970);
-                final dateB = delB.deliveryDate?.toDate() ?? DateTime(1970);
-                return dateB.compareTo(dateA);
-            }
-          });
-
-          // ignore: avoid_types_as_parameter_names
-          final filteredCredit = filteredDocs.fold<double>(0.0, (sum, doc) => sum + ((doc.data() as Delivery).creditAmount));
+          // Delegate metric computation, filtering, and sorting to the controller
+          final metrics = _controller.computeMetrics(docs: allDocs, searchQuery: _searchQuery, sort: _selectedSort);
 
           return Column(
             children: [
               // 1. Total Outstanding Summary Header
-              _buildSummaryCard(
-                totalCredit: totalCredit,
-                totalAccounts: allDocs.length,
-                filteredCredit: filteredCredit,
-                filteredCount: filteredDocs.length,
-              ),
+              _buildSummaryCard(metrics),
 
               // 2. Search & Sort Bar
               _buildSearchAndFilterBar(),
 
               // 3. Filtered Credits List
               Expanded(
-                child: filteredDocs.isEmpty
+                child: metrics.filteredRecords.isEmpty
                     ? _buildNoSearchResultsState()
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                        itemCount: filteredDocs.length,
+                        itemCount: metrics.filteredRecords.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
-                          final delivery = filteredDocs[index].data() as Delivery;
-                          final deliveryID = filteredDocs[index].id;
-                          return _buildCreditCard(deliveryID: deliveryID, delivery: delivery);
+                          final record = metrics.filteredRecords[index];
+                          return _buildCreditCard(record);
                         },
                       ),
               ),

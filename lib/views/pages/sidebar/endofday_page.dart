@@ -1,11 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/endofday_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/endofday_dto.dart';
 import 'package:flutter_app/models/breakdown.dart';
-import 'package:flutter_app/services/breakdown_service.dart';
-import 'package:flutter_app/services/endofday_services.dart';
 import 'package:flutter_app/views/pages/sidebar/breakdown_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
@@ -19,10 +16,11 @@ class EndofdayPage extends StatefulWidget {
 }
 
 class _EndofdayPageState extends State<EndofdayPage> {
+  // Controller managing data fetching, reconciliation, and validation
+  final EndOfDayController _controller = EndOfDayController();
+
   Breakdown? breakdown = Breakdown.empty();
   String breakdownID = '';
-  final EndofdayServices db = EndofdayServices();
-  final BreakdownService dbBS = BreakdownService();
   EndOfDayDTO endOfDayData = EndOfDayDTO.empty();
 
   bool _isDealer = true;
@@ -53,13 +51,11 @@ class _EndofdayPageState extends State<EndofdayPage> {
   Future<void> getData() async {
     showLoading(true);
     try {
-      _isDealer = await KVariables.getIsDealer();
-      endOfDayData = await db.getListDeliveryForEndOfDay(_selectedDate);
-      breakdown = await dbBS.getDocumentsBySpecificDate(_selectedDate) ?? Breakdown.empty();
-      breakdownID = await dbBS.getIDofBreakdown(_selectedDate);
-
-      breakdown!.breakdownDate = Timestamp.fromDate(_selectedDate);
-      breakdown!.expectedAmount = endOfDayData.expectedcashonhand;
+      final snapshot = await _controller.fetchEndOfDayData(_selectedDate);
+      _isDealer = snapshot.isDealer;
+      endOfDayData = snapshot.endOfDayData;
+      breakdown = snapshot.breakdown;
+      breakdownID = snapshot.breakdownId;
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to fetch End of Day data: $e');
     } finally {
@@ -68,14 +64,16 @@ class _EndofdayPageState extends State<EndofdayPage> {
   }
 
   void validateBeforeBreakdown() async {
-    if (endOfDayData.totaldelivery == 0 && breakdownID.isEmpty) {
-      ShowMessage.error(context, 'No deliveries recorded for this date');
+    try {
+      _controller.validateBeforeBreakdown(
+        endOfDayData: endOfDayData,
+        breakdownId: breakdownID,
+      );
+    } catch (e) {
+      ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       return;
     }
-    if (endOfDayData.pendingstatus > 0) {
-      ShowMessage.error(context, 'There should be no transaction that is pending for delivery');
-      return;
-    }
+
     await Navigator.push(
       context,
       MaterialPageRoute(
