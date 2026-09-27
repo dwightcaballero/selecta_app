@@ -10,6 +10,7 @@ class Hapistore {
   int? pjpSequence;
   double? latitude;
   double? longitude;
+  Timestamp? lastMerchBlitzDate;
 
   Hapistore({
     required this.storeName,
@@ -21,6 +22,7 @@ class Hapistore {
     this.pjpSequence,
     this.latitude,
     this.longitude,
+    this.lastMerchBlitzDate,
   });
 
   static Hapistore empty() =>
@@ -34,6 +36,7 @@ class Hapistore {
         pjpSequence: null,
         latitude: null,
         longitude: null,
+        lastMerchBlitzDate: null,
       );
 
   factory Hapistore.fromJson(Map<String, Object?> json) {
@@ -59,6 +62,7 @@ class Hapistore {
       pjpSequence: json['pjpSequence'] as int?,
       latitude: lat,
       longitude: lng,
+      lastMerchBlitzDate: json['lastMerchBlitzDate'] as Timestamp?,
     );
   }
 
@@ -87,6 +91,7 @@ class Hapistore {
         pjpSequence: data['pjpSequence'] as int?,
         latitude: lat,
         longitude: lng,
+        lastMerchBlitzDate: data['lastMerchBlitzDate'] as Timestamp?,
       );
     } else {
       return Hapistore.empty();
@@ -106,6 +111,8 @@ class Hapistore {
     double? latitude,
     double? longitude,
     bool clearLocation = false,
+    Timestamp? lastMerchBlitzDate,
+    bool clearLastMerchBlitzDate = false,
   }) {
     return Hapistore(
       storeName: storeName ?? this.storeName,
@@ -117,6 +124,7 @@ class Hapistore {
       pjpSequence: pjpSequence ?? this.pjpSequence,
       latitude: clearLocation ? null : (latitude ?? this.latitude),
       longitude: clearLocation ? null : (longitude ?? this.longitude),
+      lastMerchBlitzDate: clearLastMerchBlitzDate ? null : (lastMerchBlitzDate ?? this.lastMerchBlitzDate),
     );
   }
 
@@ -131,6 +139,7 @@ class Hapistore {
       'pjpSequence': pjpSequence,
       'latitude': latitude,
       'longitude': longitude,
+      'lastMerchBlitzDate': lastMerchBlitzDate,
       if (latitude != null && longitude != null)
         'location': GeoPoint(latitude!, longitude!),
     };

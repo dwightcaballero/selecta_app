@@ -79,6 +79,18 @@ class _TasklistPageState extends State<TasklistPage> {
 
   Future<void> _toggleTaskStatus(String taskID, Tasks task) async {
     final newStatus = !task.isTaskDone;
+    if (task.isTaskDone && !_isDealer) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Completed tasks can only be reopened by dealers.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
     try {
       final updatedTask = task.copyWith(isTaskDone: newStatus);
       await db.updateTasks(taskID, updatedTask);
@@ -110,144 +122,88 @@ class _TasklistPageState extends State<TasklistPage> {
     }
   }
 
-  Widget _buildSummaryCard({
+  Widget _buildFilterChips({
     required int totalCount,
     required int pendingCount,
     required int completedCount,
     required int overdueCount,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.82)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.primary.withValues(alpha: 0.25),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    Widget buildChip({
+      required String label,
+      required int count,
+      required TaskFilter filter,
+    }) {
+      final isSelected = _selectedFilter == filter;
+      final isOverdueFilter = filter == TaskFilter.overdue;
+      final hasOverdue = isOverdueFilter && count > 0;
+
+      final selectedBgColor = isOverdueFilter
+          ? (isDark ? Colors.red.shade900 : Colors.red.shade700)
+          : colorScheme.primary;
+
+      return Padding(
+        padding: const EdgeInsets.only(right: 8.0),
+        child: FilterChip(
+          selected: isSelected,
+          showCheckmark: false,
+          label: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Operational Task Tracker',
-                    style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$totalCount Total ${totalCount == 1 ? 'Task' : 'Tasks'}',
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected
+                      ? Colors.white
+                      : (hasOverdue
+                          ? (isDark ? Colors.red.shade300 : Colors.red.shade700)
+                          : colorScheme.onSurface),
+                ),
               ),
+              const SizedBox(width: 6),
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
+                  color: isSelected
+                      ? Colors.white.withValues(alpha: 0.25)
+                      : (hasOverdue
+                          ? (isDark ? Colors.red.shade900.withValues(alpha: 0.35) : Colors.red.shade50)
+                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.assignment_outlined, color: Colors.white, size: 20),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected
+                        ? Colors.white
+                        : (hasOverdue
+                            ? (isDark ? Colors.red.shade300 : Colors.red.shade700)
+                            : colorScheme.onSurfaceVariant),
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildFilterMetricItem(
-                label: 'All',
-                value: '$totalCount',
-                icon: Icons.grid_view_rounded,
-                filter: TaskFilter.all,
-                accentColor: Colors.white,
-              ),
-              const SizedBox(width: 6),
-              _buildFilterMetricItem(
-                label: 'Overdue',
-                value: '$overdueCount',
-                icon: Icons.warning_amber_rounded,
-                filter: TaskFilter.overdue,
-                accentColor: Colors.redAccent.shade100,
-              ),
-              const SizedBox(width: 6),
-              _buildFilterMetricItem(
-                label: 'Pending',
-                value: '$pendingCount',
-                icon: Icons.hourglass_top_rounded,
-                filter: TaskFilter.pending,
-                accentColor: Colors.amber.shade200,
-              ),
-              const SizedBox(width: 6),
-              _buildFilterMetricItem(
-                label: 'Completed',
-                value: '$completedCount',
-                icon: Icons.check_circle_outline_rounded,
-                filter: TaskFilter.completed,
-                accentColor: Colors.lightGreenAccent.shade100,
-              ),
-            ],
+          selectedColor: selectedBgColor,
+          backgroundColor: colorScheme.surface,
+          side: BorderSide(
+            color: isSelected
+                ? Colors.transparent
+                : (hasOverdue
+                    ? (isDark ? Colors.red.shade800.withValues(alpha: 0.6) : Colors.red.shade200)
+                    : colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            width: 1,
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterMetricItem({
-    required String label,
-    required String value,
-    required IconData icon,
-    required TaskFilter filter,
-    required Color accentColor,
-  }) {
-    final isSelected = _selectedFilter == filter;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    Color iconColor;
-    if (isSelected) {
-      switch (filter) {
-        case TaskFilter.pending:
-          iconColor = Colors.orange.shade800;
-          break;
-        case TaskFilter.completed:
-          iconColor = Colors.green.shade700;
-          break;
-        case TaskFilter.overdue:
-          iconColor = Colors.red.shade700;
-          break;
-        case TaskFilter.all:
-          iconColor = colorScheme.primary;
-          break;
-      }
-    } else {
-      iconColor = accentColor;
-    }
-
-    final selectedTextColor = switch (filter) {
-      TaskFilter.pending => Colors.orange.shade900,
-      TaskFilter.completed => Colors.green.shade800,
-      TaskFilter.overdue => Colors.red.shade800,
-      TaskFilter.all => colorScheme.primary,
-    };
-
-    return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onSelected: (_) {
             setState(() {
               if (_selectedFilter == filter && filter != TaskFilter.all) {
                 _selectedFilter = TaskFilter.all;
@@ -256,65 +212,20 @@ class _TasklistPageState extends State<TasklistPage> {
               }
             });
           },
-          borderRadius: BorderRadius.circular(12),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.18),
-                width: isSelected ? 1.5 : 1,
-              ),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(icon, size: 14, color: iconColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      value,
-                      style: TextStyle(
-                        color: isSelected ? selectedTextColor : Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        height: 1.1,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: isSelected ? selectedTextColor : Colors.white70,
-                    fontSize: 10.5,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
         ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Row(
+        children: [
+          buildChip(label: 'All', count: totalCount, filter: TaskFilter.all),
+          buildChip(label: 'Overdue', count: overdueCount, filter: TaskFilter.overdue),
+          buildChip(label: 'Pending', count: pendingCount, filter: TaskFilter.pending),
+          buildChip(label: 'Completed', count: completedCount, filter: TaskFilter.completed),
+        ],
       ),
     );
   }
@@ -323,15 +234,15 @@ class _TasklistPageState extends State<TasklistPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
       child: TextField(
         controller: _searchController,
         focusNode: _searchFocusNode,
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
         decoration: InputDecoration(
-          hintText: 'Search tasks by title, store, or details...',
+          hintText: 'Search tasks by title or store...',
           hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
+          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.onSurfaceVariant),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear, size: 18),
@@ -342,15 +253,15 @@ class _TasklistPageState extends State<TasklistPage> {
                 )
               : null,
           filled: true,
-          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
           contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant),
+            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
           ),
         ),
       ),
@@ -405,59 +316,44 @@ class _TasklistPageState extends State<TasklistPage> {
         deadlineDate.day == DateTime.now().day;
     final deadlineFormatted = _formatDeadline(deadlineDate, isDone: isDone);
 
-    Color statusColor;
-    String statusText;
-    IconData statusIcon;
-
-    if (isDone) {
-      statusColor = isDark ? Colors.green.shade400 : Colors.green.shade700;
-      statusText = 'Completed';
-      statusIcon = Icons.check_circle_rounded;
-    } else if (isOverdue) {
-      statusColor = isDark ? Colors.red.shade300 : Colors.red.shade700;
-      statusText = 'Overdue';
-      statusIcon = Icons.error_outline_rounded;
-    } else {
-      statusColor = isDark ? Colors.orange.shade300 : Colors.orange.shade800;
-      statusText = 'Pending';
-      statusIcon = Icons.schedule_rounded;
-    }
-
     return Card(
       elevation: 0,
-      color: colorScheme.surface,
+      margin: EdgeInsets.zero,
+      color: isDone
+          ? (isDark ? colorScheme.surfaceContainerLow : colorScheme.surfaceContainerHighest.withValues(alpha: 0.25))
+          : colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isDone
-              ? (isDark ? Colors.green.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.25))
-              : (isOverdue
-                  ? (isDark ? Colors.red.withValues(alpha: 0.35) : Colors.red.withValues(alpha: 0.25))
-                  : colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          color: isOverdue
+              ? (isDark ? Colors.red.withValues(alpha: 0.4) : Colors.red.withValues(alpha: 0.3))
+              : colorScheme.outlineVariant.withValues(alpha: 0.45),
           width: 1,
         ),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: () => _navigateToEditTask(taskID, task),
         child: Padding(
-          padding: const EdgeInsets.all(14.0),
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 11.0),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Checkbox / Toggle Status Button
               IconButton(
                 icon: Icon(
                   isDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
                   color: isDone
-                      ? (isDark ? Colors.green.shade400 : Colors.green)
+                      ? (isDark ? Colors.green.shade400 : Colors.green.shade600)
                       : (isOverdue ? (isDark ? Colors.red.shade300 : Colors.red.shade400) : colorScheme.outline),
-                  size: 26,
+                  size: 24,
                 ),
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                tooltip: isDone ? 'Mark as Pending' : 'Mark as Completed',
-                onPressed: () => _toggleTaskStatus(taskID, task),
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                tooltip: isDone
+                    ? (_isDealer ? 'Mark as Pending' : 'Completed (View Only)')
+                    : 'Mark as Completed',
+                onPressed: (isDone && !_isDealer) ? null : () => _toggleTaskStatus(taskID, task),
               ),
               const SizedBox(width: 10),
 
@@ -465,93 +361,51 @@ class _TasklistPageState extends State<TasklistPage> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Title and status badge
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            task.taskTitle,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              decoration: isDone ? TextDecoration.lineThrough : null,
-                              color: isDone ? colorScheme.onSurfaceVariant : colorScheme.onSurface,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: isDark ? 0.18 : 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(statusIcon, size: 12, color: statusColor),
-                              const SizedBox(width: 4),
-                              Text(
-                                statusText,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: statusColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // Description snippet if available
-                    if (task.taskDescription.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        task.taskDescription,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                    // Title
+                    Text(
+                      task.taskTitle,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        decoration: isDone ? TextDecoration.lineThrough : null,
+                        color: isDone ? colorScheme.outline : colorScheme.onSurface,
                       ),
-                    ],
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
 
-                    const SizedBox(height: 8),
-
-                    // Meta: Store & Deadline
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 4,
+                    // Meta: Store (Left) & Deadline (Right)
+                    Row(
                       children: [
-                        if (task.storeName.isNotEmpty)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.storefront_outlined, size: 14, color: colorScheme.primary),
-                              const SizedBox(width: 4),
-                              Text(
-                                task.storeName,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: colorScheme.primary,
-                                ),
+                        if (task.storeName.isNotEmpty) ...[
+                          Icon(Icons.storefront_outlined, size: 13, color: colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              task.storeName,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: colorScheme.onSurfaceVariant,
                               ),
-                            ],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                        ] else
+                          const Spacer(),
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.calendar_month_outlined,
-                              size: 14,
+                              isOverdue
+                                  ? Icons.warning_amber_rounded
+                                  : (isDueToday ? Icons.access_time_rounded : Icons.calendar_today_outlined),
+                              size: 13,
                               color: isOverdue
                                   ? (isDark ? Colors.red.shade300 : Colors.red.shade700)
                                   : (isDueToday ? colorScheme.primary : colorScheme.onSurfaceVariant),
@@ -560,10 +414,10 @@ class _TasklistPageState extends State<TasklistPage> {
                             Text(
                               deadlineFormatted,
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11.5,
                                 fontWeight: (isOverdue || isDueToday) ? FontWeight.w600 : FontWeight.normal,
                                 color: isOverdue
-                                    ? (isDark ? Colors.red.shade300 : Colors.red.shade800)
+                                    ? (isDark ? Colors.red.shade300 : Colors.red.shade700)
                                     : (isDueToday ? colorScheme.primary : colorScheme.onSurfaceVariant),
                               ),
                             ),
@@ -573,12 +427,6 @@ class _TasklistPageState extends State<TasklistPage> {
                     ),
                   ],
                 ),
-              ),
-
-              const SizedBox(width: 6),
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -592,54 +440,36 @@ class _TasklistPageState extends State<TasklistPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final String label;
-    final IconData icon;
     final Color color;
 
     switch (headerKey) {
       case '_header_overdue':
         label = count > 0 ? 'Overdue ($count)' : 'Overdue';
-        icon = Icons.warning_amber_rounded;
-        color = isDark ? Colors.red.shade300 : Colors.red;
+        color = isDark ? Colors.red.shade300 : Colors.red.shade700;
         break;
       case '_header_pending':
         label = count > 0 ? 'Pending ($count)' : 'Pending';
-        icon = Icons.hourglass_top_rounded;
-        color = isDark ? Colors.orange.shade300 : Colors.orange.shade800;
+        color = colorScheme.onSurfaceVariant;
         break;
       case '_header_completed':
         label = count > 0 ? 'Completed ($count)' : 'Completed';
-        icon = Icons.check_circle_outline_rounded;
-        color = isDark ? Colors.green.shade400 : Colors.green;
+        color = colorScheme.outline;
         break;
       default:
         label = count > 0 ? '$headerKey ($count)' : headerKey;
-        icon = Icons.label_outline;
         color = colorScheme.primary;
     }
 
     return Padding(
-      padding: const EdgeInsets.only(top: 14, bottom: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: color,
-              letterSpacing: 0.8,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Divider(
-              color: color.withValues(alpha: 0.25),
-              thickness: 1,
-            ),
-          ),
-        ],
+      padding: const EdgeInsets.only(top: 14, bottom: 6, left: 2),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.8,
+        ),
       ),
     );
   }
@@ -867,63 +697,20 @@ class _TasklistPageState extends State<TasklistPage> {
           final colorScheme = Theme.of(context).colorScheme;
 
           return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. KPI Summary Card
-              _buildSummaryCard(
+              // 1. Search Field
+              _buildSearchBar(),
+
+              // 2. Filter Chips
+              _buildFilterChips(
                 totalCount: allDocs.length,
                 pendingCount: pendingCount,
                 completedCount: completedCount,
                 overdueCount: overdueCount,
               ),
 
-              // 2. Search Field
-              _buildSearchBar(),
-
-              // Active filter pill
-              if (_selectedFilter != TaskFilter.all || _searchQuery.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          _selectedFilter != TaskFilter.all
-                              ? 'Filter: ${_selectedFilter.name.toUpperCase()}'
-                              : 'Search: "$_searchQuery"',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onPrimaryContainer,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _searchQuery = '';
-                            _selectedFilter = TaskFilter.all;
-                          });
-                        },
-                        icon: const Icon(Icons.close, size: 14),
-                        label: const Text('Clear Filter', style: TextStyle(fontSize: 11)),
-                      ),
-                    ],
-                  ),
-                ),
-
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
 
               // 3. Tasks List View
               Expanded(
@@ -947,7 +734,7 @@ class _TasklistPageState extends State<TasklistPage> {
                           // Add spacing between items (not after headers)
                           final isLastItem = index == displayItems.length - 1;
                           return Padding(
-                            padding: EdgeInsets.only(bottom: isLastItem ? 0 : 10),
+                            padding: EdgeInsets.only(bottom: isLastItem ? 0 : 8),
                             child: _buildTaskCard(taskID: taskID, task: task),
                           );
                         },

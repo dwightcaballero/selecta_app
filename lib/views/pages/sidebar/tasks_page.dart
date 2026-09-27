@@ -35,8 +35,10 @@ class _TasksPageState extends State<TasksPage> {
   bool _isLoading = false;
 
   bool get isEditMode => widget.taskID.isNotEmpty;
+  bool get _isReadOnly => isEditMode && widget.task.isTaskDone && !_isDealer;
 
   bool get _hasUnsavedChanges {
+    if (_isReadOnly) return false;
     if (isEditMode) {
       if (!_isDealer) {
         return _isTaskDone != widget.task.isTaskDone;
@@ -156,6 +158,11 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Future<void> onUpdate() async {
+    if (_isReadOnly) {
+      ShowMessage.error(context, 'Completed tasks cannot be modified by non-dealers');
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
       ShowMessage.error(context, 'Please complete all required fields');
       return;
@@ -397,14 +404,18 @@ class _TasksPageState extends State<TasksPage> {
       ),
       child: SwitchListTile(
         value: _isTaskDone,
-        onChanged: (val) => setState(() => _isTaskDone = val),
+        onChanged: _isReadOnly ? null : (val) => setState(() => _isTaskDone = val),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Text(
           _isTaskDone ? 'Task Completed' : 'Task Pending',
           style: TextStyle(fontWeight: FontWeight.bold, color: activeColor),
         ),
         subtitle: Text(
-          _isTaskDone ? 'Marked as completed and accomplished.' : 'Task is currently awaiting completion.',
+          _isReadOnly
+              ? 'Completed (View Only). Only dealers can reopen completed tasks.'
+              : (_isTaskDone
+                  ? 'Marked as completed and accomplished.'
+                  : 'Task is currently awaiting completion.'),
           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
         ),
         secondary: Icon(_isTaskDone ? Icons.check_circle : Icons.pending_actions, color: activeColor),
@@ -499,7 +510,9 @@ class _TasksPageState extends State<TasksPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(
-          title: isEditMode ? 'Task Details' : 'Add Task',
+          title: isEditMode
+              ? (_isReadOnly ? 'Task Details (View Only)' : 'Task Details')
+              : 'Add Task',
           subtitle: isEditMode
               ? (widget.task.storeName.isNotEmpty
                     ? widget.task.storeName
@@ -587,59 +600,93 @@ class _TasksPageState extends State<TasksPage> {
                       const SizedBox(height: 24),
 
                       // Action Buttons
-                      if (isEditMode)
-                        Row(
-                          children: [
-                            if (_isDealer) ...[
+                      if (isEditMode) ...[
+                        if (_isReadOnly)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.blue.withValues(alpha: 0.12) : Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isDark ? Colors.blue.shade800 : Colors.blue.shade200,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.lock_outline_rounded,
+                                    size: 20, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'This task is completed and in view-only mode.',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Row(
+                            children: [
+                              if (_isDealer) ...[
+                                Expanded(
+                                  flex: 1,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final confirmed = await ShowMessage.confirm(
+                                        context,
+                                        title: ConfirmTitle.delete,
+                                        message: 'Are you sure you want to delete task [${widget.task.taskTitle}]?',
+                                        isDestructive: true,
+                                        icon: Icons.delete_outline,
+                                        confirmText: 'Delete',
+                                      );
+                                      if (confirmed) onDelete();
+                                    },
+                                    style: OutlinedButton.styleFrom(
+                                      minimumSize: const Size(0, 50.0),
+                                      foregroundColor: isDark ? Colors.red.shade400 : Colors.red.shade700,
+                                      side: BorderSide(
+                                          color: isDark
+                                              ? Colors.red.shade400.withValues(alpha: 0.6)
+                                              : Colors.red.shade300,
+                                          width: 1.2),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                    icon: const Icon(Icons.delete_outline, size: 20),
+                                    label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                              ],
                               Expanded(
-                                flex: 1,
-                                child: OutlinedButton.icon(
+                                flex: _isDealer ? 2 : 1,
+                                child: FilledButton.icon(
                                   onPressed: () async {
                                     final confirmed = await ShowMessage.confirm(
                                       context,
-                                      title: ConfirmTitle.delete,
-                                      message: 'Are you sure you want to delete task [${widget.task.taskTitle}]?',
-                                      isDestructive: true,
-                                      icon: Icons.delete_outline,
-                                      confirmText: 'Delete',
+                                      title: ConfirmTitle.update,
+                                      message: 'Save changes to task [${txtTitle.text.trim()}]?',
+                                      icon: Icons.check_circle_outline,
+                                      confirmText: 'Update',
                                     );
-                                    if (confirmed) onDelete();
+                                    if (confirmed) onUpdate();
                                   },
-                                  style: OutlinedButton.styleFrom(
+                                  style: FilledButton.styleFrom(
                                     minimumSize: const Size(0, 50.0),
-                                    foregroundColor: isDark ? Colors.red.shade400 : Colors.red.shade700,
-                                    side: BorderSide(color: isDark ? Colors.red.shade400.withValues(alpha: 0.6) : Colors.red.shade300, width: 1.2),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                   ),
-                                  icon: const Icon(Icons.delete_outline, size: 20),
-                                  label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  icon: const Icon(Icons.check, size: 20),
+                                  label: const Text('Update Task', style: TextStyle(fontWeight: FontWeight.bold)),
                                 ),
                               ),
-                              const SizedBox(width: 12),
                             ],
-                            Expanded(
-                              flex: _isDealer ? 2 : 1,
-                              child: FilledButton.icon(
-                                onPressed: () async {
-                                  final confirmed = await ShowMessage.confirm(
-                                    context,
-                                    title: ConfirmTitle.update,
-                                    message: 'Save changes to task [${txtTitle.text.trim()}]?',
-                                    icon: Icons.check_circle_outline,
-                                    confirmText: 'Update',
-                                  );
-                                  if (confirmed) onUpdate();
-                                },
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size(0, 50.0),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                ),
-                                icon: const Icon(Icons.check, size: 20),
-                                label: const Text('Update Task', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                            ),
-                          ],
-                        )
+                          ),
+                      ]
                       else if (_isDealer)
                         FilledButton.icon(
                           onPressed: onSave,

@@ -37,6 +37,20 @@ class PurchaseOrderService {
     return _purchaseordersRef.where('isSettled', isEqualTo: false).orderBy('orderDate', descending: true).snapshots();
   }
 
+  Stream<int> getAwaitingInvoiceCountStream() {
+    return _purchaseordersRef.snapshots().map((snapshot) {
+      int count = 0;
+      for (var doc in snapshot.docs) {
+        final order = doc.data() as Purchaseorder;
+        final hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
+        if (!hasInvoice) {
+          count++;
+        }
+      }
+      return count;
+    });
+  }
+
   static Future<int?> getCountDeliveriesNotYetSettled() async {
     var snapshot = await FirebaseFirestore.instance.collection(PURCHASEORDER_COLLECTION_REF).where('isSettled', isEqualTo: false).count().get();
 

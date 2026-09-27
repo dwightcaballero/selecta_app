@@ -1,15 +1,20 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/models/users.dart';
 import 'package:flutter_app/services/auth_service.dart';
+import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:flutter_app/services/tasks_services.dart';
+import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/merch_blitz_page.dart';
 import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
@@ -29,6 +34,10 @@ class SalesmanDashboardPage extends StatefulWidget {
 }
 
 class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
+  final TasksService _tasksService = TasksService();
+  final HapiStoreService _hapiStoreService = HapiStoreService();
+  late final Stream<int> _tasksCountStream;
+  late final Stream<int> _merchBlitzCountStream;
   Users? _currentUser;
   DashboardDTO _dashboardDTO = DashboardDTO.empty();
   bool _isLoading = true;
@@ -38,6 +47,8 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
   @override
   void initState() {
     super.initState();
+    _tasksCountStream = _tasksService.getPendingAndOverdueCountStream();
+    _merchBlitzCountStream = _hapiStoreService.getUnsurveyedMerchBlitzCountStream();
     _loadInitialData();
   }
 
@@ -143,90 +154,224 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     }
   }
 
+  Future<void> _showSecretRoleSwitchDialog() async {
+    final passwordController = TextEditingController();
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Admin Access', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Enter admin password to toggle user role:',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  hintText: 'Enter password',
+                  prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onSubmitted: (_) => Navigator.of(dialogContext).pop(true),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Verify & Switch'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    if (passwordController.text.trim() != '123') {
+      if (mounted) {
+        ShowMessage.error(context, 'Incorrect admin password.');
+      }
+      return;
+    }
+
+    await _performRoleSwitch();
+  }
+
+  Future<void> _performRoleSwitch() async {
+    setState(() => _isLoading = true);
+    try {
+      final isCurrentlyDealer = await KVariables.getIsDealer();
+      final newRole = isCurrentlyDealer ? BusinessRole.salesman : BusinessRole.dealer;
+
+      // 1. Update Firebase Firestore
+      final currentEmail = FirebaseAuth.instance.currentUser?.email;
+      if (currentEmail != null && currentEmail.isNotEmpty) {
+        final query = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: currentEmail)
+            .limit(1)
+            .get();
+        if (query.docs.isNotEmpty) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(query.docs.first.id)
+              .update({'role': newRole});
+        }
+      }
+
+      // 2. Update SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final currentUser = await KVariables.getUser();
+      if (currentUser != null) {
+        final updatedUser = currentUser.copyWith(role: newRole);
+        await prefs.setString('user_data', jsonEncode(updatedUser.toJson()));
+      }
+      await prefs.setString(SharedPrefKeys.role, newRole);
+
+      HapiStoreService.invalidateCache();
+
+      // 3. Switch screens without animations
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ShowMessage.success(context, 'Switched role to $newRole');
+        Navigator.of(context).pushAndRemoveUntil(
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) =>
+                newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ),
+          (_) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ShowMessage.error(context, 'Failed to change role: $e');
+      }
+    }
+  }
+
+  int _secretTapCount = 0;
+  DateTime? _lastSecretTapTime;
+
+  void _onWelcomeBannerTap() {
+    final now = DateTime.now();
+    if (_lastSecretTapTime != null && now.difference(_lastSecretTapTime!) > const Duration(seconds: 2)) {
+      _secretTapCount = 0;
+    }
+    _lastSecretTapTime = now;
+    _secretTapCount++;
+
+    if (_secretTapCount >= 5) {
+      _secretTapCount = 0;
+      _showSecretRoleSwitchDialog();
+    }
+  }
+
   Widget _buildWelcomeBanner() {
     final colorScheme = Theme.of(context).colorScheme;
     final displayName = _currentUser?.username ?? authService.value.currentUser?.displayName ?? 'Salesman';
     final hasSyncTime = _lastSyncDateTime.isNotEmpty && _lastSyncDateTime != 'Never';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colorScheme.tertiary.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: _onWelcomeBannerTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.tertiary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.badge_outlined,
+                color: colorScheme.tertiary,
+                size: 24,
+              ),
             ),
-            child: Icon(
-              Icons.badge_outlined,
-              color: colorScheme.tertiary,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Welcome, $displayName!',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: colorScheme.tertiary.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Salesman',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.tertiary,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Welcome, $displayName!',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(Icons.sync_rounded, size: 15, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        hasSyncTime ? 'Last synced: $_lastSyncDateTime' : 'Not synced yet',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-                          fontWeight: FontWeight.w500,
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: colorScheme.tertiary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Salesman',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.tertiary,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(Icons.sync_rounded, size: 15, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          hasSyncTime ? 'Last synced: $_lastSyncDateTime' : 'Not synced yet',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -312,23 +457,116 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     );
   }
 
+  Widget _buildDrawer() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final user = authService.value.currentUser;
+
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          // Drawer Header
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 50, 20, 24),
+            decoration: BoxDecoration(color: colorScheme.primary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Colors.white24,
+                  child: Icon(Icons.person, size: 32, color: Colors.white),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  user?.displayName ?? _currentUser?.username ?? 'Salesman',
+                  style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                Text(user?.email ?? '', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              ],
+            ),
+          ),
+
+          // Drawer Navigation Items (Field Activities & Reports)
+          _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
+          _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
+          _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
+          _buildDrawerItem(Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
+          StreamBuilder<int>(
+            stream: _tasksCountStream,
+            builder: (context, snapshot) {
+              return _buildDrawerItem(
+                Icons.task_alt_outlined,
+                'Tasks',
+                const TaskListPage(),
+                badgeCount: snapshot.data ?? 0,
+              );
+            },
+          ),
+          StreamBuilder<int>(
+            stream: _merchBlitzCountStream,
+            builder: (context, snapshot) {
+              return _buildDrawerItem(
+                Icons.campaign_outlined,
+                'Merch Blitz',
+                const MerchBlitzPage(),
+                badgeCount: snapshot.data ?? 0,
+              );
+            },
+          ),
+
+          const Divider(indent: 16, endIndent: 16),
+
+          _buildDrawerItem(Icons.logout_rounded, 'Sign Out', null, isLogout: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawerItem(IconData icon, String title, Widget? nextPage, {bool isLogout = false, int badgeCount = 0}) {
+    return ListTile(
+      leading: Icon(icon, color: isLogout ? Colors.red : null, size: 22),
+      title: Text(
+        title,
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: isLogout ? Colors.red : null),
+      ),
+      trailing: badgeCount > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+              child: Text(
+                '$badgeCount',
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            )
+          : null,
+      onTap: () async {
+        Navigator.pop(context);
+        if (isLogout) {
+          _onLogout();
+        } else if (nextPage != null) {
+          await Helperfunctions.navigateThenWait(context, nextPage);
+          if (mounted) await _syncDashboard();
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: _buildDrawer(),
       appBar: CustomAppbar(
         title: 'Salesman Dashboard',
         subtitle: 'Field Sales Operations',
         showBackButton: false,
         centerTitle: false,
-        leading: Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 1.5),
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: const Icon(Icons.menu_rounded, color: Colors.white),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
+            tooltip: 'Open Menu',
           ),
-          child: const Icon(Icons.person_rounded, size: 22, color: Colors.white),
         ),
         actions: [
           IconButton(
@@ -361,7 +599,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                     const SizedBox(height: 20),
 
                     // 2. Primary Operations Quick Access
-                    _buildSectionHeader('Operations Quick Access', 'Deliveries, store scanning, and journey plans'),
+                    _buildSectionHeader('Operations Quick Access', 'Deliveries, scanning, tasks, and daily execution'),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -396,29 +634,21 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 24),
-
-                    // 3. Drawer Replacement: Field Activities & Reports
-                    _buildSectionHeader('Field Activities & Reports', 'Orders, records, daily tracking, and expenses'),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Tasks',
-                            icon: Icons.task_alt_outlined,
-                            iconColor: const Color(0xFF059669),
-                            nextPage: TaskListPage(),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Transactions',
-                            icon: Icons.swap_horiz_outlined,
-                            iconColor: const Color(0xFF4F46E5),
-                            nextPage: const TransactionListPage(storeName: ''),
+                          child: StreamBuilder<int>(
+                            stream: _tasksCountStream,
+                            builder: (context, snapshot) {
+                              return _buildQuickAccessCard(
+                                label: 'Tasks',
+                                icon: Icons.task_alt_outlined,
+                                count: snapshot.data ?? 0,
+                                iconColor: const Color(0xFF059669),
+                                nextPage: const TaskListPage(),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -430,36 +660,19 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                             nextPage: const EndofdayPage(),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Bad Orders',
-                            icon: Icons.assignment_late_outlined,
-                            iconColor: const Color(0xFFDC2626),
-                            nextPage: BadOrderlistPage(),
-                          ),
-                        ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Expenses',
-                            icon: Icons.receipt_long_outlined,
-                            iconColor: const Color(0xFF7C3AED),
-                            nextPage: const ExpenselistPage(),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Returns',
-                            icon: Icons.assignment_return_outlined,
-                            count: _dashboardDTO.returnedDeliveryCount,
-                            iconColor: const Color(0xFFE11D48),
-                            nextPage: const ReturnlistPage(),
+                          child: StreamBuilder<int>(
+                            stream: _merchBlitzCountStream,
+                            builder: (context, snapshot) {
+                              return _buildQuickAccessCard(
+                                label: 'Merch Blitz',
+                                icon: Icons.campaign_outlined,
+                                count: snapshot.data ?? 0,
+                                iconColor: const Color(0xFF0284C7),
+                                nextPage: const MerchBlitzPage(),
+                              );
+                            },
                           ),
                         ),
                       ],

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -20,12 +21,18 @@ import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/creditlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/merch_blitz_page.dart';
+import 'package:flutter_app/views/pages/sidebar/configuration_page.dart';
 import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
 import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
+import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:flutter_app/services/tasks_services.dart';
 import 'package:flutter_app/views/pages/sidebar/hapistorelist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/thruput_page.dart';
+import 'package:flutter_app/services/purchaseorder_service.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/purchaseorderlist_page.dart';
@@ -44,6 +51,12 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  final TasksService _tasksService = TasksService();
+  final HapiStoreService _hapiStoreService = HapiStoreService();
+  final PurchaseOrderService _purchaseOrderService = PurchaseOrderService();
+  late final Stream<int> _tasksCountStream;
+  late final Stream<int> _merchBlitzCountStream;
+  late final Stream<int> _purchaseOrdersAwaitingCountStream;
   DashboardDTO dashboardDTO = DashboardDTO.empty();
   Users? _currentUser;
   bool isDealer = false;
@@ -53,14 +66,17 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    _tasksCountStream = _tasksService.getPendingAndOverdueCountStream();
+    _merchBlitzCountStream = _hapiStoreService.getUnsurveyedMerchBlitzCountStream();
+    _purchaseOrdersAwaitingCountStream = _purchaseOrderService.getAwaitingInvoiceCountStream();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       prefetchData();
     });
   }
 
-  void showLoading(bool showLoading) async {
+  Future<void> showLoading(bool showLoading) async {
     if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
-    if (!showLoading) setState(() {});
+    if (!showLoading && mounted) setState(() {});
   }
 
   void prefetchData() async {
@@ -153,90 +169,202 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _showSecretRoleSwitchDialog() async {
+    final passwordController = TextEditingController();
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Admin Access', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Enter admin password to toggle user role:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  hintText: 'Enter password',
+                  prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onSubmitted: (_) => Navigator.of(dialogContext).pop(true),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Verify & Switch')),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    if (passwordController.text.trim() != '123') {
+      if (mounted) {
+        ShowMessage.error(context, 'Incorrect admin password.');
+      }
+      return;
+    }
+
+    await _performRoleSwitch();
+  }
+
+  Future<void> _performRoleSwitch() async {
+    showLoading(true);
+    try {
+      final isCurrentlyDealer = isDealer;
+      final newRole = isCurrentlyDealer ? BusinessRole.salesman : BusinessRole.dealer;
+
+      // 1. Update Firebase Firestore
+      final currentEmail = FirebaseAuth.instance.currentUser?.email;
+      if (currentEmail != null && currentEmail.isNotEmpty) {
+        final query = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: currentEmail).limit(1).get();
+        if (query.docs.isNotEmpty) {
+          await FirebaseFirestore.instance.collection('users').doc(query.docs.first.id).update({'role': newRole});
+        }
+      }
+
+      // 2. Update SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final currentUser = await KVariables.getUser();
+      if (currentUser != null) {
+        final updatedUser = currentUser.copyWith(role: newRole);
+        await prefs.setString('user_data', jsonEncode(updatedUser.toJson()));
+      }
+      await prefs.setString(SharedPrefKeys.role, newRole);
+
+      HapiStoreService.invalidateCache();
+
+      // 3. Switch screens without animations
+      if (mounted) {
+        await showLoading(false);
+        if (!mounted) return;
+        ShowMessage.success(context, 'Switched role to $newRole');
+        Navigator.of(context).pushAndRemoveUntil(
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ),
+          (_) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        await showLoading(false);
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to change role: $e');
+        }
+      }
+    }
+  }
+
+  int _secretTapCount = 0;
+  DateTime? _lastSecretTapTime;
+
+  void _onWelcomeBannerTap() {
+    final now = DateTime.now();
+    if (_lastSecretTapTime != null && now.difference(_lastSecretTapTime!) > const Duration(seconds: 2)) {
+      _secretTapCount = 0;
+    }
+    _lastSecretTapTime = now;
+    _secretTapCount++;
+
+    if (_secretTapCount >= 5) {
+      _secretTapCount = 0;
+      _showSecretRoleSwitchDialog();
+    }
+  }
+
   Widget _buildWelcomeBanner() {
     final colorScheme = Theme.of(context).colorScheme;
     final displayName = _currentUser?.username ?? authService.value.currentUser?.displayName ?? (isDealer ? 'Dealer' : 'Salesman');
     final hasSyncTime = lastSyncDateTime.isNotEmpty && lastSyncDateTime != 'Never';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: (isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: _onWelcomeBannerTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: (isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isDealer ? Icons.store_rounded : Icons.badge_outlined,
+                color: isDealer ? colorScheme.primary : colorScheme.tertiary,
+                size: 24,
+              ),
             ),
-            child: Icon(
-              isDealer ? Icons.store_rounded : Icons.badge_outlined,
-              color: isDealer ? colorScheme.primary : colorScheme.tertiary,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Welcome, $displayName!',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: (isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        isDealer ? 'Dealer' : 'Salesman',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: isDealer ? colorScheme.primary : colorScheme.tertiary,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Welcome, $displayName!',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Icon(Icons.sync_rounded, size: 15, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        hasSyncTime ? 'Last synced: $lastSyncDateTime' : 'Not synced yet',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-                          fontWeight: FontWeight.w500,
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: (isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isDealer ? 'Dealer' : 'Salesman',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isDealer ? colorScheme.primary : colorScheme.tertiary),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(Icons.sync_rounded, size: 15, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          hasSyncTime ? 'Last synced: $lastSyncDateTime' : 'Not synced yet',
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85), fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -769,8 +897,24 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
 
           // Drawer Navigation Items
-          _buildDrawerItem(Icons.task_alt_outlined, 'Tasks', TaskListPage()),
-          _buildDrawerItem(Icons.assignment_outlined, 'Purchase Orders', PurchaseorderlistPage()),
+          StreamBuilder<int>(
+            stream: _tasksCountStream,
+            builder: (context, snapshot) {
+              return _buildDrawerItem(Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badgeCount: snapshot.data ?? 0);
+            },
+          ),
+          StreamBuilder<int>(
+            stream: _merchBlitzCountStream,
+            builder: (context, snapshot) {
+              return _buildDrawerItem(Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzPage(), badgeCount: snapshot.data ?? 0);
+            },
+          ),
+          StreamBuilder<int>(
+            stream: _purchaseOrdersAwaitingCountStream,
+            builder: (context, snapshot) {
+              return _buildDrawerItem(Icons.assignment_outlined, 'Purchase Orders', const PurchaseorderlistPage(), badgeCount: snapshot.data ?? 0);
+            },
+          ),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
@@ -781,6 +925,7 @@ class _DashboardPageState extends State<DashboardPage> {
           _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
           _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
+          _buildDrawerItem(Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
 
           const Divider(indent: 16, endIndent: 16),
 
@@ -790,7 +935,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, Widget? nextPage, {bool isLogout = false, int badgeCount = 0}) {
+  Widget _buildDrawerItem(IconData icon, String title, Widget? nextPage, {bool isLogout = false, int badgeCount = 0, Color? badgeColor}) {
     return ListTile(
       leading: Icon(icon, color: isLogout ? Colors.red : null, size: 22),
       title: Text(
@@ -800,7 +945,7 @@ class _DashboardPageState extends State<DashboardPage> {
       trailing: badgeCount > 0
           ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
               child: Text(
                 '$badgeCount',
                 style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),

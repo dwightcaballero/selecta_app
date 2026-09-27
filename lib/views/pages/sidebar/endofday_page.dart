@@ -87,7 +87,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
 
   void showLoading(bool showLoading) async {
     if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
-    if (!showLoading) setState(() {});
+    if (!showLoading && mounted) setState(() {});
   }
 
   Widget _buildDateNavigator() {

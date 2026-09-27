@@ -73,7 +73,6 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     return Helperfunctions.formatStringAmountToDouble(invoiceAmountController.text);
   }
 
-
   Future<void> pickImage(ImageSource? source) async {
     if (source == null) {
       setState(() {
@@ -115,10 +114,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       );
 
       db.addPurchaseorder(newPurchaseorder);
-      await Helperfunctions.logCreate(
-        Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate),
-        newPurchaseorder.toJson(),
-      );
+      await Helperfunctions.logCreate(Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate), newPurchaseorder.toJson());
 
       if (mounted) {
         ShowMessage.success(context, 'Purchase order saved successfully!');
@@ -137,12 +133,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         return;
       }
 
-      final String imageFilePath = await Helperfunctions.updateImage(
-        context,
-        _pickedImage,
-        networkImagePath,
-        widget.purchaseorder.imagePath,
-      );
+      final String imageFilePath = await Helperfunctions.updateImage(context, _pickedImage, networkImagePath, widget.purchaseorder.imagePath);
 
       final updatedPurchaseorder = Purchaseorder(
         invoiceNumber: orderNumberController.text.trim().toUpperCase(),
@@ -195,12 +186,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   Future<void> onChangeDate() async {
-    final dateTime = await showDatePicker(
-      context: context,
-      initialDate: _selectedOrderDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(3000),
-    );
+    final dateTime = await showDatePicker(context: context, initialDate: _selectedOrderDate, firstDate: DateTime(2000), lastDate: DateTime(3000));
 
     if (dateTime != null) {
       setState(() => _selectedOrderDate = dateTime);
@@ -208,12 +194,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   Future<void> onChangeInvoiceDate() async {
-    final dateTime = await showDatePicker(
-      context: context,
-      initialDate: _selectedInvoiceDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(3000),
-    );
+    final dateTime = await showDatePicker(context: context, initialDate: _selectedInvoiceDate, firstDate: DateTime(2000), lastDate: DateTime(3000));
 
     if (dateTime != null) {
       setState(() => _selectedInvoiceDate = dateTime);
@@ -248,7 +229,12 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
   }
 
-  Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
+  Widget _buildSectionCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+    Widget? trailing,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
@@ -266,18 +252,75 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               children: [
                 Container(
                   padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                   child: Icon(icon, size: 18, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 10),
                 Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                if (trailing != null) ...[
+                  const Spacer(),
+                  trailing,
+                ],
               ],
             ),
             const Divider(height: 24),
             child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDisplayTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    Widget? trailing,
+    VoidCallback? onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 18, color: colorScheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  SelectableText(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (trailing != null) trailing,
           ],
         ),
       ),
@@ -318,12 +361,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
   }
 
-  Widget _buildDateField({
-    required String label,
-    required DateTime selectedDate,
-    required VoidCallback? onTap,
-    required IconData icon,
-  }) {
+  Widget _buildDateField({required String label, required DateTime selectedDate, required VoidCallback? onTap, required IconData icon}) {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
@@ -342,10 +380,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                Text(
-                  Helperfunctions.formatDateForDisplay(selectedDate),
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                ),
+                Text(Helperfunctions.formatDateForDisplay(selectedDate), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               ],
             ),
             const Spacer(),
@@ -357,6 +392,37 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   Widget _buildOrderDetailsCard() {
+    if (!isNewRecord) {
+      final colorScheme = Theme.of(context).colorScheme;
+      return _buildSectionCard(
+        title: 'Order Information',
+        icon: Icons.shopping_bag_outlined,
+        child: Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Column(
+            children: [
+              _buildDisplayTile(
+                label: 'Order Date',
+                value: Helperfunctions.formatDateForDisplay(_selectedOrderDate),
+                icon: Icons.calendar_month_outlined,
+              ),
+              Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+              _buildDisplayTile(
+                label: 'Order Target Amount',
+                value: Helperfunctions.formatDoubleAmountForDisplay(_currentOrderAmount),
+                icon: Icons.payments_outlined,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return _buildSectionCard(
       title: 'Order Information',
       icon: Icons.shopping_bag_outlined,
@@ -367,15 +433,14 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           _buildDateField(
             label: 'Order Date',
             selectedDate: _selectedOrderDate,
-            onTap: isNewRecord ? onChangeDate : null,
+            onTap: onChangeDate,
             icon: Icons.calendar_month_outlined,
           ),
           _buildMoneyField(
             label: 'Order Amount',
             controller: orderAmountController,
             icon: Icons.payments_outlined,
-            enabled: isNewRecord,
-            onChanged: isNewRecord ? (_) => setState(() {}) : null,
+            onChanged: (_) => setState(() {}),
           ),
         ],
       ),
@@ -430,10 +495,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text('Order Target', style: TextStyle(fontSize: 11, color: Colors.black54)),
-                  Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(orderAmt),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
+                  Text(Helperfunctions.formatDoubleAmountForDisplay(orderAmt), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 ],
               ),
               const Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
@@ -468,30 +530,98 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   Widget _buildInvoiceCard() {
-    final bool canEditInvoice = widget.purchaseorder.isSettled != true;
+    final colorScheme = Theme.of(context).colorScheme;
+    final bool isSettled = widget.purchaseorder.isSettled == true;
+
+    if (isSettled) {
+      return _buildSectionCard(
+        title: 'Invoice & Settlement',
+        icon: Icons.receipt_long_outlined,
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.green.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.verified_rounded, size: 14, color: Colors.green),
+              SizedBox(width: 4),
+              Text(
+                'Settled',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green),
+              ),
+            ],
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Column(
+                children: [
+                  _buildDisplayTile(
+                    label: 'Invoice Date',
+                    value: Helperfunctions.formatDateForDisplay(_selectedInvoiceDate),
+                    icon: Icons.calendar_today_outlined,
+                  ),
+                  Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                  _buildDisplayTile(
+                    label: 'Invoice Reference Number',
+                    value: orderNumberController.text.isNotEmpty ? orderNumberController.text : 'N/A',
+                    icon: Icons.tag_outlined,
+                    trailing: IconButton(
+                      icon: const Icon(Icons.copy_rounded, size: 18),
+                      tooltip: 'Copy Reference',
+                      onPressed: () {
+                        if (orderNumberController.text.isNotEmpty) {
+                          Clipboard.setData(ClipboardData(text: orderNumberController.text));
+                          ShowMessage.success(context, 'Invoice reference copied to clipboard');
+                        }
+                      },
+                    ),
+                  ),
+                  Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                  _buildDisplayTile(
+                    label: 'Invoice Amount',
+                    value: Helperfunctions.formatDoubleAmountForDisplay(_currentInvoiceAmount),
+                    icon: Icons.receipt_outlined,
+                  ),
+                ],
+              ),
+            ),
+            _buildSettlementBreakdown(),
+          ],
+        ),
+      );
+    }
 
     return _buildSectionCard(
       title: 'Invoice & Settlement',
       icon: Icons.receipt_long_outlined,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 16,
         children: [
           _buildInvoiceDateField(),
           TextFormField(
             controller: orderNumberController,
-            decoration: _inputDecoration(
-              label: 'Invoice Reference Number',
-              icon: Icons.tag_outlined,
-              hintText: 'e.g. HM30471505',
-            ),
+            decoration: _inputDecoration(label: 'Invoice Reference Number', icon: Icons.tag_outlined, hintText: 'e.g. HM30471505'),
             textCapitalization: TextCapitalization.characters,
-            validator: (value) =>
-                value == null || value.trim().isEmpty ? 'Invoice reference number should not be blank' : null,
+            validator: (value) => value == null || value.trim().isEmpty ? 'Invoice reference number should not be blank' : null,
             autovalidateMode: AutovalidateMode.onUnfocus,
           ),
           _buildMoneyField(
             label: 'Invoice Amount',
-            enabled: canEditInvoice,
             controller: invoiceAmountController,
             icon: Icons.receipt_outlined,
             onChanged: (_) => setState(() {}),
@@ -546,49 +676,91 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ClipRRect(
+                  InkWell(
+                    onTap: () =>
+                        Helperfunctions.navigateTo(context, ImageViewerPage(image: _pickedImage, networkImagePath: networkImagePath)),
                     borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      height: 200,
-                      color: Colors.black12,
-                      child: _pickedImage != null
-                          ? Image.file(_pickedImage!, fit: BoxFit.cover)
-                          : Image.network(
-                              networkImagePath,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return const Center(child: CircularProgressIndicator());
-                              },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Stack(
+                        children: [
+                          Container(
+                            height: 180,
+                            width: double.infinity,
+                            color: Colors.black12,
+                            child: _pickedImage != null
+                                ? Image.file(_pickedImage!, fit: BoxFit.cover)
+                                : Image.network(
+                                    networkImagePath,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return const Center(child: CircularProgressIndicator());
+                                    },
+                                  ),
+                          ),
+                          Positioned(
+                            bottom: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.6),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                                  SizedBox(width: 4),
+                                  Text('Tap to zoom', style: TextStyle(color: Colors.white, fontSize: 11)),
+                                ],
+                              ),
                             ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    alignment: WrapAlignment.spaceEvenly,
-                    spacing: 8,
-                    runSpacing: 8,
+                  const SizedBox(height: 10),
+                  Row(
                     children: [
                       OutlinedButton.icon(
-                        onPressed: () => Helperfunctions.navigateTo(
-                          context,
-                          ImageViewerPage(image: _pickedImage, networkImagePath: networkImagePath),
+                        onPressed: () =>
+                            Helperfunctions.navigateTo(context, ImageViewerPage(image: _pickedImage, networkImagePath: networkImagePath)),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        icon: const Icon(Icons.fullscreen, size: 18),
-                        label: const Text('View Fullscreen'),
+                        icon: const Icon(Icons.fullscreen, size: 16),
+                        label: const Text('View'),
                       ),
+                      const SizedBox(width: 8),
                       OutlinedButton.icon(
                         onPressed: startScan,
-                        icon: const Icon(Icons.replay, size: 18),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.replay, size: 16),
                         label: const Text('Replace'),
                       ),
+                      const Spacer(),
                       OutlinedButton.icon(
                         onPressed: () => pickImage(null),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.red.shade700,
-                          side: BorderSide(color: Colors.red.shade300),
+                          side: BorderSide(color: Colors.red.shade200),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
-                        icon: const Icon(Icons.delete_outline, size: 18),
+                        icon: const Icon(Icons.delete_outline, size: 16),
                         label: const Text('Remove'),
                       ),
                     ],
@@ -612,19 +784,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
                       child: Icon(Icons.document_scanner_outlined, size: 32, color: colorScheme.primary),
                     ),
                     const SizedBox(height: 10),
                     const Text('Tap to scan or attach document', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text(
-                      'Scan the invoice or purchase order receipt',
-                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                    ),
+                    Text('Scan the invoice or purchase order receipt', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -646,10 +812,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       child: ExpansionTile(
         leading: Container(
           padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: colorScheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
           child: Icon(Icons.history, size: 18, color: colorScheme.primary),
         ),
         title: const Text('Audit & History', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
@@ -659,26 +822,17 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               spacing: 8,
               children: [
                 _buildAuditRow('Created By', widget.purchaseorder.createdBy),
-                _buildAuditRow(
-                  'Created Date',
-                  DateFormat('E, d MMM yyyy, hh:mm a').format(widget.purchaseorder.createdDate.toDate()),
-                ),
+                _buildAuditRow('Created Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.purchaseorder.createdDate.toDate())),
                 const Divider(height: 12),
                 _buildAuditRow('Last Updated By', widget.purchaseorder.lastUpdatedBy),
-                _buildAuditRow(
-                  'Last Updated Date',
-                  DateFormat('E, d MMM yyyy, hh:mm a').format(widget.purchaseorder.lastupdatedDate.toDate()),
-                ),
+                _buildAuditRow('Last Updated Date', DateFormat('E, d MMM yyyy, hh:mm a').format(widget.purchaseorder.lastupdatedDate.toDate())),
               ],
             ),
           ),
@@ -714,13 +868,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              offset: const Offset(0, -2),
-              blurRadius: 6,
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
         ),
         child: isNewRecord
             ? FilledButton.icon(
@@ -797,10 +945,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Purchase Order Details',
-        subtitle: isNewRecord ? 'New Order' : orderNumberController.text,
-      ),
+      appBar: CustomAppbar(title: 'Purchase Order Details', subtitle: isNewRecord ? 'New Order' : orderNumberController.text),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: Form(
         key: _formKey,

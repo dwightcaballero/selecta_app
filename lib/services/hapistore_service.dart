@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/models/configuration.dart';
 import 'package:flutter_app/models/hapistore.dart';
+import 'package:flutter_app/services/configuration_service.dart';
 
 // ignore: constant_identifier_names
 const String HAPISTORE_COLLECTION_REF = 'hapistores';
@@ -33,6 +37,13 @@ class HapiStoreService {
   void updateHapiStore(String hapiStoreID, Hapistore hapistore) {
     invalidateCache();
     _hapistoresRef.doc(hapiStoreID).update(hapistore.toJson());
+  }
+
+  Future<void> updateLastMerchBlitzDate(String hapiStoreID, Timestamp? timestamp) async {
+    invalidateCache();
+    await _firestore.collection(HAPISTORE_COLLECTION_REF).doc(hapiStoreID).update({
+      'lastMerchBlitzDate': timestamp,
+    });
   }
 
   void deleteHapiStore(String hapiStoreID) {
@@ -165,5 +176,66 @@ class HapiStoreService {
   static Future<int> getPendingPjpVisitCountForToday() async {
     final stores = await getListHapiStores();
     return countPendingPjpVisitsForToday(stores);
+  }
+
+  Stream<int> getUnsurveyedMerchBlitzCountStream() {
+    final controller = StreamController<int>.broadcast();
+    Configuration? currentConfig;
+    QuerySnapshot? currentStoresSnapshot;
+
+    void emitCount() {
+      if (controller.isClosed) return;
+      if (currentConfig == null || currentStoresSnapshot == null) {
+        return;
+      }
+      final startDate = currentConfig!.merchBlitzStartDate.toDate();
+      final endDate = currentConfig!.merchBlitzEndDate.toDate();
+
+      final now = DateTime.now();
+      final s = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
+      final e = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
+
+      // If today is not in between start date and end date, do not show a badge (count = 0)
+      if (now.isBefore(s) || now.isAfter(e)) {
+        controller.add(0);
+        return;
+      }
+
+      int count = 0;
+      for (final doc in currentStoresSnapshot!.docs) {
+        final data = doc.data();
+        final store = data is Hapistore ? data : Hapistore.fromJson(data as Map<String, Object?>);
+        if (store.lastMerchBlitzDate == null) {
+          count++;
+        } else {
+          final visit = store.lastMerchBlitzDate!.toDate();
+          if (visit.isBefore(s) || visit.isAfter(e)) {
+            count++;
+          }
+        }
+      }
+      controller.add(count);
+    }
+
+    StreamSubscription? configSub;
+    StreamSubscription? storesSub;
+
+    controller.onListen = () {
+      configSub = ConfigurationService().getConfigurationStream().listen((cfg) {
+        currentConfig = cfg ?? Configuration.empty();
+        emitCount();
+      });
+      storesSub = _hapistoresRef.snapshots().listen((snap) {
+        currentStoresSnapshot = snap;
+        emitCount();
+      });
+    };
+
+    controller.onCancel = () {
+      configSub?.cancel();
+      storesSub?.cancel();
+    };
+
+    return controller.stream;
   }
 }

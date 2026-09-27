@@ -29,6 +29,19 @@ class TasksService {
     return _tasksRef.orderBy('taskDeadline', descending: true).snapshots();
   }
 
+  Stream<int> getPendingAndOverdueCountStream() {
+    return getListTasks().map((snapshot) {
+      int count = 0;
+      for (var doc in snapshot.docs) {
+        final task = doc.data() as Tasks;
+        if (!task.isTaskDone) {
+          count++;
+        }
+      }
+      return count;
+    });
+  }
+
   Future<DocumentReference> addTasks(Tasks tasks) async {
     return await _tasksRef.add(tasks);
   }

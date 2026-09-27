@@ -449,7 +449,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Changes to deliveries, store records, and orders will appear here automatically.',
+              'Changes to deliveries, store records, configurations, and orders will appear here automatically.',
               style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
