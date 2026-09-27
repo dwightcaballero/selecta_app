@@ -13,7 +13,6 @@ import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/models/users.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/views/pages/dashboard/expansion_page.dart';
-import 'package:flutter_app/views/pages/dashboard/overpaymentlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/sales_page.dart';
@@ -21,7 +20,7 @@ import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/creditlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/merch_blitz_page.dart';
+import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/configuration_page.dart';
 import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
 import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
@@ -83,7 +82,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _currentUser = await KVariables.getUser();
     isDealer = _currentUser?.role == BusinessRole.dealer;
     lastSyncDateTime = await DashboardController.getLastSync();
-    _syncDashboardFromSharedPreferences();
+    await _syncDashboardFromSharedPreferences();
     if (mounted) setState(() {});
   }
 
@@ -122,6 +121,12 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _syncDashboardFromSharedPreferences() async {
+    final isToday = await DashboardController.isLastSyncToday();
+    if (!isToday) {
+      await syncDashboard();
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString('dashboard_DTO');
     if (jsonString == null || !mounted) {
@@ -381,69 +386,46 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildQuickAccessGrid() {
-    return Column(
+    return Row(
+      spacing: 10,
       children: [
-        Row(
-          spacing: 10,
-          children: [
-            _buildQuickAccessCard(
-              label: 'Deliveries',
-              icon: Icons.local_shipping_outlined,
-              count: dashboardDTO.pendingDeliveryCount,
-              color: Theme.of(context).colorScheme.primary,
-              nextPage: const DeliveryListPage(),
-            ),
-            _buildQuickAccessCard(
-              label: 'Scanning',
-              icon: Icons.qr_code_scanner_outlined,
-              count: dashboardDTO.totalNotScannedCount + dashboardDTO.totalUnassignedCount,
-              color: Theme.of(context).colorScheme.primary,
-              nextPage: const ScanninglistPage(),
-            ),
-            _buildQuickAccessCard(
-              label: 'PJP',
-              icon: Icons.map_outlined,
-              count: dashboardDTO.pendingPjpCount,
-              color: Theme.of(context).colorScheme.primary,
-              nextPage: const PjpListPage(),
-            ),
-          ],
+        _buildQuickAccessCard(
+          label: 'Deliveries',
+          icon: Icons.local_shipping_outlined,
+          count: dashboardDTO.pendingDeliveryCount,
+          color: Theme.of(context).colorScheme.primary,
+          nextPage: const DeliveryListPage(),
         ),
-        Row(
-          spacing: 10,
-          children: [
-            _buildQuickAccessCard(
-              label: 'Overpayment',
-              icon: Icons.money_off_csred_outlined,
-              count: dashboardDTO.overpaymentCount,
-              color: Theme.of(context).colorScheme.primary,
-              nextPage: const OverpaymentlistPage(),
-            ),
-            _buildQuickAccessCard(
-              label: 'Credit',
-              icon: Icons.credit_card_outlined,
-              count: dashboardDTO.unpaidCreditCount,
-              color: Theme.of(context).colorScheme.primary,
-              nextPage: const CreditlistPage(),
-            ),
-            _buildQuickAccessCard(
-              label: 'Returns',
-              icon: Icons.assignment_return_outlined,
-              count: dashboardDTO.returnedDeliveryCount,
-              color: Theme.of(context).colorScheme.primary,
-              nextPage: const ReturnlistPage(),
-            ),
-          ],
+        _buildQuickAccessCard(
+          label: 'Purchase Orders',
+          icon: Icons.assignment_outlined,
+          stream: _purchaseOrdersAwaitingCountStream,
+          color: Theme.of(context).colorScheme.primary,
+          nextPage: const PurchaseorderlistPage(),
+        ),
+        _buildQuickAccessCard(
+          label: 'Credit',
+          icon: Icons.credit_card_outlined,
+          count: dashboardDTO.unpaidCreditCount,
+          color: Theme.of(context).colorScheme.primary,
+          nextPage: const CreditlistPage(),
         ),
       ],
     );
   }
 
-  Widget _buildQuickAccessCard({required String label, required IconData icon, required int count, required Color color, required Widget nextPage}) {
+  Widget _buildQuickAccessCard({
+    required String label,
+    required IconData icon,
+    int count = 0,
+    Stream<int>? stream,
+    required Color color,
+    required Widget nextPage,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Expanded(
-      child: Card(
+    Widget buildCard(int badgeCount) {
+      return Card(
         elevation: 0,
         color: colorScheme.surface,
         shape: RoundedRectangleBorder(
@@ -461,8 +443,8 @@ class _DashboardPageState extends State<DashboardPage> {
             child: Column(
               children: [
                 Badge(
-                  isLabelVisible: count > 0,
-                  label: Text('$count', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  isLabelVisible: badgeCount > 0,
+                  label: Text('$badgeCount', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                   backgroundColor: Colors.red,
                   child: Container(
                     padding: const EdgeInsets.all(10),
@@ -471,16 +453,29 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  label,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  textAlign: TextAlign.center,
+                SizedBox(
+                  height: 34,
+                  child: Center(
+                    child: Text(
+                      label,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
         ),
-      ),
+      );
+    }
+
+    return Expanded(
+      child: stream != null
+          ? StreamBuilder<int>(stream: stream, initialData: count, builder: (context, snapshot) => buildCard(snapshot.data ?? 0))
+          : buildCard(count),
     );
   }
 
@@ -906,15 +901,17 @@ class _DashboardPageState extends State<DashboardPage> {
           StreamBuilder<int>(
             stream: _merchBlitzCountStream,
             builder: (context, snapshot) {
-              return _buildDrawerItem(Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzPage(), badgeCount: snapshot.data ?? 0);
+              return _buildDrawerItem(Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzListPage(), badgeCount: snapshot.data ?? 0);
             },
           ),
-          StreamBuilder<int>(
-            stream: _purchaseOrdersAwaitingCountStream,
-            builder: (context, snapshot) {
-              return _buildDrawerItem(Icons.assignment_outlined, 'Purchase Orders', const PurchaseorderlistPage(), badgeCount: snapshot.data ?? 0);
-            },
+          _buildDrawerItem(
+            Icons.qr_code_scanner_outlined,
+            'Scanning',
+            const ScanninglistPage(),
+            badgeCount: dashboardDTO.totalNotScannedCount + dashboardDTO.totalUnassignedCount,
           ),
+          _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
+          _buildDrawerItem(Icons.assignment_return_outlined, 'Returns', const ReturnlistPage(), badgeCount: dashboardDTO.returnedDeliveryCount),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
@@ -924,7 +921,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
           _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
-          _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
 
           const Divider(indent: 16, endIndent: 16),
@@ -1020,7 +1016,7 @@ class _DashboardPageState extends State<DashboardPage> {
               _buildWelcomeBanner(),
 
               // 2. Quick Access Section
-              _buildSectionHeader('Quick Access', 'Pending deliveries, credits, and returns'),
+              _buildSectionHeader('Quick Access', 'Pending deliveries, purchase orders, and credits'),
               _buildQuickAccessGrid(),
 
               // 3. Operational Metrics / KPI Section

@@ -13,7 +13,7 @@ import 'package:flutter_app/services/hapistore_service.dart';
 import 'package:flutter_app/services/tasks_services.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/merch_blitz_page.dart';
+import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
@@ -123,10 +123,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           ),
           content: const Text('Are you sure you want to sign out of your salesman account?'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: colorScheme.error),
               onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -141,10 +138,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
       try {
         await authService.value.signOut();
         if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const AuthPage()),
-            (_) => false,
-          );
+          Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const AuthPage()), (_) => false);
         }
       } on FirebaseAuthException catch (e) {
         if (mounted) {
@@ -167,10 +161,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Enter admin password to toggle user role:',
-                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-              ),
+              Text('Enter admin password to toggle user role:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
               const SizedBox(height: 12),
               TextField(
                 controller: passwordController,
@@ -187,14 +178,8 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Verify & Switch'),
-            ),
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Verify & Switch')),
           ],
         );
       },
@@ -221,16 +206,9 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
       // 1. Update Firebase Firestore
       final currentEmail = FirebaseAuth.instance.currentUser?.email;
       if (currentEmail != null && currentEmail.isNotEmpty) {
-        final query = await FirebaseFirestore.instance
-            .collection('users')
-            .where('email', isEqualTo: currentEmail)
-            .limit(1)
-            .get();
+        final query = await FirebaseFirestore.instance.collection('users').where('email', isEqualTo: currentEmail).limit(1).get();
         if (query.docs.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(query.docs.first.id)
-              .update({'role': newRole});
+          await FirebaseFirestore.instance.collection('users').doc(query.docs.first.id).update({'role': newRole});
         }
       }
 
@@ -251,8 +229,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
         ShowMessage.success(context, 'Switched role to $newRole');
         Navigator.of(context).pushAndRemoveUntil(
           PageRouteBuilder(
-            pageBuilder: (_, __, ___) =>
-                newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
+            pageBuilder: (_, __, ___) => newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
             transitionDuration: Duration.zero,
             reverseTransitionDuration: Duration.zero,
           ),
@@ -305,15 +282,8 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colorScheme.tertiary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.badge_outlined,
-                color: colorScheme.tertiary,
-                size: 24,
-              ),
+              decoration: BoxDecoration(color: colorScheme.tertiary.withValues(alpha: 0.1), shape: BoxShape.circle),
+              child: Icon(Icons.badge_outlined, color: colorScheme.tertiary, size: 24),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -334,17 +304,10 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: colorScheme.tertiary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                        decoration: BoxDecoration(color: colorScheme.tertiary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
                         child: Text(
                           'Salesman',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.tertiary,
-                          ),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.tertiary),
                         ),
                       ),
                     ],
@@ -358,11 +321,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                       Expanded(
                         child: Text(
                           hasSyncTime ? 'Last synced: $_lastSyncDateTime' : 'Not synced yet',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85),
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85), fontWeight: FontWeight.w500),
                         ),
                       ),
                     ],
@@ -388,13 +347,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     );
   }
 
-  Widget _buildQuickAccessCard({
-    required String label,
-    required IconData icon,
-    required Widget nextPage,
-    int count = 0,
-    Color? iconColor,
-  }) {
+  Widget _buildQuickAccessCard({required String label, required IconData icon, required Widget nextPage, int count = 0, Color? iconColor}) {
     final colorScheme = Theme.of(context).colorScheme;
     final effectiveColor = iconColor ?? colorScheme.primary;
 
@@ -428,17 +381,11 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             children: [
               Badge(
                 isLabelVisible: count > 0,
-                label: Text(
-                  '$count',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                ),
+                label: Text('$count', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                 backgroundColor: colorScheme.error,
                 child: Container(
                   padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: effectiveColor.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: effectiveColor.withValues(alpha: 0.12), shape: BoxShape.circle),
                   child: Icon(icon, size: 26, color: effectiveColor),
                 ),
               ),
@@ -495,23 +442,13 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           StreamBuilder<int>(
             stream: _tasksCountStream,
             builder: (context, snapshot) {
-              return _buildDrawerItem(
-                Icons.task_alt_outlined,
-                'Tasks',
-                const TaskListPage(),
-                badgeCount: snapshot.data ?? 0,
-              );
+              return _buildDrawerItem(Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badgeCount: snapshot.data ?? 0);
             },
           ),
           StreamBuilder<int>(
             stream: _merchBlitzCountStream,
             builder: (context, snapshot) {
-              return _buildDrawerItem(
-                Icons.campaign_outlined,
-                'Merch Blitz',
-                const MerchBlitzPage(),
-                badgeCount: snapshot.data ?? 0,
-              );
+              return _buildDrawerItem(Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzListPage(), badgeCount: snapshot.data ?? 0);
             },
           ),
 
@@ -670,7 +607,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                                 icon: Icons.campaign_outlined,
                                 count: snapshot.data ?? 0,
                                 iconColor: const Color(0xFF0284C7),
-                                nextPage: const MerchBlitzPage(),
+                                nextPage: const MerchBlitzListPage(),
                               );
                             },
                           ),

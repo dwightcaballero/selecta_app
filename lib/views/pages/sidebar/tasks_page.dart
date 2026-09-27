@@ -260,7 +260,7 @@ class _TasksPageState extends State<TasksPage> {
       controller: txtStoreName,
       label: 'Hapi Store *',
       enabled: _isDealer,
-      validator: (value) => value == null || value.trim().isEmpty ? 'Please select a Target Store' : null,
+      validator: (value) => value == null || value.trim().isEmpty ? 'Please select a Hapi Store' : null,
       onChanged: () {
         setState(() {});
       },
@@ -278,15 +278,15 @@ class _TasksPageState extends State<TasksPage> {
           children: [
             ActionChip(
               avatar: const Icon(Icons.flash_on_rounded, size: 16),
-              label: const Text('+2 Hours', style: TextStyle(fontSize: 12)),
+              label: const Text('+4 hours', style: TextStyle(fontSize: 12)),
               onPressed: () {
-                setState(() => _selectedDeadline = DateTime.now().add(const Duration(hours: 2)));
+                setState(() => _selectedDeadline = DateTime.now().add(const Duration(hours: 4)));
               },
             ),
             const SizedBox(width: 8),
             ActionChip(
               avatar: const Icon(Icons.wb_twilight_rounded, size: 16),
-              label: const Text('End of Day (5 PM)', style: TextStyle(fontSize: 12)),
+              label: const Text('End of Day (5PM)', style: TextStyle(fontSize: 12)),
               onPressed: () {
                 final today = DateTime.now();
                 setState(() => _selectedDeadline = DateTime(today.year, today.month, today.day, 17, 0));
@@ -295,10 +295,34 @@ class _TasksPageState extends State<TasksPage> {
             const SizedBox(width: 8),
             ActionChip(
               avatar: const Icon(Icons.wb_sunny_outlined, size: 16),
-              label: const Text('Tomorrow (9 AM)', style: TextStyle(fontSize: 12)),
+              label: const Text('Tomorrow(5PM)', style: TextStyle(fontSize: 12)),
               onPressed: () {
                 final tomorrow = now.add(const Duration(days: 1));
-                setState(() => _selectedDeadline = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 9, 0));
+                setState(() => _selectedDeadline = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 17, 0));
+              },
+            ),
+            const SizedBox(width: 8),
+            ActionChip(
+              avatar: const Icon(Icons.calendar_view_week_rounded, size: 16),
+              label: const Text('This week', style: TextStyle(fontSize: 12)),
+              onPressed: () {
+                final daysUntilSunday = DateTime.sunday - now.weekday;
+                final targetSunday = (daysUntilSunday == 0 && now.hour >= 17)
+                    ? now.add(const Duration(days: 7))
+                    : now.add(Duration(days: daysUntilSunday));
+                setState(() => _selectedDeadline = DateTime(targetSunday.year, targetSunday.month, targetSunday.day, 17, 0));
+              },
+            ),
+            const SizedBox(width: 8),
+            ActionChip(
+              avatar: const Icon(Icons.calendar_month_rounded, size: 16),
+              label: const Text('This month', style: TextStyle(fontSize: 12)),
+              onPressed: () {
+                final lastDayOfMonth = DateTime(now.year, now.month + 1, 0, 17, 0);
+                final targetMonthEnd = now.isAfter(lastDayOfMonth)
+                    ? DateTime(now.year, now.month + 2, 0, 17, 0)
+                    : lastDayOfMonth;
+                setState(() => _selectedDeadline = targetMonthEnd);
               },
             ),
           ],
@@ -338,9 +362,7 @@ class _TasksPageState extends State<TasksPage> {
                 Icon(
                   Icons.event_outlined,
                   size: 20,
-                  color: isOverdue
-                      ? overdueColor
-                      : (_isDealer ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                  color: isOverdue ? overdueColor : (_isDealer ? colorScheme.primary : colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -351,11 +373,7 @@ class _TasksPageState extends State<TasksPage> {
                       const SizedBox(height: 2),
                       Text(
                         formattedDate,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: isOverdue ? overdueColor : colorScheme.onSurface,
-                        ),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isOverdue ? overdueColor : colorScheme.onSurface),
                       ),
                     ],
                   ),
@@ -373,8 +391,7 @@ class _TasksPageState extends State<TasksPage> {
                       style: TextStyle(color: overdueColor, fontSize: 11, fontWeight: FontWeight.bold),
                     ),
                   ),
-                if (_isDealer)
-                  Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.onSurfaceVariant),
+                if (_isDealer) Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.onSurfaceVariant),
               ],
             ),
           ),
@@ -389,23 +406,23 @@ class _TasksPageState extends State<TasksPage> {
     final activeColor = _isTaskDone
         ? (isDark ? Colors.green.shade400 : Colors.green.shade700)
         : (isDark ? Colors.orange.shade400 : Colors.orange.shade800);
+    final backgroundColor = _isTaskDone
+        ? (isDark ? Colors.green.withValues(alpha: 0.15) : Colors.green.withValues(alpha: 0.08))
+        : (isDark ? Colors.orange.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.08));
+    final borderColor = _isTaskDone
+        ? (isDark ? Colors.green.shade600 : Colors.green.withValues(alpha: 0.3))
+        : (isDark ? Colors.orange.shade600 : Colors.orange.withValues(alpha: 0.3));
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _isTaskDone
-            ? (isDark ? Colors.green.withValues(alpha: 0.15) : Colors.green.withValues(alpha: 0.08))
-            : (isDark ? Colors.orange.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.08)),
+    return Material(
+      color: backgroundColor,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: _isTaskDone
-              ? (isDark ? Colors.green.shade600 : Colors.green.withValues(alpha: 0.3))
-              : (isDark ? Colors.orange.shade600 : Colors.orange.withValues(alpha: 0.3)),
-        ),
+        side: BorderSide(color: borderColor),
       ),
+      clipBehavior: Clip.antiAlias,
       child: SwitchListTile(
         value: _isTaskDone,
         onChanged: _isReadOnly ? null : (val) => setState(() => _isTaskDone = val),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: Text(
           _isTaskDone ? 'Task Completed' : 'Task Pending',
           style: TextStyle(fontWeight: FontWeight.bold, color: activeColor),
@@ -413,9 +430,7 @@ class _TasksPageState extends State<TasksPage> {
         subtitle: Text(
           _isReadOnly
               ? 'Completed (View Only). Only dealers can reopen completed tasks.'
-              : (_isTaskDone
-                  ? 'Marked as completed and accomplished.'
-                  : 'Task is currently awaiting completion.'),
+              : (_isTaskDone ? 'Marked as completed and accomplished.' : 'Task is currently awaiting completion.'),
           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
         ),
         secondary: Icon(_isTaskDone ? Icons.check_circle : Icons.pending_actions, color: activeColor),
@@ -446,10 +461,7 @@ class _TasksPageState extends State<TasksPage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(10)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 8,
@@ -510,9 +522,7 @@ class _TasksPageState extends State<TasksPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(
-          title: isEditMode
-              ? (_isReadOnly ? 'Task Details (View Only)' : 'Task Details')
-              : 'Add Task',
+          title: isEditMode ? (_isReadOnly ? 'Task Details (View Only)' : 'Task Details') : 'Add Task',
           subtitle: isEditMode
               ? (widget.task.storeName.isNotEmpty
                     ? widget.task.storeName
@@ -573,11 +583,7 @@ class _TasksPageState extends State<TasksPage> {
                                 hintText: 'Provide details, instructions, or steps to fulfill this task...',
                                 prefixIcon: Padding(
                                   padding: const EdgeInsets.only(bottom: 40),
-                                  child: Icon(
-                                    Icons.notes_rounded,
-                                    size: 20,
-                                    color: _isDealer ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                                  ),
+                                  child: Icon(Icons.notes_rounded, size: 20, color: _isDealer ? colorScheme.primary : colorScheme.onSurfaceVariant),
                                 ),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -592,10 +598,7 @@ class _TasksPageState extends State<TasksPage> {
                       // Status Section
                       _buildSectionCard(title: 'Task Status', icon: Icons.checklist_rounded, child: _buildStatusToggle()),
 
-                      if (isEditMode) ...[
-                        const SizedBox(height: 16),
-                        _buildAuditCard(),
-                      ],
+                      if (isEditMode) ...[const SizedBox(height: 16), _buildAuditCard()],
 
                       const SizedBox(height: 24),
 
@@ -607,14 +610,11 @@ class _TasksPageState extends State<TasksPage> {
                             decoration: BoxDecoration(
                               color: isDark ? Colors.blue.withValues(alpha: 0.12) : Colors.blue.shade50,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isDark ? Colors.blue.shade800 : Colors.blue.shade200,
-                              ),
+                              border: Border.all(color: isDark ? Colors.blue.shade800 : Colors.blue.shade200),
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.lock_outline_rounded,
-                                    size: 20, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700),
+                                Icon(Icons.lock_outline_rounded, size: 20, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
@@ -650,11 +650,7 @@ class _TasksPageState extends State<TasksPage> {
                                     style: OutlinedButton.styleFrom(
                                       minimumSize: const Size(0, 50.0),
                                       foregroundColor: isDark ? Colors.red.shade400 : Colors.red.shade700,
-                                      side: BorderSide(
-                                          color: isDark
-                                              ? Colors.red.shade400.withValues(alpha: 0.6)
-                                              : Colors.red.shade300,
-                                          width: 1.2),
+                                      side: BorderSide(color: isDark ? Colors.red.shade400.withValues(alpha: 0.6) : Colors.red.shade300, width: 1.2),
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                     ),
                                     icon: const Icon(Icons.delete_outline, size: 20),
@@ -686,8 +682,7 @@ class _TasksPageState extends State<TasksPage> {
                               ),
                             ],
                           ),
-                      ]
-                      else if (_isDealer)
+                      ] else if (_isDealer)
                         FilledButton.icon(
                           onPressed: onSave,
                           style: FilledButton.styleFrom(

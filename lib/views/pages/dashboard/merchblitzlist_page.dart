@@ -21,14 +21,16 @@ enum StoreSortOption {
   const StoreSortOption(this.label);
 }
 
-class MerchBlitzPage extends StatefulWidget {
-  const MerchBlitzPage({super.key});
+class MerchBlitzListPage extends StatefulWidget {
+  const MerchBlitzListPage({super.key, this.initialSearchQuery});
+
+  final String? initialSearchQuery;
 
   @override
-  State<MerchBlitzPage> createState() => _MerchBlitzPageState();
+  State<MerchBlitzListPage> createState() => _MerchBlitzListPageState();
 }
 
-class _MerchBlitzPageState extends State<MerchBlitzPage> {
+class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
   final ConfigurationService _configService = ConfigurationService();
   final HapiStoreService _hapiStoreService = HapiStoreService();
 
@@ -41,6 +43,10 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialSearchQuery != null && widget.initialSearchQuery!.isNotEmpty) {
+      _searchController.text = widget.initialSearchQuery!;
+      _searchQuery = widget.initialSearchQuery!.trim().toLowerCase();
+    }
     _checkUserRole();
   }
 
@@ -131,9 +137,7 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: isActive ? const Color(0xFF0284C7).withValues(alpha: 0.35) : colorScheme.outlineVariant.withValues(alpha: 0.6),
-        ),
+        side: BorderSide(color: isActive ? const Color(0xFF0284C7).withValues(alpha: 0.35) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -148,27 +152,18 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
                     color: (isActive ? const Color(0xFF0284C7) : colorScheme.onSurfaceVariant).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
-                    Icons.campaign_outlined,
-                    size: 20,
-                    color: isActive ? const Color(0xFF0284C7) : colorScheme.onSurfaceVariant,
-                  ),
+                  child: Icon(Icons.campaign_outlined, size: 20, color: isActive ? const Color(0xFF0284C7) : colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(width: 10),
                 const Expanded(
-                  child: Text(
-                    'Merch Blitz Schedule',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                  ),
+                  child: Text('Merch Blitz Schedule', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: isActive ? Colors.green.withValues(alpha: 0.12) : Colors.orange.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isActive ? Colors.green.withValues(alpha: 0.4) : Colors.orange.withValues(alpha: 0.4),
-                    ),
+                    border: Border.all(color: isActive ? Colors.green.withValues(alpha: 0.4) : Colors.orange.withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -176,19 +171,12 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
                       Container(
                         width: 7,
                         height: 7,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isActive ? Colors.green : Colors.orange,
-                        ),
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: isActive ? Colors.green : Colors.orange),
                       ),
                       const SizedBox(width: 5),
                       Text(
                         isActive ? 'Active Today' : 'Inactive',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: isActive ? Colors.green.shade700 : Colors.orange.shade800,
-                        ),
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isActive ? Colors.green.shade700 : Colors.orange.shade800),
                       ),
                     ],
                   ),
@@ -197,10 +185,7 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
                   const SizedBox(width: 8),
                   InkWell(
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const ConfigurationPage()),
-                      );
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const ConfigurationPage()));
                     },
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
@@ -219,11 +204,7 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
             Row(
               children: [
                 Expanded(
-                  child: _buildDateInfoTile(
-                    label: 'Start Date',
-                    value: dateFmt.format(startDate),
-                    icon: Icons.calendar_today_outlined,
-                  ),
+                  child: _buildDateInfoTile(label: 'Start Date', value: dateFmt.format(startDate), icon: Icons.calendar_today_outlined),
                 ),
                 Container(
                   height: 36,
@@ -232,11 +213,7 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
                   margin: const EdgeInsets.symmetric(horizontal: 12),
                 ),
                 Expanded(
-                  child: _buildDateInfoTile(
-                    label: 'End Date',
-                    value: dateFmt.format(endDate),
-                    icon: Icons.event_available_outlined,
-                  ),
+                  child: _buildDateInfoTile(label: 'End Date', value: dateFmt.format(endDate), icon: Icons.event_available_outlined),
                 ),
               ],
             ),
@@ -287,10 +264,7 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4), shape: BoxShape.circle),
               child: Icon(Icons.event_busy_rounded, size: 48, color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 18),
@@ -309,10 +283,7 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ConfigurationPage()),
-                  );
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ConfigurationPage()));
                 },
                 icon: const Icon(Icons.edit_calendar_rounded, size: 18),
                 label: const Text('Update Merch Blitz Schedule', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -403,11 +374,7 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
     );
   }
 
-  Widget _buildStoreCard({
-    required String storeId,
-    required Hapistore store,
-    required bool isSurveyed,
-  }) {
+  Widget _buildStoreCard({required String storeId, required Hapistore store, required bool isSurveyed}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
@@ -416,11 +383,7 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: isSurveyed
-              ? Colors.green.withValues(alpha: 0.3)
-              : colorScheme.outlineVariant.withValues(alpha: 0.6),
-        ),
+        side: BorderSide(color: isSurveyed ? Colors.green.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -627,17 +590,10 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
               }
             }
 
-            final visibleDocs = _filterAndSortStores(
-              docs: allDocs,
-              startDate: startDate,
-              endDate: endDate,
-            );
+            final visibleDocs = _filterAndSortStores(docs: allDocs, startDate: startDate, endDate: endDate);
 
             return Scaffold(
-              appBar: const CustomAppbar(
-                title: 'Merch Blitz',
-                subtitle: 'Store Merchandising Survey',
-              ),
+              appBar: const CustomAppbar(title: 'Merch Blitz', subtitle: 'Store Merchandising Survey'),
               body: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Column(
@@ -690,46 +646,40 @@ class _MerchBlitzPageState extends State<MerchBlitzPage> {
                         child: storesSnapshot.connectionState == ConnectionState.waiting
                             ? const Center(child: CircularProgressIndicator())
                             : visibleDocs.isEmpty
-                                ? Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(32.0),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            _searchQuery.isNotEmpty
-                                                ? Icons.search_off_rounded
-                                                : (_selectedTabIndex == 0 ? Icons.check_circle_outline_rounded : Icons.pending_actions_rounded),
-                                            size: 44,
-                                            color: Colors.grey,
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            _searchQuery.isNotEmpty
-                                                ? 'No stores match "$_searchQuery"'
-                                                : (_selectedTabIndex == 0
-                                                    ? 'All stores have been surveyed!'
-                                                    : 'No stores surveyed yet.'),
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                          ),
-                                        ],
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(32.0),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _searchQuery.isNotEmpty
+                                            ? Icons.search_off_rounded
+                                            : (_selectedTabIndex == 0 ? Icons.check_circle_outline_rounded : Icons.pending_actions_rounded),
+                                        size: 44,
+                                        color: Colors.grey,
                                       ),
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    padding: const EdgeInsets.only(top: 4, bottom: 20),
-                                    itemCount: visibleDocs.length,
-                                    itemBuilder: (context, index) {
-                                      final doc = visibleDocs[index];
-                                      final raw = doc.data();
-                                      final store = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
-                                      return _buildStoreCard(
-                                        storeId: doc.id,
-                                        store: store,
-                                        isSurveyed: _selectedTabIndex == 1,
-                                      );
-                                    },
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        _searchQuery.isNotEmpty
+                                            ? 'No stores match "$_searchQuery"'
+                                            : (_selectedTabIndex == 0 ? 'All stores have been surveyed!' : 'No stores surveyed yet.'),
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                      ),
+                                    ],
                                   ),
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.only(top: 4, bottom: 20),
+                                itemCount: visibleDocs.length,
+                                itemBuilder: (context, index) {
+                                  final doc = visibleDocs[index];
+                                  final raw = doc.data();
+                                  final store = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
+                                  return _buildStoreCard(storeId: doc.id, store: store, isSurveyed: _selectedTabIndex == 1);
+                                },
+                              ),
                       ),
                     ],
                   ],

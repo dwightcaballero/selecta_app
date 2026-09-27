@@ -51,6 +51,16 @@ class PurchaseOrderService {
     });
   }
 
+  Future<List<QueryDocumentSnapshot<Purchaseorder>>> getUnsettledOverpayments() async {
+    final snapshot = await _purchaseordersRef.get();
+    final docs = snapshot.docs.cast<QueryDocumentSnapshot<Purchaseorder>>().where((doc) {
+      final order = doc.data();
+      return order.overpayment > 0 && order.isSettled != true;
+    }).toList();
+    docs.sort((a, b) => b.data().orderDate.compareTo(a.data().orderDate));
+    return docs;
+  }
+
   static Future<int?> getCountDeliveriesNotYetSettled() async {
     var snapshot = await FirebaseFirestore.instance.collection(PURCHASEORDER_COLLECTION_REF).where('isSettled', isEqualTo: false).count().get();
 

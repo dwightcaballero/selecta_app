@@ -7,7 +7,9 @@ import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/models/placement.dart';
 import 'package:flutter_app/models/scanning.dart';
 import 'package:flutter_app/models/tasks.dart';
+import 'package:flutter_app/services/configuration_service.dart';
 import 'package:flutter_app/services/placement_service.dart';
+import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placement_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanning_page.dart';
 import 'package:flutter_app/views/pages/sidebar/hapistore_page.dart';
@@ -59,6 +61,11 @@ class _PjpPageState extends State<PjpPage> {
   String _tasksStatus = '';
   List<Tasks> _pendingTasks = [];
 
+  // Task 5: Merch Blitz state
+  bool _isLoadingMerchBlitz = true;
+  bool _merchBlitzPassed = false;
+  String _merchBlitzStatus = '';
+
   bool _isCompleting = false;
 
   bool get _isAlreadyCompletedToday {
@@ -74,7 +81,7 @@ class _PjpPageState extends State<PjpPage> {
     return Helperfunctions.isSameWeek(visit, DateTime.now());
   }
 
-  bool get _allPassed => _locationPassed && _scanningPassed && _placementPassed && _tasksPassed;
+  bool get _allPassed => _locationPassed && _scanningPassed && _placementPassed && _tasksPassed && _merchBlitzPassed;
 
   @override
   void initState() {
@@ -116,7 +123,7 @@ class _PjpPageState extends State<PjpPage> {
   }
 
   Future<void> _runAllChecks() async {
-    await Future.wait([_checkLocation(), _checkScanning(), _checkPlacement(), _checkTasks()]);
+    await Future.wait([_checkLocation(), _checkScanning(), _checkPlacement(), _checkTasks(), _checkMerchBlitz()]);
   }
 
   Future<void> _checkLocation() async {
@@ -451,6 +458,64 @@ class _PjpPageState extends State<PjpPage> {
     await _checkTasks();
   }
 
+  Future<void> _checkMerchBlitz() async {
+    if (!mounted) return;
+    setState(() => _isLoadingMerchBlitz = true);
+
+    try {
+      final config = await ConfigurationService().getConfiguration();
+      final startDate = config.merchBlitzStartDate.toDate();
+      final endDate = config.merchBlitzEndDate.toDate();
+
+      final now = DateTime.now();
+      final s = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
+      final e = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
+
+      final isCampaignActive = !now.isBefore(s) && !now.isAfter(e);
+
+      if (!mounted) return;
+
+      if (!isCampaignActive) {
+        setState(() {
+          _isLoadingMerchBlitz = false;
+          _merchBlitzPassed = true;
+          _merchBlitzStatus = 'No active Merch Blitz campaign scheduled for today.';
+        });
+        return;
+      }
+
+      final lastDate = _currentHapistore.lastMerchBlitzDate?.toDate();
+      final bool isSurveyed = lastDate != null && !lastDate.isBefore(s) && !lastDate.isAfter(e);
+
+      setState(() {
+        _isLoadingMerchBlitz = false;
+        _merchBlitzPassed = isSurveyed;
+        if (isSurveyed) {
+          final dateStr = DateFormat('EEE, MMM d • h:mm a').format(lastDate);
+          _merchBlitzStatus = 'Merch Blitz survey completed ($dateStr).';
+        } else {
+          _merchBlitzStatus = 'Store has not yet been surveyed for the Merch Blitz promotion.';
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingMerchBlitz = false;
+          _merchBlitzPassed = false;
+          _merchBlitzStatus = 'Failed to verify Merch Blitz status: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _onMerchBlitzAction() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => MerchBlitzListPage(initialSearchQuery: _currentHapistore.storeName)));
+
+    if (!mounted) return;
+    await _refreshStoreDoc();
+    await _checkMerchBlitz();
+  }
+
   Future<void> _completeVisit() async {
     if (!_allPassed || _isCompleting) return;
 
@@ -460,7 +525,7 @@ class _PjpPageState extends State<PjpPage> {
 
       await Helperfunctions.logTransaction(
         'PJP Visit Completed - ${_currentHapistore.storeName}',
-        'Completed all 4 PJP criteria for ${widget.selectedDay}',
+        'Completed all 5 PJP criteria for ${widget.selectedDay}',
         LogAction.update,
       );
 
@@ -476,17 +541,17 @@ class _PjpPageState extends State<PjpPage> {
   }
 
   Widget _buildVerificationProgress() {
-    final passedCount = [_locationPassed, _scanningPassed, _placementPassed, _tasksPassed].where((p) => p).length;
-    final progress = passedCount / 4.0;
+    final passedCount = [_locationPassed, _scanningPassed, _placementPassed, _tasksPassed, _merchBlitzPassed].where((p) => p).length;
+    final progress = passedCount / 5.0;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: passedCount == 4 ? Colors.green.withValues(alpha: isDark ? 0.2 : 0.08) : colorScheme.surface,
+        color: passedCount == 5 ? Colors.green.withValues(alpha: isDark ? 0.2 : 0.08) : colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: passedCount == 4 ? Colors.green.withValues(alpha: 0.4) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        border: Border.all(color: passedCount == 5 ? Colors.green.withValues(alpha: 0.4) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -497,9 +562,9 @@ class _PjpPageState extends State<PjpPage> {
               Row(
                 children: [
                   Icon(
-                    passedCount == 4 ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
+                    passedCount == 5 ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
                     size: 16,
-                    color: passedCount == 4 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
+                    color: passedCount == 5 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -509,11 +574,11 @@ class _PjpPageState extends State<PjpPage> {
                 ],
               ),
               Text(
-                '$passedCount of 4 Passed (${(progress * 100).toInt()}%)',
+                '$passedCount of 5 Passed (${(progress * 100).toInt()}%)',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: passedCount == 4 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
+                  color: passedCount == 5 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
                 ),
               ),
             ],
@@ -525,7 +590,7 @@ class _PjpPageState extends State<PjpPage> {
               value: progress,
               minHeight: 6,
               backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              valueColor: AlwaysStoppedAnimation<Color>(passedCount == 4 ? Colors.green : colorScheme.primary),
+              valueColor: AlwaysStoppedAnimation<Color>(passedCount == 5 ? Colors.green : colorScheme.primary),
             ),
           ),
         ],
@@ -923,6 +988,19 @@ class _PjpPageState extends State<PjpPage> {
             actionLabelWhenPassed: 'View Store Tasks',
             showActionWhenPassed: true,
             onAction: _onTasksAction,
+          ),
+          // Step 5: Merch Blitz
+          _buildChecklistCard(
+            stepNumber: 5,
+            title: 'Merch Blitz',
+            icon: Icons.campaign_outlined,
+            isLoading: _isLoadingMerchBlitz,
+            isPassed: _merchBlitzPassed,
+            statusMessage: _merchBlitzStatus,
+            actionLabel: 'Go to Merch Blitz',
+            actionLabelWhenPassed: 'View Merch Blitz',
+            showActionWhenPassed: true,
+            onAction: _onMerchBlitzAction,
           ),
         ],
       ),

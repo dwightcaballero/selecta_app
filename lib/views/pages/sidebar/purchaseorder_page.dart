@@ -38,6 +38,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   DateTime _selectedInvoiceDate = DateTime.now();
   DateTime _selectedOrderDate = DateTime.now();
 
+  List<QueryDocumentSnapshot<Purchaseorder>> _unsettledOverpayments = [];
+  final Set<String> _selectedOverpaymentIds = {};
+  bool _isLoadingOverpayments = false;
+
   @override
   void dispose() {
     orderAmountController.dispose();
@@ -59,7 +63,42 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       // Fix: correctly restore saved invoice date
       _selectedInvoiceDate = widget.purchaseorder.invoiceDate.toDate();
       networkImagePath = widget.purchaseorder.imagePath;
+    } else {
+      _loadUnsettledOverpayments();
     }
+  }
+
+  Future<void> _loadUnsettledOverpayments() async {
+    setState(() => _isLoadingOverpayments = true);
+    try {
+      final records = await db.getUnsettledOverpayments();
+      if (mounted) {
+        setState(() {
+          _unsettledOverpayments = records;
+          _isLoadingOverpayments = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingOverpayments = false);
+      }
+    }
+  }
+
+  double get _totalSelectedOverpayments {
+    double total = 0;
+    for (final doc in _unsettledOverpayments) {
+      if (_selectedOverpaymentIds.contains(doc.id)) {
+        total += doc.data().overpayment;
+      }
+    }
+    return total;
+  }
+
+  double get _guidedNetAmount {
+    final orderAmt = _currentOrderAmount;
+    final net = orderAmt - _totalSelectedOverpayments;
+    return net > 0 ? net : 0;
   }
 
   double get _currentOrderAmount {
@@ -116,8 +155,33 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       db.addPurchaseorder(newPurchaseorder);
       await Helperfunctions.logCreate(Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate), newPurchaseorder.toJson());
 
+      // Mark all checked overpayments as settled
+      if (_selectedOverpaymentIds.isNotEmpty) {
+        final currentUserDisplayName = authService.value.currentUser?.displayName ?? 'User';
+        for (final doc in _unsettledOverpayments) {
+          if (_selectedOverpaymentIds.contains(doc.id)) {
+            final order = doc.data();
+            final prevJson = order.toJson();
+            order.isSettled = true;
+            order.lastUpdatedBy = currentUserDisplayName;
+            order.lastupdatedDate = Timestamp.now();
+            db.updatePurchaseorder(doc.id, order);
+            await Helperfunctions.logUpdate(
+              order.invoiceNumber.isNotEmpty
+                  ? order.invoiceNumber
+                  : Helperfunctions.formatTimestampForDisplay(order.orderDate),
+              prevJson,
+              order.toJson(),
+            );
+          }
+        }
+      }
+
       if (mounted) {
-        ShowMessage.success(context, 'Purchase order saved successfully!');
+        final msg = _selectedOverpaymentIds.isNotEmpty
+            ? 'Purchase order saved and ${_selectedOverpaymentIds.length} overpayment(s) settled!'
+            : 'Purchase order saved successfully!';
+        ShowMessage.success(context, msg);
         Navigator.pop(context);
       }
     }
@@ -229,12 +293,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
   }
 
-  Widget _buildSectionCard({
-    required String title,
-    required IconData icon,
-    required Widget child,
-    Widget? trailing,
-  }) {
+  Widget _buildSectionCard({required String title, required IconData icon, required Widget child, Widget? trailing}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
@@ -257,10 +316,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                 ),
                 const SizedBox(width: 10),
                 Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                if (trailing != null) ...[
-                  const Spacer(),
-                  trailing,
-                ],
+                if (trailing != null) ...[const Spacer(), trailing],
               ],
             ),
             const Divider(height: 24),
@@ -271,13 +327,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
   }
 
-  Widget _buildDisplayTile({
-    required String label,
-    required String value,
-    required IconData icon,
-    Widget? trailing,
-    VoidCallback? onTap,
-  }) {
+  Widget _buildDisplayTile({required String label, required String value, required IconData icon, Widget? trailing, VoidCallback? onTap}) {
     final colorScheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
@@ -289,10 +339,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(8),
-              ),
+              decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, size: 18, color: colorScheme.primary),
             ),
             const SizedBox(width: 12),
@@ -303,20 +350,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                 children: [
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 2),
-                  SelectableText(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  SelectableText(value, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -430,17 +467,256 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 16,
         children: [
-          _buildDateField(
-            label: 'Order Date',
-            selectedDate: _selectedOrderDate,
-            onTap: onChangeDate,
-            icon: Icons.calendar_month_outlined,
-          ),
+          _buildDateField(label: 'Order Date', selectedDate: _selectedOrderDate, onTap: onChangeDate, icon: Icons.calendar_month_outlined),
           _buildMoneyField(
             label: 'Order Amount',
             controller: orderAmountController,
             icon: Icons.payments_outlined,
             onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnsettledOverpaymentsCard() {
+    if (!isNewRecord) return const SizedBox.shrink();
+    if (_isLoadingOverpayments) {
+      return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()));
+    }
+    if (_unsettledOverpayments.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final orderAmt = _currentOrderAmount;
+    final selectedTotal = _totalSelectedOverpayments;
+    final guidedNet = _guidedNetAmount;
+    final isAllSelected = _selectedOverpaymentIds.length == _unsettledOverpayments.length;
+
+    return _buildSectionCard(
+      title: 'Unsettled Overpayments',
+      icon: Icons.account_balance_wallet_outlined,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          '${_unsettledOverpayments.length} Available',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Select overpayments to offset against this order:',
+                  style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    if (isAllSelected) {
+                      _selectedOverpaymentIds.clear();
+                    } else {
+                      _selectedOverpaymentIds.addAll(_unsettledOverpayments.map((e) => e.id));
+                    }
+                  });
+                },
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                ),
+                child: Text(
+                  isAllSelected ? 'Deselect All' : 'Select All',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _unsettledOverpayments.length,
+              separatorBuilder: (_, __) => Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+              itemBuilder: (context, index) {
+                final doc = _unsettledOverpayments[index];
+                final order = doc.data();
+                final isChecked = _selectedOverpaymentIds.contains(doc.id);
+                final invoiceLabel = order.invoiceNumber.isNotEmpty
+                    ? order.invoiceNumber
+                    : 'PO Date: ${Helperfunctions.formatTimestampForDisplay(order.orderDate)}';
+
+                return InkWell(
+                  onTap: () {
+                    setState(() {
+                      if (isChecked) {
+                        _selectedOverpaymentIds.remove(doc.id);
+                      } else {
+                        _selectedOverpaymentIds.add(doc.id);
+                      }
+                    });
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: isChecked,
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == true) {
+                                _selectedOverpaymentIds.add(doc.id);
+                              } else {
+                                _selectedOverpaymentIds.remove(doc.id);
+                              }
+                            });
+                          },
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                invoiceLabel,
+                                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Order Date: ${Helperfunctions.formatTimestampForDisplay(order.orderDate)}',
+                                style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              Helperfunctions.formatDoubleAmountForDisplay(order.overpayment),
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange.shade800,
+                              ),
+                            ),
+                            const Text(
+                              'Overpayment',
+                              style: TextStyle(fontSize: 10, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Guided Computation Breakdown
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colorScheme.primary.withValues(alpha: 0.2)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Purchase Order Amount', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      Helperfunctions.formatDoubleAmountForDisplay(orderAmt),
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Less: Selected Overpayment (${_selectedOverpaymentIds.length})',
+                      style: TextStyle(fontSize: 12.5, color: Colors.orange.shade900),
+                    ),
+                    Text(
+                      selectedTotal > 0
+                          ? '- ${Helperfunctions.formatDoubleAmountForDisplay(selectedTotal)}'
+                          : '₱ 0.00',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: selectedTotal > 0 ? Colors.orange.shade900 : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Guided Payment Amount',
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '(Read-only guide)',
+                          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant, fontStyle: FontStyle.italic),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      Helperfunctions.formatDoubleAmountForDisplay(guidedNet),
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 14, color: colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'This computation is a guide for your payment. The official purchase order amount will remain ${Helperfunctions.formatDoubleAmountForDisplay(orderAmt)}, and selected overpayment(s) will be marked as settled upon saving.',
+                        style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -662,7 +938,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     }
 
     return _buildSectionCard(
-      title: 'Supporting Document',
+      title: 'Sales Invoice',
       icon: Icons.receipt_long_outlined,
       child: hasImageData
           ? Container(
@@ -677,8 +953,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   InkWell(
-                    onTap: () =>
-                        Helperfunctions.navigateTo(context, ImageViewerPage(image: _pickedImage, networkImagePath: networkImagePath)),
+                    onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: _pickedImage, networkImagePath: networkImagePath)),
                     borderRadius: BorderRadius.circular(10),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
@@ -704,10 +979,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                             right: 8,
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.6),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
+                              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(6)),
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -788,9 +1060,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                       child: Icon(Icons.document_scanner_outlined, size: 32, color: colorScheme.primary),
                     ),
                     const SizedBox(height: 10),
-                    const Text('Tap to scan or attach document', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    const Text('Tap to scan or attach official invoice', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text('Scan the invoice or purchase order receipt', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                    Text('Scan or upload the official invoice receipt', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -873,10 +1145,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         child: isNewRecord
             ? FilledButton.icon(
                 onPressed: () async {
+                  final String confirmMsg = _selectedOverpaymentIds.isNotEmpty
+                      ? 'Save this purchase order and mark ${_selectedOverpaymentIds.length} selected overpayment(s) as settled?'
+                      : 'Save this purchase order?';
                   final confirmed = await ShowMessage.confirm(
                     context,
                     title: 'Save Purchase Order',
-                    message: 'Save this purchase order?',
+                    message: confirmMsg,
                     icon: Icons.save_outlined,
                     confirmText: 'Save',
                   );
@@ -956,8 +1231,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             spacing: 16,
             children: [
               _buildOrderDetailsCard(),
+              if (isNewRecord) _buildUnsettledOverpaymentsCard(),
               if (!isNewRecord) _buildInvoiceCard(),
-              _buildAttachmentCard(),
+              if (!isNewRecord) _buildAttachmentCard(),
               if (!isNewRecord) _buildAuditCard(),
               const SizedBox(height: 8),
             ],

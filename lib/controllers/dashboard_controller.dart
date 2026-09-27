@@ -98,8 +98,12 @@ class DashboardController {
     final String? dateString = prefs.getString('last_sync_time');
 
     if (dateString == null) return false;
-    DateTime lastSync = DateTime.parse(dateString);
-    return DateUtils.isSameDay(lastSync, DateTime.now());
+    try {
+      DateTime lastSync = DateTime.parse(dateString);
+      return DateUtils.isSameDay(lastSync, DateTime.now());
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<String> getLastSync() async {

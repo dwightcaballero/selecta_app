@@ -10,7 +10,6 @@ enum _PlacementSort {
   storeNameDescending,
   progressCountAscending,
   progressCountDescending,
-  dateDescending,
 }
 
 class PlacementlistPage extends StatefulWidget {
@@ -88,14 +87,11 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
       _PlacementSort.progressCountAscending ||
       _PlacementSort.progressCountDescending =>
         first.progressCount.compareTo(second.progressCount),
-      _PlacementSort.dateDescending =>
-        first.deliveryDate.compareTo(second.deliveryDate),
     };
 
     return switch (_sort) {
       _PlacementSort.storeNameDescending ||
-      _PlacementSort.progressCountDescending ||
-      _PlacementSort.dateDescending =>
+      _PlacementSort.progressCountDescending =>
         -comparison,
       _ => comparison,
     };
@@ -119,7 +115,6 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
         _buildSortOption(_PlacementSort.storeNameDescending, 'Store Name', 'Z to A', Icons.sort_by_alpha_rounded),
         _buildSortOption(_PlacementSort.progressCountDescending, 'Progress', 'Highest first', Icons.trending_up_rounded),
         _buildSortOption(_PlacementSort.progressCountAscending, 'Progress', 'Lowest first', Icons.trending_down_rounded),
-        _buildSortOption(_PlacementSort.dateDescending, 'Delivery Date', 'Most recent', Icons.calendar_today_rounded),
       ],
     );
   }
