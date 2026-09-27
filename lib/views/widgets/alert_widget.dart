@@ -114,4 +114,40 @@ class ShowMessage {
     );
     return result ?? false;
   }
+
+  static Future<void> alert(
+    BuildContext context, {
+    required String title,
+    required String message,
+    IconData? icon,
+    String buttonText = 'OK',
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          icon: icon != null
+              ? Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+                  child: Icon(icon, color: colorScheme.primary, size: 32),
+                )
+              : null,
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          content: Text(message, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(buttonText),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }

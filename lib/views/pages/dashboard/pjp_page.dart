@@ -484,15 +484,20 @@ class _PjpPageState extends State<PjpPage> {
         return;
       }
 
-      final lastDate = _currentHapistore.lastMerchBlitzDate?.toDate();
-      final bool isSurveyed = lastDate != null && !lastDate.isBefore(s) && !lastDate.isAfter(e);
+      final status = _currentHapistore.getMerchBlitzStatus(startDate, endDate);
+      final bool isSurveyed = status == MerchBlitzStatus.forFinalSurvey || status == MerchBlitzStatus.surveyed;
 
       setState(() {
         _isLoadingMerchBlitz = false;
         _merchBlitzPassed = isSurveyed;
         if (isSurveyed) {
-          final dateStr = DateFormat('EEE, MMM d • h:mm a').format(lastDate);
-          _merchBlitzStatus = 'Merch Blitz survey completed ($dateStr).';
+          final lastDate = _currentHapistore.lastMerchBlitzDate?.toDate();
+          final dateStr = lastDate != null ? DateFormat('EEE, MMM d • h:mm a').format(lastDate) : '';
+          if (status == MerchBlitzStatus.surveyed) {
+            _merchBlitzStatus = 'Merch Blitz survey completed and verified ($dateStr).';
+          } else {
+            _merchBlitzStatus = 'Merch Blitz survey submitted ($dateStr), awaiting dealer final survey.';
+          }
         } else {
           _merchBlitzStatus = 'Store has not yet been surveyed for the Merch Blitz promotion.';
         }

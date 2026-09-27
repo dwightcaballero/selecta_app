@@ -66,7 +66,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() {
     super.initState();
     _tasksCountStream = _tasksService.getPendingAndOverdueCountStream();
-    _merchBlitzCountStream = _hapiStoreService.getUnsurveyedMerchBlitzCountStream();
+    _merchBlitzCountStream = _hapiStoreService.getUnsurveyedMerchBlitzCountStream(forDealer: true);
     _purchaseOrdersAwaitingCountStream = _purchaseOrderService.getAwaitingInvoiceCountStream();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       prefetchData();

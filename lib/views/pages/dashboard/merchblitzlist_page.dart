@@ -37,8 +37,10 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   StoreSortOption _sortOption = StoreSortOption.nameAsc;
-  int _selectedTabIndex = 0; // 0 = Not Surveyed, 1 = Surveyed
+  // 0 = Pending Survey, 1 = For Final Survey, 2 = Surveyed
+  int _selectedTabIndex = 0;
   bool _isDealer = false;
+  bool _isCheckingRole = true;
 
   @override
   void initState() {
@@ -53,7 +55,14 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
   Future<void> _checkUserRole() async {
     final isDealer = await KVariables.getIsDealer();
     if (mounted) {
-      setState(() => _isDealer = isDealer);
+      setState(() {
+        _isDealer = isDealer;
+        _isCheckingRole = false;
+        // Non-dealers are strictly restricted to tab 0 (Pending Survey)
+        if (!_isDealer) {
+          _selectedTabIndex = 0;
+        }
+      });
     }
   }
 
@@ -73,26 +82,49 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     return !now.isBefore(s) && !now.isAfter(e);
   }
 
-  bool _isSurveyed(Hapistore store, DateTime start, DateTime end) {
-    if (store.lastMerchBlitzDate == null) return false;
-    final visitDate = store.lastMerchBlitzDate!.toDate();
-    final s = _startOfDay(start);
-    final e = _endOfDay(end);
-    return !visitDate.isBefore(s) && !visitDate.isAfter(e);
-  }
-
-  Future<void> _confirmMarkSurveyed(String storeId, Hapistore store) async {
+  Future<void> _confirmSalesmanSurvey(String storeId, Hapistore store) async {
     final confirmed = await ShowMessage.confirm(
       context,
-      title: 'Complete Survey',
-      message: 'Are you sure "${store.storeName}" has finished the Merch Blitz survey?',
+      title: 'Submit for Final Survey',
+      message: 'Are you sure you have completed the Merch Blitz survey for "${store.storeName}"?\n\nThis store will be forwarded to the dealer for final survey.',
+      confirmText: 'Submit for Final Survey',
+      icon: Icons.rate_review_rounded,
+    );
+
+    if (confirmed) {
+      try {
+        await _hapiStoreService.updateMerchBlitzStatus(
+          storeId,
+          status: MerchBlitzStatus.forFinalSurvey,
+          timestamp: Timestamp.now(),
+        );
+        if (mounted) {
+          ShowMessage.success(context, '"${store.storeName}" submitted for final survey!');
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to update store: $e');
+        }
+      }
+    }
+  }
+
+  Future<void> _confirmDealerFinalSurvey(String storeId, Hapistore store) async {
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Complete Final Survey',
+      message: 'Are you sure you want to approve and mark "${store.storeName}" as fully surveyed?',
       confirmText: 'Mark as Surveyed',
       icon: Icons.assignment_turned_in_rounded,
     );
 
     if (confirmed) {
       try {
-        await _hapiStoreService.updateLastMerchBlitzDate(storeId, Timestamp.now());
+        await _hapiStoreService.updateMerchBlitzStatus(
+          storeId,
+          status: MerchBlitzStatus.surveyed,
+          timestamp: Timestamp.now(),
+        );
         if (mounted) {
           ShowMessage.success(context, '"${store.storeName}" marked as surveyed!');
         }
@@ -104,21 +136,25 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     }
   }
 
-  Future<void> _confirmResetSurvey(String storeId, Hapistore store) async {
+  Future<void> _confirmRevertToPending(String storeId, Hapistore store) async {
     final confirmed = await ShowMessage.confirm(
       context,
-      title: 'Reset Survey Status',
-      message: 'Do you want to reset "${store.storeName}" back to Not Surveyed?',
-      confirmText: 'Reset',
+      title: 'Return to Pending Survey',
+      message: 'Are you sure you want to return "${store.storeName}" back to Pending Survey?\n\nThe salesman will need to conduct the survey again.',
+      confirmText: 'Return to Pending',
       isDestructive: true,
       icon: Icons.undo_rounded,
     );
 
     if (confirmed) {
       try {
-        await _hapiStoreService.updateLastMerchBlitzDate(storeId, null);
+        await _hapiStoreService.updateMerchBlitzStatus(
+          storeId,
+          status: MerchBlitzStatus.pendingSurvey,
+          timestamp: null,
+        );
         if (mounted) {
-          ShowMessage.success(context, 'Survey status reset for "${store.storeName}".');
+          ShowMessage.success(context, '"${store.storeName}" returned to Pending Survey.');
         }
       } catch (e) {
         if (mounted) {
@@ -126,6 +162,213 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
         }
       }
     }
+  }
+
+  Future<void> _confirmMoveSurveyedToFinalSurvey(String storeId, Hapistore store) async {
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Move to For Final Survey',
+      message: 'Do you want to move "${store.storeName}" back to "For Final Survey" awaiting dealer review?',
+      confirmText: 'Move to Final Survey',
+      icon: Icons.rate_review_rounded,
+    );
+
+    if (confirmed) {
+      try {
+        await _hapiStoreService.updateMerchBlitzStatus(
+          storeId,
+          status: MerchBlitzStatus.forFinalSurvey,
+          timestamp: store.lastMerchBlitzDate ?? Timestamp.now(),
+        );
+        if (mounted) {
+          ShowMessage.success(context, '"${store.storeName}" moved back to For Final Survey.');
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to update store: $e');
+        }
+      }
+    }
+  }
+
+  void _showForFinalSurveyOptionsSheet(String storeId, Hapistore store) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Manage Store: ${store.storeName}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Current status is "For Final Survey". Choose an action:',
+                  style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Colors.green.withValues(alpha: 0.3)),
+                  ),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green),
+                  ),
+                  title: const Text('Complete Final Survey (Mark as Surveyed)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: const Text('Approve survey and mark store as fully surveyed', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _confirmDealerFinalSurvey(storeId, store);
+                  },
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+                  ),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.undo_rounded, color: Colors.orange),
+                  ),
+                  title: const Text('Return to "Pending Survey"', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: const Text('Send back to salesman to conduct survey again', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _confirmRevertToPending(storeId, store);
+                  },
+                ),
+                const SizedBox(height: 6),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSurveyedChangeStatusSheet(String storeId, Hapistore store) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        final colorScheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Change Status: ${store.storeName}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Current status is "Surveyed". Move this store back to:',
+                  style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Colors.indigo.withValues(alpha: 0.3)),
+                  ),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.indigo.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.rate_review_outlined, color: Colors.indigo),
+                  ),
+                  title: const Text('For Final Survey', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: const Text('Move back to final survey list awaiting dealer sign-off', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _confirmMoveSurveyedToFinalSurvey(storeId, store);
+                  },
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Colors.orange.withValues(alpha: 0.3)),
+                  ),
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.undo_rounded, color: Colors.orange),
+                  ),
+                  title: const Text('Pending Survey', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  subtitle: const Text('Reset store completely so salesman must survey it again', style: TextStyle(fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _confirmRevertToPending(storeId, store);
+                  },
+                ),
+                const SizedBox(height: 6),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildScheduleCard({required DateTime startDate, required DateTime endDate, required bool isActive}) {
@@ -374,8 +617,28 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     );
   }
 
-  Widget _buildStoreCard({required String storeId, required Hapistore store, required bool isSurveyed}) {
+  Widget _buildStoreCard({
+    required String storeId,
+    required Hapistore store,
+    required String status,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isPending = status == MerchBlitzStatus.pendingSurvey;
+    final isForFinal = status == MerchBlitzStatus.forFinalSurvey;
+    final isSurveyed = status == MerchBlitzStatus.surveyed;
+
+    Color badgeColor;
+    IconData leadingIcon;
+    if (isSurveyed) {
+      badgeColor = Colors.green;
+      leadingIcon = Icons.check_circle_outline_rounded;
+    } else if (isForFinal) {
+      badgeColor = Colors.indigo;
+      leadingIcon = Icons.rate_review_outlined;
+    } else {
+      badgeColor = Colors.orange;
+      leadingIcon = Icons.storefront_outlined;
+    }
 
     return Card(
       elevation: 0,
@@ -383,15 +646,31 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
       margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: isSurveyed ? Colors.green.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        side: BorderSide(
+          color: isSurveyed
+              ? Colors.green.withValues(alpha: 0.35)
+              : isForFinal
+                  ? Colors.indigo.withValues(alpha: 0.35)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.6),
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: () {
-          if (!isSurveyed) {
-            _confirmMarkSurveyed(storeId, store);
-          } else {
-            _confirmResetSurvey(storeId, store);
+          if (isPending) {
+            if (!_isDealer) {
+              _confirmSalesmanSurvey(storeId, store);
+            } else {
+              ShowMessage.alert(
+                context,
+                title: 'Pending Salesman Survey',
+                message: 'Dealers cannot survey stores in Pending Survey. The assigned salesman must complete the initial survey first before it appears in "For Final Survey".',
+              );
+            }
+          } else if (isForFinal && _isDealer) {
+            _showForFinalSurveyOptionsSheet(storeId, store);
+          } else if (isSurveyed && _isDealer) {
+            _showSurveyedChangeStatusSheet(storeId, store);
           }
         },
         child: Padding(
@@ -406,12 +685,12 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                     width: 42,
                     height: 42,
                     decoration: BoxDecoration(
-                      color: (isSurveyed ? Colors.green : const Color(0xFF0284C7)).withValues(alpha: 0.12),
+                      color: badgeColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
-                      isSurveyed ? Icons.check_circle_outline_rounded : Icons.storefront_outlined,
-                      color: isSurveyed ? Colors.green : const Color(0xFF0284C7),
+                      leadingIcon,
+                      color: badgeColor,
                       size: 22,
                     ),
                   ),
@@ -447,17 +726,73 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  if (!isSurveyed)
-                    FilledButton.tonalIcon(
-                      onPressed: () => _confirmMarkSurveyed(storeId, store),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+
+                  // Action or Status based on Role and Status
+                  if (isPending) ...[
+                    if (!_isDealer)
+                      FilledButton.tonalIcon(
+                        onPressed: () => _confirmSalesmanSurvey(storeId, store),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.assignment_turned_in_outlined, size: 16),
+                        label: const Text('Survey', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.hourglass_top_rounded, size: 13, color: Colors.orange.shade800),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Awaiting Salesman',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+                            ),
+                          ],
+                        ),
                       ),
-                      icon: const Icon(Icons.check_rounded, size: 16),
-                      label: const Text('Survey', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    )
-                  else
+                  ] else if (isForFinal) ...[
+                    if (_isDealer)
+                      FilledButton.icon(
+                        onPressed: () => _confirmDealerFinalSurvey(storeId, store),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.check_circle_outline_rounded, size: 16),
+                        label: const Text('Final Survey', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.indigo.withValues(alpha: 0.3)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.rate_review_outlined, size: 13, color: Colors.indigo),
+                            SizedBox(width: 4),
+                            Text(
+                              'For Final Survey',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ] else if (isSurveyed) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
@@ -477,28 +812,69 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                         ],
                       ),
                     ),
+                  ],
                 ],
               ),
-              if (isSurveyed && store.lastMerchBlitzDate != null) ...[
+              if (isForFinal) ...[
+                const Divider(height: 18),
+                Row(
+                  children: [
+                    Icon(Icons.schedule_rounded, size: 14, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        store.lastMerchBlitzDate != null
+                            ? 'Salesman surveyed: ${DateFormat('EEE, d MMM yyyy • h:mm a').format(store.lastMerchBlitzDate!.toDate())}'
+                            : 'Submitted for final survey',
+                        style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_isDealer) ...[
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          minimumSize: const Size(50, 24),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () => _confirmRevertToPending(storeId, store),
+                        icon: const Icon(Icons.undo_rounded, size: 13, color: Colors.orange),
+                        label: const Text('Return to Pending', style: TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ],
+                ),
+              ] else if (isSurveyed) ...[
                 const Divider(height: 18),
                 Row(
                   children: [
                     Icon(Icons.history_toggle_off_rounded, size: 14, color: colorScheme.onSurfaceVariant),
                     const SizedBox(width: 6),
-                    Text(
-                      'Surveyed on: ${DateFormat('EEE, d MMM yyyy • h:mm a').format(store.lastMerchBlitzDate!.toDate())}',
-                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(50, 24),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    Expanded(
+                      child: Text(
+                        store.lastMerchBlitzDate != null
+                            ? 'Surveyed on: ${DateFormat('EEE, d MMM yyyy • h:mm a').format(store.lastMerchBlitzDate!.toDate())}'
+                            : 'Survey completed',
+                        style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      onPressed: () => _confirmResetSurvey(storeId, store),
-                      child: const Text('Undo', style: TextStyle(fontSize: 11, color: Colors.red)),
                     ),
+                    if (_isDealer) ...[
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          minimumSize: const Size(50, 24),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () => _showSurveyedChangeStatusSheet(storeId, store),
+                        icon: const Icon(Icons.edit_note_rounded, size: 15, color: Colors.blue),
+                        label: const Text('Change Status', style: TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -517,10 +893,14 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     final filtered = docs.where((doc) {
       final raw = doc.data();
       final store = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
+      final storeStatus = store.getMerchBlitzStatus(startDate, endDate);
 
-      final isStoreSurveyed = _isSurveyed(store, startDate, endDate);
-      if (_selectedTabIndex == 0 && isStoreSurveyed) return false;
-      if (_selectedTabIndex == 1 && !isStoreSurveyed) return false;
+      // Non-dealers only see Pending Survey
+      final targetTabIndex = _isDealer ? _selectedTabIndex : 0;
+
+      if (targetTabIndex == 0 && storeStatus != MerchBlitzStatus.pendingSurvey) return false;
+      if (targetTabIndex == 1 && storeStatus != MerchBlitzStatus.forFinalSurvey) return false;
+      if (targetTabIndex == 2 && storeStatus != MerchBlitzStatus.surveyed) return false;
 
       if (_searchQuery.isNotEmpty) {
         final name = store.storeName.toLowerCase();
@@ -565,6 +945,13 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isCheckingRole) {
+      return const Scaffold(
+        appBar: CustomAppbar(title: 'Merch Blitz', subtitle: 'Store Merchandising Survey'),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return StreamBuilder<Configuration?>(
       stream: _configService.getConfigurationStream(),
       builder: (context, configSnapshot) {
@@ -578,19 +965,44 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
           builder: (context, storesSnapshot) {
             final allDocs = storesSnapshot.data?.docs ?? [];
 
-            int notSurveyedCount = 0;
+            int pendingCount = 0;
+            int forFinalSurveyCount = 0;
             int surveyedCount = 0;
+
             for (final doc in allDocs) {
               final raw = doc.data();
               final store = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
-              if (_isSurveyed(store, startDate, endDate)) {
+              final status = store.getMerchBlitzStatus(startDate, endDate);
+              if (status == MerchBlitzStatus.pendingSurvey) {
+                pendingCount++;
+              } else if (status == MerchBlitzStatus.forFinalSurvey) {
+                forFinalSurveyCount++;
+              } else if (status == MerchBlitzStatus.surveyed) {
                 surveyedCount++;
-              } else {
-                notSurveyedCount++;
               }
             }
 
             final visibleDocs = _filterAndSortStores(docs: allDocs, startDate: startDate, endDate: endDate);
+
+            // Determine active tab title & counts
+            final activeTab = _isDealer ? _selectedTabIndex : 0;
+            String sectionTitle;
+            int sectionTotal;
+            Color sectionColor;
+
+            if (activeTab == 0) {
+              sectionTitle = 'Pending Survey Stores';
+              sectionTotal = pendingCount;
+              sectionColor = Colors.orange;
+            } else if (activeTab == 1) {
+              sectionTitle = 'For Final Survey Stores';
+              sectionTotal = forFinalSurveyCount;
+              sectionColor = Colors.indigo;
+            } else {
+              sectionTitle = 'Surveyed Stores';
+              sectionTotal = surveyedCount;
+              sectionColor = Colors.green;
+            }
 
             return Scaffold(
               appBar: const CustomAppbar(title: 'Merch Blitz', subtitle: 'Store Merchandising Survey'),
@@ -617,25 +1029,43 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                         child: Row(
                           children: [
                             Text(
-                              _selectedTabIndex == 0 ? 'Not Surveyed Stores' : 'Surveyed Stores',
+                              sectionTitle,
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
-                                color: (_selectedTabIndex == 0 ? Colors.orange : Colors.green).withValues(alpha: 0.15),
+                                color: sectionColor.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                '${visibleDocs.length} of ${_selectedTabIndex == 0 ? notSurveyedCount : surveyedCount}',
+                                '${visibleDocs.length} of $sectionTotal',
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
-                                  color: _selectedTabIndex == 0 ? Colors.orange.shade800 : Colors.green.shade800,
+                                  color: sectionColor is MaterialColor ? sectionColor.shade800 : sectionColor,
                                 ),
                               ),
                             ),
+                            if (!_isDealer) ...[
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  'Salesman View',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -655,7 +1085,11 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                                       Icon(
                                         _searchQuery.isNotEmpty
                                             ? Icons.search_off_rounded
-                                            : (_selectedTabIndex == 0 ? Icons.check_circle_outline_rounded : Icons.pending_actions_rounded),
+                                            : (activeTab == 0
+                                                ? Icons.check_circle_outline_rounded
+                                                : activeTab == 1
+                                                    ? Icons.rate_review_outlined
+                                                    : Icons.pending_actions_rounded),
                                         size: 44,
                                         color: Colors.grey,
                                       ),
@@ -663,7 +1097,14 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                                       Text(
                                         _searchQuery.isNotEmpty
                                             ? 'No stores match "$_searchQuery"'
-                                            : (_selectedTabIndex == 0 ? 'All stores have been surveyed!' : 'No stores surveyed yet.'),
+                                            : (activeTab == 0
+                                                ? (_isDealer
+                                                    ? 'No stores pending salesman survey.'
+                                                    : 'All stores on your route have been surveyed!')
+                                                : activeTab == 1
+                                                    ? 'No stores waiting for dealer final survey.'
+                                                    : 'No stores marked as surveyed yet.'),
+                                        textAlign: TextAlign.center,
                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                                       ),
                                     ],
@@ -677,7 +1118,8 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                                   final doc = visibleDocs[index];
                                   final raw = doc.data();
                                   final store = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
-                                  return _buildStoreCard(storeId: doc.id, store: store, isSurveyed: _selectedTabIndex == 1);
+                                  final status = store.getMerchBlitzStatus(startDate, endDate);
+                                  return _buildStoreCard(storeId: doc.id, store: store, status: status);
                                 },
                               ),
                       ),
@@ -685,7 +1127,8 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                   ],
                 ),
               ),
-              bottomNavigationBar: isActiveToday
+              // Role-based Bottom Navigation: Only dealer sees the 3-tab navigation
+              bottomNavigationBar: (isActiveToday && _isDealer)
                   ? NavigationBar(
                       selectedIndex: _selectedTabIndex,
                       onDestinationSelected: (index) {
@@ -694,16 +1137,31 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                       destinations: [
                         NavigationDestination(
                           icon: Badge(
-                            isLabelVisible: notSurveyedCount > 0,
-                            label: Text('$notSurveyedCount'),
-                            child: const Icon(Icons.assignment_late_outlined),
+                            isLabelVisible: pendingCount > 0,
+                            label: Text('$pendingCount'),
+                            child: const Icon(Icons.pending_actions_outlined),
                           ),
                           selectedIcon: Badge(
-                            isLabelVisible: notSurveyedCount > 0,
-                            label: Text('$notSurveyedCount'),
-                            child: const Icon(Icons.assignment_late_rounded),
+                            isLabelVisible: pendingCount > 0,
+                            label: Text('$pendingCount'),
+                            child: const Icon(Icons.pending_actions_rounded),
                           ),
-                          label: 'Not Surveyed',
+                          label: 'Pending Survey',
+                        ),
+                        NavigationDestination(
+                          icon: Badge(
+                            isLabelVisible: forFinalSurveyCount > 0,
+                            label: Text('$forFinalSurveyCount'),
+                            backgroundColor: Colors.indigo,
+                            child: const Icon(Icons.rate_review_outlined),
+                          ),
+                          selectedIcon: Badge(
+                            isLabelVisible: forFinalSurveyCount > 0,
+                            label: Text('$forFinalSurveyCount'),
+                            backgroundColor: Colors.indigo,
+                            child: const Icon(Icons.rate_review_rounded),
+                          ),
+                          label: 'For Final Survey',
                         ),
                         NavigationDestination(
                           icon: Badge(

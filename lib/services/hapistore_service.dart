@@ -39,10 +39,23 @@ class HapiStoreService {
     _hapistoresRef.doc(hapiStoreID).update(hapistore.toJson());
   }
 
+  Future<void> updateMerchBlitzStatus(
+    String hapiStoreID, {
+    required String status,
+    Timestamp? timestamp,
+  }) async {
+    invalidateCache();
+    await _firestore.collection(HAPISTORE_COLLECTION_REF).doc(hapiStoreID).update({
+      'merchBlitzStatus': status,
+      'lastMerchBlitzDate': timestamp,
+    });
+  }
+
   Future<void> updateLastMerchBlitzDate(String hapiStoreID, Timestamp? timestamp) async {
     invalidateCache();
     await _firestore.collection(HAPISTORE_COLLECTION_REF).doc(hapiStoreID).update({
       'lastMerchBlitzDate': timestamp,
+      'merchBlitzStatus': timestamp == null ? MerchBlitzStatus.pendingSurvey : MerchBlitzStatus.surveyed,
     });
   }
 
@@ -178,7 +191,7 @@ class HapiStoreService {
     return countPendingPjpVisitsForToday(stores);
   }
 
-  Stream<int> getUnsurveyedMerchBlitzCountStream() {
+  Stream<int> getUnsurveyedMerchBlitzCountStream({bool forDealer = false}) {
     final controller = StreamController<int>.broadcast();
     Configuration? currentConfig;
     QuerySnapshot? currentStoresSnapshot;
@@ -205,11 +218,13 @@ class HapiStoreService {
       for (final doc in currentStoresSnapshot!.docs) {
         final data = doc.data();
         final store = data is Hapistore ? data : Hapistore.fromJson(data as Map<String, Object?>);
-        if (store.lastMerchBlitzDate == null) {
-          count++;
+        final status = store.getMerchBlitzStatus(startDate, endDate);
+        if (forDealer) {
+          if (status == MerchBlitzStatus.forFinalSurvey) {
+            count++;
+          }
         } else {
-          final visit = store.lastMerchBlitzDate!.toDate();
-          if (visit.isBefore(s) || visit.isAfter(e)) {
+          if (status == MerchBlitzStatus.pendingSurvey) {
             count++;
           }
         }
