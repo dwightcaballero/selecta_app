@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/configuration_controller.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/models/configuration.dart';
+import 'package:flutter_app/services/error_log_service.dart';
 import 'package:flutter_app/services/gemini_ai_service.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
+import 'package:flutter_app/views/pages/sidebar/error_logs_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
@@ -34,6 +37,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isSwitchingRole = false;
+  int _pendingLogsCount = 0;
+  bool _isUploadingLogs = false;
 
   @override
   void initState() {
@@ -54,6 +59,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       final apiKey = await _configController.getGeminiApiKey();
       final usage = await _configController.getCurrentAiUsage();
       final isDealer = await _dashboardController.isCurrentUserDealer();
+      final pendingLogs = await ErrorLogService.getPendingLogCount();
 
       if (mounted) {
         setState(() {
@@ -64,6 +70,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
           _apiKeyController.text = apiKey ?? configResult.config.geminiApiKey;
           _currentMonthUsage = usage;
           _isDealer = isDealer;
+          _pendingLogsCount = pendingLogs;
           _isLoading = false;
         });
       }
@@ -104,6 +111,29 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       if (mounted) {
         setState(() => _isSwitchingRole = false);
         ShowMessage.error(context, 'Failed to switch role: $e');
+      }
+    }
+  }
+
+  Future<void> _handleUploadPendingLogs() async {
+    setState(() => _isUploadingLogs = true);
+    try {
+      final count = await ErrorLogService.uploadPendingLogs();
+      final remaining = await ErrorLogService.getPendingLogCount();
+      if (!mounted) return;
+      setState(() => _pendingLogsCount = remaining);
+      if (count > 0) {
+        ShowMessage.success(context, 'Uploaded $count pending error log${count == 1 ? "" : "s"} to Firestore');
+      } else {
+        ShowMessage.alert(context, title: 'Error Logs', message: 'All error logs are already synced.');
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to upload error logs: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingLogs = false);
       }
     }
   }
@@ -364,6 +394,168 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             'Hidden from salesmen and dealers. Distributed via Firestore config.',
                             style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 3. System Diagnostics & Error Logs Card
+                  Card(
+                    elevation: 0,
+                    color: colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(Icons.bug_report_rounded, size: 22, color: Colors.red.shade700),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Error Logs & Diagnostics', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Real-time Firestore logs, crash reports & device queue',
+                                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 28),
+
+                          // Live error stream tracker
+                          StreamBuilder<List<ErrorLogItem>>(
+                            stream: ErrorLogService.streamFirestoreLogs(limit: 50),
+                            builder: (context, snapshot) {
+                              final cloudCount = snapshot.data?.length ?? 0;
+                              final hasErrors = cloudCount > 0;
+                              final lastError = (snapshot.data != null && snapshot.data!.isNotEmpty)
+                                  ? snapshot.data!.first
+                                  : null;
+
+                              return Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: (hasErrors ? Colors.red : Colors.green).withValues(alpha: 0.06),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: (hasErrors ? Colors.red : Colors.green).withValues(alpha: 0.25),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          hasErrors ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
+                                          size: 20,
+                                          color: hasErrors ? Colors.red.shade700 : Colors.green.shade700,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            hasErrors
+                                                ? '$cloudCount Error Log${cloudCount == 1 ? "" : "s"} in Cloud'
+                                                : '0 Errors in Cloud (Healthy)',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13,
+                                              color: hasErrors ? Colors.red.shade900 : Colors.green.shade900,
+                                            ),
+                                          ),
+                                        ),
+                                        if (_pendingLogsCount > 0)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange.withValues(alpha: 0.15),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Text(
+                                              '$_pendingLogsCount pending offline',
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    if (lastError != null) ...[
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Latest: ${lastError.page} - ${lastError.error}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          // Open Error Logs Viewer Button
+                          FilledButton.icon(
+                            onPressed: () async {
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const ErrorLogsPage()),
+                              );
+                              if (mounted) {
+                                final remaining = await ErrorLogService.getPendingLogCount();
+                                setState(() => _pendingLogsCount = remaining);
+                              }
+                            },
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 46),
+                              backgroundColor: colorScheme.surfaceContainerHighest,
+                              foregroundColor: colorScheme.onSurface,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.8)),
+                              ),
+                            ),
+                            icon: const Icon(Icons.list_alt_rounded, size: 20),
+                            label: const Text('View Full Error Logs Console', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          ),
+
+                          if (_pendingLogsCount > 0) ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _isUploadingLogs ? null : _handleUploadPendingLogs,
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 44),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: _isUploadingLogs
+                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : const Icon(Icons.cloud_upload_outlined, size: 18),
+                              label: Text(
+                                _isUploadingLogs ? 'Uploading...' : 'Sync $_pendingLogsCount Offline Log${_pendingLogsCount == 1 ? "" : "s"} to Firestore',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

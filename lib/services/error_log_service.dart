@@ -283,17 +283,66 @@ class ErrorLogService {
     return logs.where((l) => !l.isUploaded).length;
   }
 
-  /// Formats all stored error logs into a clean, human- and AI-readable diagnostic report.
-  static Future<String> exportLogsAsText() async {
-    final logs = await _readLocalLogs();
+  /// Stream of recent error logs from Cloud Firestore, sorted by timestamp descending.
+  static Stream<List<ErrorLogItem>> streamFirestoreLogs({int limit = 100}) {
+    return FirebaseFirestore.instance
+        .collection(collectionRef)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+      final items = snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return ErrorLogItem.fromJson(data);
+      }).toList();
+      items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return items;
+    });
+  }
+
+  /// Deletes a specific error log document from Cloud Firestore.
+  static Future<void> deleteFirestoreLog(String id) async {
+    try {
+      await FirebaseFirestore.instance.collection(collectionRef).doc(id).delete();
+    } catch (e) {
+      debugPrint('[ErrorLogService] Failed to delete Firestore log $id: $e');
+      rethrow;
+    }
+  }
+
+  /// Clears all error log documents from Cloud Firestore.
+  static Future<int> clearAllFirestoreLogs() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection(collectionRef).get();
+      if (snapshot.docs.isEmpty) return 0;
+
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      return snapshot.docs.length;
+    } catch (e) {
+      debugPrint('[ErrorLogService] Failed to clear all Firestore logs: $e');
+      rethrow;
+    }
+  }
+
+  /// Returns all local error logs currently queued on this device.
+  static Future<List<ErrorLogItem>> getLocalLogs() async {
+    return _readLocalLogs();
+  }
+
+  /// Formats any list of error log items into a clean, diagnostic report string.
+  static String formatLogsAsText(List<ErrorLogItem> logs, {String title = 'DIAGNOSTIC ERROR LOGS REPORT'}) {
     if (logs.isEmpty) {
-      return 'No error logs recorded on this device.';
+      return 'No error logs recorded.';
     }
 
     final buffer = StringBuffer();
     final dateFormat = DateFormat('yyyy-MM-dd HH:mm:ss');
     buffer.writeln('========================================================');
-    buffer.writeln('SELECTA APP - DIAGNOSTIC ERROR LOGS REPORT');
+    buffer.writeln('SELECTA APP - $title');
     buffer.writeln('Generated: ${dateFormat.format(DateTime.now())}');
     buffer.writeln('Total Log Entries: ${logs.length}');
     buffer.writeln('========================================================\n');
@@ -320,6 +369,12 @@ class ErrorLogService {
 
     buffer.writeln('=================== END OF LOG REPORT ===================');
     return buffer.toString();
+  }
+
+  /// Formats all locally queued error logs into a diagnostic report.
+  static Future<String> exportLogsAsText() async {
+    final logs = await _readLocalLogs();
+    return formatLogsAsText(logs, title: 'LOCAL DEVICE ERROR LOGS REPORT');
   }
 
   /// Clears all local log records.
