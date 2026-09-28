@@ -65,18 +65,22 @@ class _ParsedAiMessage {
     }
 
     if (markerIndex == -1) {
-      return _ParsedAiMessage(mainContent: text, suggestedQuestions: []);
+      return _ParsedAiMessage(
+        mainContent: _normalizeAiMarkdown(_convertMarkdownTablesToCards(text)),
+        suggestedQuestions: [],
+      );
     }
 
-    final mainContent = text.substring(0, markerIndex).trim();
+    final rawContent = text.substring(0, markerIndex).trim();
+    final mainContent = _normalizeAiMarkdown(_convertMarkdownTablesToCards(rawContent));
     final suggestionsPart = text.substring(markerIndex + matchedMarker.length).trim();
     final lines = suggestionsPart.split('\n');
     final questions = <String>[];
 
     for (final line in lines) {
       final trimmed = line.trim();
-      if (trimmed.startsWith('-') || trimmed.startsWith('*') || RegExp(r'^\d+\.').hasMatch(trimmed)) {
-        final q = trimmed.replaceFirst(RegExp(r'^[-*\d.]+\s*'), '').replaceAll('*', '').trim();
+      if (trimmed.startsWith('-') || trimmed.startsWith('*') || trimmed.startsWith('•') || RegExp(r'^\d+\.').hasMatch(trimmed)) {
+        final q = trimmed.replaceFirst(RegExp(r'^[-*•\d.]+\s*'), '').replaceAll('*', '').trim();
         if (q.isNotEmpty) {
           questions.add(q);
         }
@@ -84,6 +88,158 @@ class _ParsedAiMessage {
     }
 
     return _ParsedAiMessage(mainContent: mainContent, suggestedQuestions: questions);
+  }
+
+  /// Automatically transforms multi-column Markdown tables into vertical mobile card blocks
+  /// so users never have to scroll back and forth horizontally.
+  static String _convertMarkdownTablesToCards(String text) {
+    if (!text.contains('|')) return text;
+
+    final lines = text.split('\n');
+    final result = <String>[];
+    int i = 0;
+
+    bool isSeparator(String line) {
+      final trimmed = line.trim();
+      if (!trimmed.contains('|') || !trimmed.contains('-')) return false;
+      return RegExp(r'^[\|\s:\-]+$').hasMatch(trimmed) && trimmed.contains('--');
+    }
+
+    List<String> parseRow(String line) {
+      var trimmed = line.trim();
+      if (trimmed.startsWith('|')) trimmed = trimmed.substring(1);
+      if (trimmed.endsWith('|')) trimmed = trimmed.substring(0, trimmed.length - 1);
+      return trimmed.split('|').map((c) => c.trim()).toList();
+    }
+
+    while (i < lines.length) {
+      final line = lines[i];
+      if (line.contains('|') && i + 1 < lines.length && isSeparator(lines[i + 1])) {
+        final headers = parseRow(line);
+        i += 2; // skip header and separator row
+
+        final rows = <List<String>>[];
+        while (i < lines.length && lines[i].trim().isNotEmpty && lines[i].contains('|')) {
+          rows.add(parseRow(lines[i]));
+          i++;
+        }
+
+        if (headers.length <= 1) {
+          for (final row in rows) {
+            if (row.isNotEmpty && row[0].isNotEmpty) {
+              result.add('- **${row[0]}**');
+            }
+          }
+          result.add('');
+        } else if (headers.length == 2) {
+          // 2-column key-value summary with clear indents
+          for (final row in rows) {
+            final key = row.isNotEmpty ? row[0] : '';
+            final val = row.length > 1 ? row[1] : '';
+            if (key.isNotEmpty) {
+              result.add('- **$key**: $val');
+            }
+          }
+          result.add('');
+        } else {
+          // Multi-column cards with indented sub-bullets and generous spacing
+          for (int r = 0; r < rows.length; r++) {
+            final row = rows[r];
+            if (row.isEmpty) continue;
+            final title = row[0];
+            final hasEmoji = RegExp(r'[\u{1F300}-\u{1FAFF}]', unicode: true).hasMatch(title);
+            final titlePrefix = hasEmoji ? '' : '🔹 ';
+            result.add('$titlePrefix**$title**');
+            for (int c = 1; c < headers.length && c < row.length; c++) {
+              final h = headers[c];
+              final v = row[c];
+              if (v.isNotEmpty) {
+                result.add('  - **$h**: $v');
+              }
+            }
+            result.add(''); // Blank line spacing after each card for readability
+          }
+        }
+      } else {
+        result.add(line);
+        i++;
+      }
+    }
+
+    return result.join('\n');
+  }
+
+  /// Normalizes incoming AI text to ensure standard Markdown list markers (- and   -)
+  /// are used instead of Unicode bullets (•), preserving and standardizing hierarchical indents.
+  static String _normalizeAiMarkdown(String text) {
+    final lines = text.split('\n');
+    final result = <String>[];
+    bool inCodeBlock = false;
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final trimmed = line.trim();
+
+      if (trimmed.startsWith('```')) {
+        inCodeBlock = !inCodeBlock;
+        result.add(line);
+        continue;
+      }
+
+      if (inCodeBlock) {
+        result.add(line);
+        continue;
+      }
+
+      if (trimmed.isEmpty) {
+        result.add('');
+        continue;
+      }
+
+      // Check if line starts with a bullet symbol (•, ◦, ▪, ‣, -, *)
+      final bulletMatch = RegExp(r'^(\s*)([•◦▪‣\-\*])\s+(.*)$').firstMatch(line);
+      if (bulletMatch != null) {
+        final leadingSpaces = bulletMatch.group(1)!.length;
+        final content = bulletMatch.group(3)!;
+        if (leadingSpaces >= 3) {
+          result.add('    - $content');
+        } else if (leadingSpaces >= 1) {
+          result.add('  - $content');
+        } else {
+          result.add('- $content');
+        }
+        continue;
+      }
+
+      // Numbered list items
+      final numMatch = RegExp(r'^(\s*)(\d+[\.\)])\s+(.*)$').firstMatch(line);
+      if (numMatch != null) {
+        final leadingSpaces = numMatch.group(1)!.length;
+        final marker = numMatch.group(2)!;
+        final content = numMatch.group(3)!;
+        if (leadingSpaces >= 2) {
+          result.add('  $marker $content');
+        } else {
+          result.add('$marker $content');
+        }
+        continue;
+      }
+
+      // If line has 2 or more leading spaces, treat as indented detail item
+      final leadingSpaces = line.length - line.trimLeft().length;
+      if (leadingSpaces >= 2 && !trimmed.startsWith('#') && !trimmed.startsWith('>') && !trimmed.startsWith('|')) {
+        if (leadingSpaces >= 4) {
+          result.add('    - $trimmed');
+        } else {
+          result.add('  - $trimmed');
+        }
+        continue;
+      }
+
+      result.add(trimmed);
+    }
+
+    return result.join('\n');
   }
 }
 
@@ -567,7 +723,7 @@ class _AiChatModalState extends State<AiChatModal> {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  constraints: BoxConstraints(maxWidth: mediaQuery.size.width * 0.82),
+                  constraints: BoxConstraints(maxWidth: mediaQuery.size.width * 0.88),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
                     borderRadius: const BorderRadius.only(
@@ -587,10 +743,17 @@ class _AiChatModalState extends State<AiChatModal> {
                         data: parsed.mainContent,
                         selectable: true,
                         styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                          blockSpacing: 12.0,
+                          listIndent: 28.0,
+                          listBulletPadding: const EdgeInsets.only(right: 8),
                           p: TextStyle(
                             fontSize: 13.5,
                             color: theme.colorScheme.onSurface,
-                            height: 1.45,
+                            height: 1.55,
+                          ),
+                          listBullet: TextStyle(
+                            color: theme.colorScheme.primary,
+                            height: 1.55,
                           ),
                           strong: TextStyle(
                             fontWeight: FontWeight.bold,
@@ -625,16 +788,29 @@ class _AiChatModalState extends State<AiChatModal> {
                             ),
                           ),
                           blockquoteDecoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(6),
                             border: Border(
-                              left: BorderSide(color: theme.colorScheme.primary, width: 3),
+                              left: BorderSide(color: theme.colorScheme.primary, width: 3.5),
                             ),
                           ),
+                          blockquotePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          tableColumnWidth: const IntrinsicColumnWidth(),
+                          tableScrollbarThumbVisibility: true,
+                          tablePadding: const EdgeInsets.symmetric(vertical: 8),
+                          tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          tableCellsDecoration: BoxDecoration(
+                            color: theme.colorScheme.surface.withValues(alpha: 0.35),
+                          ),
+                          tableVerticalAlignment: TableCellVerticalAlignment.middle,
                           tableBorder: TableBorder.all(
                             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
                             width: 1,
                           ),
-                          tableHead: const TextStyle(fontWeight: FontWeight.bold),
-                          listBullet: TextStyle(color: theme.colorScheme.primary),
+                          tableHead: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
                         ),
                       ),
 
