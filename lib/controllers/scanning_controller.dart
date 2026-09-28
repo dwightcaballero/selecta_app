@@ -160,6 +160,19 @@ class ScanningController {
     required String storeName,
     required String status,
   }) async {
+    final trimmedBarcode = barcode.trim();
+    if (trimmedBarcode.isEmpty) {
+      throw Exception('Barcode cannot be empty.');
+    }
+
+    final existingInDb = await _scanningService.getScanningByBarcode(trimmedBarcode);
+    if (existing.id.isEmpty && existingInDb != null) {
+      throw Exception('Barcode "$trimmedBarcode" already exists in the database.');
+    }
+    if (existing.id.isNotEmpty && existingInDb != null && existingInDb.id != existing.id) {
+      throw Exception('Barcode "$trimmedBarcode" already exists in the database.');
+    }
+
     String scannedBy = '';
     String finalStoreName = storeName;
     Timestamp? scannedDate;
@@ -185,7 +198,7 @@ class ScanningController {
 
     final newRecord = Scanning(
       id: existing.id,
-      barcode: barcode,
+      barcode: trimmedBarcode,
       storeName: finalStoreName,
       scannedDate: scannedDate,
       scannedBy: scannedBy,

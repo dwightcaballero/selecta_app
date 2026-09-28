@@ -10,8 +10,8 @@ import 'package:flutter_app/models/tasks.dart';
 import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placement_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanning_page.dart';
-import 'package:flutter_app/views/pages/sidebar/hapistore_page.dart';
 import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
+import 'package:flutter_app/services/error_log_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
@@ -38,6 +38,7 @@ class _PjpPageState extends State<PjpPage> {
 
   // Task 1: Location state
   bool _isLoadingLocation = true;
+  bool _isUpdatingLocation = false;
   bool _locationPassed = false;
   String _locationStatus = '';
   String? _locationError;
@@ -117,7 +118,15 @@ class _PjpPageState extends State<PjpPage> {
           _currentHapistore = updated;
         });
       }
-    } catch (_) {}
+    } catch (e, s) {
+      ErrorLogService.logError(
+        page: 'PjpPage',
+        action: 'Refresh Store Document',
+        error: e,
+        stackTrace: s,
+        extraData: {'hapiStoreID': widget.hapiStoreID},
+      );
+    }
   }
 
   Future<void> _runAllChecks() async {
@@ -193,16 +202,47 @@ class _PjpPageState extends State<PjpPage> {
   }
 
   Future<void> _onLocationAction() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => HapiStorePage(hapiStoreID: widget.hapiStoreID, hapistore: _currentHapistore),
-      ),
-    );
+    if (_isUpdatingLocation) return;
+    setState(() {
+      _isUpdatingLocation = true;
+      _locationError = null;
+    });
 
-    if (!mounted) return;
-    await _refreshStoreDoc();
-    await _checkLocation();
+    try {
+      final position = await _controller.getCurrentLocation();
+      final updatedStore = await _controller.updateStoreLocation(
+        hapiStoreID: widget.hapiStoreID,
+        currentStore: _currentHapistore,
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _currentHapistore = updatedStore;
+      });
+      ShowMessage.success(context, 'Store location updated successfully!');
+      await _checkLocation();
+    } catch (e, s) {
+      ErrorLogService.logError(
+        page: 'PjpPage',
+        action: 'Update Store Location',
+        error: e,
+        stackTrace: s,
+        extraData: {
+          'hapiStoreID': widget.hapiStoreID,
+          'storeName': _currentHapistore.storeName,
+        },
+      );
+      if (!mounted) return;
+      ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingLocation = false;
+        });
+      }
+    }
   }
 
   Future<void> _onScanningAction() async {
@@ -210,7 +250,11 @@ class _PjpPageState extends State<PjpPage> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ScanningPage(initialBarcode: _storeScannings.first.barcode, initialStoreName: _currentHapistore.storeName),
+          builder: (context) => ScanningPage(
+            initialBarcode: _storeScannings.first.barcode,
+            initialStoreName: _currentHapistore.storeName,
+            isEditing: true,
+          ),
         ),
       );
     } else {
@@ -284,7 +328,18 @@ class _PjpPageState extends State<PjpPage> {
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully completed PJP visit for ${_currentHapistore.storeName}!');
       Navigator.pop(context, true);
-    } catch (e) {
+    } catch (e, s) {
+      ErrorLogService.logError(
+        page: 'PjpPage',
+        action: 'Complete PJP Visit',
+        error: e,
+        stackTrace: s,
+        extraData: {
+          'hapiStoreID': widget.hapiStoreID,
+          'storeName': _currentHapistore.storeName,
+          'selectedDay': widget.selectedDay,
+        },
+      );
       if (!mounted) return;
       ShowMessage.error(context, 'Failed to complete visit: $e');
     } finally {
@@ -362,6 +417,8 @@ class _PjpPageState extends State<PjpPage> {
     required String actionLabel,
     String? actionLabelWhenPassed,
     bool showActionWhenPassed = false,
+    IconData? actionIcon,
+    String? loadingLabel,
     required VoidCallback onAction,
     VoidCallback? onRetry,
   }) {
@@ -372,7 +429,7 @@ class _PjpPageState extends State<PjpPage> {
 
     if (isLoading) {
       statusColor = Colors.grey;
-      statusLabel = 'Checking...';
+      statusLabel = loadingLabel ?? 'Checking...';
     } else if (isPassed) {
       statusColor = isDark ? Colors.greenAccent : Colors.green.shade700;
       statusLabel = 'Passed';
@@ -437,7 +494,7 @@ class _PjpPageState extends State<PjpPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isLoading ? 'Verifying status...' : statusMessage,
+                  isLoading ? (statusMessage.isNotEmpty ? statusMessage : 'Verifying status...') : statusMessage,
                   style: TextStyle(
                     fontSize: 13,
                     color: isPassed ? (isDark ? Colors.greenAccent : Colors.green.shade800) : colorScheme.onSurfaceVariant,
@@ -480,7 +537,7 @@ class _PjpPageState extends State<PjpPage> {
                           children: [
                             Text(actionLabel, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             const SizedBox(width: 4),
-                            const Icon(Icons.arrow_forward_rounded, size: 14),
+                            Icon(actionIcon ?? Icons.arrow_forward_rounded, size: 14),
                           ],
                         ),
                       ),
@@ -633,11 +690,17 @@ class _PjpPageState extends State<PjpPage> {
             stepNumber: 1,
             title: 'Store Location',
             icon: Icons.location_on_outlined,
-            isLoading: _isLoadingLocation,
+            isLoading: _isLoadingLocation || _isUpdatingLocation,
             isPassed: _locationPassed,
-            statusMessage: _locationStatus,
+            statusMessage: _isUpdatingLocation
+                ? 'Acquiring GPS and updating store location...'
+                : _locationStatus,
             errorMessage: _locationError,
-            actionLabel: _currentHapistore.latitude == null ? 'Set Location' : 'Update Location',
+            actionLabel: _isUpdatingLocation
+                ? 'Updating...'
+                : (_currentHapistore.latitude == null ? 'Get Location' : 'Update Location'),
+            actionIcon: Icons.my_location_rounded,
+            loadingLabel: _isUpdatingLocation ? 'Updating...' : null,
             onAction: _onLocationAction,
             onRetry: _locationError != null ? _checkLocation : null,
           ),

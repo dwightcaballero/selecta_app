@@ -29,7 +29,9 @@ class ScanningServices {
 
   // Get scanning record by barcode
   Future<Scanning?> getScanningByBarcode(String barcode) async {
-    final querySnapshot = await _scanningRef.where('barcode', isEqualTo: barcode).get();
+    final trimmedBarcode = barcode.trim();
+    if (trimmedBarcode.isEmpty) return null;
+    final querySnapshot = await _scanningRef.where('barcode', isEqualTo: trimmedBarcode).get();
     if (querySnapshot.docs.isNotEmpty) {
       Scanning scanning = querySnapshot.docs.first.data();
       scanning = scanning.copyWith(id: querySnapshot.docs.first.id);

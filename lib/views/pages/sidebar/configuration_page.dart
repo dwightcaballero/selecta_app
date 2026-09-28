@@ -97,6 +97,9 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         endDate: _endDate,
         originalConfig: _originalConfig,
         existsInDb: _configExistsInDb,
+        aiEnabled: _originalConfig?.aiEnabled ?? true,
+        geminiApiKey: _originalConfig?.geminiApiKey ?? '',
+        aiMonthlyRequestLimit: _originalConfig?.aiMonthlyRequestLimit ?? 3000,
       );
 
       _configExistsInDb = true;

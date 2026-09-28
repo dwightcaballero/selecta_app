@@ -66,6 +66,19 @@ class HapiStoreService {
     });
   }
 
+  Future<void> updateStoreLocation(
+    String hapiStoreID, {
+    required double latitude,
+    required double longitude,
+  }) async {
+    invalidateCache();
+    await _firestore.collection(HAPISTORE_COLLECTION_REF).doc(hapiStoreID).update({
+      'latitude': latitude,
+      'longitude': longitude,
+      'location': GeoPoint(latitude, longitude),
+    });
+  }
+
   Future<Hapistore?> getHapiStoreById(String hapiStoreID) async {
     final doc = await _firestore.collection(HAPISTORE_COLLECTION_REF).doc(hapiStoreID).get();
     if (!doc.exists || doc.data() == null) return null;

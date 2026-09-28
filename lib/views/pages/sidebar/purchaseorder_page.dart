@@ -6,11 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/purchaseorder_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/purchaseorder.dart';
+import 'package:flutter_app/services/error_log_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 import 'package:flutter_app/views/widgets/imageviewer_page.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter_app/views/widgets/audithistory_widget.dart';
 
 class PurchaseorderPage extends StatefulWidget {
   const PurchaseorderPage({super.key, required this.purchaseorderID, required this.purchaseorder});
@@ -128,15 +129,16 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
   void onSave() async {
     if (_formKey.currentState!.validate()) {
-      await _controller.savePurchaseOrder(
-        context: context,
-        orderAmount: Helperfunctions.formatStringAmountToDouble(orderAmountController.text),
-        selectedOrderDate: _selectedOrderDate,
-        selectedInvoiceDate: _selectedInvoiceDate,
-        pickedImage: _pickedImage,
-        selectedOverpaymentIds: _selectedOverpaymentIds,
-        unsettledOverpayments: _unsettledOverpayments,
-      );
+      try {
+        await _controller.savePurchaseOrder(
+          context: context,
+          orderAmount: Helperfunctions.formatStringAmountToDouble(orderAmountController.text),
+          selectedOrderDate: _selectedOrderDate,
+          selectedInvoiceDate: _selectedInvoiceDate,
+          pickedImage: _pickedImage,
+          selectedOverpaymentIds: _selectedOverpaymentIds,
+          unsettledOverpayments: _unsettledOverpayments,
+        );
 
       if (mounted) {
         final msg = _selectedOverpaymentIds.isNotEmpty
@@ -145,8 +147,23 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         ShowMessage.success(context, msg);
         Navigator.pop(context);
       }
+    } catch (e, s) {
+      ErrorLogService.logError(
+        page: 'PurchaseorderPage',
+        action: 'Save Purchase Order',
+        error: e,
+        stackTrace: s,
+        extraData: {
+          'orderAmount': orderAmountController.text,
+          'hasPickedImage': _pickedImage != null,
+        },
+      );
+      if (mounted) {
+        ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
+      }
     }
   }
+}
 
   void onUpdate() async {
     if (_formKey.currentState!.validate()) {
@@ -168,7 +185,17 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           ShowMessage.success(context, 'Purchase order updated successfully!');
           Navigator.pop(context);
         }
-      } catch (e) {
+      } catch (e, s) {
+        ErrorLogService.logError(
+          page: 'PurchaseorderPage',
+          action: 'Update Purchase Order',
+          error: e,
+          stackTrace: s,
+          extraData: {
+            'purchaseOrderId': widget.purchaseorderID,
+            'invoiceAmount': invoiceAmount,
+          },
+        );
         if (mounted) {
           ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
         }
@@ -177,15 +204,28 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   void onDelete() async {
-    await _controller.deletePurchaseOrder(
-      context: context,
-      purchaseOrderId: widget.purchaseorderID,
-      order: widget.purchaseorder,
-    );
+    try {
+      await _controller.deletePurchaseOrder(
+        context: context,
+        purchaseOrderId: widget.purchaseorderID,
+        order: widget.purchaseorder,
+      );
 
-    if (mounted) {
-      ShowMessage.success(context, 'Purchase order deleted successfully!');
-      Navigator.pop(context);
+      if (mounted) {
+        ShowMessage.success(context, 'Purchase order deleted successfully!');
+        Navigator.pop(context);
+      }
+    } catch (e, s) {
+      ErrorLogService.logError(
+        page: 'PurchaseorderPage',
+        action: 'Delete Purchase Order',
+        error: e,
+        stackTrace: s,
+        extraData: {'purchaseOrderId': widget.purchaseorderID},
+      );
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to delete purchase order: $e');
+      }
     }
   }
 

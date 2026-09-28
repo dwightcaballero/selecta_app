@@ -15,7 +15,6 @@ import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/sales_page.dart';
-import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/thruput_page.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
@@ -28,6 +27,9 @@ import 'package:flutter_app/views/pages/sidebar/purchaseorderlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/transactionlog_page.dart';
+import 'package:flutter_app/services/error_log_service.dart';
+import 'package:flutter_app/views/pages/sidebar/superadmin_page.dart';
+import 'package:flutter_app/views/widgets/ai_chat_modal.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
@@ -64,8 +66,12 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> showLoading(bool showLoading) async {
-    if (mounted) await Helperfunctions.showLoading(context: context, showLoading: showLoading);
-    if (!showLoading && mounted) setState(() {});
+    if (showLoading) {
+      if (mounted) await Helperfunctions.showLoading(context: context, showLoading: true);
+    } else {
+      await Helperfunctions.showLoading(context: context, showLoading: false);
+      if (mounted) setState(() {});
+    }
   }
 
   // Load user info and cached metrics via DashboardController
@@ -90,15 +96,16 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       dashboardDTO = await DashboardController.getLatestDashboardData();
       lastSyncDateTime = await DashboardController.getLastSync();
-    } catch (e) {
+    } catch (e, s) {
       debugPrint('Error syncing dashboard: $e');
+      ErrorLogService.logError(page: 'DashboardPage', action: 'Sync Dashboard Data', error: e, stackTrace: s);
     } finally {
       if (mounted) {
         setState(() {
           isSyncing = false;
         });
-        showLoading(false);
       }
+      await showLoading(false);
     }
   }
 
@@ -168,12 +175,15 @@ class _DashboardPageState extends State<DashboardPage> {
         final colorScheme = Theme.of(dialogContext).colorScheme;
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Admin Access', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          title: const Text('Super Admin Access', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Enter admin password to toggle user role:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+              Text(
+                'Enter superadmin password to access developer controls & AI settings:',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: passwordController,
@@ -191,7 +201,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Verify & Switch')),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Verify & Open')),
           ],
         );
       },
@@ -206,35 +216,10 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
-    await _performRoleSwitch();
-  }
-
-  Future<void> _performRoleSwitch() async {
-    showLoading(true);
-    try {
-      final isCurrentlyDealer = isDealer;
-      final newRole = await _controller.switchUserRole(isCurrentlyDealer);
-
-      // Switch screens without animations
-      if (mounted) {
-        await showLoading(false);
-        if (!mounted) return;
-        ShowMessage.success(context, 'Switched role to $newRole');
-        Navigator.of(context).pushAndRemoveUntil(
-          PageRouteBuilder(
-            pageBuilder: (_, _, _) => newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
-            transitionDuration: Duration.zero,
-            reverseTransitionDuration: Duration.zero,
-          ),
-          (_) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        await showLoading(false);
-        if (mounted) {
-          ShowMessage.error(context, 'Failed to change role: $e');
-        }
+    if (mounted) {
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SuperAdminPage()));
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
+        await syncDashboard();
       }
     }
   }
@@ -908,6 +893,7 @@ class _DashboardPageState extends State<DashboardPage> {
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
           _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
+          _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),
           _buildDrawerItem(Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
 
           const Divider(indent: 16, endIndent: 16),
@@ -917,6 +903,36 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _handleUploadErrorLogs() async {
+    final pendingCount = await ErrorLogService.getPendingLogCount();
+    if (!mounted) return;
+
+    if (pendingCount == 0) {
+      await ShowMessage.alert(
+        context,
+        title: 'Error Logs',
+        message: 'All error logs are already synced or no errors recorded.',
+        icon: Icons.check_circle_outline,
+      );
+      return;
+    }
+
+    await showLoading(true);
+    try {
+      final count = await ErrorLogService.uploadPendingLogs();
+      if (!mounted) return;
+      await showLoading(false);
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully uploaded $count error log${count == 1 ? "" : "s"} to Firebase');
+      }
+    } catch (e) {
+      await showLoading(false);
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to upload error logs: $e');
+      }
+    }
   }
 
   Widget _buildDrawerSectionHeader(String title) {
@@ -1012,6 +1028,15 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
       ),
       drawer: _buildDrawer(),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          AiChatModal.show(context, dashboardDTO: dashboardDTO, userRole: isDealer ? 'Dealer' : 'Salesman');
+        },
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.auto_awesome, size: 20),
+        label: const Text('Ask Sedy', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
       body: RefreshIndicator(
         onRefresh: syncDashboard,
         child: SingleChildScrollView(

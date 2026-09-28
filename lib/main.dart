@@ -1,12 +1,14 @@
+import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/notifiers.dart';
 import 'package:flutter_app/firebase_options.dart';
+import 'package:flutter_app/services/error_log_service.dart';
 import 'package:flutter_app/views/pages/others/auth_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
+final AppRouteObserver routeObserver = AppRouteObserver();
 
 void main() async {
   // 1. Ensure Flutter framework is fully bootstrapped
@@ -14,6 +16,27 @@ void main() async {
 
   // 2. Initialize Firebase with platform-specific options
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // 3. Register global error interceptors for unhandled exceptions
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    ErrorLogService.logError(
+      action: 'Unhandled Flutter Framework Error',
+      error: details.exceptionAsString(),
+      stackTrace: details.stack,
+      page: ErrorLogService.currentPage,
+    );
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    ErrorLogService.logError(
+      action: 'Unhandled Platform / Async Error',
+      error: error.toString(),
+      stackTrace: stack,
+      page: ErrorLogService.currentPage,
+    );
+    return true; // Mark as handled to avoid crashing
+  };
 
   runApp(const MyApp());
 }

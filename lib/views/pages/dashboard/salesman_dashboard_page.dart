@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
-import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/models/users.dart';
-import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
@@ -17,6 +15,9 @@ import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
 import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
+import 'package:flutter_app/services/error_log_service.dart';
+import 'package:flutter_app/views/pages/sidebar/superadmin_page.dart';
+import 'package:flutter_app/views/widgets/ai_chat_modal.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
@@ -85,7 +86,8 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
         });
         ShowMessage.success(context, 'Salesman dashboard synced successfully.');
       }
-    } catch (e) {
+    } catch (e, s) {
+      ErrorLogService.logError(page: 'SalesmanDashboardPage', action: 'Sync Salesman Dashboard', error: e, stackTrace: s);
       if (mounted) {
         ShowMessage.error(context, 'Sync failed. Please try again.');
       }
@@ -146,12 +148,15 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
         final colorScheme = Theme.of(dialogContext).colorScheme;
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Admin Access', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          title: const Text('Super Admin Access', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Enter admin password to toggle user role:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+              Text(
+                'Enter superadmin password to access developer controls & AI settings:',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: passwordController,
@@ -169,7 +174,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Verify & Switch')),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Verify & Open')),
           ],
         );
       },
@@ -184,32 +189,10 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
       return;
     }
 
-    await _performRoleSwitch();
-  }
-
-  Future<void> _performRoleSwitch() async {
-    setState(() => _isLoading = true);
-    try {
-      final isCurrentlyDealer = await _controller.isCurrentUserDealer();
-      final newRole = await _controller.switchUserRole(isCurrentlyDealer);
-
-      // Switch screens without animations
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ShowMessage.success(context, 'Switched role to $newRole');
-        Navigator.of(context).pushAndRemoveUntil(
-          PageRouteBuilder(
-            pageBuilder: (_, _, _) => newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
-            transitionDuration: Duration.zero,
-            reverseTransitionDuration: Duration.zero,
-          ),
-          (_) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ShowMessage.error(context, 'Failed to change role: $e');
+    if (mounted) {
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SuperAdminPage()));
+      if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
+        await _syncDashboard();
       }
     }
   }
@@ -406,6 +389,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
           _buildDrawerItem(Icons.shopping_cart_outlined, 'Buying Stores', const BuyinglistPage()),
           _buildDrawerItem(Icons.grid_view_outlined, 'Placement', const PlacementlistPage()),
+          _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),
 
           const Divider(indent: 16, endIndent: 16),
 
@@ -415,7 +399,37 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, Widget? nextPage, {bool isLogout = false, int badgeCount = 0}) {
+  Future<void> _handleUploadErrorLogs() async {
+    final pendingCount = await ErrorLogService.getPendingLogCount();
+    if (!mounted) return;
+
+    if (pendingCount == 0) {
+      await ShowMessage.alert(
+        context,
+        title: 'Error Logs',
+        message: 'All error logs are already synced or no errors recorded.',
+        icon: Icons.check_circle_outline,
+      );
+      return;
+    }
+
+    await Helperfunctions.showLoading(context: context, showLoading: true);
+    try {
+      final count = await ErrorLogService.uploadPendingLogs();
+      if (!mounted) return;
+      await Helperfunctions.showLoading(showLoading: false);
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully uploaded $count error log${count == 1 ? "" : "s"} to Firebase');
+      }
+    } catch (e) {
+      await Helperfunctions.showLoading(showLoading: false);
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to upload error logs: $e');
+      }
+    }
+  }
+
+  Widget _buildDrawerItem(IconData icon, String title, Widget? nextPage, {bool isLogout = false, int badgeCount = 0, VoidCallback? onTap}) {
     return ListTile(
       leading: Icon(icon, color: isLogout ? Colors.red : null, size: 22),
       title: Text(
@@ -434,7 +448,9 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           : null,
       onTap: () async {
         Navigator.pop(context);
-        if (isLogout) {
+        if (onTap != null) {
+          onTap();
+        } else if (isLogout) {
           _onLogout();
         } else if (nextPage != null) {
           await Helperfunctions.navigateThenWait(context, nextPage);
@@ -474,6 +490,15 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             tooltip: 'Sign Out',
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          AiChatModal.show(context, dashboardDTO: _dashboardDTO, userRole: 'Salesman');
+        },
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.auto_awesome, size: 20),
+        label: const Text('Ask Sedy', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

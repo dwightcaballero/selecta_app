@@ -1,26 +1,28 @@
 import 'dart:io';
+import 'package:flutter_app/services/error_log_service.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
 Future<void> writeToInternalFile(String log) async {
-  // 1. Get the app's secure documents directory
+  // 1. Log through the centralized error service
+  await ErrorLogService.logError(
+    action: 'Manual AppLog Write',
+    error: log,
+  );
+
+  // 2. Also keep the daily log file for legacy access (appending rather than overwriting)
   final directory = await getApplicationDocumentsDirectory();
-
-  // define the current date
   String formattedDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-  // 2. Define the file path
   final file = File('${directory.path}/${formattedDate}_logs.txt');
-
-  // 3. Write data to the file
-  await file.writeAsString(log);
+  await file.writeAsString('$log\n', mode: FileMode.append);
 }
 
 Future<File?> readFromFile() async {
   final directory = await getApplicationDocumentsDirectory();
-
-  // define the current date
   String formattedDate = DateFormat('yyyy-MM-dd').format(DateTime.now());
-
-  return File('${directory.path}/${formattedDate}_logs.txt');
+  final file = File('${directory.path}/${formattedDate}_logs.txt');
+  if (await file.exists()) {
+    return file;
+  }
+  return null;
 }

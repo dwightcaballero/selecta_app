@@ -5,6 +5,7 @@ import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/badorder.dart';
 import 'package:flutter_app/models/hapistore.dart';
+import 'package:flutter_app/services/error_log_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/audithistory_widget.dart';
@@ -73,7 +74,14 @@ class _BadOrderPageState extends State<BadOrderPage> {
           ShowMessage.success(context, 'Successfully created bad order record for [${dropDownController.text}]!');
           Navigator.pop(context);
         }
-      } catch (e) {
+      } catch (e, s) {
+        ErrorLogService.logError(
+          page: 'BadOrderPage',
+          action: 'Create Bad Order Record',
+          error: e,
+          stackTrace: s,
+          extraData: {'hapistore': dropDownController.text, 'amount': txtAmount.text},
+        );
         if (mounted) {
           ShowMessage.error(context, 'Failed to create record: $e');
         }
@@ -95,7 +103,14 @@ class _BadOrderPageState extends State<BadOrderPage> {
         ShowMessage.success(context, 'Successfully deleted bad order record for [${widget.badorder.hapistore}]!');
         Navigator.pop(context);
       }
-    } catch (e) {
+    } catch (e, s) {
+      ErrorLogService.logError(
+        page: 'BadOrderPage',
+        action: 'Delete Bad Order Record',
+        error: e,
+        stackTrace: s,
+        extraData: {'recID': widget.recID, 'hapistore': widget.badorder.hapistore},
+      );
       if (mounted) {
         ShowMessage.error(context, 'Failed to delete record: $e');
       }
@@ -122,7 +137,14 @@ class _BadOrderPageState extends State<BadOrderPage> {
           ShowMessage.success(context, 'Successfully updated bad order record for [${dropDownController.text}]!');
           Navigator.pop(context);
         }
-      } catch (e) {
+      } catch (e, s) {
+        ErrorLogService.logError(
+          page: 'BadOrderPage',
+          action: 'Update Bad Order Record',
+          error: e,
+          stackTrace: s,
+          extraData: {'recID': widget.recID, 'hapistore': dropDownController.text},
+        );
         if (mounted) {
           ShowMessage.error(context, 'Failed to update record: $e');
         }

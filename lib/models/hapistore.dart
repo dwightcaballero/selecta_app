@@ -174,8 +174,9 @@ class Hapistore {
       'longitude': longitude,
       'lastMerchBlitzDate': lastMerchBlitzDate,
       'merchBlitzStatus': merchBlitzStatus,
-      if (latitude != null && longitude != null)
-        'location': GeoPoint(latitude!, longitude!),
+      'location': (latitude != null && longitude != null)
+          ? GeoPoint(latitude!, longitude!)
+          : null,
     };
   }
 }

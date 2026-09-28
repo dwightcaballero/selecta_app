@@ -76,7 +76,16 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
       await _assignBarcodeToStore(scanning.storeName);
       return;
     }
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => ScanningPage(initialBarcode: scanning.barcode)));
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ScanningPage(
+          initialBarcode: scanning.barcode,
+          initialStoreName: scanning.storeName,
+          isEditing: true,
+        ),
+      ),
+    );
     prefetchData();
   }
 

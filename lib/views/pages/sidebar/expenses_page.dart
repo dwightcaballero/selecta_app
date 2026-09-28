@@ -4,6 +4,7 @@ import 'package:flutter_app/controllers/expenses_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/expenses.dart';
+import 'package:flutter_app/services/error_log_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/audithistory_widget.dart';
@@ -68,7 +69,14 @@ class _ExpensesPageState extends State<ExpensesPage> {
           ShowMessage.success(context, 'Successfully created expense record for [${txtDescription.text}]!');
           Navigator.pop(context);
         }
-      } catch (e) {
+      } catch (e, s) {
+        ErrorLogService.logError(
+          page: 'ExpensesPage',
+          action: 'Create Expense Record',
+          error: e,
+          stackTrace: s,
+          extraData: {'description': txtDescription.text, 'amount': txtAmount.text},
+        );
         if (mounted) {
           ShowMessage.error(context, 'Failed to create record: $e');
         }
@@ -97,7 +105,14 @@ class _ExpensesPageState extends State<ExpensesPage> {
           ShowMessage.success(context, 'Successfully updated expense record for [${txtDescription.text}]!');
           Navigator.pop(context);
         }
-      } catch (e) {
+      } catch (e, s) {
+        ErrorLogService.logError(
+          page: 'ExpensesPage',
+          action: 'Update Expense Record',
+          error: e,
+          stackTrace: s,
+          extraData: {'recID': widget.recID, 'description': txtDescription.text},
+        );
         if (mounted) {
           ShowMessage.error(context, 'Failed to update record: $e');
         }
@@ -122,7 +137,14 @@ class _ExpensesPageState extends State<ExpensesPage> {
         ShowMessage.success(context, 'Successfully deleted expense record for [${widget.expense.description}]!');
         Navigator.pop(context);
       }
-    } catch (e) {
+    } catch (e, s) {
+      ErrorLogService.logError(
+        page: 'ExpensesPage',
+        action: 'Delete Expense Record',
+        error: e,
+        stackTrace: s,
+        extraData: {'recID': widget.recID, 'description': widget.expense.description},
+      );
       if (mounted) {
         ShowMessage.error(context, 'Failed to delete record: $e');
       }

@@ -251,12 +251,31 @@ class Helperfunctions {
     await logTransaction(identifier, _formatRecordDetails(oldData), LogAction.delete, page: page);
   }
 
-  static Future<void> showLoading({required BuildContext context, required bool showLoading}) async {
+  static BuildContext? _activeLoadingContext;
+  static bool _isLoadingDialogOpen = false;
+  static NavigatorState? _activeLoadingNavigator;
+
+  static Future<void> showLoading({BuildContext? context, required bool showLoading}) async {
     if (showLoading) {
-      showDialog(
+      if (_isLoadingDialogOpen) return;
+      if (context == null || !context.mounted) return;
+      _isLoadingDialogOpen = true;
+      _activeLoadingNavigator = Navigator.of(context, rootNavigator: true);
+
+      showDialog<void>(
         context: context,
         barrierDismissible: false, // Prevents closing by tapping outside the dialog
-        builder: (BuildContext context2) {
+        useRootNavigator: true,
+        builder: (BuildContext dialogContext) {
+          _activeLoadingContext = dialogContext;
+          if (!_isLoadingDialogOpen) {
+            // Dismissed before dialog finished building
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+              }
+            });
+          }
           return PopScope(
             canPop: false, // Prevents closing via the physical back button (Flutter 3.12+)
             child: AlertDialog(
@@ -267,11 +286,22 @@ class Helperfunctions {
             ),
           );
         },
-      );
-    } else {
-      await Future.delayed(const Duration(milliseconds: 300), () {
-        if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      ).then((_) {
+        _isLoadingDialogOpen = false;
+        _activeLoadingContext = null;
+        _activeLoadingNavigator = null;
       });
+    } else {
+      if (!_isLoadingDialogOpen && _activeLoadingContext == null) return;
+      _isLoadingDialogOpen = false;
+
+      final dialogCtx = _activeLoadingContext;
+      _activeLoadingContext = null;
+      _activeLoadingNavigator = null;
+
+      if (dialogCtx != null && dialogCtx.mounted) {
+        Navigator.of(dialogCtx).pop();
+      }
     }
   }
 }

@@ -15,10 +15,16 @@ import 'package:intl/intl.dart';
 /// Barcode persistence, status resolution, dealer authorization checks,
 /// and audit transaction logging are managed by [ScanningController].
 class ScanningPage extends StatefulWidget {
-  const ScanningPage({super.key, required this.initialBarcode, this.initialStoreName});
+  const ScanningPage({
+    super.key,
+    required this.initialBarcode,
+    this.initialStoreName,
+    this.isEditing = false,
+  });
 
   final String initialBarcode;
   final String? initialStoreName;
+  final bool isEditing;
 
   @override
   State<ScanningPage> createState() => _ScanningPageState();
@@ -30,6 +36,7 @@ class _ScanningPageState extends State<ScanningPage> {
   final _formKey = GlobalKey<FormState>();
   bool _hasCheckedDatabase = false;
   bool _isDealer = false;
+  bool _isSaving = false;
   Scanning _scanning = Scanning.empty();
   String _selectedStatus = ScanningStatus.notScanned;
 
@@ -54,7 +61,15 @@ class _ScanningPageState extends State<ScanningPage> {
 
   void prefetchData() async {
     _isDealer = await _controller.checkIsDealer();
-    _scanning = await _controller.getScanningByBarcode(widget.initialBarcode) ?? Scanning.empty();
+    final trimmedBarcode = widget.initialBarcode.trim();
+    final found = await _controller.getScanningByBarcode(trimmedBarcode);
+
+    if (found != null) {
+      _scanning = found;
+    } else {
+      _scanning = Scanning.empty();
+    }
+
     _selectedStatus = _scanning.status.isEmpty ? ScanningStatus.notScanned : _scanning.status;
     _dropdownHapiStore.text = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
     _hasCheckedDatabase = true;
@@ -83,11 +98,15 @@ class _ScanningPageState extends State<ScanningPage> {
 
   Future<void> _rescanBarcode() async {
     final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()));
-    if (scanned != null && scanned.isNotEmpty && mounted) {
+    if (scanned != null && scanned.trim().isNotEmpty && mounted) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => ScanningPage(initialBarcode: scanned, initialStoreName: _dropdownHapiStore.text),
+          builder: (context) => ScanningPage(
+            initialBarcode: scanned.trim(),
+            initialStoreName: _dropdownHapiStore.text,
+            isEditing: false,
+          ),
         ),
       );
     }
@@ -99,10 +118,27 @@ class _ScanningPageState extends State<ScanningPage> {
       return;
     }
 
+    setState(() => _isSaving = true);
+
     try {
+      final trimmedBarcode = widget.initialBarcode.trim();
+      final duplicateCheck = await _controller.getScanningByBarcode(trimmedBarcode);
+
+      // If a record exists in DB under a different document ID
+      if (duplicateCheck != null && _scanning.id.isNotEmpty && duplicateCheck.id != _scanning.id) {
+        if (!mounted) return;
+        ShowMessage.error(context, 'This barcode is already assigned to another record in the database.');
+        return;
+      }
+
+      // If existing was empty but it actually exists in DB, attach the ID so we update instead of duplicate
+      final existingToSave = (_scanning.id.isEmpty && duplicateCheck != null)
+          ? duplicateCheck
+          : _scanning;
+
       final newRecord = await _controller.saveScanningRecord(
-        existing: _scanning,
-        barcode: widget.initialBarcode,
+        existing: existingToSave,
+        barcode: trimmedBarcode,
         storeName: _dropdownHapiStore.text,
         status: _selectedStatus,
       );
@@ -112,7 +148,10 @@ class _ScanningPageState extends State<ScanningPage> {
       Navigator.pop(context);
     } catch (error) {
       if (!mounted) return;
-      ShowMessage.error(context, 'Unable to save the scanning record. Please try again.');
+      final errorMessage = error.toString().replaceFirst('Exception: ', '');
+      ShowMessage.error(context, errorMessage.isNotEmpty ? errorMessage : 'Unable to save the scanning record. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -216,7 +255,43 @@ class _ScanningPageState extends State<ScanningPage> {
               ),
             ),
           ),
-          if (_hasCheckedDatabase && _scanning.id.isEmpty) ...[
+          if (_hasCheckedDatabase && _scanning.id.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.secondaryContainer.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: colorScheme.secondary.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded, size: 20, color: colorScheme.onSecondaryContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Existing Barcode Record',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSecondaryContainer),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _scanning.storeName.isNotEmpty
+                              ? 'This barcode is registered to "${_scanning.storeName}". You can update its store name and status below.'
+                              : 'This barcode exists in the database. You can update its store name and status below.',
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSecondaryContainer),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else if (_hasCheckedDatabase && _scanning.id.isEmpty) ...[
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
@@ -439,15 +514,22 @@ class _ScanningPageState extends State<ScanningPage> {
               _buildStatusCard(),
               const SizedBox(height: 20),
               FilledButton.icon(
-                onPressed: _onSave,
-                icon: const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
-                label: const Text(
-                  'Save Record',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                onPressed: (_isSaving || !_hasCheckedDatabase) ? null : _onSave,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
+                label: Text(
+                  _isSaving ? 'Saving...' : 'Save Record',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50),
                   backgroundColor: Theme.of(context).colorScheme.primary,
+                  disabledBackgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
