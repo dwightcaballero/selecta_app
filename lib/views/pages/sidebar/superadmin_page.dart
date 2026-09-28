@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/configuration_controller.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
 import 'package:flutter_app/data/constants.dart';
@@ -180,10 +179,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: const CustomAppbar(
-        title: 'Super Admin',
-        subtitle: 'Developer & Infrastructure Controls',
-      ),
+      appBar: const CustomAppbar(title: 'Super Admin', subtitle: 'Developer & Infrastructure Controls'),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -243,11 +239,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                             icon: _isSwitchingRole
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  )
+                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                                 : const Icon(Icons.swap_horiz_rounded, size: 20),
                             label: Text(
                               _isSwitchingRole ? 'Switching Role...' : 'Switch to ${_isDealer ? "Salesman" : "Dealer"} View',
@@ -291,10 +283,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                                   children: [
                                     Text('Antigravity AI Infrastructure', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                     SizedBox(height: 2),
-                                    Text(
-                                      'Master Gemini settings & quota enforcement',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                                    ),
+                                    Text('Master Gemini settings & quota enforcement', style: TextStyle(fontSize: 12, color: Colors.grey)),
                                   ],
                                 ),
                               ),
@@ -317,11 +306,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             ),
                             child: Row(
                               children: [
-                                Icon(
-                                  Icons.data_usage_rounded,
-                                  size: 20,
-                                  color: _aiEnabled ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                                ),
+                                Icon(Icons.data_usage_rounded, size: 20, color: _aiEnabled ? colorScheme.primary : colorScheme.onSurfaceVariant),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
@@ -418,10 +403,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
+                                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
                                 child: Icon(Icons.bug_report_rounded, size: 22, color: Colors.red.shade700),
                               ),
                               const SizedBox(width: 12),
@@ -448,18 +430,14 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             builder: (context, snapshot) {
                               final cloudCount = snapshot.data?.length ?? 0;
                               final hasErrors = cloudCount > 0;
-                              final lastError = (snapshot.data != null && snapshot.data!.isNotEmpty)
-                                  ? snapshot.data!.first
-                                  : null;
+                              final lastError = (snapshot.data != null && snapshot.data!.isNotEmpty) ? snapshot.data!.first : null;
 
                               return Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   color: (hasErrors ? Colors.red : Colors.green).withValues(alpha: 0.06),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: (hasErrors ? Colors.red : Colors.green).withValues(alpha: 0.25),
-                                  ),
+                                  border: Border.all(color: (hasErrors ? Colors.red : Colors.green).withValues(alpha: 0.25)),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -474,9 +452,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            hasErrors
-                                                ? '$cloudCount Error Log${cloudCount == 1 ? "" : "s"} in Cloud'
-                                                : '0 Errors in Cloud (Healthy)',
+                                            hasErrors ? '$cloudCount Error Log${cloudCount == 1 ? "" : "s"} in Cloud' : '0 Errors in Cloud (Healthy)',
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 13,
@@ -518,9 +494,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                           // Open Error Logs Viewer Button
                           FilledButton.icon(
                             onPressed: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => const ErrorLogsPage()),
-                              );
+                              await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ErrorLogsPage()));
                               if (mounted) {
                                 final remaining = await ErrorLogService.getPendingLogCount();
                                 setState(() => _pendingLogsCount = remaining);
@@ -551,7 +525,9 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                                   : const Icon(Icons.cloud_upload_outlined, size: 18),
                               label: Text(
-                                _isUploadingLogs ? 'Uploading...' : 'Sync $_pendingLogsCount Offline Log${_pendingLogsCount == 1 ? "" : "s"} to Firestore',
+                                _isUploadingLogs
+                                    ? 'Uploading...'
+                                    : 'Sync $_pendingLogsCount Offline Log${_pendingLogsCount == 1 ? "" : "s"} to Firestore',
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                               ),
                             ),
@@ -571,11 +547,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.save_rounded, size: 20),
                     label: Text(
                       _isSaving ? 'Saving...' : 'Save Superadmin Settings',

@@ -193,14 +193,7 @@ class Helperfunctions {
   }
 
   // audit metadata fields excluded from create/update log details since they're redundant with the log's own loggedBy/loggedDate
-  static const List<String> _auditFieldsToSkip = [
-    'createdBy',
-    'lastUpdatedBy',
-    'createdDate',
-    'lastupdatedDate',
-    'createdPage',
-    'lastUpdatedPage',
-  ];
+  static const List<String> _auditFieldsToSkip = ['createdBy', 'lastUpdatedBy', 'createdDate', 'lastupdatedDate', 'createdPage', 'lastUpdatedPage'];
 
   static String _formatFieldValue(Object? value) {
     if (value == null) return '(empty)';
@@ -222,12 +215,7 @@ class Helperfunctions {
   }
 
   /// Logs an update to a record, capturing only the fields whose values actually changed.
-  static Future<void> logUpdate(
-    String identifier,
-    Map<String, Object?> oldData,
-    Map<String, Object?> newData, {
-    String page = '',
-  }) async {
+  static Future<void> logUpdate(String identifier, Map<String, Object?> oldData, Map<String, Object?> newData, {String page = ''}) async {
     final List<String> changes = [];
     for (final key in newData.keys) {
       if (_auditFieldsToSkip.contains(key)) continue;
@@ -238,12 +226,7 @@ class Helperfunctions {
       }
     }
 
-    await logTransaction(
-      identifier,
-      changes.isEmpty ? 'No field changes detected.' : changes.join('\n'),
-      LogAction.update,
-      page: page,
-    );
+    await logTransaction(identifier, changes.isEmpty ? 'No field changes detected.' : changes.join('\n'), LogAction.update, page: page);
   }
 
   /// Logs the deletion of a record, capturing all of its field values at the time of deletion.
@@ -253,14 +236,12 @@ class Helperfunctions {
 
   static BuildContext? _activeLoadingContext;
   static bool _isLoadingDialogOpen = false;
-  static NavigatorState? _activeLoadingNavigator;
 
   static Future<void> showLoading({BuildContext? context, required bool showLoading}) async {
     if (showLoading) {
       if (_isLoadingDialogOpen) return;
       if (context == null || !context.mounted) return;
       _isLoadingDialogOpen = true;
-      _activeLoadingNavigator = Navigator.of(context, rootNavigator: true);
 
       showDialog<void>(
         context: context,
@@ -289,7 +270,6 @@ class Helperfunctions {
       ).then((_) {
         _isLoadingDialogOpen = false;
         _activeLoadingContext = null;
-        _activeLoadingNavigator = null;
       });
     } else {
       if (!_isLoadingDialogOpen && _activeLoadingContext == null) return;
@@ -297,7 +277,6 @@ class Helperfunctions {
 
       final dialogCtx = _activeLoadingContext;
       _activeLoadingContext = null;
-      _activeLoadingNavigator = null;
 
       if (dialogCtx != null && dialogCtx.mounted) {
         Navigator.of(dialogCtx).pop();

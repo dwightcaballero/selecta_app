@@ -216,13 +216,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                   ),
                   const PopupMenuItem(
                     value: 'copy_all',
-                    child: Row(
-                      children: [
-                        Icon(Icons.copy_all_rounded, size: 20),
-                        const SizedBox(width: 10),
-                        Text('Copy All Diagnostic Logs'),
-                      ],
-                    ),
+                    child: Row(children: [Icon(Icons.copy_all_rounded, size: 20), SizedBox(width: 10), Text('Copy All Diagnostic Logs')]),
                   ),
                   const PopupMenuDivider(),
                   PopupMenuItem(
@@ -283,9 +277,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                                 iconColor: _pendingLocalCount > 0 ? Colors.orange.shade700 : Colors.green.shade600,
                                 title: 'Local Queue',
                                 value: _pendingLocalCount.toString(),
-                                subtitle: _isUploadingPending
-                                    ? 'Uploading...'
-                                    : (_pendingLocalCount > 0 ? 'Tap to sync' : 'Up to date'),
+                                subtitle: _isUploadingPending ? 'Uploading...' : (_pendingLocalCount > 0 ? 'Tap to sync' : 'Up to date'),
                                 showAction: _pendingLocalCount > 0,
                               ),
                             ),
@@ -333,7 +325,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: pageList.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 8),
+                            separatorBuilder: (_, _) => const SizedBox(width: 8),
                             itemBuilder: (context, index) {
                               final page = pageList[index];
                               final isSelected = _selectedPageFilter == page;
@@ -359,32 +351,39 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                   child: isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : snapshot.hasError
-                          ? Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24.0),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.error_outline_rounded, size: 48, color: colorScheme.error),
-                                    const SizedBox(height: 12),
-                                    Text('Failed to load error logs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.error)),
-                                    const SizedBox(height: 6),
-                                    Text('${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
-                                  ],
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.error_outline_rounded, size: 48, color: colorScheme.error),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'Failed to load error logs',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.error),
                                 ),
-                              ),
-                            )
-                          : filteredLogs.isEmpty
-                              ? _buildEmptyState(context, hasFilter: query.isNotEmpty || _selectedPageFilter != 'All')
-                              : ListView.builder(
-                                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                                  itemCount: filteredLogs.length,
-                                  itemBuilder: (context, index) {
-                                    final log = filteredLogs[index];
-                                    final isExpanded = _expandedLogIds.contains(log.id);
-                                    return _buildLogCard(context, log, isExpanded);
-                                  },
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${snapshot.error}',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                                 ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : filteredLogs.isEmpty
+                      ? _buildEmptyState(context, hasFilter: query.isNotEmpty || _selectedPageFilter != 'All')
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                          itemCount: filteredLogs.length,
+                          itemBuilder: (context, index) {
+                            final log = filteredLogs[index];
+                            final isExpanded = _expandedLogIds.contains(log.id);
+                            return _buildLogCard(context, log, isExpanded);
+                          },
+                        ),
                 ),
               ],
             ),
@@ -415,10 +414,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, color: iconColor, size: 20),
           ),
           const SizedBox(width: 10),
@@ -427,14 +423,14 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(title, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500)),
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                ),
                 Row(
                   children: [
                     Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    if (showAction) ...[
-                      const SizedBox(width: 4),
-                      Icon(Icons.arrow_forward_ios_rounded, size: 10, color: colorScheme.primary),
-                    ],
+                    if (showAction) ...[const SizedBox(width: 4), Icon(Icons.arrow_forward_ios_rounded, size: 10, color: colorScheme.primary)],
                   ],
                 ),
                 Text(subtitle, style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8))),
@@ -457,10 +453,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: (hasFilter ? Colors.orange : Colors.green).withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: (hasFilter ? Colors.orange : Colors.green).withValues(alpha: 0.12), shape: BoxShape.circle),
               child: Icon(
                 hasFilter ? Icons.filter_alt_off_rounded : Icons.verified_rounded,
                 size: 48,
@@ -468,10 +461,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
               ),
             ),
             const SizedBox(height: 16),
-            Text(
-              hasFilter ? 'No Matching Error Logs' : 'All Systems Operational',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            Text(hasFilter ? 'No Matching Error Logs' : 'All Systems Operational', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             Text(
               hasFilter
@@ -504,9 +494,8 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
     final dateFormat = DateFormat('MMM dd, yyyy • hh:mm:ss a');
     final formattedDate = dateFormat.format(log.timestamp);
 
-    final isFrameworkOrFatal = log.action.toLowerCase().contains('unhandled') ||
-        log.error.toLowerCase().contains('exception') ||
-        log.error.toLowerCase().contains('failed');
+    final isFrameworkOrFatal =
+        log.action.toLowerCase().contains('unhandled') || log.error.toLowerCase().contains('exception') || log.error.toLowerCase().contains('failed');
 
     return Card(
       elevation: 0,
@@ -514,11 +503,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: isFrameworkOrFatal
-              ? Colors.red.withValues(alpha: 0.3)
-              : colorScheme.outlineVariant.withValues(alpha: 0.6),
-        ),
+        side: BorderSide(color: isFrameworkOrFatal ? Colors.red.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -564,18 +549,12 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          formattedDate,
-                          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                        ),
+                        Text(formattedDate, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: Icon(
-                      isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    icon: Icon(isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, color: colorScheme.onSurfaceVariant),
                     onPressed: () {
                       setState(() {
                         if (isExpanded) {
@@ -601,8 +580,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                   _buildTagBadge(Icons.play_arrow_rounded, log.action, colorScheme.secondary),
                   if (log.userEmail != null && log.userEmail!.isNotEmpty)
                     _buildTagBadge(Icons.person_outline_rounded, log.userEmail!, colorScheme.tertiary),
-                  if (log.platform.isNotEmpty)
-                    _buildTagBadge(Icons.devices_rounded, log.platform.toUpperCase(), Colors.blueGrey),
+                  if (log.platform.isNotEmpty) _buildTagBadge(Icons.devices_rounded, log.platform.toUpperCase(), Colors.blueGrey),
                 ],
               ),
 
@@ -633,12 +611,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                   ),
                   child: SelectableText(
                     log.error,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      color: Colors.red.shade900,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: Colors.red.shade900, fontWeight: FontWeight.w600),
                   ),
                 ),
 
@@ -670,12 +643,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                       child: SingleChildScrollView(
                         child: SelectableText(
                           log.stackTrace!,
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                            color: colorScheme.onSurfaceVariant,
-                            height: 1.35,
-                          ),
+                          style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: colorScheme.onSurfaceVariant, height: 1.35),
                         ),
                       ),
                     ),
@@ -688,15 +656,11 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     OutlinedButton.icon(
-                      onPressed: () => _copyToClipboard(
-                        ErrorLogService.formatLogsAsText([log], title: 'ERROR LOG #${log.id}'),
-                        'full diagnostic log',
-                      ),
+                      onPressed: () =>
+                          _copyToClipboard(ErrorLogService.formatLogsAsText([log], title: 'ERROR LOG #${log.id}'), 'full diagnostic log'),
                       icon: const Icon(Icons.copy_all_rounded, size: 16),
                       label: const Text('Copy Full Log', style: TextStyle(fontSize: 12)),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
+                      style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                     ),
                     const SizedBox(width: 8),
                     FilledButton.icon(
