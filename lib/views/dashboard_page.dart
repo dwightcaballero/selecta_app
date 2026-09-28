@@ -843,12 +843,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
           // 1. Operations
           _buildDrawerSectionHeader('Operations'),
-          _buildDrawerItem(
-            Icons.qr_code_scanner_outlined,
-            'Scanning',
-            const ScanninglistPage(),
-            badgeCount: dashboardDTO.totalNotScannedCount + dashboardDTO.totalUnassignedCount,
-          ),
           StreamBuilder<int>(
             stream: _merchBlitzCountStream,
             builder: (context, snapshot) {
