@@ -10,6 +10,7 @@ import 'package:flutter_app/models/users.dart';
 import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/transactionlog_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
+import 'package:flutter_app/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
 
@@ -84,13 +85,21 @@ class Helperfunctions {
   }
 
   static Future<void> deleteImage(BuildContext context, String firestoreURL) async {
+    final cleanUrl = firestoreURL.trim();
+    if (cleanUrl.isEmpty) return;
+
+    // Evict from local disk cache (`product_image_cache/`) and memory cache
+    await CachedProductImage.evictUrl(cleanUrl);
+
     try {
-      Reference storageRef = FirebaseStorage.instance.refFromURL(firestoreURL);
+      Reference storageRef = FirebaseStorage.instance.refFromURL(cleanUrl);
       await storageRef.delete();
     } on FirebaseException catch (e) {
-      if (context.mounted) {
+      if (e.code != 'object-not-found' && context.mounted) {
         ShowMessage.error(context, e.message ?? 'There was an error upon deleting an image.');
       }
+    } catch (_) {
+      // Ignore non-Firebase Storage URLs
     }
   }
 

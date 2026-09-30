@@ -4,6 +4,7 @@ import 'package:flutter_app/controllers/auth_controller.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/others/loading_page.dart';
+import 'package:flutter_app/views/pages/others/selecta_catalog_sync_gate_page.dart';
 import 'package:flutter_app/views/pages/others/welcome_page.dart';
 
 /// Top-level authentication gateway that listens to auth state changes
@@ -44,7 +45,9 @@ class _RoleBasedDashboardRouter extends StatelessWidget {
           return const LoadingPage();
         }
         final isDealer = snapshot.data ?? true;
-        return isDealer ? const DashboardPage() : const SalesmanDashboardPage();
+        return SelectaCatalogSyncGatePage(
+          child: isDealer ? const DashboardPage() : const SalesmanDashboardPage(),
+        );
       },
     );
   }

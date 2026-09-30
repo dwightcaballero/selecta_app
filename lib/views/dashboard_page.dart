@@ -23,6 +23,8 @@ import 'package:flutter_app/views/pages/sidebar/configuration_page.dart';
 import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
 import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/hapistorelist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/other_products_page.dart';
+import 'package:flutter_app/views/pages/sidebar/selecta_products_page.dart';
 import 'package:flutter_app/views/pages/sidebar/purchaseorderlist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
@@ -885,6 +887,10 @@ class _DashboardPageState extends State<DashboardPage> {
             },
           ),
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
+          if (isDealer)
+            _buildDrawerItem(Icons.inventory_2_outlined, 'Selecta Products', const SelectaProductsPage()),
+          if (isDealer)
+            _buildDrawerItem(Icons.inventory_2_outlined, 'Other Products', const OtherProductsPage()),
           _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),

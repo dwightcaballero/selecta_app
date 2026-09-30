@@ -4,6 +4,7 @@ import 'package:flutter_app/controllers/login_controller.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/others/register_page.dart';
+import 'package:flutter_app/views/pages/others/selecta_catalog_sync_gate_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/snackbar_widget.dart';
@@ -54,7 +55,9 @@ class _LoginPageState extends State<LoginPage> {
         ShowMessage.success(context, 'Successfully logged in!');
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (context) => result.isDealer ? const DashboardPage() : const SalesmanDashboardPage(),
+            builder: (context) => SelectaCatalogSyncGatePage(
+              child: result.isDealer ? const DashboardPage() : const SalesmanDashboardPage(),
+            ),
           ),
           (Route<dynamic> route) => false,
         );

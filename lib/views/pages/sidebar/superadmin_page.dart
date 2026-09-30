@@ -8,6 +8,7 @@ import 'package:flutter_app/services/gemini_ai_service.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/sidebar/error_logs_page.dart';
+import 'package:flutter_app/views/pages/sidebar/selecta_products_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 
@@ -253,7 +254,74 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
 
                   const SizedBox(height: 16),
 
-                  // 2. Gemini AI Management Card
+                  // 2. Selecta Product Catalog Management (Admin Mode) Card
+                  Card(
+                    elevation: 0,
+                    color: colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1D4ED8).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.inventory_2_rounded, size: 22, color: Color(0xFF1D4ED8)),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Selecta Product Catalog', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Admin mode to add, edit, and delete official Selecta products',
+                                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 28),
+                          FilledButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const SelectaProductsPage(userRole: 'Admin'),
+                                ),
+                              );
+                            },
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 48),
+                              backgroundColor: const Color(0xFF1D4ED8),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.admin_panel_settings_outlined, size: 20),
+                            label: const Text(
+                              'Manage Selecta Products (Admin)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 3. Gemini AI Management Card
                   Card(
                     elevation: 0,
                     color: colorScheme.surface,
