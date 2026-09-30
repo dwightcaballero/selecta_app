@@ -23,6 +23,7 @@ import 'package:flutter_app/views/pages/sidebar/configuration_page.dart';
 import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
 import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
 import 'package:flutter_app/views/pages/sidebar/hapistorelist_page.dart';
+import 'package:flutter_app/views/pages/sidebar/inventory_page.dart';
 import 'package:flutter_app/views/pages/sidebar/other_products_page.dart';
 import 'package:flutter_app/views/pages/sidebar/selecta_products_page.dart';
 import 'package:flutter_app/views/pages/sidebar/purchaseorderlist_page.dart';
@@ -887,6 +888,8 @@ class _DashboardPageState extends State<DashboardPage> {
             },
           ),
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
+          if (isDealer)
+            _buildDrawerItem(Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
           if (isDealer)
             _buildDrawerItem(Icons.inventory_2_outlined, 'Selecta Products', const SelectaProductsPage()),
           if (isDealer)

@@ -191,6 +191,9 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
         buyingPrice: _buyingPrice,
         sellingPrice: _sellingPrice,
         isActive: _isActive,
+        stockQuantity: widget.existingProduct?.stockQuantity ?? 0,
+        lowStockThreshold: widget.existingProduct?.lowStockThreshold ?? 10,
+        createdAt: widget.existingProduct?.createdAt,
       );
 
       if (_isEditing) {

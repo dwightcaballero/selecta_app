@@ -529,6 +529,12 @@ class SelectaProductService {
         final bool preservedIsActive = existingData != null
             ? (existingData['isActive'] as bool? ?? true)
             : true;
+        final int preservedStockQuantity = existingData != null
+            ? ((existingData['stockQuantity'] as num?)?.toInt() ?? 0)
+            : 0;
+        final int preservedLowStockThreshold = existingData != null
+            ? ((existingData['lowStockThreshold'] as num?)?.toInt() ?? 10)
+            : 10;
         final String preservedItemCode = existingData != null
             ? (existingData['itemCode'] as String? ?? '')
             : '';
@@ -562,6 +568,8 @@ class SelectaProductService {
           buyingPrice: adminProd.buyingPrice,
           sellingPrice: adminProd.sellingPrice,
           isActive: preservedIsActive,
+          stockQuantity: preservedStockQuantity,
+          lowStockThreshold: preservedLowStockThreshold,
           itemCode: preservedItemCode,
           category: preservedCategory,
           importedAt: importedAt,

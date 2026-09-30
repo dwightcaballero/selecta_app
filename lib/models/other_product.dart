@@ -6,6 +6,8 @@ class OtherProduct {
   double buyingPrice;
   double sellingPrice;
   bool isActive;
+  int stockQuantity;
+  int lowStockThreshold;
   Timestamp? createdAt;
   Timestamp? updatedAt;
 
@@ -15,6 +17,8 @@ class OtherProduct {
     required this.buyingPrice,
     required this.sellingPrice,
     this.isActive = true,
+    this.stockQuantity = 0,
+    this.lowStockThreshold = 10,
     this.createdAt,
     this.updatedAt,
   });
@@ -25,6 +29,8 @@ class OtherProduct {
         buyingPrice: 0.0,
         sellingPrice: 0.0,
         isActive: true,
+        stockQuantity: 0,
+        lowStockThreshold: 10,
       );
 
   factory OtherProduct.fromJson(Map<String, Object?> json) {
@@ -34,6 +40,8 @@ class OtherProduct {
       buyingPrice: (json['buyingPrice'] as num?)?.toDouble() ?? 0.0,
       sellingPrice: (json['sellingPrice'] as num?)?.toDouble() ?? 0.0,
       isActive: json['isActive'] as bool? ?? true,
+      stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? 0,
+      lowStockThreshold: (json['lowStockThreshold'] as num?)?.toInt() ?? 10,
       createdAt: json['createdAt'] as Timestamp?,
       updatedAt: json['updatedAt'] as Timestamp?,
     );
@@ -48,6 +56,8 @@ class OtherProduct {
         buyingPrice: (data['buyingPrice'] as num?)?.toDouble() ?? 0.0,
         sellingPrice: (data['sellingPrice'] as num?)?.toDouble() ?? 0.0,
         isActive: data['isActive'] as bool? ?? true,
+        stockQuantity: (data['stockQuantity'] as num?)?.toInt() ?? 0,
+        lowStockThreshold: (data['lowStockThreshold'] as num?)?.toInt() ?? 10,
         createdAt: data['createdAt'] as Timestamp?,
         updatedAt: data['updatedAt'] as Timestamp?,
       );
@@ -61,6 +71,8 @@ class OtherProduct {
     double? buyingPrice,
     double? sellingPrice,
     bool? isActive,
+    int? stockQuantity,
+    int? lowStockThreshold,
     Timestamp? createdAt,
     Timestamp? updatedAt,
   }) {
@@ -70,6 +82,8 @@ class OtherProduct {
       buyingPrice: buyingPrice ?? this.buyingPrice,
       sellingPrice: sellingPrice ?? this.sellingPrice,
       isActive: isActive ?? this.isActive,
+      stockQuantity: stockQuantity ?? this.stockQuantity,
+      lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -82,6 +96,8 @@ class OtherProduct {
       'buyingPrice': buyingPrice,
       'sellingPrice': sellingPrice,
       'isActive': isActive,
+      'stockQuantity': stockQuantity,
+      'lowStockThreshold': lowStockThreshold,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -91,4 +107,12 @@ class OtherProduct {
 
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
+
+  bool get isOutOfStock => stockQuantity <= 0;
+
+  bool get isLowStock => stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+
+  double get stockCostValue => stockQuantity * buyingPrice;
+
+  double get stockRetailValue => stockQuantity * sellingPrice;
 }

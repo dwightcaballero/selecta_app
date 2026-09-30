@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/selecta_product_controller.dart';
 import 'package:flutter_app/models/admin_selecta_product.dart';
 import 'package:flutter_app/models/selecta_product.dart';
+import 'package:flutter_app/views/pages/sidebar/inventory_page.dart';
 import 'package:flutter_app/views/pages/sidebar/selecta_product_form_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
@@ -379,19 +380,14 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
               ]
             : [
                 IconButton(
-                  icon: _isSyncing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Badge(
-                          isLabelVisible: _hasRemoteChanges,
-                          backgroundColor: Colors.amber,
-                          child: const Icon(Icons.sync_rounded, color: Colors.white, size: 20),
-                        ),
-                  tooltip: 'Sync with Master Catalog',
-                  onPressed: _isSyncing ? null : _handleDealerSync,
+                  icon: const Icon(Icons.warehouse_outlined, color: Colors.white, size: 20),
+                  tooltip: 'Manage Inventory',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const InventoryPage()),
+                    );
+                  },
                 ),
               ],
       ),
@@ -746,15 +742,25 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    product.productName,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13.5,
-                      color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          product.productName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13.5,
+                            color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isActive) ...[
+                        const SizedBox(width: 6),
+                        _buildStockBadge(product, colorScheme),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -837,6 +843,33 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
     );
   }
 
+  Widget _buildStockBadge(SelectaProduct product, ColorScheme colorScheme) {
+    final Color badgeColor = product.isOutOfStock
+        ? colorScheme.error
+        : product.isLowStock
+            ? const Color(0xFFD97706)
+            : const Color(0xFF15803D);
+    final String label = product.isOutOfStock
+        ? 'Out: 0'
+        : 'Stock: ${product.stockQuantity}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: badgeColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.bold,
+          color: badgeColor,
+        ),
+      ),
+    );
+  }
+
   Widget _buildProductImage(String imageUrl, bool isActive) {
     return CachedProductImage(imageUrl: imageUrl, isActive: isActive);
   }
@@ -844,8 +877,8 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
   Widget _buildEmptyState() {
     final colorScheme = Theme.of(context).colorScheme;
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -924,8 +957,8 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
 
   Widget _buildNoResultsState() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

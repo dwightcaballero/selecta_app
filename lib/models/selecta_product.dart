@@ -10,6 +10,8 @@ class SelectaProduct {
   final double sellingPrice;
   final String category;
   final bool isActive;
+  final int stockQuantity;
+  final int lowStockThreshold;
   final Timestamp? importedAt;
   final Timestamp? updatedAt;
 
@@ -22,6 +24,8 @@ class SelectaProduct {
     this.sellingPrice = 0.0,
     required this.category,
     this.isActive = true,
+    this.stockQuantity = 0,
+    this.lowStockThreshold = 10,
     this.importedAt,
     this.updatedAt,
   });
@@ -36,6 +40,18 @@ class SelectaProduct {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
+  /// True when stock is 0 or less.
+  bool get isOutOfStock => stockQuantity <= 0;
+
+  /// True when stock is positive but at or below [lowStockThreshold].
+  bool get isLowStock => stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+
+  /// Total inventory value at buying cost.
+  double get stockCostValue => stockQuantity * buyingPrice;
+
+  /// Total inventory value at selling price.
+  double get stockRetailValue => stockQuantity * sellingPrice;
+
   static SelectaProduct empty() => const SelectaProduct(
         id: '',
         productName: '',
@@ -45,6 +61,8 @@ class SelectaProduct {
         sellingPrice: 0.0,
         category: '',
         isActive: true,
+        stockQuantity: 0,
+        lowStockThreshold: 10,
       );
 
   factory SelectaProduct.fromJson(String id, Map<String, Object?> json) {
@@ -61,6 +79,8 @@ class SelectaProduct {
       sellingPrice: sellingPrice,
       category: json['category'] as String? ?? '',
       isActive: json['isActive'] as bool? ?? true,
+      stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? 0,
+      lowStockThreshold: (json['lowStockThreshold'] as num?)?.toInt() ?? 10,
       importedAt: json['importedAt'] as Timestamp?,
       updatedAt: json['updatedAt'] as Timestamp?,
     );
@@ -82,6 +102,8 @@ class SelectaProduct {
     double? sellingPrice,
     String? category,
     bool? isActive,
+    int? stockQuantity,
+    int? lowStockThreshold,
     Timestamp? importedAt,
     Timestamp? updatedAt,
   }) {
@@ -94,13 +116,15 @@ class SelectaProduct {
       sellingPrice: sellingPrice ?? this.sellingPrice,
       category: category ?? this.category,
       isActive: isActive ?? this.isActive,
+      stockQuantity: stockQuantity ?? this.stockQuantity,
+      lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       importedAt: importedAt ?? this.importedAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
   /// Creates or updates a dealer's [SelectaProduct] from the master [AdminSelectaProduct],
-  /// preserving the dealer's local [isActive] status if already present.
+  /// preserving the dealer's local [isActive] status and stock levels if already present.
   factory SelectaProduct.fromAdminProduct({
     required String id,
     required String productName,
@@ -108,6 +132,8 @@ class SelectaProduct {
     required double buyingPrice,
     required double sellingPrice,
     bool isActive = true,
+    int stockQuantity = 0,
+    int lowStockThreshold = 10,
     String itemCode = '',
     String category = '',
     Timestamp? importedAt,
@@ -122,6 +148,8 @@ class SelectaProduct {
       sellingPrice: sellingPrice,
       category: category,
       isActive: isActive,
+      stockQuantity: stockQuantity,
+      lowStockThreshold: lowStockThreshold,
       importedAt: importedAt,
       updatedAt: updatedAt,
     );
@@ -137,6 +165,8 @@ class SelectaProduct {
       'price': sellingPrice, // backward compatibility
       'category': category,
       'isActive': isActive,
+      'stockQuantity': stockQuantity,
+      'lowStockThreshold': lowStockThreshold,
       'importedAt': importedAt,
       'updatedAt': updatedAt,
     };
