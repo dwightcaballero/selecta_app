@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/delivery_controller.dart';
@@ -6,13 +5,11 @@ import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/data.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/delivery.dart';
+import 'package:flutter_app/views/pages/dashboard/picklist_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/audithistory_widget.dart';
+import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
-import 'package:flutter_app/views/widgets/imageviewer_page.dart';
-import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
-import 'package:image_picker/image_picker.dart';
 
 class DeliveryPage extends StatefulWidget {
   const DeliveryPage({super.key, required this.deliveryID, required this.delivery});
@@ -32,12 +29,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
   double discrepancy = 0;
   TextEditingController dropdownHapiStore = TextEditingController();
   TextEditingController dropdownStatus = TextEditingController();
-  File? image;
   bool isDealer = true;
   List<DropdownMenuEntry<String>> listDropdownStatus = [];
   List<DropdownMenuEntry<String>> listDropdownStore = [];
   String networkImagePath = '';
-  final picker = ImagePicker();
   bool sendText = false;
   String simDetails = '';
   TextEditingController txtCashAmount = TextEditingController();
@@ -85,7 +80,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           storeName: dropdownHapiStore.text,
           orderAmountText: txtOrderAmount.text,
           selectedDate: _selectedDate,
-          imageFile: image,
+          imageFile: null,
           placements: listPlacement,
           placementId: placementID,
           sendText: sendText,
@@ -192,7 +187,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           onlineAmountText: txtOnlineAmount.text,
           creditAmountText: txtCreditAmount.text,
           returnAmountText: txtReturnAmount.text,
-          imageFile: image,
+          imageFile: null,
           networkImagePath: networkImagePath,
         );
 
@@ -264,13 +259,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
     );
   }
 
-  void scanDocs(File? scannedImage) {
-    setState(() {
-      networkImagePath = '';
-      scannedImage == null ? image = null : image = scannedImage;
-    });
-  }
-
   void onStoreSelected() async {
     txtSMS.text = _controller.generateSmsMessage(storeName: dropdownHapiStore.text, formattedOrderAmount: txtOrderAmount.text);
 
@@ -306,13 +294,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                  child: Icon(icon, size: 18, color: colorScheme.primary),
+                  child: Icon(icon, size: 20, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -353,7 +341,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   Widget _buildDeliveryStatusSelector() {
-    String currentStatus = dropdownStatus.text.isNotEmpty ? dropdownStatus.text : DeliveryStatus.pending;
+    String rawStatus = dropdownStatus.text.isNotEmpty ? dropdownStatus.text : DeliveryStatus.pending;
+    String currentStatus = rawStatus == DeliveryStatus.pendingPicklist ? DeliveryStatus.pending : rawStatus;
     final colorScheme = Theme.of(context).colorScheme;
 
     return Column(
@@ -361,35 +350,40 @@ class _DeliveryPageState extends State<DeliveryPage> {
       children: [
         Text(
           'Delivery Status',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
           child: SegmentedButton<String>(
             showSelectedIcon: false,
             style: SegmentedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             segments: [
               ButtonSegment<String>(
                 value: DeliveryStatus.pending,
-                label: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(DeliveryStatus.pending, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                label: const Text(
+                  'For Delivery',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 icon: Icon(
-                  Icons.pending_actions,
+                  Icons.local_shipping_outlined,
                   size: 18,
                   color: currentStatus == DeliveryStatus.pending ? Colors.orange.shade800 : colorScheme.onSurfaceVariant,
                 ),
               ),
               ButtonSegment<String>(
                 value: DeliveryStatus.delivered,
-                label: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(DeliveryStatus.delivered, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                label: const Text(
+                  DeliveryStatus.delivered,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 icon: Icon(
                   Icons.check_circle_outline,
@@ -399,9 +393,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ),
               ButtonSegment<String>(
                 value: DeliveryStatus.returned,
-                label: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(DeliveryStatus.returned, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                label: const Text(
+                  DeliveryStatus.returned,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 ),
                 icon: Icon(
                   Icons.assignment_return_outlined,
@@ -490,11 +486,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
         autovalidateMode: AutovalidateMode.onUnfocus,
         onChanged: (_) => computeDiscrepancy(),
+        style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w700),
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(prefixIcon, size: 20, color: iconColor ?? colorScheme.primary),
+          labelStyle: TextStyle(fontSize: 15, color: colorScheme.onSurfaceVariant),
+          prefixIcon: Icon(prefixIcon, size: 22, color: iconColor ?? colorScheme.primary),
           prefixText: '₱ ',
-          prefixStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          prefixStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16.5),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         ),
@@ -522,17 +520,17 @@ class _DeliveryPageState extends State<DeliveryPage> {
         ),
         child: Row(
           children: [
-            Icon(Icons.calendar_month_outlined, size: 20, color: colorScheme.primary),
+            Icon(Icons.calendar_month_outlined, size: 22, color: colorScheme.primary),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                Text(Helperfunctions.formatDateForDisplay(selectedDate), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                Text(label, style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                Text(Helperfunctions.formatDateForDisplay(selectedDate), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               ],
             ),
             const Spacer(),
-            Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.primary),
+            Icon(Icons.edit_calendar_outlined, size: 20, color: colorScheme.primary),
           ],
         ),
       ),
@@ -546,11 +544,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
       children: [
         Row(
           children: [
-            Icon(Icons.bolt, size: 16, color: Colors.amber[800]),
+            Icon(Icons.bolt, size: 18, color: Colors.amber[800]),
             const SizedBox(width: 4),
             Text(
               'Quick-Fill Total Order:',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -561,23 +559,23 @@ class _DeliveryPageState extends State<DeliveryPage> {
             spacing: 8,
             children: [
               ActionChip(
-                avatar: const Icon(Icons.payments_outlined, size: 16),
-                label: const Text('Full Cash'),
+                avatar: const Icon(Icons.payments_outlined, size: 18),
+                label: const Text('Full Cash', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                 onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'cash'),
               ),
               ActionChip(
-                avatar: const Icon(Icons.account_balance_outlined, size: 16),
-                label: const Text('Full Online'),
+                avatar: const Icon(Icons.account_balance_outlined, size: 18),
+                label: const Text('Full Online', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                 onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'online'),
               ),
               ActionChip(
-                avatar: const Icon(Icons.credit_card_outlined, size: 16),
-                label: const Text('Full Credit'),
+                avatar: const Icon(Icons.credit_card_outlined, size: 18),
+                label: const Text('Full Credit', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                 onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'credit'),
               ),
               ActionChip(
-                avatar: const Icon(Icons.restart_alt, size: 16),
-                label: const Text('Clear All'),
+                avatar: const Icon(Icons.restart_alt, size: 18),
+                label: const Text('Clear All', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                 onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'clear'),
               ),
             ],
@@ -633,24 +631,24 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Total Accounted', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                    Text('Total Accounted', style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 2),
                     Text(
                       Helperfunctions.formatDoubleAmountForDisplay(totalCollected),
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17.5),
                     ),
                   ],
                 ),
               ),
-              Container(height: 32, width: 1, color: colorScheme.outlineVariant),
+              Container(height: 34, width: 1, color: colorScheme.outlineVariant),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Target Order Amount', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                    Text('Target Order Amount', style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 2),
-                    Text(Helperfunctions.formatDoubleAmountForDisplay(orderAmt), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(Helperfunctions.formatDoubleAmountForDisplay(orderAmt), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17.5)),
                   ],
                 ),
               ),
@@ -663,7 +661,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             children: [
               Row(
                 children: [
-                  Icon(isBalanced ? Icons.check_circle : (isOver ? Icons.error_outline : Icons.warning_amber_rounded), size: 20, color: badgeColor),
+                  Icon(isBalanced ? Icons.check_circle : (isOver ? Icons.error_outline : Icons.warning_amber_rounded), size: 22, color: badgeColor),
                   const SizedBox(width: 6),
                   Text(
                     isBalanced
@@ -671,14 +669,14 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         : (isOver
                               ? 'Over by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'
                               : 'Short by ${Helperfunctions.formatDoubleAmountForDisplay(discrepancy.abs())}'),
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: badgeColor),
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15.5, color: badgeColor),
                   ),
                 ],
               ),
               if (!isBalanced)
                 Text(
                   isOver ? 'Overpaid' : 'Unsettled',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: badgeColor),
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: badgeColor),
                 ),
             ],
           ),
@@ -718,10 +716,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
       keyboardType: TextInputType.multiline,
       minLines: minLines,
       maxLines: null,
+      style: const TextStyle(fontSize: 15.5),
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: TextStyle(fontSize: 15, color: colorScheme.onSurfaceVariant),
         alignLabelWithHint: true,
-        prefixIcon: Icon(prefixIcon, size: 20, color: colorScheme.primary),
+        prefixIcon: Icon(prefixIcon, size: 22, color: colorScheme.primary),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
@@ -730,216 +730,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
         if (isRequired && (value == null || value.trim().isEmpty)) return '$label should not be blank';
         return null;
       },
-    );
-  }
-
-  Widget _buildReceiptCard() {
-    final colorScheme = Theme.of(context).colorScheme;
-    bool hasImageData = image != null || networkImagePath.isNotEmpty;
-
-    Future<void> startScan() async {
-      ImageScanResult? scannedData;
-      try {
-        scannedData = await FlutterDocScanner().getScannedDocumentAsImages(page: 1);
-      } on PlatformException catch (e) {
-        scannedData = null;
-        if (mounted) {
-          ShowMessage.error(context, e.message ?? 'There was an error upon scanning a document');
-        }
-      }
-
-      if (scannedData != null && scannedData.images.isNotEmpty) {
-        String filepath = scannedData.images.first.replaceFirst('file://', '');
-        scanDocs(File(filepath.toString()));
-      }
-    }
-
-    Future<void> pickFromGallery() async {
-      try {
-        final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
-        if (pickedFile != null) {
-          scanDocs(File(pickedFile.path));
-        }
-      } catch (e) {
-        if (mounted) {
-          ShowMessage.error(context, 'Failed to pick image: $e');
-        }
-      }
-    }
-
-    void showImageSourceSelector() {
-      showModalBottomSheet(
-        context: context,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-        builder: (ctx) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
-                ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
-                    child: Icon(Icons.document_scanner_outlined, color: colorScheme.primary),
-                  ),
-                  title: const Text('Scan Document / Receipt', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Automatically crop and enhance document'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    startScan();
-                  },
-                ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
-                    child: Icon(Icons.photo_library_outlined, color: colorScheme.primary),
-                  ),
-                  title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Select a photo from device storage'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    pickFromGallery();
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return _buildSectionCard(
-      title: 'Receipt & Documents',
-      icon: Icons.receipt_long_outlined,
-      child: hasImageData
-          ? Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colorScheme.outlineVariant),
-              ),
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: InkWell(
-                      onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
-                      child: Container(
-                        height: 200,
-                        width: double.infinity,
-                        decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10)),
-                        child: image != null
-                            ? Image.file(image!, fit: BoxFit.cover)
-                            : Image.network(
-                                networkImagePath,
-                                fit: BoxFit.cover,
-                                loadingBuilder: (context, child, loadingProgress) {
-                                  if (loadingProgress == null) return child;
-                                  return const Center(child: CircularProgressIndicator());
-                                },
-                                errorBuilder: (_, _, _) => Container(
-                                  height: 200,
-                                  color: colorScheme.surfaceContainerHighest,
-                                  alignment: Alignment.center,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.broken_image_outlined, size: 36, color: colorScheme.onSurfaceVariant),
-                                      const SizedBox(height: 4),
-                                      Text('Unable to load receipt', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: image, networkImagePath: networkImagePath)),
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          icon: const Icon(Icons.fullscreen, size: 16),
-                          label: const Text('View', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                        ),
-                      ),
-                      if (isDealer) ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: showImageSourceSelector,
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.replay, size: 16),
-                            label: const Text('Retake', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => scanDocs(null),
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                              foregroundColor: Colors.red.shade700,
-                              side: BorderSide(color: Colors.red.shade300),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.delete_outline, size: 16),
-                            label: const Text('Delete', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
-            )
-          : InkWell(
-              onTap: (isDealer && !isSalesmanLocked) ? showImageSourceSelector : null,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: colorScheme.outlineVariant, width: 1.2),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
-                      child: Icon(Icons.document_scanner_outlined, size: 32, color: colorScheme.primary),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text('Tap to scan or attach receipt', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text('Scan receipt or choose from gallery', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
-                  ],
-                ),
-              ),
-            ),
     );
   }
 
@@ -959,8 +749,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
             ),
             child: SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Send Text Message?', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-              subtitle: const Text('Notify store contact about the pending order', style: TextStyle(fontSize: 12)),
+              title: const Text('Send Text Message?', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15.5)),
+              subtitle: const Text('Notify store contact about the pending order', style: TextStyle(fontSize: 13.5)),
               value: sendText,
               onChanged: isSalesmanLocked ? null : (val) => setState(() => sendText = val),
             ),
@@ -1017,14 +807,14 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 icon: Icon(isSalesmanLocked ? Icons.lock_outline : Icons.save_outlined),
                 label: Text(
                   isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Save Delivery Record',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
                 ),
               )
             : Row(
                 children: [
                   if (isDealer) ...[
                     Expanded(
-                      flex: 1,
+                      flex: 2,
                       child: OutlinedButton.icon(
                         onPressed: () async {
                           final confirmed = await ShowMessage.confirm(
@@ -1038,19 +828,28 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           if (confirmed) onDelete();
                         },
                         style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           minimumSize: const Size(0, 50.0),
                           foregroundColor: Colors.red.shade700,
                           side: BorderSide(color: Colors.red.shade300, width: 1.2),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         icon: const Icon(Icons.delete_outline, size: 20),
-                        label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Delete',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                   ],
                   Expanded(
-                    flex: isDealer ? 2 : 1,
+                    flex: isDealer ? 3 : 1,
                     child: FilledButton.icon(
                       onPressed: isSalesmanLocked
                           ? null
@@ -1065,13 +864,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
                               if (confirmed) onUpdate();
                             },
                       style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
                         minimumSize: const Size(0, 50.0),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      icon: Icon(isSalesmanLocked ? Icons.lock_outline : Icons.check_circle_outline, size: 20),
-                      label: Text(
-                        isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Update Delivery',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      icon: Icon(isSalesmanLocked ? Icons.lock_outline : Icons.check_circle_outline, size: 22),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Update Delivery',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
                   ),
@@ -1097,7 +902,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         ),
         child: Text(
           '$placedCount/12 placed',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: placedCount == 12 ? colorScheme.primary : colorScheme.onSurfaceVariant),
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: placedCount == 12 ? colorScheme.primary : colorScheme.onSurfaceVariant),
         ),
       ),
       child: Column(
@@ -1134,8 +939,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       visualDensity: VisualDensity.compact,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
                     ),
-                    icon: const Icon(Icons.done_all_rounded, size: 15),
-                    label: const Text('Place All', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    icon: const Icon(Icons.done_all_rounded, size: 16),
+                    label: const Text('Place All', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ],
@@ -1187,10 +992,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       ),
                     ),
                   ),
-                  title: Text(item.itemName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  title: Text(item.itemName, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
                   subtitle: Text(
                     isLocked ? 'Locked (saved in DB)' : (isPlaced ? 'Placed and ready' : 'Pending placement'),
-                    style: TextStyle(fontSize: 12, color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                    style: TextStyle(fontSize: 13, color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant),
                   ),
                   trailing: isLocked
                       ? Icon(Icons.lock_outline, size: 20, color: colorScheme.primary)
@@ -1222,7 +1027,23 @@ class _DeliveryPageState extends State<DeliveryPage> {
     bool showRemarks = isReturned || (isDelivered && txtReturnAmount.text.isNotEmpty);
 
     return Scaffold(
-      appBar: CustomAppbar(title: 'Delivery', subtitle: widget.deliveryID.isEmpty ? 'New Record' : widget.delivery.storeName),
+      appBar: CustomAppbar(
+        title: 'Delivery',
+        subtitle: widget.deliveryID.isEmpty ? 'New Record' : widget.delivery.storeName,
+        actions: [
+          if (widget.delivery.items.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
+              tooltip: 'Digital Receipt & Thermal Print',
+              onPressed: () => DigitalReceiptDialog.show(
+                context,
+                delivery: widget.delivery,
+                deliveryId: widget.deliveryID,
+                proceedLabel: 'Close',
+              ),
+            ),
+        ],
+      ),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -1245,13 +1066,50 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
+                        Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 24),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.',
-                            style: TextStyle(fontSize: 13, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+                            style: TextStyle(fontSize: 14.5, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                if (widget.delivery.transactionStatus == DeliveryStatus.pendingPicklist && widget.deliveryID.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.fact_check_outlined, color: Color(0xFF7C3AED), size: 24),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Text(
+                            'This order is still Pending Picklist.',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ),
+                        FilledButton.tonal(
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PicklistPage(
+                                  deliveryID: widget.deliveryID,
+                                  delivery: widget.delivery,
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Text('Open Picklist', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -1276,25 +1134,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     child: showRemarks ? _buildRemarksCard() : const SizedBox.shrink(),
                   ),
 
-                // 4. Receipt & Documents Card
-                _buildReceiptCard(),
-
-                // 4b. Placement Card
+                // 4. Placement Card
                 if (widget.deliveryID.isEmpty && dropdownHapiStore.text.isNotEmpty) _buildPlacementCard(),
 
                 // 5. SMS Notification Card (when creating new delivery)
                 if (widget.deliveryID.isEmpty) _buildSmsCard(),
-
-                // 6. Audit & History Card (when updating existing record)
-                if (widget.deliveryID.isNotEmpty)
-                  AuditHistoryWidget(
-                    createdBy: widget.delivery.createdBy,
-                    createdDate: widget.delivery.createdDate,
-                    createdPage: widget.delivery.createdPage,
-                    lastUpdatedBy: widget.delivery.lastUpdatedBy,
-                    lastUpdatedDate: widget.delivery.lastupdatedDate,
-                    lastUpdatedPage: widget.delivery.lastUpdatedPage,
-                  ),
               ],
             ),
           ),

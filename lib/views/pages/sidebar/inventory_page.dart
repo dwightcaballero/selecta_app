@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/inventory_controller.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/inventory_movement.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
@@ -23,14 +24,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
   String _searchQuery = '';
   String _selectedFilter = 'All'; // 'All', 'Selecta', 'Other', 'Low Stock', 'Out of Stock'
-
-  static const List<String> _filters = [
-    'All',
-    'Selecta',
-    'Other',
-    'Low Stock',
-    'Out of Stock',
-  ];
+  bool _isSummaryExpanded = false;
 
   @override
   void dispose() {
@@ -707,41 +701,31 @@ class _InventoryPageState extends State<InventoryPage> {
 
               // ── Filter Chips ─────────────────────────────────────────────────
               SizedBox(
-                height: 40,
-                child: ListView.separated(
+                height: 38,
+                child: ListView(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _filters.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final filter = _filters[index];
-                    final isSelected = _selectedFilter == filter;
-                    return FilterChip(
-                      selected: isSelected,
-                      label: Text(
-                        filter,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
-                        ),
-                      ),
-                      selectedColor: colorScheme.primary,
-                      backgroundColor:
-                          colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                      showCheckmark: false,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(
-                          color: isSelected
-                              ? colorScheme.primary
-                              : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      onSelected: (_) => setState(() => _selectedFilter = filter),
-                    );
-                  },
+                  children: [
+                    _buildFilterChip('All', null, colorScheme),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Selecta', null, colorScheme),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Other', null, colorScheme),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(
+                      'Low Stock',
+                      summary.lowStockCount > 0 ? summary.lowStockCount : null,
+                      colorScheme,
+                      alertColor: const Color(0xFFD97706),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(
+                      'Out of Stock',
+                      summary.outOfStockCount > 0 ? summary.outOfStockCount : null,
+                      colorScheme,
+                      alertColor: colorScheme.error,
+                    ),
+                  ],
                 ),
               ),
 
@@ -792,7 +776,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
               ),
 
-              // ── Inventory List ───────────────────────────────────────────────
+              // ── Categorized Product List (Sequence copied from BookOrderPage) ─
               Expanded(
                 child: allItems.isEmpty
                     ? _buildEmptyState(
@@ -807,12 +791,32 @@ class _InventoryPageState extends State<InventoryPage> {
                             subtitle: 'Try adjusting your search or filter selection.',
                             showReset: true,
                           )
-                        : ListView.separated(
-                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 32),
-                            itemCount: filteredItems.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              return _buildInventoryCard(filteredItems[index], colorScheme);
+                        : Builder(
+                            builder: (context) {
+                              final entries = _buildGroupedEntries(filteredItems, colorScheme);
+                              return ListView.builder(
+                                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                                padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                                itemCount: entries.length,
+                                itemBuilder: (context, index) {
+                                  final entry = entries[index];
+                                  if (entry is _InventoryHeaderEntry) {
+                                    return _buildCategorySectionHeader(
+                                      title: entry.title,
+                                      count: entry.count,
+                                      icon: entry.icon,
+                                      accentColor: entry.accentColor,
+                                      colorScheme: colorScheme,
+                                    );
+                                  } else if (entry is _InventoryCardEntry) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: _buildInventoryCard(entry.item, colorScheme),
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              );
                             },
                           ),
               ),
@@ -823,131 +827,152 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
+  Widget _buildFilterChip(
+    String filter,
+    int? count,
+    ColorScheme colorScheme, {
+    Color? alertColor,
+  }) {
+    final isSelected = _selectedFilter == filter;
+    final effectiveColor = alertColor ?? colorScheme.primary;
+    final hasCount = count != null && count > 0;
+
+    return FilterChip(
+      selected: isSelected,
+      label: Text(
+        hasCount ? '$filter ($count)' : filter,
+        style: TextStyle(
+          fontSize: 12.5,
+          fontWeight: isSelected || hasCount ? FontWeight.bold : FontWeight.w500,
+          color: isSelected
+              ? colorScheme.onPrimary
+              : (hasCount ? effectiveColor : colorScheme.onSurface),
+        ),
+      ),
+      selectedColor: effectiveColor,
+      backgroundColor: hasCount && !isSelected
+          ? effectiveColor.withValues(alpha: 0.1)
+          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      showCheckmark: false,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: isSelected
+              ? effectiveColor
+              : (hasCount
+                  ? effectiveColor.withValues(alpha: 0.4)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      onSelected: (_) => setState(() => _selectedFilter = filter),
+    );
+  }
+
   Widget _buildSummaryBanner(InventorySummary summary, ColorScheme colorScheme) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricTile(
-                  label: 'Total Units',
-                  value: '${summary.totalUnits}',
-                  sublabel: '${summary.totalProducts} active items',
-                  icon: Icons.inventory_2_outlined,
-                  accent: colorScheme.primary,
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 36,
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-              Expanded(
-                child: _buildMetricTile(
-                  label: 'Cost Value',
-                  value: _currencyFormat.format(summary.totalCostValue),
-                  sublabel: 'Buying value',
-                  icon: Icons.shopping_bag_outlined,
-                  accent: const Color(0xFF2563EB),
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 36,
-                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-              Expanded(
-                child: _buildMetricTile(
-                  label: 'Retail Value',
-                  value: _currencyFormat.format(summary.totalRetailValue),
-                  sublabel: 'Selling value',
-                  icon: Icons.sell_outlined,
-                  accent: const Color(0xFF15803D),
-                ),
-              ),
-            ],
-          ),
-          if (summary.lowStockCount > 0 || summary.outOfStockCount > 0) ...[
-            const Divider(height: 16),
-            Row(
-              children: [
-                if (summary.lowStockCount > 0)
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => setState(() => _selectedFilter = 'Low Stock'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFD97706).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.warning_amber_rounded,
-                              size: 15,
-                              color: Color(0xFFD97706),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${summary.lowStockCount} Low Stock',
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFB45309),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+          InkWell(
+            onTap: () => setState(() => _isSummaryExpanded = !_isSummaryExpanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.analytics_outlined,
+                    size: 18,
+                    color: colorScheme.primary,
                   ),
-                if (summary.lowStockCount > 0 && summary.outOfStockCount > 0)
                   const SizedBox(width: 8),
-                if (summary.outOfStockCount > 0)
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => setState(() => _selectedFilter = 'Out of Stock'),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: colorScheme.error.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline_rounded,
-                              size: 15,
-                              color: colorScheme.error,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${summary.outOfStockCount} Out of Stock',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.bold,
-                                color: colorScheme.error,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                  Text(
+                    'Overview',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
                     ),
                   ),
-              ],
+                  const SizedBox(width: 8),
+                  Text('•', style: TextStyle(color: colorScheme.outline)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${summary.totalUnits} units  •  Cost: ${_currencyFormat.format(summary.totalCostValue)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Icon(
+                    _isSummaryExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 20,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isSummaryExpanded) ...[
+            Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildMetricTile(
+                      label: 'Total Units',
+                      value: '${summary.totalUnits}',
+                      sublabel: summary.totalReservedUnits > 0
+                          ? '${summary.totalAvailableUnits} avail • ${summary.totalReservedUnits} reserved'
+                          : '${summary.totalProducts} active items',
+                      icon: Icons.inventory_2_outlined,
+                      accent: colorScheme.primary,
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 36,
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                  Expanded(
+                    child: _buildMetricTile(
+                      label: 'Cost Value',
+                      value: _currencyFormat.format(summary.totalCostValue),
+                      sublabel: 'Buying value',
+                      icon: Icons.shopping_bag_outlined,
+                      accent: const Color(0xFF2563EB),
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 36,
+                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                  Expanded(
+                    child: _buildMetricTile(
+                      label: 'Retail Value',
+                      value: _currencyFormat.format(summary.totalRetailValue),
+                      sublabel: 'Selling value',
+                      icon: Icons.sell_outlined,
+                      accent: const Color(0xFF15803D),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ],
@@ -1003,89 +1028,269 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildInventoryCard(InventoryItem item, ColorScheme colorScheme) {
-    final Color statusColor;
-    final String statusLabel;
+  int _compareProducts(InventoryItem a, InventoryItem b) {
+    return Helperfunctions.compareBySrpAndName(
+      nameA: a.productName,
+      priceA: a.sellingPrice,
+      nameB: b.productName,
+      priceB: b.sellingPrice,
+    );
+  }
 
-    if (item.isOutOfStock) {
-      statusColor = colorScheme.error;
-      statusLabel = 'Out of Stock';
-    } else if (item.isLowStock) {
-      statusColor = const Color(0xFFD97706);
-      statusLabel = 'Low Stock';
-    } else {
-      statusColor = const Color(0xFF15803D);
-      statusLabel = 'In Stock';
+  Widget _buildCategorySectionHeader({
+    required String title,
+    required int count,
+    required IconData icon,
+    required Color accentColor,
+    required ColorScheme colorScheme,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accentColor.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: accentColor),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 16.5,
+                fontWeight: FontWeight.w800,
+                color: accentColor,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+            decoration: BoxDecoration(
+              color: accentColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$count ${count == 1 ? 'item' : 'items'}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<_InventoryListEntry> _buildGroupedEntries(
+    List<InventoryItem> filtered,
+    ColorScheme colorScheme,
+  ) {
+    final selectaFiltered = filtered
+        .where((i) => i.source == InventoryProductSource.selecta)
+        .toList()
+      ..sort(_compareProducts);
+    final otherFiltered = filtered
+        .where((i) => i.source != InventoryProductSource.selecta)
+        .toList()
+      ..sort(_compareProducts);
+
+    final caseProducts = selectaFiltered
+        .where((i) => i.category.trim().toLowerCase().contains('case'))
+        .toList();
+    final pieceProducts = selectaFiltered
+        .where((i) => !i.category.trim().toLowerCase().contains('case'))
+        .toList();
+
+    final entries = <_InventoryListEntry>[];
+
+    // 1. Selecta: By Case
+    if (caseProducts.isNotEmpty) {
+      entries.add(
+        _InventoryHeaderEntry(
+          title: 'By Case',
+          count: caseProducts.length,
+          icon: Icons.all_inbox_rounded,
+          accentColor: const Color(0xFFD97706),
+        ),
+      );
+      for (final p in caseProducts) {
+        entries.add(_InventoryCardEntry(p));
+      }
     }
+
+    // 2. Selecta: By Piece
+    if (pieceProducts.isNotEmpty) {
+      entries.add(
+        _InventoryHeaderEntry(
+          title: 'By Piece',
+          count: pieceProducts.length,
+          icon: Icons.icecream_outlined,
+          accentColor: colorScheme.primary,
+        ),
+      );
+      for (final p in pieceProducts) {
+        entries.add(_InventoryCardEntry(p));
+      }
+    }
+
+    // 3. Other Products at the very bottom
+    if (otherFiltered.isNotEmpty) {
+      entries.add(
+        _InventoryHeaderEntry(
+          title: 'Other Products',
+          count: otherFiltered.length,
+          icon: Icons.inventory_2_outlined,
+          accentColor: const Color(0xFF475569),
+        ),
+      );
+      for (final p in otherFiltered) {
+        entries.add(_InventoryCardEntry(p));
+      }
+    }
+
+    return entries;
+  }
+
+  Widget _buildInventoryCard(InventoryItem item, ColorScheme colorScheme) {
+    final bool isLow = item.isLowStock;
+    final bool isOut = item.isOutOfStock;
+    final Color stockColor = isOut
+        ? colorScheme.error
+        : (isLow ? const Color(0xFFD97706) : colorScheme.onSurface);
 
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      color: colorScheme.surface,
+      color: isOut
+          ? colorScheme.error.withValues(alpha: 0.03)
+          : colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(
+          color: isOut
+              ? colorScheme.error.withValues(alpha: 0.35)
+              : (isLow
+                  ? const Color(0xFFD97706).withValues(alpha: 0.4)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _showAdjustStockSheet(item),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              CachedProductImage(imageUrl: item.imageUrl, isActive: true),
+              CachedProductImage(
+                imageUrl: item.imageUrl,
+                isActive: !isOut,
+                size: 54,
+                borderRadius: 10,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        _buildSourceChip(item.source, colorScheme),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            statusLabel,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: statusColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
                     Text(
                       item.productName,
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13.5,
-                        color: colorScheme.onSurface,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w700,
+                        color: isOut ? colorScheme.onSurfaceVariant : colorScheme.onSurface,
+                        height: 1.25,
                       ),
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Buy: ${_currencyFormat.format(item.buyingPrice)}  •  '
-                      'Sell: ${_currencyFormat.format(item.sellingPrice)}',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 5),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 3,
+                      children: [
+                        Text(
+                          'Sell: ${_currencyFormat.format(item.sellingPrice)}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        Text('•', style: TextStyle(fontSize: 12, color: colorScheme.outline)),
+                        Text(
+                          'Buy: ${_currencyFormat.format(item.buyingPrice)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (isOut) ...[
+                          Text('•', style: TextStyle(fontSize: 12, color: colorScheme.outline)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: colorScheme.error.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'Out of Stock',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        ] else if (isLow) ...[
+                          Text('•', style: TextStyle(fontSize: 12, color: colorScheme.outline)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD97706).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Low Stock',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFB45309),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
+                    if (item.reservedQuantity > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '${item.availableQuantity} available • ${item.reservedQuantity} in pending picklist',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF7C3AED),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               // Quick Stepper Controls (-  Qty  +)
               Container(
                 decoration: BoxDecoration(
@@ -1109,7 +1314,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                         child: Icon(
                           Icons.remove_rounded,
-                          size: 16,
+                          size: 18,
                           color: item.stockQuantity > 0
                               ? colorScheme.onSurface
                               : colorScheme.outlineVariant,
@@ -1117,15 +1322,15 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                     ),
                     Container(
-                      constraints: const BoxConstraints(minWidth: 34),
+                      constraints: const BoxConstraints(minWidth: 36),
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                       alignment: Alignment.center,
                       child: Text(
                         '${item.stockQuantity}',
                         style: TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.bold,
-                          color: statusColor,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w800,
+                          color: stockColor,
                         ),
                       ),
                     ),
@@ -1138,7 +1343,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                         child: Icon(
                           Icons.add_rounded,
-                          size: 16,
+                          size: 18,
                           color: colorScheme.primary,
                         ),
                       ),
@@ -1221,4 +1426,24 @@ class _InventoryPageState extends State<InventoryPage> {
       ),
     );
   }
+}
+
+sealed class _InventoryListEntry {}
+
+class _InventoryHeaderEntry extends _InventoryListEntry {
+  _InventoryHeaderEntry({
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.accentColor,
+  });
+  final String title;
+  final int count;
+  final IconData icon;
+  final Color accentColor;
+}
+
+class _InventoryCardEntry extends _InventoryListEntry {
+  _InventoryCardEntry(this.item);
+  final InventoryItem item;
 }

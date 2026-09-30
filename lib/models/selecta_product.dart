@@ -9,8 +9,10 @@ class SelectaProduct {
   final double buyingPrice;
   final double sellingPrice;
   final String category;
+  final String tag;
   final bool isActive;
   final int stockQuantity;
+  final int reservedQuantity;
   final int lowStockThreshold;
   final Timestamp? importedAt;
   final Timestamp? updatedAt;
@@ -23,8 +25,10 @@ class SelectaProduct {
     this.buyingPrice = 0.0,
     this.sellingPrice = 0.0,
     required this.category,
+    this.tag = '',
     this.isActive = true,
     this.stockQuantity = 0,
+    this.reservedQuantity = 0,
     this.lowStockThreshold = 10,
     this.importedAt,
     this.updatedAt,
@@ -40,8 +44,15 @@ class SelectaProduct {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
-  /// True when stock is 0 or less.
+  /// Available stock after subtracting floating/reserved orders.
+  int get availableQuantity =>
+      (stockQuantity - reservedQuantity) < 0 ? 0 : (stockQuantity - reservedQuantity);
+
+  /// True when physical stock is 0 or less.
   bool get isOutOfStock => stockQuantity <= 0;
+
+  /// True when available (unreserved) stock is 0 or less.
+  bool get isAvailableOutOfStock => availableQuantity <= 0;
 
   /// True when stock is positive but at or below [lowStockThreshold].
   bool get isLowStock => stockQuantity > 0 && stockQuantity <= lowStockThreshold;
@@ -60,8 +71,10 @@ class SelectaProduct {
         buyingPrice: 0.0,
         sellingPrice: 0.0,
         category: '',
+        tag: '',
         isActive: true,
         stockQuantity: 0,
+        reservedQuantity: 0,
         lowStockThreshold: 10,
       );
 
@@ -70,6 +83,10 @@ class SelectaProduct {
     final buyingPrice = (json['buyingPrice'] as num?)?.toDouble() ?? legacyPrice;
     final sellingPrice = (json['sellingPrice'] as num?)?.toDouble() ?? legacyPrice;
 
+    final rawCategory = (json['category'] as String? ?? '').trim();
+    final isCase = rawCategory.toLowerCase().contains('case');
+    final category = isCase ? 'By Case' : 'By Piece';
+
     return SelectaProduct(
       id: id,
       productName: json['productName'] as String? ?? '',
@@ -77,9 +94,11 @@ class SelectaProduct {
       itemCode: json['itemCode'] as String? ?? '',
       buyingPrice: buyingPrice,
       sellingPrice: sellingPrice,
-      category: json['category'] as String? ?? '',
+      category: category,
+      tag: (json['tag'] as String? ?? '').trim(),
       isActive: json['isActive'] as bool? ?? true,
       stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? 0,
+      reservedQuantity: (json['reservedQuantity'] as num?)?.toInt() ?? 0,
       lowStockThreshold: (json['lowStockThreshold'] as num?)?.toInt() ?? 10,
       importedAt: json['importedAt'] as Timestamp?,
       updatedAt: json['updatedAt'] as Timestamp?,
@@ -101,8 +120,10 @@ class SelectaProduct {
     double? buyingPrice,
     double? sellingPrice,
     String? category,
+    String? tag,
     bool? isActive,
     int? stockQuantity,
+    int? reservedQuantity,
     int? lowStockThreshold,
     Timestamp? importedAt,
     Timestamp? updatedAt,
@@ -115,8 +136,10 @@ class SelectaProduct {
       buyingPrice: buyingPrice ?? this.buyingPrice,
       sellingPrice: sellingPrice ?? this.sellingPrice,
       category: category ?? this.category,
+      tag: tag ?? this.tag,
       isActive: isActive ?? this.isActive,
       stockQuantity: stockQuantity ?? this.stockQuantity,
+      reservedQuantity: reservedQuantity ?? this.reservedQuantity,
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       importedAt: importedAt ?? this.importedAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -133,9 +156,11 @@ class SelectaProduct {
     required double sellingPrice,
     bool isActive = true,
     int stockQuantity = 0,
+    int reservedQuantity = 0,
     int lowStockThreshold = 10,
     String itemCode = '',
     String category = '',
+    String tag = '',
     Timestamp? importedAt,
     Timestamp? updatedAt,
   }) {
@@ -147,8 +172,10 @@ class SelectaProduct {
       buyingPrice: buyingPrice,
       sellingPrice: sellingPrice,
       category: category,
+      tag: tag,
       isActive: isActive,
       stockQuantity: stockQuantity,
+      reservedQuantity: reservedQuantity,
       lowStockThreshold: lowStockThreshold,
       importedAt: importedAt,
       updatedAt: updatedAt,
@@ -164,8 +191,10 @@ class SelectaProduct {
       'sellingPrice': sellingPrice,
       'price': sellingPrice, // backward compatibility
       'category': category,
+      'tag': tag,
       'isActive': isActive,
       'stockQuantity': stockQuantity,
+      'reservedQuantity': reservedQuantity,
       'lowStockThreshold': lowStockThreshold,
       'importedAt': importedAt,
       'updatedAt': updatedAt,

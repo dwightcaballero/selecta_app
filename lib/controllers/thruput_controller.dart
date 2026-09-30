@@ -30,7 +30,8 @@ class ThruputController {
   static const double targetThruput = 8000.0;
 
   /// Calculates all derived throughput metrics safely from a given [DashboardDTO].
-  ThruputMetrics calculateMetrics(DashboardDTO dashboardDTO) {
+  ThruputMetrics calculateMetrics(DashboardDTO dashboardDTO, {double? target}) {
+    final effectiveTarget = target ?? targetThruput;
     // Prevent NaN if buyingCount is 0
     final safeThruput = dashboardDTO.buyingThruput.isNaN ? 0.0 : dashboardDTO.buyingThruput;
     final totalStores = dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount;
@@ -43,10 +44,10 @@ class ThruputController {
         ? 0.0
         : dashboardDTO.totaltransactionCount / dashboardDTO.buyingCount;
 
-    final remainingThruput = (targetThruput - safeThruput).clamp(0.0, targetThruput);
-    final progress = (targetThruput == 0 ? 0.0 : (safeThruput / targetThruput)).clamp(0.0, 1.0);
-    final isOnTarget = safeThruput >= targetThruput;
-    final surplus = (safeThruput - targetThruput).clamp(0.0, double.infinity);
+    final remainingThruput = (effectiveTarget - safeThruput).clamp(0.0, effectiveTarget);
+    final progress = (effectiveTarget == 0 ? 0.0 : (safeThruput / effectiveTarget)).clamp(0.0, 1.0);
+    final isOnTarget = safeThruput >= effectiveTarget;
+    final surplus = (safeThruput - effectiveTarget).clamp(0.0, double.infinity);
 
     return ThruputMetrics(
       safeThruput: safeThruput,

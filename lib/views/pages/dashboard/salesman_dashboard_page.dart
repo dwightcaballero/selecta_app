@@ -3,9 +3,11 @@ import 'package:flutter_app/controllers/dashboard_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
 import 'package:flutter_app/models/users.dart';
+import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
 import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/picklist_list_page.dart';
 import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
@@ -34,6 +36,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
 
   late final Stream<int> _tasksCountStream;
   late final Stream<int> _merchBlitzCountStream;
+  late final Stream<int> _pendingPicklistsCountStream;
   Users? _currentUser;
   DashboardDTO _dashboardDTO = DashboardDTO.empty();
   bool _isLoading = true;
@@ -45,6 +48,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     super.initState();
     _tasksCountStream = _controller.getTasksPendingAndOverdueCountStream();
     _merchBlitzCountStream = _controller.getMerchBlitzCountStream();
+    _pendingPicklistsCountStream = _controller.getPendingPicklistsCountStream();
     _loadInitialData();
   }
 
@@ -384,6 +388,24 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           ),
 
           // Drawer Navigation Items (Field Activities & Reports)
+          _buildDrawerItem(Icons.add_shopping_cart_rounded, 'Book Order', const BookOrderPage()),
+          StreamBuilder<int>(
+            stream: _pendingPicklistsCountStream,
+            builder: (context, snapshot) {
+              return _buildDrawerItem(
+                Icons.fact_check_outlined,
+                'Pending Picklists',
+                const PicklistListPage(),
+                badgeCount: snapshot.data ?? 0,
+              );
+            },
+          ),
+          _buildDrawerItem(
+            Icons.local_shipping_outlined,
+            'Orders & Deliveries',
+            const DeliveryListPage(),
+            badgeCount: _dashboardDTO.pendingDeliveryCount,
+          ),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
@@ -515,11 +537,35 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
 
                     const SizedBox(height: 20),
 
-                    // 2. Primary Operations Quick Access
-                    _buildSectionHeader('Operations Quick Access', 'Deliveries, scanning, tasks, and daily execution'),
+                     // 2. Primary Operations Quick Access
+                    _buildSectionHeader('Operations Quick Access', 'Book orders, picklists, deliveries, and daily execution'),
                     const SizedBox(height: 12),
                     Row(
                       children: [
+                        Expanded(
+                          child: _buildQuickAccessCard(
+                            label: 'Book Order',
+                            icon: Icons.add_shopping_cart_rounded,
+                            iconColor: const Color(0xFF059669),
+                            nextPage: const BookOrderPage(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: StreamBuilder<int>(
+                            stream: _pendingPicklistsCountStream,
+                            builder: (context, snapshot) {
+                              return _buildQuickAccessCard(
+                                label: 'Picklists',
+                                icon: Icons.fact_check_outlined,
+                                count: snapshot.data ?? 0,
+                                iconColor: const Color(0xFF7C3AED),
+                                nextPage: const PicklistListPage(),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _buildQuickAccessCard(
                             label: 'Deliveries',
@@ -529,7 +575,11 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                             nextPage: const DeliveryListPage(),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
                         Expanded(
                           child: _buildQuickAccessCard(
                             label: 'Scanning',
@@ -549,11 +599,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                             nextPage: const PjpListPage(),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
+                        const SizedBox(width: 10),
                         Expanded(
                           child: StreamBuilder<int>(
                             stream: _tasksCountStream,
@@ -568,7 +614,11 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                             },
                           ),
                         ),
-                        const SizedBox(width: 10),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
                         Expanded(
                           child: StreamBuilder<int>(
                             stream: _merchBlitzCountStream,
@@ -581,6 +631,15 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                                 nextPage: const MerchBlitzListPage(),
                               );
                             },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildQuickAccessCard(
+                            label: 'Placement',
+                            icon: Icons.grid_view_outlined,
+                            iconColor: const Color(0xFF0891B2),
+                            nextPage: const PlacementlistPage(),
                           ),
                         ),
                         const SizedBox(width: 10),

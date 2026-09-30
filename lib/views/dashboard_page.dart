@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/dashboard_controller.dart';
@@ -5,12 +6,16 @@ import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/notifiers.dart';
 import 'package:flutter_app/dto/dashboard_dto.dart';
+import 'package:flutter_app/models/configuration.dart';
 import 'package:flutter_app/models/users.dart';
+import 'package:flutter_app/services/configuration_service.dart';
+import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
 import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/creditlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/expansion_page.dart';
 import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
+import 'package:flutter_app/views/pages/dashboard/picklist_list_page.dart';
 import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
@@ -51,8 +56,11 @@ class _DashboardPageState extends State<DashboardPage> {
   late final Stream<int> _tasksCountStream;
   late final Stream<int> _merchBlitzCountStream;
   late final Stream<int> _purchaseOrdersAwaitingCountStream;
+  late final Stream<int> _pendingPicklistsCountStream;
   DashboardDTO dashboardDTO = DashboardDTO.empty();
   Users? _currentUser;
+  Configuration? _configuration;
+  StreamSubscription<Configuration?>? _configSubscription;
   bool isDealer = false;
   bool isSyncing = false;
   String lastSyncDateTime = '';
@@ -63,9 +71,23 @@ class _DashboardPageState extends State<DashboardPage> {
     _tasksCountStream = _controller.getTasksPendingAndOverdueCountStream();
     _merchBlitzCountStream = _controller.getMerchBlitzCountStream(forDealer: true);
     _purchaseOrdersAwaitingCountStream = _controller.getPurchaseOrdersAwaitingCountStream();
+    _pendingPicklistsCountStream = _controller.getPendingPicklistsCountStream();
+    _configSubscription = ConfigurationService().getConfigurationStream().listen((config) {
+      if (mounted && config != null) {
+        setState(() {
+          _configuration = config;
+        });
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       prefetchData();
     });
+  }
+
+  @override
+  void dispose() {
+    _configSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> showLoading(bool showLoading) async {
@@ -82,6 +104,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _currentUser = await _controller.getCurrentUser();
     isDealer = _currentUser?.role == BusinessRole.dealer;
     lastSyncDateTime = await DashboardController.getLastSync();
+    _configuration = await ConfigurationService().getConfiguration();
     await _syncDashboardFromSharedPreferences();
     if (mounted) setState(() {});
   }
@@ -99,6 +122,8 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       dashboardDTO = await DashboardController.getLatestDashboardData();
       lastSyncDateTime = await DashboardController.getLastSync();
+      // save in shared preferences
+      await _controller.saveDashboardData(dashboardDTO, lastSyncDateTime);
     } catch (e, s) {
       debugPrint('Error syncing dashboard: $e');
       ErrorLogService.logError(page: 'DashboardPage', action: 'Sync Dashboard Data', error: e, stackTrace: s);
@@ -340,29 +365,55 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildQuickAccessGrid() {
-    return Row(
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    return Column(
       spacing: 10,
       children: [
-        _buildQuickAccessCard(
-          label: 'Deliveries',
-          icon: Icons.local_shipping_outlined,
-          count: dashboardDTO.pendingDeliveryCount,
-          color: Theme.of(context).colorScheme.primary,
-          nextPage: const DeliveryListPage(),
+        Row(
+          spacing: 10,
+          children: [
+            _buildQuickAccessCard(label: 'Book Order', icon: Icons.add_shopping_cart_rounded, color: primaryColor, nextPage: const BookOrderPage()),
+            _buildQuickAccessCard(
+              label: 'Picklists',
+              icon: Icons.fact_check_outlined,
+              stream: _pendingPicklistsCountStream,
+              color: primaryColor,
+              nextPage: const PicklistListPage(),
+            ),
+            _buildQuickAccessCard(
+              label: 'Deliveries',
+              icon: Icons.local_shipping_outlined,
+              count: dashboardDTO.pendingDeliveryCount,
+              color: primaryColor,
+              nextPage: const DeliveryListPage(),
+            ),
+          ],
         ),
-        _buildQuickAccessCard(
-          label: 'Purchase Orders',
-          icon: Icons.assignment_outlined,
-          stream: _purchaseOrdersAwaitingCountStream,
-          color: Theme.of(context).colorScheme.primary,
-          nextPage: const PurchaseorderlistPage(),
-        ),
-        _buildQuickAccessCard(
-          label: 'Credit',
-          icon: Icons.credit_card_outlined,
-          count: dashboardDTO.unpaidCreditCount,
-          color: Theme.of(context).colorScheme.primary,
-          nextPage: const CreditlistPage(),
+        Row(
+          spacing: 10,
+          children: [
+            _buildQuickAccessCard(
+              label: 'Purchase Orders',
+              icon: Icons.assignment_outlined,
+              stream: _purchaseOrdersAwaitingCountStream,
+              color: primaryColor,
+              nextPage: const PurchaseorderlistPage(),
+            ),
+            _buildQuickAccessCard(
+              label: 'Credit',
+              icon: Icons.credit_card_outlined,
+              count: dashboardDTO.unpaidCreditCount,
+              color: primaryColor,
+              nextPage: const CreditlistPage(),
+            ),
+            _buildQuickAccessCard(
+              label: 'Returns',
+              icon: Icons.assignment_return_outlined,
+              count: dashboardDTO.returnedDeliveryCount,
+              color: primaryColor,
+              nextPage: const ReturnlistPage(),
+            ),
+          ],
         ),
       ],
     );
@@ -469,7 +520,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = _metricColor(context, 'throughput');
     double buyingThruput = isSyncing ? 0 : dashboardDTO.buyingThruput;
-    double thruputTarget = 8000;
+    double thruputTarget = _configuration?.throughputTarget ?? 8000;
     final missingThruput = (thruputTarget - buyingThruput).clamp(0.0, double.infinity);
     final percentage = thruputTarget == 0 ? 0.0 : (buyingThruput / thruputTarget);
 
@@ -477,7 +528,7 @@ class _DashboardPageState extends State<DashboardPage> {
       title: 'Throughput',
       icon: Icons.speed_outlined,
       accent: accent,
-      nextPage: ThruputPage(dashboardDTO: dashboardDTO),
+      nextPage: ThruputPage(dashboardDTO: dashboardDTO, throughputTarget: thruputTarget),
       child: Column(
         children: [
           SizedBox(
@@ -516,10 +567,12 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildPlacementCard() {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = _metricColor(context, 'placement');
-    final int totalStores = dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount;
+    final int allStores = dashboardDTO.totalHapiStores > 0 ? dashboardDTO.totalHapiStores : (dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount);
+    final double placementTargetPct = (_configuration?.placementTargetPercentage ?? 80.0) / 100.0;
     double actual = isSyncing ? 0 : dashboardDTO.totalPlacementCount.toDouble();
-    double missing = isSyncing ? 0 : (totalStores - dashboardDTO.totalPlacementCount).toDouble();
-    double target = isSyncing ? 1 : dashboardDTO.totalHapiStores.toDouble();
+    double target = isSyncing ? 1 : (allStores * placementTargetPct).roundToDouble();
+    if (target == 0 && allStores > 0) target = 1;
+    double missing = (target - actual).clamp(0.0, double.infinity);
     final percentage = target == 0 ? 0.0 : (actual / target);
 
     return _buildCardWrapper(
@@ -551,7 +604,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 8),
           _buildLegendRow('Actual', actual.toStringAsFixed(0), accent),
           _buildLegendRow('Missing', missing.toStringAsFixed(0), colorScheme.onSurfaceVariant),
-          _buildLegendRow('Target', target.toStringAsFixed(0), colorScheme.onSurface),
+          _buildLegendRow('Target (80%)', target.toStringAsFixed(0), colorScheme.onSurface),
         ],
       ),
     );
@@ -560,10 +613,13 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildBuyingCard() {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = _metricColor(context, 'buying');
-    double buyingTarget = isSyncing ? 1 : (dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount).toDouble();
+    final int allStores = dashboardDTO.totalHapiStores > 0 ? dashboardDTO.totalHapiStores : (dashboardDTO.buyingCount + dashboardDTO.nonBuyingCount);
+    final double buyingTargetPct = (_configuration?.buyingTargetPercentage ?? 80.0) / 100.0;
+    double target = isSyncing ? 1 : (allStores * buyingTargetPct).roundToDouble();
+    if (target == 0 && allStores > 0) target = 1;
     double buyingCount = isSyncing ? 0 : dashboardDTO.buyingCount.toDouble();
-    double nonBuyingCount = isSyncing ? 1 : dashboardDTO.nonBuyingCount.toDouble();
-    final percentage = buyingTarget == 0 ? 0.0 : (buyingCount / buyingTarget);
+    double missing = (target - buyingCount).clamp(0.0, double.infinity);
+    final percentage = target == 0 ? 0.0 : (buyingCount / target);
 
     return _buildCardWrapper(
       title: 'Buying Stores',
@@ -583,12 +639,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     centerSpaceRadius: 36,
                     sections: [
                       PieChartSectionData(value: buyingCount <= 0 ? 0.01 : buyingCount, color: accent, showTitle: false, radius: 14),
-                      PieChartSectionData(
-                        value: nonBuyingCount <= 0 ? 0.01 : nonBuyingCount,
-                        color: _mutedChartColor(context),
-                        showTitle: false,
-                        radius: 12,
-                      ),
+                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: _mutedChartColor(context), showTitle: false, radius: 12),
                     ],
                   ),
                 ),
@@ -598,8 +649,8 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           const SizedBox(height: 8),
           _buildLegendRow('Buying', buyingCount.toStringAsFixed(0), accent),
-          _buildLegendRow('Non-Buying', nonBuyingCount.toStringAsFixed(0), colorScheme.onSurfaceVariant),
-          _buildLegendRow('Total Stores', buyingTarget.toStringAsFixed(0), colorScheme.onSurface),
+          _buildLegendRow('Missing', missing.toStringAsFixed(0), colorScheme.onSurfaceVariant),
+          _buildLegendRow('Target (80%)', target.toStringAsFixed(0), colorScheme.onSurface),
         ],
       ),
     );
@@ -608,17 +659,17 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildSalesCard() {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = _metricColor(context, 'sales');
-    const double target = 1000000;
+    final double target = _configuration?.salesTarget ?? 1000000;
     final double sales = dashboardDTO.totalInvoiceAmount;
     final double missing = (target - sales) < 0 ? 0 : (target - sales);
-    final double percentage = target <= 0 ? 0 : (sales / target).clamp(0, 1);
+    final double percentage = target <= 0 ? 0 : (sales / target);
     final currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 0);
 
     return _buildCardWrapper(
       title: 'Sales',
       icon: Icons.attach_money,
       accent: accent,
-      nextPage: SalesPage(),
+      nextPage: SalesPage(monthlyTarget: target),
       child: Column(
         children: [
           SizedBox(
@@ -652,7 +703,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildExpansionCard() {
     final colorScheme = Theme.of(context).colorScheme;
     final accent = _metricColor(context, 'expansion');
-    const double target = 8;
+    final double target = (_configuration?.expansionTarget ?? 10).toDouble();
     double opened = isSyncing ? 0 : dashboardDTO.totalExpansionCount.toDouble();
     double missing = (target - opened).clamp(0.0, double.infinity);
     final percentage = target == 0 ? 0.0 : (opened / target);
@@ -661,7 +712,7 @@ class _DashboardPageState extends State<DashboardPage> {
       title: 'Expansion',
       icon: Icons.trending_up_outlined,
       accent: accent,
-      nextPage: const ExpansionPage(),
+      nextPage: ExpansionPage(monthlyTarget: target.toInt()),
       child: Column(
         children: [
           SizedBox(
@@ -698,7 +749,10 @@ class _DashboardPageState extends State<DashboardPage> {
     final scanned = isSyncing ? 0 : dashboardDTO.totalScanCount;
     final notScanned = isSyncing ? 0 : dashboardDTO.totalNotScannedCount;
     final total = scanned + notScanned;
-    final percentage = total == 0 ? 0.0 : scanned / total;
+    final double scanningTargetPct = (_configuration?.scanningTargetPercentage ?? 100.0) / 100.0;
+    final double target = (total * scanningTargetPct).roundToDouble();
+    final double missing = (target - scanned).clamp(0.0, double.infinity);
+    final percentage = target == 0 ? 0.0 : (scanned / target);
 
     return _buildCardWrapper(
       title: 'Scanning',
@@ -718,12 +772,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     centerSpaceRadius: 36,
                     sections: [
                       PieChartSectionData(value: scanned <= 0 ? 0.01 : scanned.toDouble(), color: accent, showTitle: false, radius: 14),
-                      PieChartSectionData(
-                        value: notScanned <= 0 ? 0.01 : notScanned.toDouble(),
-                        color: _mutedChartColor(context),
-                        showTitle: false,
-                        radius: 12,
-                      ),
+                      PieChartSectionData(value: missing <= 0 ? 0.01 : missing, color: _mutedChartColor(context), showTitle: false, radius: 12),
                     ],
                   ),
                 ),
@@ -733,8 +782,8 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           const SizedBox(height: 8),
           _buildLegendRow('Scanned', scanned.toString(), accent),
-          _buildLegendRow('Not Scanned', notScanned.toString(), colorScheme.onSurfaceVariant),
-          _buildLegendRow('Total', total.toString(), colorScheme.onSurface),
+          _buildLegendRow('Missing', missing.toStringAsFixed(0), colorScheme.onSurfaceVariant),
+          _buildLegendRow('Target (100%)', target.toStringAsFixed(0), colorScheme.onSurface),
         ],
       ),
     );
@@ -867,7 +916,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const Divider(indent: 16, endIndent: 16),
 
           // 2. KPI Section
-          _buildDrawerSectionHeader('KPI Section'),
+          _buildDrawerSectionHeader('KPI'),
           _buildDrawerItem(Icons.attach_money, 'Sales', const SalesPage()),
           _buildDrawerItem(Icons.shopping_cart_outlined, 'Buying Stores', const BuyinglistPage()),
           _buildDrawerItem(Icons.speed_outlined, 'Throughput', ThruputPage(dashboardDTO: dashboardDTO)),
@@ -878,7 +927,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const Divider(indent: 16, endIndent: 16),
 
           // 3. Settings Section
-          _buildDrawerSectionHeader('Settings Section'),
+          _buildDrawerSectionHeader('Settings'),
           _buildDrawerItem(
             Icons.sync_rounded,
             'Sync Data',
@@ -888,12 +937,9 @@ class _DashboardPageState extends State<DashboardPage> {
             },
           ),
           _buildDrawerItem(Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
-          if (isDealer)
-            _buildDrawerItem(Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
-          if (isDealer)
-            _buildDrawerItem(Icons.inventory_2_outlined, 'Selecta Products', const SelectaProductsPage()),
-          if (isDealer)
-            _buildDrawerItem(Icons.inventory_2_outlined, 'Other Products', const OtherProductsPage()),
+          if (isDealer) _buildDrawerItem(Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
+          if (isDealer) _buildDrawerItem(Icons.inventory_2_outlined, 'Selecta Products', const SelectaProductsPage()),
+          if (isDealer) _buildDrawerItem(Icons.inventory_2_outlined, 'Other Products', const OtherProductsPage()),
           _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),

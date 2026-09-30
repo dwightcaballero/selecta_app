@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/selecta_product_controller.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/admin_selecta_product.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
@@ -33,6 +34,8 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
   late final TextEditingController _nameController;
   late final TextEditingController _buyingPriceController;
   late final TextEditingController _sellingPriceController;
+  String _category = 'By Piece';
+  String _tag = ProductTag.none;
 
   File? _image;
   String _networkImagePath = '';
@@ -49,7 +52,10 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     super.initState();
     final p = widget.existingProduct;
     _nameController = TextEditingController(text: p?.productName ?? '');
-    _networkImagePath = p?.imageUrl ?? '';
+    final rawCat = (p?.category ?? '').trim();
+    final isCase = rawCat.toLowerCase() == 'by case' || rawCat.toLowerCase() == 'case';
+    _category = isCase ? 'By Case' : 'By Piece';
+    _tag = p?.tag ?? ProductTag.none;
     _buyingPriceController = TextEditingController(
       text: p != null && p.buyingPrice > 0 ? p.buyingPrice.toStringAsFixed(2) : '',
     );
@@ -163,6 +169,8 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
       imageUrl: '',
       buyingPrice: _buyingPrice,
       sellingPrice: _sellingPrice,
+      category: _category,
+      tag: _tag,
     );
 
     final errors = _controller.validateAdminProduct(tempProduct);
@@ -195,6 +203,8 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
         imageUrl: finalImageUrl,
         buyingPrice: _buyingPrice,
         sellingPrice: _sellingPrice,
+        category: _category,
+        tag: _tag,
       );
 
       if (_isEditing) {
@@ -313,6 +323,109 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
                     icon: Icons.label_outline_rounded,
                     textCapitalization: TextCapitalization.characters,
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Product name is required' : null,
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // ── Category Card (Strictly "By Piece" or "By Case") ────────
+              _buildSectionCard(
+                colorScheme: colorScheme,
+                icon: Icons.category_outlined,
+                iconColor: Colors.deepOrange,
+                title: 'Category *',
+                children: [
+                  Text(
+                    'Categorize product strictly as "By Piece" or "By Case" for order delivery receipts:',
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment<String>(
+                          value: 'By Piece',
+                          label: Text('By Piece'),
+                          icon: Icon(Icons.icecream_outlined, size: 18),
+                        ),
+                        ButtonSegment<String>(
+                          value: 'By Case',
+                          label: Text('By Case'),
+                          icon: Icon(Icons.inventory_2_outlined, size: 18),
+                        ),
+                      ],
+                      selected: {_category},
+                      onSelectionChanged: (Set<String> newSelection) {
+                        setState(() {
+                          _category = newSelection.first;
+                        });
+                      },
+                      style: SegmentedButton.styleFrom(
+                        selectedBackgroundColor: colorScheme.primary.withValues(alpha: 0.15),
+                        selectedForegroundColor: colorScheme.primary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // ── Product Tag Card (Best Seller / New Product / None) ───
+              _buildSectionCard(
+                colorScheme: colorScheme,
+                icon: Icons.local_offer_outlined,
+                iconColor: const Color(0xFFD97706),
+                title: 'Product Tag',
+                children: [
+                  Text(
+                    'Highlight this product in the catalog and placement checklists:',
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment<String>(
+                          value: ProductTag.none,
+                          label: Text('None'),
+                          icon: Icon(Icons.label_off_outlined, size: 18),
+                        ),
+                        ButtonSegment<String>(
+                          value: ProductTag.bestSeller,
+                          label: Text('Best Seller'),
+                          icon: Icon(Icons.star_rounded, size: 18, color: Color(0xFFD97706)),
+                        ),
+                        ButtonSegment<String>(
+                          value: ProductTag.newProduct,
+                          label: Text('New Product'),
+                          icon: Icon(Icons.fiber_new_rounded, size: 18, color: Color(0xFF0284C7)),
+                        ),
+                      ],
+                      selected: {_tag},
+                      onSelectionChanged: (Set<String> newSelection) {
+                        setState(() {
+                          _tag = newSelection.first;
+                        });
+                      },
+                      style: SegmentedButton.styleFrom(
+                        selectedBackgroundColor: _tag == ProductTag.bestSeller
+                            ? const Color(0xFFFEF3C7)
+                            : (_tag == ProductTag.newProduct
+                                ? const Color(0xFFE0F2FE)
+                                : colorScheme.primary.withValues(alpha: 0.15)),
+                        selectedForegroundColor: _tag == ProductTag.bestSeller
+                            ? const Color(0xFF92400E)
+                            : (_tag == ProductTag.newProduct
+                                ? const Color(0xFF0369A1)
+                                : colorScheme.primary),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
                   ),
                 ],
               ),

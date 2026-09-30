@@ -4,6 +4,7 @@ class DashboardDTO {
   int totalHapiStores;
   double buyingThruput;
   int unpaidCreditCount;
+  int pendingPicklistCount;
   int pendingDeliveryCount;
   int returnedDeliveryCount;
   double totalBuyingSales;
@@ -23,6 +24,7 @@ class DashboardDTO {
     required this.totalHapiStores,
     required this.buyingThruput,
     required this.unpaidCreditCount,
+    this.pendingPicklistCount = 0,
     required this.pendingDeliveryCount,
     required this.returnedDeliveryCount,
     required this.totalBuyingSales,
@@ -46,6 +48,7 @@ class DashboardDTO {
       totalHapiStores: 0,
       buyingThruput: 0,
       unpaidCreditCount: 0,
+      pendingPicklistCount: 0,
       pendingDeliveryCount: 0,
       returnedDeliveryCount: 0,
       totalBuyingSales: 0,
@@ -68,6 +71,7 @@ class DashboardDTO {
         totalHapiStores: json['totalHapiStores']! as int,
         buyingThruput: json['buyingThruput']! as double,
         unpaidCreditCount: json['unpaidCreditCount']! as int,
+        pendingPicklistCount: (json['pendingPicklistCount'] as num?)?.toInt() ?? 0,
         pendingDeliveryCount: json['pendingDeliveryCount']! as int,
         returnedDeliveryCount: json['returnedDeliveryCount']! as int,
         totalBuyingSales: json['totalBuyingSales']! as double,
@@ -89,6 +93,7 @@ class DashboardDTO {
       'totalHapiStores': totalHapiStores,
       'buyingThruput': buyingThruput,
       'unpaidCreditCount': unpaidCreditCount,
+      'pendingPicklistCount': pendingPicklistCount,
       'pendingDeliveryCount': pendingDeliveryCount,
       'returnedDeliveryCount': returnedDeliveryCount,
       'totalBuyingSales': totalBuyingSales,

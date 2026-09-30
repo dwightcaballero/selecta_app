@@ -159,10 +159,17 @@ class ScanningController {
     required String barcode,
     required String storeName,
     required String status,
+    String? imageUrl,
+    bool isDealer = false,
   }) async {
     final trimmedBarcode = barcode.trim();
     if (trimmedBarcode.isEmpty) {
       throw Exception('Barcode cannot be empty.');
+    }
+
+    // Role check: Only dealers are authorized to mark a barcode as scanned
+    if (status == ScanningStatus.scanned && !isDealer) {
+      throw Exception('Only dealers are authorized to mark a barcode as scanned.');
     }
 
     final existingInDb = await _scanningService.getScanningByBarcode(trimmedBarcode);
@@ -173,6 +180,13 @@ class ScanningController {
       throw Exception('Barcode "$trimmedBarcode" already exists in the database.');
     }
 
+    String finalImageUrl = (imageUrl != null && imageUrl.trim().isNotEmpty) ? imageUrl.trim() : existing.imageUrl.trim();
+
+    // Photo check: When scanning to Pending or Scanned, freezer photo is required
+    if ((status == ScanningStatus.pending || status == ScanningStatus.scanned) && finalImageUrl.isEmpty) {
+      throw Exception('A picture of the freezer is required for this month upon scanning.');
+    }
+
     String scannedBy = '';
     String finalStoreName = storeName;
     Timestamp? scannedDate;
@@ -181,7 +195,9 @@ class ScanningController {
       case ScanningStatus.notScanned:
         scannedDate = null;
         scannedBy = '';
+        finalImageUrl = '';
         break;
+      case ScanningStatus.pending:
       case ScanningStatus.scanned:
         scannedDate = Timestamp.now();
         scannedBy = authService.value.currentUser?.displayName ?? '';
@@ -190,6 +206,7 @@ class ScanningController {
         scannedDate = Timestamp.now();
         scannedBy = '';
         finalStoreName = '';
+        finalImageUrl = '';
         break;
       default:
         scannedDate = existing.scannedDate;
@@ -203,6 +220,7 @@ class ScanningController {
       scannedDate: scannedDate,
       scannedBy: scannedBy,
       status: status,
+      imageUrl: (status == ScanningStatus.notScanned || status == ScanningStatus.pullout) ? '' : finalImageUrl,
     );
 
     final bool isNewRecord = existing.id.isEmpty;

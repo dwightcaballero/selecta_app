@@ -56,6 +56,12 @@ class ConfigurationController {
     bool aiEnabled = true,
     String geminiApiKey = '',
     int aiMonthlyRequestLimit = 3000,
+    double? salesTarget,
+    double? buyingTargetPercentage,
+    double? throughputTarget,
+    double? placementTargetPercentage,
+    double? scanningTargetPercentage,
+    int? expansionTarget,
   }) async {
     if (endDate.isBefore(startDate)) {
       throw ArgumentError('Merch Blitz End Date must be after or equal to the Start Date.');
@@ -63,12 +69,25 @@ class ConfigurationController {
 
     final newStartDateTs = Timestamp.fromDate(startDate);
     final newEndDateTs = Timestamp.fromDate(endDate);
+    final finalSalesTarget = salesTarget ?? originalConfig?.salesTarget ?? 1000000.0;
+    final finalBuyingPct = buyingTargetPercentage ?? originalConfig?.buyingTargetPercentage ?? 80.0;
+    final finalThroughputTarget = throughputTarget ?? originalConfig?.throughputTarget ?? 8000.0;
+    final finalPlacementPct = placementTargetPercentage ?? originalConfig?.placementTargetPercentage ?? 80.0;
+    final finalScanningPct = scanningTargetPercentage ?? originalConfig?.scanningTargetPercentage ?? 100.0;
+    final finalExpansionTarget = expansionTarget ?? originalConfig?.expansionTarget ?? 10;
+
     final config = Configuration(
       merchBlitzStartDate: newStartDateTs,
       merchBlitzEndDate: newEndDateTs,
       aiEnabled: aiEnabled,
       geminiApiKey: geminiApiKey.trim(),
       aiMonthlyRequestLimit: aiMonthlyRequestLimit,
+      salesTarget: finalSalesTarget,
+      buyingTargetPercentage: finalBuyingPct,
+      throughputTarget: finalThroughputTarget,
+      placementTargetPercentage: finalPlacementPct,
+      scanningTargetPercentage: finalScanningPct,
+      expansionTarget: finalExpansionTarget,
     );
 
     await _configService.saveConfiguration(config);
@@ -80,6 +99,12 @@ class ConfigurationController {
       'Merch Blitz End Date': newEndDateTs,
       'AI Enabled': aiEnabled,
       'AI Monthly Request Limit': aiMonthlyRequestLimit,
+      'Sales Target': finalSalesTarget,
+      'Buying Target Percentage': finalBuyingPct,
+      'Throughput Target': finalThroughputTarget,
+      'Placement Target Percentage': finalPlacementPct,
+      'Scanning Target Percentage': finalScanningPct,
+      'Expansion Target': finalExpansionTarget,
     };
 
     if (existsInDb && originalConfig != null) {
@@ -88,16 +113,22 @@ class ConfigurationController {
         'Merch Blitz End Date': originalConfig.merchBlitzEndDate,
         'AI Enabled': originalConfig.aiEnabled,
         'AI Monthly Request Limit': originalConfig.aiMonthlyRequestLimit,
+        'Sales Target': originalConfig.salesTarget,
+        'Buying Target Percentage': originalConfig.buyingTargetPercentage,
+        'Throughput Target': originalConfig.throughputTarget,
+        'Placement Target Percentage': originalConfig.placementTargetPercentage,
+        'Scanning Target Percentage': originalConfig.scanningTargetPercentage,
+        'Expansion Target': originalConfig.expansionTarget,
       };
       await Helperfunctions.logUpdate(
-        'Configuration - App & AI Settings',
+        'Configuration - App & KPI Settings',
         oldMap,
         newMap,
         page: AppPages.configuration,
       );
     } else {
       await Helperfunctions.logCreate(
-        'Configuration - App & AI Settings',
+        'Configuration - App & KPI Settings',
         newMap,
         page: AppPages.configuration,
       );

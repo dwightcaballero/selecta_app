@@ -9,6 +9,8 @@ class AdminSelectaProduct {
   final String imageUrl;
   final double buyingPrice;
   final double sellingPrice;
+  final String category; // 'By Piece' or 'By Case'
+  final String tag; // 'Best Seller', 'New Product', or ''
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
 
@@ -18,6 +20,8 @@ class AdminSelectaProduct {
     required this.imageUrl,
     this.buyingPrice = 0.0,
     this.sellingPrice = 0.0,
+    this.category = 'By Piece',
+    this.tag = '',
     this.createdAt,
     this.updatedAt,
   });
@@ -35,12 +39,17 @@ class AdminSelectaProduct {
         imageUrl: '',
         buyingPrice: 0.0,
         sellingPrice: 0.0,
+        category: 'By Piece',
+        tag: '',
       );
 
   factory AdminSelectaProduct.fromJson(String id, Map<String, Object?> json) {
     final legacyPrice = (json['price'] as num?)?.toDouble() ?? 0.0;
     final buyingPrice = (json['buyingPrice'] as num?)?.toDouble() ?? legacyPrice;
     final sellingPrice = (json['sellingPrice'] as num?)?.toDouble() ?? legacyPrice;
+    final rawCategory = (json['category'] as String? ?? '').trim();
+    final isCase = rawCategory.toLowerCase().contains('case');
+    final category = isCase ? 'By Case' : 'By Piece';
 
     Timestamp? parseTimestamp(Object? val) {
       if (val is Timestamp) return val;
@@ -60,6 +69,8 @@ class AdminSelectaProduct {
       imageUrl: (json['imageUrl'] as String? ?? '').trim(),
       buyingPrice: buyingPrice,
       sellingPrice: sellingPrice,
+      category: category,
+      tag: (json['tag'] as String? ?? '').trim(),
       createdAt: parseTimestamp(json['createdAt']),
       updatedAt: parseTimestamp(json['updatedAt']),
     );
@@ -109,12 +120,18 @@ class AdminSelectaProduct {
       if (dt != null) updatedAt = Timestamp.fromDate(dt);
     }
 
+    final rawCategory = readString('category');
+    final isCase = rawCategory.toLowerCase().contains('case');
+    final category = isCase ? 'By Case' : 'By Piece';
+
     return AdminSelectaProduct(
       id: id,
       productName: readString('productName'),
       imageUrl: readString('imageUrl'),
       buyingPrice: buyingPrice,
       sellingPrice: sellingPrice,
+      category: category,
+      tag: readString('tag'),
       createdAt: readTimestamp('createdAt'),
       updatedAt: updatedAt,
     );
@@ -133,6 +150,8 @@ class AdminSelectaProduct {
     String? imageUrl,
     double? buyingPrice,
     double? sellingPrice,
+    String? category,
+    String? tag,
     Timestamp? createdAt,
     Timestamp? updatedAt,
   }) {
@@ -142,6 +161,8 @@ class AdminSelectaProduct {
       imageUrl: imageUrl ?? this.imageUrl,
       buyingPrice: buyingPrice ?? this.buyingPrice,
       sellingPrice: sellingPrice ?? this.sellingPrice,
+      category: category ?? this.category,
+      tag: tag ?? this.tag,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -153,6 +174,8 @@ class AdminSelectaProduct {
       'imageUrl': imageUrl,
       'buyingPrice': buyingPrice,
       'sellingPrice': sellingPrice,
+      'category': category,
+      'tag': tag,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -166,6 +189,8 @@ class AdminSelectaProduct {
       'imageUrl': imageUrl,
       'buyingPrice': buyingPrice,
       'sellingPrice': sellingPrice,
+      'category': category,
+      'tag': tag,
       'updatedAt': (updatedAt ?? Timestamp.now()).toDate().toUtc().toIso8601String(),
     };
   }

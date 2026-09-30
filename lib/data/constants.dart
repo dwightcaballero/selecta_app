@@ -27,6 +27,7 @@ class KButtonStyle {
 }
 
 class DeliveryStatus {
+  static const pendingPicklist = "Pending Picklist";
   static const pending = "Pending";
   static const delivered = "Delivered";
   static const returned = "Returned";
@@ -39,6 +40,7 @@ class CreditStatus {
 
 class ScanningStatus {
   static const scanned = "Scanned";
+  static const pending = "Pending";
   static const notScanned = "Not Scanned";
   static const pullout = "Pullout";
   static const unassigned = "Unassigned";
@@ -90,6 +92,8 @@ class PjpScheduleDays {
 }
 
 class AppPages {
+  static const bookOrder = "Book Order";
+  static const picklist = "Picklist";
   static const delivery = "Delivery";
   static const scanning = "Scanning";
   static const returnPage = "Return";
@@ -105,6 +109,17 @@ class AppPages {
   static const breakdown = "Breakdown";
   static const configuration = "Configuration";
   static const register = "Register";
+}
+
+class ProductTag {
+  static const String bestSeller = "Best Seller";
+  static const String newProduct = "New Product";
+  static const String none = "";
+
+  static const List<String> all = [none, bestSeller, newProduct];
+
+  static bool isBestSeller(String? tag) => tag?.trim().toLowerCase() == 'best seller';
+  static bool isNewProduct(String? tag) => tag?.trim().toLowerCase() == 'new product';
 }
 
 // ₱

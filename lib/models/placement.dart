@@ -4,6 +4,7 @@ class Placement {
   String id;
   String storeName;
   Timestamp deliveryDate;
+  List<String> placedProductNames;
   bool cotc1;
   bool cotc2;
   bool cotc3;
@@ -23,6 +24,7 @@ class Placement {
     required this.id,
     required this.storeName,
     required this.deliveryDate,
+    this.placedProductNames = const [],
     required this.cotc1,
     required this.cotc2,
     required this.cotc3,
@@ -39,49 +41,76 @@ class Placement {
     required this.progressCount,
   });
 
-  Placement.fromJson(Map<String, Object?> json)
-    : this(
-        id: json['id']! as String,
-        storeName: json['storeName']! as String,
-        deliveryDate: json['deliveryDate']! as Timestamp,
-        cotc1: json['cotc1']! as bool,
-        cotc2: json['cotc2']! as bool,
-        cotc3: json['cotc3']! as bool,
-        cotc4: json['cotc4']! as bool,
-        cotc5: json['cotc5']! as bool,
-        cotc6: json['cotc6']! as bool,
-        cotc7: json['cotc7']! as bool,
-        cotc8: json['cotc8']! as bool,
-        cotc9: json['cotc9']! as bool,
-        cotc10: json['cotc10']! as bool,
-        cotc11: json['cotc11']! as bool,
-        cotc12: json['cotc12']! as bool,
-        isFinished: json['isFinished']! as bool,
-        progressCount: json['progressCount']! as int,
-      );
+  factory Placement.fromJson(Map<String, Object?> json) {
+    final rawPlaced = json['placedProductNames'];
+    List<String> parsedPlaced = [];
+    if (rawPlaced is List) {
+      parsedPlaced = rawPlaced.map((e) => e.toString()).toList();
+    } else {
+      // Backward compatibility: If placedProductNames is absent, populate from legacy cotc flags
+      final legacyFlags = [
+        json['cotc1'] == true,
+        json['cotc2'] == true,
+        json['cotc3'] == true,
+        json['cotc4'] == true,
+        json['cotc5'] == true,
+        json['cotc6'] == true,
+        json['cotc7'] == true,
+        json['cotc8'] == true,
+        json['cotc9'] == true,
+        json['cotc10'] == true,
+        json['cotc11'] == true,
+        json['cotc12'] == true,
+      ];
+      final legacyNames = [
+        "Watermelon Slice",
+        "Chocky Stick",
+        "Avocado Choco",
+        "Boom Boom Choco",
+        "Cornetto Choco",
+        "Cornetto Cookies & Dream",
+        "Bday 3in1 C-K-U",
+        "Bday 3in1 U-M-A",
+        "Bday 3+1 C-K-U-M",
+        "Sup Double Dutch",
+        "Sup Rocky Road",
+        "Sup Cookies & Cream",
+      ];
+      for (int i = 0; i < legacyNames.length && i < legacyFlags.length; i++) {
+        if (legacyFlags[i]) {
+          parsedPlaced.add(legacyNames[i]);
+        }
+      }
+    }
+
+    return Placement(
+      id: (json['id'] as String?) ?? '',
+      storeName: (json['storeName'] as String?) ?? '',
+      deliveryDate: (json['deliveryDate'] as Timestamp?) ?? Timestamp.now(),
+      placedProductNames: parsedPlaced,
+      cotc1: (json['cotc1'] as bool?) ?? false,
+      cotc2: (json['cotc2'] as bool?) ?? false,
+      cotc3: (json['cotc3'] as bool?) ?? false,
+      cotc4: (json['cotc4'] as bool?) ?? false,
+      cotc5: (json['cotc5'] as bool?) ?? false,
+      cotc6: (json['cotc6'] as bool?) ?? false,
+      cotc7: (json['cotc7'] as bool?) ?? false,
+      cotc8: (json['cotc8'] as bool?) ?? false,
+      cotc9: (json['cotc9'] as bool?) ?? false,
+      cotc10: (json['cotc10'] as bool?) ?? false,
+      cotc11: (json['cotc11'] as bool?) ?? false,
+      cotc12: (json['cotc12'] as bool?) ?? false,
+      isFinished: (json['isFinished'] as bool?) ?? false,
+      progressCount: (json['progressCount'] as int?) ?? 0,
+    );
+  }
 
   factory Placement.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     if (document.data() != null) {
-      final data = document.data();
-      return Placement(
-        id: data?['id'] as String,
-        storeName: data?['storeName'] as String,
-        deliveryDate: data?['deliveryDate'] as Timestamp,
-        cotc1: data?['cotc1'] as bool,
-        cotc2: data?['cotc2'] as bool,
-        cotc3: data?['cotc3'] as bool,
-        cotc4: data?['cotc4'] as bool,
-        cotc5: data?['cotc5'] as bool,
-        cotc6: data?['cotc6'] as bool,
-        cotc7: data?['cotc7'] as bool,
-        cotc8: data?['cotc8'] as bool,
-        cotc9: data?['cotc9'] as bool,
-        cotc10: data?['cotc10'] as bool,
-        cotc11: data?['cotc11'] as bool,
-        cotc12: data?['cotc12'] as bool,
-        isFinished: data?['isFinished'] as bool,
-        progressCount: data?['progressCount'] as int,
-      );
+      final data = document.data()!;
+      final id = data['id'] as String? ?? document.id;
+      final map = Map<String, Object?>.from(data)..['id'] = id;
+      return Placement.fromJson(map);
     } else {
       return Placement.empty();
     }
@@ -91,6 +120,7 @@ class Placement {
     id: '',
     storeName: '',
     deliveryDate: Timestamp.now(),
+    placedProductNames: const [],
     cotc1: false,
     cotc2: false,
     cotc3: false,
@@ -107,12 +137,38 @@ class Placement {
     progressCount: 0,
   );
 
-  factory Placement.fromFlags({required String id, required String storeName, required Timestamp deliveryDate, required List<bool> flags}) {
+  factory Placement.fromFlags({
+    required String id,
+    required String storeName,
+    required Timestamp deliveryDate,
+    required List<bool> flags,
+    List<String>? placedProductNames,
+  }) {
     assert(flags.length == 12);
+    final legacyNames = [
+      "Watermelon Slice",
+      "Chocky Stick",
+      "Avocado Choco",
+      "Boom Boom Choco",
+      "Cornetto Choco",
+      "Cornetto Cookies & Dream",
+      "Bday 3in1 C-K-U",
+      "Bday 3in1 U-M-A",
+      "Bday 3+1 C-K-U-M",
+      "Sup Double Dutch",
+      "Sup Rocky Road",
+      "Sup Cookies & Cream",
+    ];
+    final derivedPlaced = placedProductNames ?? [
+      for (int i = 0; i < legacyNames.length && i < flags.length; i++)
+        if (flags[i]) legacyNames[i]
+    ];
+
     return Placement(
       id: id,
       storeName: storeName,
       deliveryDate: deliveryDate,
+      placedProductNames: derivedPlaced,
       cotc1: flags[0],
       cotc2: flags[1],
       cotc3: flags[2],
@@ -126,14 +182,20 @@ class Placement {
       cotc11: flags[10],
       cotc12: flags[11],
       isFinished: false,
-      progressCount: 0,
+      progressCount: derivedPlaced.length,
     );
+  }
+
+  bool isProductPlaced(String productName) {
+    final lower = productName.trim().toLowerCase();
+    return placedProductNames.any((name) => name.trim().toLowerCase() == lower);
   }
 
   Placement copyWith({
     String? id,
     String? storeName,
     Timestamp? deliveryDate,
+    List<String>? placedProductNames,
     bool? cotc1,
     bool? cotc2,
     bool? cotc3,
@@ -153,6 +215,7 @@ class Placement {
       id: id ?? this.id,
       storeName: storeName ?? this.storeName,
       deliveryDate: deliveryDate ?? this.deliveryDate,
+      placedProductNames: placedProductNames ?? List.from(this.placedProductNames),
       cotc1: cotc1 ?? this.cotc1,
       cotc2: cotc2 ?? this.cotc2,
       cotc3: cotc3 ?? this.cotc3,
@@ -175,6 +238,7 @@ class Placement {
       'id': id,
       'storeName': storeName,
       'deliveryDate': deliveryDate,
+      'placedProductNames': placedProductNames,
       'cotc1': cotc1,
       'cotc2': cotc2,
       'cotc3': cotc3,

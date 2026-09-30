@@ -42,7 +42,7 @@ class ExpansionData {
 /// to [HapiStoreService].
 class ExpansionController {
   /// Default target quota of store expansions per month.
-  static const int monthlyTarget = 8;
+  static const int monthlyTarget = 10;
 
   /// Fetches new store expansions, sorts records by opening date,
   /// and calculates progress against the target.

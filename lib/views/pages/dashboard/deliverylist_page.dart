@@ -3,7 +3,9 @@ import 'package:flutter_app/controllers/delivery_controller.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/delivery.dart';
+import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
 import 'package:flutter_app/views/pages/dashboard/delivery_page.dart';
+import 'package:flutter_app/views/pages/dashboard/picklist_page.dart';
 import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
@@ -78,7 +80,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     final bool isToday = DateUtils.isSameDay(_selectedDate, DateTime.now());
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(12),
@@ -90,7 +92,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
             tooltip: 'Previous day',
             visualDensity: VisualDensity.compact,
             onPressed: isDealer ? () => _changeDate(-1) : null,
-            icon: const Icon(Icons.chevron_left, size: 22),
+            icon: const Icon(Icons.chevron_left, size: 24),
           ),
           Expanded(
             child: InkWell(
@@ -101,12 +103,12 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.calendar_today_outlined, size: 16, color: colorScheme.primary),
+                    Icon(Icons.calendar_today_outlined, size: 18, color: colorScheme.primary),
                     const SizedBox(width: 8),
                     Flexible(
                       child: Text(
                         _dateLabel(),
-                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -119,15 +121,15 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
             tooltip: 'Next day',
             visualDensity: VisualDensity.compact,
             onPressed: isDealer ? () => _changeDate(1) : null,
-            icon: const Icon(Icons.chevron_right, size: 22),
+            icon: const Icon(Icons.chevron_right, size: 24),
           ),
           if (isDealer && !isToday) ...[
             Padding(
               padding: const EdgeInsets.only(right: 6),
               child: ActionChip(
                 visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                label: const Text('Today', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                label: const Text('Today', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
                 onPressed: () => setState(() => _selectedDate = DateTime.now()),
               ),
             ),
@@ -157,18 +159,18 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
             prefetchData();
           },
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                Icon(Icons.assignment_return_outlined, color: Colors.red.shade700, size: 18),
+                Icon(Icons.assignment_return_outlined, color: Colors.red.shade700, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     '$returnedDeliveryCount returned ${returnedDeliveryCount == 1 ? 'delivery needs' : 'deliveries need'} rescheduling',
-                    style: TextStyle(color: Colors.red.shade800, fontWeight: FontWeight.w600, fontSize: 12.5),
+                    style: TextStyle(color: Colors.red.shade800, fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                 ),
-                Icon(Icons.chevron_right, color: Colors.red.shade700, size: 18),
+                Icon(Icons.chevron_right, color: Colors.red.shade700, size: 20),
               ],
             ),
           ),
@@ -182,7 +184,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
@@ -191,8 +193,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       child: Row(
         children: [
           Expanded(child: _summaryItem('All', summary.all, Theme.of(context).colorScheme.primary, 'All')),
+          Expanded(child: _summaryItem('Picklist', summary.pendingPicklist, const Color(0xFF7C3AED), DeliveryStatus.pendingPicklist)),
+          Expanded(child: _summaryItem('For Delivery', summary.pending, Colors.orange.shade800, DeliveryStatus.pending)),
           Expanded(child: _summaryItem('Delivered', summary.delivered, Colors.green.shade700, DeliveryStatus.delivered)),
-          Expanded(child: _summaryItem('Pending', summary.pending, Colors.orange.shade800, DeliveryStatus.pending)),
           Expanded(child: _summaryItem('Returned', summary.returned, Colors.red.shade700, DeliveryStatus.returned)),
         ],
       ),
@@ -210,28 +213,29 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       },
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withValues(alpha: 0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        decoration: BoxDecoration(color: isSelected ? color.withValues(alpha: 0.12) : Colors.transparent, borderRadius: BorderRadius.circular(8)),
         child: Column(
           children: [
             Text(
               '$count',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: isSelected ? color : color.withValues(alpha: 0.8),
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isSelected ? color : color.withValues(alpha: 0.8)),
             ),
             const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                    color: isSelected ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ),
             ),
           ],
@@ -242,18 +246,18 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   Widget _buildSearchBar(ThemeData theme) {
     return SizedBox(
-      height: 40,
+      height: 46,
       child: TextField(
         controller: _searchController,
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
-        style: const TextStyle(fontSize: 13),
+        style: const TextStyle(fontSize: 15),
         decoration: InputDecoration(
           hintText: 'Search stores...',
-          hintStyle: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
-          prefixIcon: Icon(Icons.search, size: 18, color: theme.colorScheme.primary),
+          hintStyle: TextStyle(fontSize: 15, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+          prefixIcon: Icon(Icons.search, size: 22, color: theme.colorScheme.primary),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.close, size: 16),
+                  icon: const Icon(Icons.close, size: 18),
                   onPressed: () {
                     _searchController.clear();
                     setState(() => _searchQuery = '');
@@ -262,7 +266,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
               : null,
           filled: true,
           fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
@@ -277,38 +281,43 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   Widget _statusBadge(String status) {
-    final (Color color, IconData icon) = switch (status) {
-      DeliveryStatus.delivered => (Colors.green.shade700, Icons.check_circle_outline),
-      DeliveryStatus.returned => (Colors.red.shade700, Icons.cancel_outlined),
-      _ => (Colors.orange.shade800, Icons.pending_actions),
+    final (Color color, IconData icon, String label) = switch (status) {
+      DeliveryStatus.pendingPicklist => (const Color(0xFF7C3AED), Icons.fact_check_outlined, 'Pending Picklist'),
+      DeliveryStatus.delivered => (Colors.green.shade700, Icons.check_circle_outline, 'Delivered'),
+      DeliveryStatus.returned => (Colors.red.shade700, Icons.cancel_outlined, 'Returned'),
+      _ => (Colors.orange.shade800, Icons.local_shipping_outlined, 'For Delivery'),
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 13),
-          const SizedBox(width: 4),
-          Text(status, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12.5),
+          ),
         ],
       ),
     );
   }
 
   Widget floatingActionAddButton() {
-    return FloatingActionButton(
+    return FloatingActionButton.extended(
       onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DeliveryPage(deliveryID: '', delivery: Delivery.empty()),
-          ),
-        );
+        Navigator.push(context, MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)));
       },
       backgroundColor: Theme.of(context).colorScheme.primary,
-      child: const Icon(Icons.add, color: Colors.white),
+      icon: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 22),
+      label: const Text(
+        'Book Order',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15.5),
+      ),
     );
   }
 
@@ -317,8 +326,8 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: const CustomAppbar(title: 'Delivery', subtitle: 'List of Deliveries', showBackButton: true),
-      floatingActionButton: isDealer ? floatingActionAddButton() : null,
+      appBar: const CustomAppbar(title: 'Orders & Deliveries', subtitle: 'Order → Picklist → Delivery', showBackButton: true),
+      floatingActionButton: floatingActionAddButton(),
       body: StreamBuilder(
         stream: _controller.getDeliveriesStream(_selectedDate),
         builder: (BuildContext context, AsyncSnapshot snapshot) {
@@ -332,11 +341,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
           final List allDocs = snapshot.data?.docs ?? [];
 
           // Filter by status tab & search query via controller
-          final filteredDocs = _controller.filterDeliveries(
-            docs: allDocs,
-            selectedStatus: _selectedStatusFilter,
-            searchQuery: _searchQuery,
-          );
+          final filteredDocs = _controller.filterDeliveries(docs: allDocs, selectedStatus: _selectedStatusFilter, searchQuery: _searchQuery);
 
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -344,121 +349,133 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
               children: [
                 _buildDateNavigator(theme),
                 _buildReturnedAlertBanner(),
-                if (allDocs.isNotEmpty) ...[
-                  _buildInteractiveSummary(allDocs),
-                  _buildSearchBar(theme),
-                  const SizedBox(height: 8),
-                ],
+                if (allDocs.isNotEmpty) ...[_buildInteractiveSummary(allDocs), _buildSearchBar(theme), const SizedBox(height: 8)],
                 Expanded(
                   child: allDocs.isEmpty
                       ? Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.local_shipping_outlined, size: 44, color: Colors.grey.shade400),
+                              Icon(Icons.local_shipping_outlined, size: 48, color: Colors.grey.shade400),
                               const SizedBox(height: 12),
-                              Text('No deliveries for ${DateFormat('d MMM yyyy').format(_selectedDate)}'),
-                              if (isDealer) ...[
-                                const SizedBox(height: 12),
-                                OutlinedButton.icon(
-                                  onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => DeliveryPage(deliveryID: '', delivery: Delivery.empty()),
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Add delivery'),
-                                ),
-                              ],
+                              Text(
+                                'No orders or deliveries for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
+                                style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w500),
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton.icon(
+                                onPressed: () =>
+                                    Navigator.push(context, MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate))),
+                                icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
+                                label: const Text('Book Order', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                              ),
                             ],
                           ),
                         )
                       : filteredDocs.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.search_off, size: 36, color: Colors.grey.shade400),
-                                  const SizedBox(height: 8),
-                                  Text('No matching ${_selectedStatusFilter != 'All' ? _selectedStatusFilter : ''} deliveries found'),
-                                ],
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
+                              const SizedBox(height: 8),
+                              Text(
+                                'No matching ${_selectedStatusFilter != 'All' ? _selectedStatusFilter : ''} records found',
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                               ),
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.only(bottom: 80, top: 4),
-                              itemCount: filteredDocs.length,
-                              separatorBuilder: (_, _) => const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final Delivery delivery = filteredDocs[index].data();
-                                final String deliveryID = filteredDocs[index].id;
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.only(bottom: 80, top: 4),
+                          itemCount: filteredDocs.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final Delivery delivery = filteredDocs[index].data();
+                            final String deliveryID = filteredDocs[index].id;
+                            final bool isPendingPicklist = delivery.transactionStatus == DeliveryStatus.pendingPicklist;
 
-                                return Material(
-                                  color: theme.colorScheme.surface,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                  ),
-                                  child: InkWell(
-                                    onTap: () {
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+                            return Material(
+                              color: theme.colorScheme.surface,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(
+                                  color: isPendingPicklist
+                                      ? const Color(0xFF7C3AED).withValues(alpha: 0.4)
+                                      : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                ),
+                              ),
+                              child: InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => isPendingPicklist
+                                          ? PicklistPage(deliveryID: deliveryID, delivery: delivery)
+                                          : DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+                                    ),
+                                  );
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: isPendingPicklist
+                                              ? const Color(0xFF7C3AED).withValues(alpha: 0.12)
+                                              : theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                          borderRadius: BorderRadius.circular(10),
                                         ),
-                                      );
-                                    },
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(
-                                              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Icon(Icons.storefront_outlined, color: theme.colorScheme.primary, size: 20),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                        child: Icon(
+                                          isPendingPicklist ? Icons.fact_check_outlined : Icons.storefront_outlined,
+                                          color: isPendingPicklist ? const Color(0xFF7C3AED) : theme.colorScheme.primary,
+                                          size: 24,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(delivery.storeName, style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold)),
+                                            const SizedBox(height: 4),
+                                            Wrap(
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 8,
+                                              runSpacing: 4,
                                               children: [
-                                                Text(
-                                                  delivery.storeName,
-                                                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                const SizedBox(height: 3),
                                                 Text(
                                                   Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
                                                   style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w700,
                                                     color: theme.colorScheme.onSurfaceVariant,
                                                   ),
                                                 ),
                                               ],
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.end,
-                                            children: [
-                                              _statusBadge(delivery.transactionStatus),
-                                              const SizedBox(height: 6),
-                                              const Icon(Icons.chevron_right, size: 18, color: Colors.grey),
-                                            ],
-                                          ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          _statusBadge(delivery.transactionStatus),
+                                          const SizedBox(height: 6),
+                                          const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
                                         ],
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                );
-                              },
-                            ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),

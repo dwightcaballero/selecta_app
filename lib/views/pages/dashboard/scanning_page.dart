@@ -1,19 +1,25 @@
+import 'dart:io';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/scanning_controller.dart';
 import 'package:flutter_app/data/constants.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/scanning.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
+import 'package:flutter_app/views/widgets/imageviewer_page.dart';
+import 'package:gal/gal.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 /// Presentation view for creating, editing, and deleting freezer barcode records.
 ///
 /// Barcode persistence, status resolution, dealer authorization checks,
-/// and audit transaction logging are managed by [ScanningController].
+/// freezer photo validation, and audit transaction logging are managed by [ScanningController].
 class ScanningPage extends StatefulWidget {
   const ScanningPage({
     super.key,
@@ -34,14 +40,19 @@ class _ScanningPageState extends State<ScanningPage> {
   final ScanningController _controller = ScanningController();
   final TextEditingController _dropdownHapiStore = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  final ImagePicker _picker = ImagePicker();
+
   bool _hasCheckedDatabase = false;
   bool _isDealer = false;
   bool _isSaving = false;
+  bool _isDownloadingImage = false;
+  File? _imageFile;
   Scanning _scanning = Scanning.empty();
-  String _selectedStatus = ScanningStatus.notScanned;
+  String _selectedStatus = ScanningStatus.pending;
 
   bool get _hasUnsavedChanges {
     if (!_hasCheckedDatabase) return false;
+    if (_imageFile != null) return true;
     final initialStore = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
     final initialStatus = _scanning.status.isEmpty ? ScanningStatus.notScanned : _scanning.status;
     return _dropdownHapiStore.text.trim() != initialStore || _selectedStatus != initialStatus;
@@ -66,11 +77,24 @@ class _ScanningPageState extends State<ScanningPage> {
 
     if (found != null) {
       _scanning = found;
+      // Rule 1: When dealer scans barcode with pending status, mark as scanned.
+      // Rule 2: When salesman scans barcode (or unscanned barcode), status defaults to Pending.
+      if (_scanning.status == ScanningStatus.pending) {
+        if (_isDealer) {
+          _selectedStatus = ScanningStatus.scanned;
+        } else {
+          _selectedStatus = ScanningStatus.pending;
+        }
+      } else if (_scanning.status.isEmpty || _scanning.status == ScanningStatus.notScanned) {
+        _selectedStatus = ScanningStatus.pending;
+      } else {
+        _selectedStatus = _scanning.status;
+      }
     } else {
       _scanning = Scanning.empty();
+      _selectedStatus = ScanningStatus.pending;
     }
 
-    _selectedStatus = _scanning.status.isEmpty ? ScanningStatus.notScanned : _scanning.status;
     _dropdownHapiStore.text = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
     _hasCheckedDatabase = true;
 
@@ -112,9 +136,100 @@ class _ScanningPageState extends State<ScanningPage> {
     }
   }
 
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+      );
+      if (pickedFile != null && mounted) {
+        setState(() {
+          _imageFile = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ShowMessage.error(context, 'Failed to capture or select photo: $e');
+    }
+  }
+
+  void _viewFullscreenPhoto() {
+    if (_imageFile == null && _scanning.imageUrl.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ImageViewerPage(
+          image: _imageFile,
+          networkImagePath: _scanning.imageUrl,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _downloadFreezerPhoto() async {
+    if (_isDownloadingImage) return;
+
+    final hasPhoto = _imageFile != null || _scanning.imageUrl.isNotEmpty;
+    if (!hasPhoto) {
+      ShowMessage.error(context, 'No freezer photo available to download.');
+      return;
+    }
+
+    setState(() => _isDownloadingImage = true);
+
+    try {
+      final Uint8List bytes;
+      if (_imageFile != null) {
+        bytes = await _imageFile!.readAsBytes();
+      } else {
+        final response = await http.get(Uri.parse(_scanning.imageUrl));
+        if (response.statusCode != 200) {
+          throw Exception('Unable to download photo from server.');
+        }
+        bytes = response.bodyBytes;
+      }
+
+      final hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        final accessGranted = await Gal.requestAccess();
+        if (!accessGranted) {
+          throw Exception('Gallery permission was denied.');
+        }
+      }
+
+      final storeTag = _dropdownHapiStore.text.replaceAll(RegExp(r'\s+'), '_');
+      await Gal.putImageBytes(
+        bytes,
+        name: 'freezer_${storeTag}_${DateTime.now().millisecondsSinceEpoch}',
+      );
+
+      if (!mounted) return;
+      ShowMessage.success(context, 'Freezer photo saved to your gallery!');
+    } catch (error) {
+      if (!mounted) return;
+      ShowMessage.error(context, 'Failed to download photo: $error');
+    } finally {
+      if (mounted) setState(() => _isDownloadingImage = false);
+    }
+  }
+
   Future<void> _onSave() async {
     if (!_formKey.currentState!.validate()) {
       ShowMessage.error(context, 'Please fill up the required fields');
+      return;
+    }
+
+    // Role verification: only dealers can mark status as scanned
+    if (_selectedStatus == ScanningStatus.scanned && !_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to mark a barcode as Scanned.');
+      return;
+    }
+
+    // Photo requirement: when scanning to Pending or Scanned, freezer photo is required
+    final hasExistingPhoto = _scanning.imageUrl.trim().isNotEmpty;
+    final hasNewPhoto = _imageFile != null;
+    if ((_selectedStatus == ScanningStatus.pending || _selectedStatus == ScanningStatus.scanned) && !hasExistingPhoto && !hasNewPhoto) {
+      ShowMessage.error(context, 'A picture of the freezer for this month is required upon scanning.');
       return;
     }
 
@@ -136,15 +251,34 @@ class _ScanningPageState extends State<ScanningPage> {
           ? duplicateCheck
           : _scanning;
 
+      // Upload new image if user took/selected one
+      String finalImageUrl = existingToSave.imageUrl;
+      if (_imageFile != null) {
+        if (!mounted) return;
+        final uploaded = await Helperfunctions.saveImage(context, _imageFile!);
+        if (uploaded.isEmpty) {
+          if (!mounted) return;
+          ShowMessage.error(context, 'Unable to upload freezer photo. Please check your internet connection.');
+          return;
+        }
+        finalImageUrl = uploaded;
+      }
+
       final newRecord = await _controller.saveScanningRecord(
         existing: existingToSave,
         barcode: trimmedBarcode,
         storeName: _dropdownHapiStore.text,
         status: _selectedStatus,
+        imageUrl: finalImageUrl,
+        isDealer: _isDealer,
       );
 
       if (!mounted) return;
-      ShowMessage.success(context, 'Successfully saved the scanning record!\n[${newRecord.storeName.isNotEmpty ? newRecord.storeName : "Pullout"}]');
+      final statusNotice = newRecord.status == ScanningStatus.pending ? ' (Pending Dealer Review)' : '';
+      ShowMessage.success(
+        context,
+        'Successfully saved scanning record$statusNotice!\n[${newRecord.storeName.isNotEmpty ? newRecord.storeName : "Pullout"}]',
+      );
       Navigator.pop(context);
     } catch (error) {
       if (!mounted) return;
@@ -182,7 +316,12 @@ class _ScanningPageState extends State<ScanningPage> {
     }
   }
 
-  Widget _buildSectionCard({required String title, required IconData icon, Widget? trailing, required Widget child}) {
+  Widget _buildSectionCard({
+    required String title,
+    required IconData icon,
+    Widget? trailing,
+    required Widget child,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
@@ -216,6 +355,84 @@ class _ScanningPageState extends State<ScanningPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildWorkflowBanner() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // Show banner when a dealer opens a pending record and it was marked as scanned
+    if (_hasCheckedDatabase && _scanning.status == ScanningStatus.pending && _isDealer) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.verified_outlined, color: Colors.green, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Pending Scan Ready to Verify',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'This barcode was scanned and pending dealer approval. Review the freezer photo below and tap Save to mark as Scanned.',
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show banner when a salesman opens a pending record
+    if (_hasCheckedDatabase && _scanning.status == ScanningStatus.pending && !_isDealer) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.amber.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.hourglass_top_rounded, color: Colors.amber.shade800, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Pending Dealer Verification',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'This scan is submitted as Pending. Dealers are the only ones authorized to scan/mark this record as Scanned.',
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildBarcodeCard() {
@@ -281,8 +498,8 @@ class _ScanningPageState extends State<ScanningPage> {
                         const SizedBox(height: 2),
                         Text(
                           _scanning.storeName.isNotEmpty
-                              ? 'This barcode is registered to "${_scanning.storeName}". You can update its store name and status below.'
-                              : 'This barcode exists in the database. You can update its store name and status below.',
+                              ? 'This barcode is registered to "${_scanning.storeName}". Current status: ${_scanning.status.isNotEmpty ? _scanning.status : "Not Scanned"}.'
+                              : 'This barcode exists in the database.',
                           style: TextStyle(fontSize: 12, color: colorScheme.onSecondaryContainer),
                         ),
                       ],
@@ -338,10 +555,279 @@ class _ScanningPageState extends State<ScanningPage> {
     );
   }
 
+  Widget _buildFreezerPhotoCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final currentMonthLabel = DateFormat('MMMM yyyy').format(DateTime.now());
+    final hasLocalImage = _imageFile != null;
+    final hasRemoteImage = _scanning.imageUrl.isNotEmpty;
+    final hasAnyImage = hasLocalImage || hasRemoteImage;
+    final isPhotoRequired = _selectedStatus == ScanningStatus.pending || _selectedStatus == ScanningStatus.scanned;
+
+    return _buildSectionCard(
+      title: 'Freezer Photo',
+      icon: Icons.kitchen_outlined,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: hasAnyImage
+              ? Colors.green.withValues(alpha: 0.12)
+              : (isPhotoRequired ? Colors.amber.withValues(alpha: 0.15) : colorScheme.surfaceContainerHighest),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          hasLocalImage
+              ? 'New Photo'
+              : (hasRemoteImage ? 'Photo Attached' : (isPhotoRequired ? 'Required for $currentMonthLabel' : 'Optional')),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: hasAnyImage
+                ? Colors.green.shade800
+                : (isPhotoRequired ? Colors.amber.shade900 : colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Monthly freezer proof for $currentMonthLabel. Required upon scanning for dealer review and record.',
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+
+          // Photo Display / Placeholder
+          if (hasAnyImage)
+            GestureDetector(
+              onTap: _viewFullscreenPhoto,
+              child: Stack(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    height: 200,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.black.withValues(alpha: 0.05),
+                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.7)),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: hasLocalImage
+                        ? Image.file(_imageFile!, fit: BoxFit.cover)
+                        : Image.network(
+                            _scanning.imageUrl,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return const Center(child: CircularProgressIndicator());
+                            },
+                            errorBuilder: (_, _, _) => Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.broken_image_outlined, size: 36, color: colorScheme.error),
+                                  const SizedBox(height: 4),
+                                  const Text('Unable to load photo', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ),
+                  ),
+                  Positioned(
+                    bottom: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.fullscreen_rounded, size: 14, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text('Tap to expand & zoom', style: TextStyle(color: Colors.white, fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+              decoration: BoxDecoration(
+                color: isPhotoRequired ? Colors.amber.withValues(alpha: 0.05) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isPhotoRequired ? Colors.amber.shade700.withValues(alpha: 0.4) : colorScheme.outlineVariant,
+                  style: BorderStyle.solid,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.add_a_photo_outlined,
+                    size: 38,
+                    color: isPhotoRequired ? Colors.amber.shade800 : colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'No freezer photo uploaded yet',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: isPhotoRequired ? Colors.amber.shade900 : colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'A photo of the freezer is required for $currentMonthLabel upon scanning.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+
+          const SizedBox(height: 12),
+
+          // Photo Action Buttons
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                  label: Text(hasAnyImage ? 'Retake' : 'Camera'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: const Text('Gallery'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          if (hasAnyImage) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _viewFullscreenPhoto,
+                    icon: const Icon(Icons.fullscreen_rounded, size: 18),
+                    label: const Text('View Fullscreen'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _isDownloadingImage ? null : _downloadFreezerPhoto,
+                    icon: _isDownloadingImage
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.download_rounded, size: 18),
+                    label: Text(_isDownloadingImage ? 'Downloading...' : 'Download'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusOptionButton({
+    required String value,
+    required String label,
+    required IconData icon,
+    required Color activeColor,
+    bool enabled = true,
+  }) {
+    final isSelected = _selectedStatus == value;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Expanded(
+      child: InkWell(
+        onTap: enabled
+            ? () => setState(() => _selectedStatus = value)
+            : () {
+                ShowMessage.error(context, 'Only dealers are authorized to mark a barcode as Scanned.');
+              },
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? activeColor.withValues(alpha: 0.12)
+                : (enabled ? colorScheme.surface : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? activeColor
+                  : (enabled ? colorScheme.outlineVariant : colorScheme.outlineVariant.withValues(alpha: 0.4)),
+              width: isSelected ? 1.8 : 1.0,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isSelected
+                    ? activeColor
+                    : (enabled ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                    color: isSelected
+                        ? activeColor
+                        : (enabled ? colorScheme.onSurface : colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatusCard() {
     final colorScheme = Theme.of(context).colorScheme;
-    bool isScanned = _selectedStatus == ScanningStatus.scanned;
-    bool isPullout = _selectedStatus == ScanningStatus.pullout;
+    final isPullout = _selectedStatus == ScanningStatus.pullout;
 
     return _buildSectionCard(
       title: 'Scanning Status',
@@ -349,61 +835,87 @@ class _ScanningPageState extends State<ScanningPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Select current status for this barcode:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<String>(
-              showSelectedIcon: false,
-              style: SegmentedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 11),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Current Status: $_selectedStatus',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
-              segments: [
-                ButtonSegment<String>(
-                  value: ScanningStatus.notScanned,
-                  label: const Text(
-                    'Pending',
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                  icon: Icon(
-                    Icons.radio_button_unchecked,
-                    size: 18,
-                    color: !isScanned && !isPullout ? colorScheme.tertiary : colorScheme.onSurfaceVariant,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _isDealer ? Colors.blue.withValues(alpha: 0.12) : Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  _isDealer ? 'Dealer Mode' : 'Salesman Mode',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _isDealer ? Colors.blue.shade800 : Colors.orange.shade800,
                   ),
                 ),
-                ButtonSegment<String>(
-                  value: ScanningStatus.scanned,
-                  label: const Text(
-                    ScanningStatus.scanned,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 2 Rows for Status selection to ensure readable labels
+          Column(
+            children: [
+              Row(
+                children: [
+                  _buildStatusOptionButton(
+                    value: ScanningStatus.pending,
+                    label: 'Pending',
+                    icon: Icons.hourglass_top_rounded,
+                    activeColor: Colors.amber.shade800,
                   ),
-                  icon: Icon(Icons.check_circle_outline, size: 18, color: isScanned ? Colors.green : colorScheme.onSurfaceVariant),
-                ),
-                ButtonSegment<String>(
-                  value: ScanningStatus.pullout,
-                  label: const Text(
-                    ScanningStatus.pullout,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  const SizedBox(width: 8),
+                  _buildStatusOptionButton(
+                    value: ScanningStatus.scanned,
+                    label: _isDealer ? 'Scanned' : 'Scanned (Dealer)',
+                    icon: _isDealer ? Icons.check_circle_outline : Icons.lock_outline_rounded,
+                    activeColor: Colors.green,
+                    enabled: _isDealer,
                   ),
-                  icon: Icon(Icons.outbox_outlined, size: 18, color: isPullout ? colorScheme.error : colorScheme.onSurfaceVariant),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  _buildStatusOptionButton(
+                    value: ScanningStatus.notScanned,
+                    label: 'Not Scanned',
+                    icon: Icons.radio_button_unchecked,
+                    activeColor: colorScheme.tertiary,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildStatusOptionButton(
+                    value: ScanningStatus.pullout,
+                    label: 'Pullout',
+                    icon: Icons.outbox_outlined,
+                    activeColor: colorScheme.error,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (!_isDealer) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.lock_outline_rounded, size: 14, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Salesman scans are saved as Pending. Only dealers can mark a barcode as Scanned.',
+                    style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant, fontStyle: FontStyle.italic),
+                  ),
                 ),
               ],
-              selected: {_selectedStatus},
-              onSelectionChanged: (Set<String> newSelection) {
-                setState(() => _selectedStatus = newSelection.first);
-              },
             ),
-          ),
+          ],
           if (isPullout) ...[
             const SizedBox(height: 12),
             Container(
@@ -507,9 +1019,12 @@ class _ScanningPageState extends State<ScanningPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
+              _buildWorkflowBanner(),
               _buildBarcodeCard(),
               const SizedBox(height: 12),
               _buildStoreCard(),
+              const SizedBox(height: 12),
+              _buildFreezerPhotoCard(),
               const SizedBox(height: 12),
               _buildStatusCard(),
               const SizedBox(height: 20),
@@ -523,12 +1038,20 @@ class _ScanningPageState extends State<ScanningPage> {
                       )
                     : const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
                 label: Text(
-                  _isSaving ? 'Saving...' : 'Save Record',
+                  _isSaving
+                      ? 'Saving Record...'
+                      : (_selectedStatus == ScanningStatus.scanned
+                          ? 'Confirm & Mark Scanned'
+                          : (_selectedStatus == ScanningStatus.pending ? 'Save as Pending' : 'Save Record')),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50),
-                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  backgroundColor: _selectedStatus == ScanningStatus.scanned
+                      ? Colors.green.shade700
+                      : (_selectedStatus == ScanningStatus.pending
+                          ? Colors.amber.shade800
+                          : Theme.of(context).colorScheme.primary),
                   disabledBackgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),

@@ -13,7 +13,9 @@ import 'package:flutter_app/services/auth_service.dart';
 import 'package:flutter_app/services/breakdown_service.dart';
 import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:flutter_app/services/inventory_service.dart';
 import 'package:flutter_app/services/placement_service.dart';
+import 'package:flutter_app/services/selecta_product_service.dart';
 import 'package:intl/intl.dart';
 
 /// Aggregated counts by delivery status for summary widgets.
@@ -21,10 +23,13 @@ class DeliverySummaryCounts {
   /// Total number of deliveries for the selected date.
   final int all;
 
+  /// Count of orders waiting for picklist completion.
+  final int pendingPicklist;
+
   /// Count of successfully delivered records.
   final int delivered;
 
-  /// Count of records pending delivery.
+  /// Count of records pending delivery (picklist completed, ready for delivery).
   final int pending;
 
   /// Count of records that were returned.
@@ -32,6 +37,7 @@ class DeliverySummaryCounts {
 
   const DeliverySummaryCounts({
     required this.all,
+    this.pendingPicklist = 0,
     required this.delivered,
     required this.pending,
     required this.returned,
@@ -53,26 +59,22 @@ class PlacementLoadResult {
 }
 
 /// Controller managing business logic, computations, validations, and service orchestration
-/// for both [DeliveryListPage] and [DeliveryPage].
-///
-/// By centralizing delivery operations here:
-/// - Firebase/Firestore operations are strictly delegated to the appropriate Service classes
-///   ([DeliveryService], [PlacementService], [BreakdownService], [HapiStoreService]).
-/// - UI views remain clean and focused solely on widget presentation and user interaction.
-/// - Calculations (discrepancy, validation, summaries, placement mapping, SMS formatting)
-///   are modular, readable, and testable.
+/// for the unified Order -> Picklist -> Delivery workflow.
 class DeliveryController {
   final DeliveryService _deliveryService;
   final PlacementService _placementService;
   final BreakdownService _breakdownService;
+  final InventoryService _inventoryService;
 
   DeliveryController({
     DeliveryService? deliveryService,
     PlacementService? placementService,
     BreakdownService? breakdownService,
+    InventoryService? inventoryService,
   })  : _deliveryService = deliveryService ?? DeliveryService(),
         _placementService = placementService ?? PlacementService(),
-        _breakdownService = breakdownService ?? BreakdownService();
+        _breakdownService = breakdownService ?? BreakdownService(),
+        _inventoryService = inventoryService ?? InventoryService();
 
   // ==========================================
   // Shared / Role & Breakdown Queries
@@ -92,12 +94,22 @@ class DeliveryController {
   }
 
   // ==========================================
-  // List Operations (DeliveryListPage)
+  // List Operations (DeliveryListPage & PicklistListPage)
   // ==========================================
 
   /// Returns a real-time stream of delivery records for a specific delivery date.
   Stream<QuerySnapshot> getDeliveriesStream(DateTime date) {
     return _deliveryService.getListDeliveryByDate(date);
+  }
+
+  /// Returns a real-time stream of all orders currently in `Pending Picklist` status.
+  Stream<QuerySnapshot<Delivery>> getPendingPicklistsStream() {
+    return _deliveryService.getPendingPicklistsStream();
+  }
+
+  /// Live count stream of orders currently in `Pending Picklist` status.
+  Stream<int> getPendingPicklistCountStream() {
+    return _deliveryService.getPendingPicklistCountStream();
   }
 
   /// Fetches the count of returned deliveries from past days that need attention/rescheduling.
@@ -125,6 +137,7 @@ class DeliveryController {
 
   /// Computes summary counts across all delivery documents for the interactive status tabs.
   DeliverySummaryCounts computeSummaryCounts(List docs) {
+    int pendingPicklist = 0;
     int pending = 0;
     int delivered = 0;
     int returned = 0;
@@ -132,6 +145,9 @@ class DeliveryController {
     for (final item in docs) {
       final Delivery delivery = item.data() as Delivery;
       switch (delivery.transactionStatus) {
+        case DeliveryStatus.pendingPicklist:
+          pendingPicklist++;
+          break;
         case DeliveryStatus.pending:
           pending++;
           break;
@@ -146,6 +162,7 @@ class DeliveryController {
 
     return DeliverySummaryCounts(
       all: docs.length,
+      pendingPicklist: pendingPicklist,
       delivered: delivered,
       pending: pending,
       returned: returned,
@@ -168,7 +185,292 @@ class DeliveryController {
   }
 
   // ==========================================
-  // Detail & Form Operations (DeliveryPage)
+  // Step 1: Book Order Operations (BookOrderPage)
+  // ==========================================
+
+  /// Computes total order amount from a list of [OrderItem]s.
+  double computeItemsOrderAmount(List<OrderItem> items) {
+    double total = 0.0;
+    for (final item in items) {
+      total += item.lineTotal;
+    }
+    return total;
+  }
+
+  /// Creates a new Booked Order (`Pending Picklist`) in the unified `delivery` collection,
+  /// temporarily reserves floating stock (`reservedQuantity`), and writes an audit log.
+  Future<({String id, Delivery delivery})> createBookedOrder({
+    required String storeName,
+    required DateTime selectedDate,
+    required List<OrderItem> items,
+    String remarks = '',
+  }) async {
+    final cleanItems = items.where((i) => i.pickedQuantity > 0).toList();
+    final double orderAmount = computeItemsOrderAmount(cleanItems);
+    final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
+
+    final newRecord = Delivery(
+      storeName: storeName,
+      remarks: remarks.trim(),
+      transactionStatus: DeliveryStatus.pendingPicklist,
+      imagePath: '',
+      orderAmount: orderAmount,
+      returnAmount: 0,
+      creditAmount: 0,
+      cashAmount: 0,
+      onlineAmount: 0,
+      deliveryDate: Timestamp.fromDate(selectedDate),
+      creditStatus: CreditStatus.unpaid,
+      createdBy: currentUserName,
+      lastUpdatedBy: currentUserName,
+      createdDate: Timestamp.now(),
+      lastupdatedDate: Timestamp.now(),
+      createdPage: AppPages.bookOrder,
+      lastUpdatedPage: AppPages.bookOrder,
+      items: cleanItems,
+      isInventoryReserved: true,
+      isInventoryDeducted: false,
+    );
+
+    // 1. Reserve floating inventory so other orders cannot overbook stock
+    await _inventoryService.reserveStockForOrder(
+      storeName: storeName,
+      items: cleanItems,
+    );
+
+    // 2. Persist unified transaction in `delivery` collection
+    final String newId = await _deliveryService.addDelivery(newRecord);
+
+    // 3. Write audit log
+    await Helperfunctions.logCreate(
+      storeName,
+      newRecord.toJson(),
+      page: AppPages.bookOrder,
+    );
+
+    return (id: newId, delivery: newRecord);
+  }
+
+  /// Updates an existing Booked Order while it is still in `Pending Picklist` status,
+  /// adjusting floating stock reservations (`reservedQuantity`) accordingly.
+  Future<Delivery> updateBookedOrder({
+    required String deliveryId,
+    required Delivery currentDelivery,
+    required String storeName,
+    required DateTime selectedDate,
+    required List<OrderItem> items,
+    String? remarks,
+  }) async {
+    final cleanItems = items.where((i) => i.pickedQuantity > 0).toList();
+    final double orderAmount = computeItemsOrderAmount(cleanItems);
+    final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
+
+    if (currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
+      await _inventoryService.adjustReservedStockForOrderUpdate(
+        storeName: storeName,
+        oldItems: currentDelivery.items,
+        newItems: cleanItems,
+      );
+    } else if (!currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
+      await _inventoryService.reserveStockForOrder(
+        storeName: storeName,
+        items: cleanItems,
+      );
+    }
+
+    final updated = currentDelivery.copyWith(
+      storeName: storeName,
+      remarks: remarks ?? currentDelivery.remarks,
+      deliveryDate: Timestamp.fromDate(selectedDate),
+      orderAmount: orderAmount,
+      items: cleanItems,
+      isInventoryReserved: !currentDelivery.isInventoryDeducted,
+      lastUpdatedBy: currentUserName,
+      lastupdatedDate: Timestamp.now(),
+      lastUpdatedPage: AppPages.bookOrder,
+    );
+
+    await _deliveryService.updateDelivery(deliveryId, updated);
+    await Helperfunctions.logUpdate(
+      storeName,
+      currentDelivery.toJson(),
+      updated.toJson(),
+      page: AppPages.bookOrder,
+    );
+
+    return updated;
+  }
+
+  // ==========================================
+  // Step 2: Picklist Operations (PicklistPage)
+  // ==========================================
+
+  /// Saves intermediate picklist progress (checked items, adjusted quantities, receipt, placement)
+  /// while keeping status as `Pending Picklist` and updating floating stock reservation.
+  Future<Delivery> savePicklistProgress({
+    required BuildContext context,
+    required String deliveryId,
+    required Delivery currentDelivery,
+    required String storeName,
+    required List<OrderItem> items,
+    required File? imageFile,
+    required String networkImagePath,
+    required List<KPlacement> placements,
+    required String placementId,
+    String? remarks,
+  }) async {
+    final cleanItems = items.where((i) => i.pickedQuantity > 0).toList();
+    final double orderAmount = computeItemsOrderAmount(cleanItems);
+    final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
+
+    if (currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
+      await _inventoryService.adjustReservedStockForOrderUpdate(
+        storeName: storeName,
+        oldItems: currentDelivery.items,
+        newItems: cleanItems,
+      );
+    }
+
+    String imageFilePath = currentDelivery.imagePath;
+    if (context.mounted) {
+      imageFilePath = await Helperfunctions.updateImage(
+        context,
+        imageFile,
+        networkImagePath,
+        currentDelivery.imagePath,
+      );
+    }
+
+    final updated = currentDelivery.copyWith(
+      storeName: storeName,
+      remarks: remarks ?? currentDelivery.remarks,
+      imagePath: imageFilePath,
+      orderAmount: orderAmount,
+      items: cleanItems,
+      lastUpdatedBy: currentUserName,
+      lastupdatedDate: Timestamp.now(),
+      lastUpdatedPage: AppPages.picklist,
+    );
+
+    await _deliveryService.updateDelivery(deliveryId, updated);
+
+    if (placements.isNotEmpty && updated.deliveryDate != null) {
+      final placement = Placement.fromFlags(
+        storeName: updated.storeName,
+        deliveryDate: updated.deliveryDate!,
+        flags: placements.map((p) => p.isPlaced).toList(),
+        id: placementId,
+      );
+      placement.progressCount = placements.where((p) => p.isPlaced).length;
+      placement.isFinished = placement.progressCount == 12;
+      await _placementService.savePlacement(placement);
+    }
+
+    await Helperfunctions.logUpdate(
+      storeName,
+      currentDelivery.toJson(),
+      updated.toJson(),
+      page: AppPages.picklist,
+    );
+
+    return updated;
+  }
+
+  /// Completes the Picklist:
+  /// 1. Permanently deducts picked quantities from physical inventory (`stockQuantity`)
+  ///    and releases floating reservations (`reservedQuantity`).
+  /// 2. Saves receipt image & store placement checklist.
+  /// 3. Marks the unified transaction as `DeliveryStatus.pending` ("For Delivery").
+  /// 4. Optionally sends the customer SMS confirmation.
+  Future<Delivery> completePicklist({
+    required BuildContext context,
+    required String deliveryId,
+    required Delivery currentDelivery,
+    required String storeName,
+    required List<OrderItem> pickedItems,
+    required File? imageFile,
+    required String networkImagePath,
+    required List<KPlacement> placements,
+    required String placementId,
+    required bool sendText,
+    required String smsMessage,
+    String? remarks,
+  }) async {
+    final cleanItems = pickedItems.where((i) => i.pickedQuantity > 0).toList();
+    final double orderAmount = computeItemsOrderAmount(cleanItems);
+    final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
+
+    // 1. Permanently deduct inventory & release floating reservation
+    if (!currentDelivery.isInventoryDeducted) {
+      await _inventoryService.confirmPicklistAndDeductStock(
+        storeName: storeName,
+        reservedItems: currentDelivery.items,
+        pickedItems: cleanItems,
+        wasReserved: currentDelivery.isInventoryReserved,
+      );
+    }
+
+    // 2. Upload/update receipt image if present
+    String imageFilePath = currentDelivery.imagePath;
+    if (context.mounted) {
+      imageFilePath = await Helperfunctions.updateImage(
+        context,
+        imageFile,
+        networkImagePath,
+        currentDelivery.imagePath,
+      );
+    }
+
+    // 3. Transition status to DeliveryStatus.pending ("For Delivery")
+    final updated = currentDelivery.copyWith(
+      storeName: storeName,
+      remarks: remarks ?? currentDelivery.remarks,
+      transactionStatus: DeliveryStatus.pending,
+      imagePath: imageFilePath,
+      orderAmount: orderAmount,
+      items: cleanItems.map((i) => i.copyWith(isPicked: true)).toList(),
+      isInventoryReserved: false,
+      isInventoryDeducted: true,
+      picklistCompletedDate: Timestamp.now(),
+      picklistCompletedBy: currentUserName,
+      lastUpdatedBy: currentUserName,
+      lastupdatedDate: Timestamp.now(),
+      lastUpdatedPage: AppPages.picklist,
+    );
+
+    await _deliveryService.updateDelivery(deliveryId, updated);
+
+    // 4. Save placement progress
+    if (placements.isNotEmpty && updated.deliveryDate != null) {
+      final placement = Placement.fromFlags(
+        storeName: updated.storeName,
+        deliveryDate: updated.deliveryDate!,
+        flags: placements.map((p) => p.isPlaced).toList(),
+        id: placementId,
+      );
+      placement.progressCount = placements.where((p) => p.isPlaced).length;
+      placement.isFinished = placement.progressCount == 12;
+      await _placementService.savePlacement(placement);
+    }
+
+    // 5. Write audit trail
+    await Helperfunctions.logUpdate(
+      storeName,
+      currentDelivery.toJson(),
+      updated.toJson(),
+      page: AppPages.picklist,
+    );
+
+    // 6. Optional SMS notification
+    if (sendText && smsMessage.isNotEmpty) {
+      await sendDeliverySms(storeName: storeName, message: smsMessage);
+    }
+
+    return updated;
+  }
+
+  // ==========================================
+  // Step 3: Delivery & Payment Operations (DeliveryPage)
   // ==========================================
 
   /// Computes payment discrepancy (total received payments minus the required order amount).
@@ -268,15 +570,33 @@ class DeliveryController {
     }
   }
 
-  /// Fetches saved placement data for a store in the current month and maps it to placement items.
+  /// Fetches saved placement data for a store in the current month and maps it to placement items based on Best Sellers.
   Future<PlacementLoadResult> loadPlacementsForStore(String storeName) async {
-    final List<KPlacement> listPlacement = KData.getListPlacement();
+    final selectaService = SelectaProductService();
+    final bestSellers = await selectaService.getBestSellerProducts();
+
+    List<KPlacement> listPlacement;
+    if (bestSellers.isNotEmpty) {
+      listPlacement = bestSellers.map((prod) => KPlacement(
+        itemName: prod.productName,
+        itemCode: prod.id,
+        isPlaced: false,
+        isPlacedFromDB: false,
+        itemImagePath: prod.imageUrl.isNotEmpty ? prod.imageUrl : 'assets/images/placement/watermelon.png',
+      )).toList();
+    } else {
+      listPlacement = KData.getListPlacement();
+    }
+
     String placementId = '';
 
     if (storeName.isNotEmpty) {
       final savedPlacement = await _placementService.getPlacementByStoreAndDate(storeName, DateTime.now());
       if (savedPlacement != null) {
         placementId = savedPlacement.id;
+        final placedLowerNames = savedPlacement.placedProductNames.map((n) => n.trim().toLowerCase()).toSet();
+
+        // Also check legacy cotc flags
         final flags = [
           savedPlacement.cotc1,
           savedPlacement.cotc2,
@@ -291,11 +611,17 @@ class DeliveryController {
           savedPlacement.cotc11,
           savedPlacement.cotc12,
         ];
-
-        for (int i = 0; i < listPlacement.length && i < flags.length; i++) {
+        final legacyList = KData.getListPlacement();
+        for (int i = 0; i < legacyList.length && i < flags.length; i++) {
           if (flags[i]) {
-            listPlacement[i].isPlaced = true;
-            listPlacement[i].isPlacedFromDB = true;
+            placedLowerNames.add(legacyList[i].itemName.trim().toLowerCase());
+          }
+        }
+
+        for (final item in listPlacement) {
+          if (placedLowerNames.contains(item.itemName.trim().toLowerCase())) {
+            item.isPlaced = true;
+            item.isPlacedFromDB = true;
           }
         }
       }
@@ -307,10 +633,7 @@ class DeliveryController {
     );
   }
 
-  /// Creates a new delivery record in Firestore, saves corresponding placements,
-  /// writes an audit log trail, and optionally sends an SMS notification.
-  ///
-  /// Returns the newly created [Delivery] model.
+  /// Creates a new delivery record directly (legacy helper).
   Future<Delivery> createDelivery({
     required BuildContext context,
     required String storeName,
@@ -322,7 +645,6 @@ class DeliveryController {
     required bool sendText,
     required String smsMessage,
   }) async {
-    // 1. Upload receipt/delivery image if present
     String imageFilePath = '';
     if (imageFile != null) {
       imageFilePath = await Helperfunctions.saveImage(context, imageFile);
@@ -331,7 +653,6 @@ class DeliveryController {
     final double orderAmount = Helperfunctions.formatStringAmountToDouble(orderAmountText);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
-    // 2. Build the Delivery entity
     final newRecord = Delivery(
       storeName: storeName,
       remarks: '',
@@ -352,10 +673,8 @@ class DeliveryController {
       lastUpdatedPage: AppPages.delivery,
     );
 
-    // 3. Persist delivery via Service
     await _deliveryService.addDelivery(newRecord);
 
-    // 4. Save placement progress
     final placement = Placement.fromFlags(
       storeName: newRecord.storeName,
       deliveryDate: newRecord.deliveryDate!,
@@ -366,10 +685,8 @@ class DeliveryController {
     placement.isFinished = placement.progressCount == 12;
     await _placementService.savePlacement(placement);
 
-    // 5. Write audit trail
     await Helperfunctions.logCreate(storeName, newRecord.toJson(), page: AppPages.delivery);
 
-    // 6. Optional customer SMS notification
     if (sendText && smsMessage.isNotEmpty) {
       await sendDeliverySms(storeName: storeName, message: smsMessage);
     }
@@ -395,6 +712,8 @@ class DeliveryController {
     required String returnAmountText,
     required File? imageFile,
     required String networkImagePath,
+    List<KPlacement>? placements,
+    String? placementId,
   }) async {
     double returnAmount = 0;
     double creditAmount = 0;
@@ -404,6 +723,7 @@ class DeliveryController {
     double finalOrderAmount = currentDelivery.orderAmount;
 
     switch (status) {
+      case DeliveryStatus.pendingPicklist:
       case DeliveryStatus.pending:
         finalOrderAmount = Helperfunctions.formatStringAmountToDouble(orderAmountText);
         finalRemarks = '';
@@ -454,6 +774,39 @@ class DeliveryController {
     // Persist via Service
     await _deliveryService.updateDelivery(deliveryId, updatedDelivery);
 
+    if (status == DeliveryStatus.delivered) {
+      await reflectBestSellerPlacementsForDelivery(updatedDelivery);
+    }
+
+    if (placements != null && placements.isNotEmpty && updatedDelivery.deliveryDate != null) {
+      final placedNames = placements.where((p) => p.isPlaced).map((p) => p.itemName).toList();
+      final totalBestSellers = await SelectaProductService().getBestSellerProducts();
+      final totalExpected = totalBestSellers.isNotEmpty ? totalBestSellers.length : placements.length;
+      final isFinished = totalExpected > 0 && placedNames.length >= totalExpected;
+
+      final placement = Placement(
+        id: placementId ?? '',
+        storeName: updatedDelivery.storeName,
+        deliveryDate: updatedDelivery.deliveryDate!,
+        placedProductNames: placedNames,
+        cotc1: placements.isNotEmpty ? placements[0].isPlaced : false,
+        cotc2: placements.length > 1 ? placements[1].isPlaced : false,
+        cotc3: placements.length > 2 ? placements[2].isPlaced : false,
+        cotc4: placements.length > 3 ? placements[3].isPlaced : false,
+        cotc5: placements.length > 4 ? placements[4].isPlaced : false,
+        cotc6: placements.length > 5 ? placements[5].isPlaced : false,
+        cotc7: placements.length > 6 ? placements[6].isPlaced : false,
+        cotc8: placements.length > 7 ? placements[7].isPlaced : false,
+        cotc9: placements.length > 8 ? placements[8].isPlaced : false,
+        cotc10: placements.length > 9 ? placements[9].isPlaced : false,
+        cotc11: placements.length > 10 ? placements[10].isPlaced : false,
+        cotc12: placements.length > 11 ? placements[11].isPlaced : false,
+        isFinished: isFinished,
+        progressCount: placedNames.length,
+      );
+      await _placementService.savePlacement(placement);
+    }
+
     // Audit log
     await Helperfunctions.logUpdate(
       storeName,
@@ -465,13 +818,97 @@ class DeliveryController {
     return updatedDelivery;
   }
 
-  /// Deletes a delivery record and its associated uploaded image from storage.
+  /// Automatically reflects any ordered Best Seller products in the store's monthly Placement record
+  /// when a delivery has been successfully delivered.
+  Future<void> reflectBestSellerPlacementsForDelivery(Delivery delivery) async {
+    if (delivery.storeName.trim().isEmpty || delivery.deliveryDate == null) return;
+
+    // 1. Identify all delivered products with positive quantities
+    final Set<String> deliveredBestSellerNames = {};
+    for (final item in delivery.items) {
+      final effectiveQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+      if (effectiveQty > 0 && ProductTag.isBestSeller(item.tag)) {
+        deliveredBestSellerNames.add(item.productName.trim());
+      }
+    }
+
+    // Also match against active catalog Best Sellers (in case tag wasn't set on older OrderItem snapshots)
+    final allBestSellers = await SelectaProductService().getBestSellerProducts();
+    final bestSellerNameMap = {for (final p in allBestSellers) p.productName.trim().toLowerCase(): p.productName.trim()};
+
+    for (final item in delivery.items) {
+      final effectiveQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+      if (effectiveQty > 0) {
+        final match = bestSellerNameMap[item.productName.trim().toLowerCase()];
+        if (match != null) {
+          deliveredBestSellerNames.add(match);
+        }
+      }
+    }
+
+    if (deliveredBestSellerNames.isEmpty) return;
+
+    // 2. Fetch existing placement record for this store & month
+    final deliveryDateTime = delivery.deliveryDate!.toDate();
+    final existingPlacement = await _placementService.getPlacementByStoreAndDate(
+      delivery.storeName,
+      deliveryDateTime,
+    );
+
+    final placement = existingPlacement ??
+        Placement.empty().copyWith(
+          storeName: delivery.storeName,
+          deliveryDate: delivery.deliveryDate!,
+        );
+
+    // 3. Union existing placed product names with newly delivered Best Sellers
+    final currentPlaced = Set<String>.from(placement.placedProductNames);
+    currentPlaced.addAll(deliveredBestSellerNames);
+    placement.placedProductNames = currentPlaced.toList();
+
+    // Map to legacy cotc flags if any matching names exist
+    final legacyList = KData.getListPlacement();
+    final legacyMap = <String, bool>{};
+    for (int i = 0; i < legacyList.length; i++) {
+      final code = 'cotc${i + 1}';
+      final match = placement.placedProductNames.any((pName) => pName.trim().toLowerCase() == legacyList[i].itemName.trim().toLowerCase());
+      legacyMap[code] = match;
+    }
+    placement.cotc1 = legacyMap['cotc1'] ?? placement.cotc1;
+    placement.cotc2 = legacyMap['cotc2'] ?? placement.cotc2;
+    placement.cotc3 = legacyMap['cotc3'] ?? placement.cotc3;
+    placement.cotc4 = legacyMap['cotc4'] ?? placement.cotc4;
+    placement.cotc5 = legacyMap['cotc5'] ?? placement.cotc5;
+    placement.cotc6 = legacyMap['cotc6'] ?? placement.cotc6;
+    placement.cotc7 = legacyMap['cotc7'] ?? placement.cotc7;
+    placement.cotc8 = legacyMap['cotc8'] ?? placement.cotc8;
+    placement.cotc9 = legacyMap['cotc9'] ?? placement.cotc9;
+    placement.cotc10 = legacyMap['cotc10'] ?? placement.cotc10;
+    placement.cotc11 = legacyMap['cotc11'] ?? placement.cotc11;
+    placement.cotc12 = legacyMap['cotc12'] ?? placement.cotc12;
+
+    final totalBestSellerCount = allBestSellers.isNotEmpty ? allBestSellers.length : 12;
+    placement.progressCount = placement.placedProductNames.length;
+    placement.isFinished = totalBestSellerCount > 0 && placement.progressCount >= totalBestSellerCount;
+
+    // 4. Persist to Firestore
+    await _placementService.savePlacement(placement);
+  }
+
+  /// Deletes a delivery record, releases any floating reserved inventory if still in
+  /// `Pending Picklist`, and removes its associated uploaded image from storage.
   Future<void> deleteDelivery({
     required BuildContext context,
     required String deliveryId,
     required Delivery delivery,
   }) async {
-    if (delivery.imagePath.isNotEmpty) {
+    if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
+      await _inventoryService.releaseReservedStockForOrder(
+        storeName: delivery.storeName,
+        items: delivery.items,
+      );
+    }
+    if (delivery.imagePath.isNotEmpty && context.mounted) {
       await Helperfunctions.deleteImage(context, delivery.imagePath);
     }
     _deliveryService.deleteDelivery(deliveryId);

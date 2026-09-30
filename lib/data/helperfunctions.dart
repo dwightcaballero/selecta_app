@@ -136,7 +136,7 @@ class Helperfunctions {
 
   static Future<String> saveImage(BuildContext context, File image) async {
     try {
-      final userID = authService.value.currentUser!.uid;
+      final userID = authService.value.currentUser?.uid ?? 'guest';
       final storageRef = FirebaseStorage.instance.ref();
       final fileName = image.path.split('/').last;
       final timestamp = DateTime.now().microsecondsSinceEpoch;
@@ -291,5 +291,56 @@ class Helperfunctions {
         Navigator.of(dialogCtx).pop();
       }
     }
+  }
+
+  static final RegExp _srpRegex = RegExp(
+    r'(?:^|[^\w])(?:PHP|SRP:?|[P₱])\s*(\d+(?:\.\d+)?)',
+    caseSensitive: false,
+  );
+
+  /// Extracts numeric SRP from a product name/description (e.g. "P10", "P105", "₱20", "SRP 25").
+  static double? extractSrp(String text) {
+    final match = _srpRegex.firstMatch(text);
+    if (match != null) {
+      return double.tryParse(match.group(1)!);
+    }
+    return null;
+  }
+
+  /// Compares two products by extracted SRP ascending, then alphabetically by name.
+  /// If neither has an extracted SRP, falls back to selling price comparison.
+  static int compareBySrpAndName({
+    required String nameA,
+    required double priceA,
+    required String nameB,
+    required double priceB,
+  }) {
+    final srpA = extractSrp(nameA);
+    final srpB = extractSrp(nameB);
+
+    if (srpA != null && srpB != null) {
+      final srpComp = srpA.compareTo(srpB);
+      if (srpComp != 0) return srpComp;
+      return nameA.toLowerCase().compareTo(nameB.toLowerCase());
+    } else if (srpA != null) {
+      return -1;
+    } else if (srpB != null) {
+      return 1;
+    }
+
+    final priceComp = priceA.compareTo(priceB);
+    if (priceComp != 0) return priceComp;
+    return nameA.toLowerCase().compareTo(nameB.toLowerCase());
+  }
+
+  /// Compares categories ensuring "By Case" comes before "By Piece", followed by other categories.
+  static int compareCategoryHierarchy(String catA, String catB) {
+    int getRank(String cat) {
+      final lower = cat.trim().toLowerCase();
+      if (lower == 'by case' || lower.contains('case')) return 0;
+      if (lower == 'by piece' || lower.contains('piece')) return 1;
+      return 2;
+    }
+    return getRank(catA).compareTo(getRank(catB));
   }
 }

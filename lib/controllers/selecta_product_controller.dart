@@ -68,13 +68,31 @@ class SelectaProductController {
   /// Exports all [AdminSelectaProduct] records to a local `.json` file.
   Future<File> exportAdminCatalogToFile() => _service.exportAdminProductsToFile();
 
+  /// Exports all [AdminSelectaProduct] records as a CSV string.
+  Future<String> exportAdminCatalogCsv() => _service.exportAdminProductsToCsvString();
+
+  /// Exports all [AdminSelectaProduct] records to a local `.csv` file.
+  Future<File> exportAdminCatalogToCsvFile() => _service.exportAdminProductsToCsvFile();
+
   /// Imports [AdminSelectaProduct] records from a JSON string.
   Future<int> importAdminCatalogFromJson(String jsonSource) =>
       _service.importAdminProductsFromJsonString(jsonSource);
 
-  /// Imports [AdminSelectaProduct] records from a remote URL (e.g., GitHub raw JSON).
+  /// Imports [AdminSelectaProduct] records from a CSV string.
+  Future<int> importAdminCatalogFromCsv(String csvSource) =>
+      _service.importAdminProductsFromCsvString(csvSource);
+
+  /// Imports [AdminSelectaProduct] records from raw text (auto-detects JSON or CSV).
+  Future<int> importAdminCatalog(String data) =>
+      _service.importAdminProductsFromData(data);
+
+  /// Imports [AdminSelectaProduct] records from a remote URL (JSON or CSV).
   Future<int> importAdminCatalogFromUrl(String url) =>
       _service.importAdminProductsFromUrl(url);
+
+  /// Fetches raw text content from a remote URL.
+  Future<String> fetchRawCatalogFromUrl(String url) =>
+      _service.fetchRawCatalogFromUrl(url);
 
   Future<String?> getCustomCatalogApiUrl() => _service.getCustomCatalogApiUrl();
 

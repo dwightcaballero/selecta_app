@@ -6,7 +6,8 @@ import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class SalesPage extends StatefulWidget {
-  const SalesPage({super.key});
+  final double? monthlyTarget;
+  const SalesPage({super.key, this.monthlyTarget});
 
   @override
   State<SalesPage> createState() => _SalesPageState();
@@ -15,6 +16,8 @@ class SalesPage extends StatefulWidget {
 class _SalesPageState extends State<SalesPage> {
   // Controller managing sales aggregation, targets, and filtering
   final SalesController _controller = SalesController();
+
+  double get effectiveTarget => widget.monthlyTarget ?? SalesController.monthlyTarget;
 
   SalesSummary _summary = SalesSummary.empty();
   bool isLoading = true;
@@ -73,8 +76,8 @@ class _SalesPageState extends State<SalesPage> {
   Widget _buildSummaryCard(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final currentMonthLabel = DateFormat('MMMM yyyy').format(DateTime.now());
-    final progress = _controller.calculateTargetProgress(totalInvoicedSales);
-    final remainingAmount = _controller.calculateRemainingAmount(totalInvoicedSales);
+    final progress = _controller.calculateTargetProgress(totalInvoicedSales, target: effectiveTarget);
+    final remainingAmount = _controller.calculateRemainingAmount(totalInvoicedSales, target: effectiveTarget);
     final fulfillmentRatio = _controller.calculateFulfillmentRatio(totalInvoicedSales, totalPurchaseOrder);
 
     return Container(
@@ -148,7 +151,7 @@ class _SalesPageState extends State<SalesPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Target: ${Helperfunctions.formatDoubleAmountForDisplay(SalesController.monthlyTarget)} (${(progress * 100).toStringAsFixed(1)}%)',
+                'Target: ${Helperfunctions.formatDoubleAmountForDisplay(effectiveTarget)} (${(progress * 100).toStringAsFixed(1)}%)',
                 style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
               ),
               Text(

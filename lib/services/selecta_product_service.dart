@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/firebase_options.dart';
 import 'package:flutter_app/models/admin_selecta_product.dart';
 import 'package:flutter_app/models/selecta_product.dart';
@@ -136,7 +137,8 @@ class SelectaProductService {
         'sellingPrice': product.sellingPrice,
         'price': product.sellingPrice,
         'itemCode': '',
-        'category': '',
+        'category': product.category,
+        'tag': product.tag,
         'isActive': true,
         'importedAt': now,
         'updatedAt': now,
@@ -147,7 +149,7 @@ class SelectaProductService {
     return docRef.id;
   }
 
-  /// Updates an existing [AdminSelectaProduct] (Admin only) and updates local dealer catalog prices/name/image.
+  /// Updates an existing [AdminSelectaProduct] (Admin only) and updates local dealer catalog prices/name/image/category.
   Future<void> updateAdminProduct(String productId, AdminSelectaProduct product) async {
     final now = Timestamp.now();
     await _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).set(
@@ -156,6 +158,8 @@ class SelectaProductService {
         'imageUrl': product.imageUrl,
         'buyingPrice': product.buyingPrice,
         'sellingPrice': product.sellingPrice,
+        'category': product.category,
+        'tag': product.tag,
         'updatedAt': now,
       },
       SetOptions(merge: true),
@@ -169,6 +173,8 @@ class SelectaProductService {
         'buyingPrice': product.buyingPrice,
         'sellingPrice': product.sellingPrice,
         'price': product.sellingPrice,
+        'category': product.category,
+        'tag': product.tag,
         'updatedAt': now,
       },
       SetOptions(merge: true),
@@ -206,23 +212,70 @@ class SelectaProductService {
     return file;
   }
 
-  /// Imports a list of [AdminSelectaProduct] from a raw JSON string or a remote URL
-  /// (such as a GitHub Raw JSON URL) into `admin_selecta_products`.
-  Future<int> importAdminProductsFromJsonString(String jsonSource) async {
-    final products = _parseAdminProductsFromJson(jsonSource);
-    if (products.isEmpty) {
-      throw const FormatException('No valid Selecta products found in JSON.');
+  /// Exports all [AdminSelectaProduct] records as CSV text.
+  Future<String> exportAdminProductsToCsvString() async {
+    final products = await getAllAdminProducts();
+    final buffer = StringBuffer();
+    buffer.writeln('Product Name,Buying Price,Selling Price,Category,Image URL,ID');
+    for (final p in products) {
+      buffer.writeln(
+        '${_escapeCsv(p.productName)},'
+        '${p.buyingPrice.toStringAsFixed(2)},'
+        '${p.sellingPrice.toStringAsFixed(2)},'
+        '${_escapeCsv(p.category)},'
+        '${_escapeCsv(p.imageUrl)},'
+        '${_escapeCsv(p.id)}',
+      );
+    }
+    return buffer.toString();
+  }
+
+  /// Saves the exported Admin Catalog to a local `.csv` file and returns the [File].
+  Future<File> exportAdminProductsToCsvFile() async {
+    final csvString = await exportAdminProductsToCsvString();
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/selecta_admin_catalog.csv');
+    await file.writeAsString(csvString);
+    return file;
+  }
+
+  static String _escapeCsv(String field) {
+    if (field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r')) {
+      return '"${field.replaceAll('"', '""')}"';
+    }
+    return field;
+  }
+
+  /// Saves a list of [AdminSelectaProduct] into Firestore, matching existing records by ID
+  /// or lowercase name to prevent duplicates, then syncs with dealer products.
+  Future<int> _saveAdminProductsToFirestore(List<AdminSelectaProduct> products) async {
+    if (products.isEmpty) return 0;
+
+    // Fetch existing admin products to reuse existing doc IDs and prevent duplicates
+    final existingSnap = await _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).get();
+    final existingByName = <String, String>{};
+    for (final doc in existingSnap.docs) {
+      final name = (doc.data()['productName'] as String? ?? '').trim().toLowerCase();
+      if (name.isNotEmpty) {
+        existingByName[name] = doc.id;
+      }
     }
 
     final now = Timestamp.now();
+    final savedProducts = <AdminSelectaProduct>[];
     const batchSize = 400;
     for (var i = 0; i < products.length; i += batchSize) {
       final chunk = products.skip(i).take(batchSize);
       final batch = _firestore.batch();
       for (final p in chunk) {
-        final docRef = p.id.isNotEmpty
-            ? _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc(p.id)
+        final existingId = p.id.isNotEmpty
+            ? p.id
+            : existingByName[p.productName.trim().toLowerCase()];
+        final docRef = (existingId != null && existingId.isNotEmpty)
+            ? _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc(existingId)
             : _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc();
+        final finalId = docRef.id;
+        savedProducts.add(p.copyWith(id: finalId));
         batch.set(
           docRef,
           {
@@ -230,6 +283,7 @@ class SelectaProductService {
             'imageUrl': p.imageUrl,
             'buyingPrice': p.buyingPrice,
             'sellingPrice': p.sellingPrice,
+            'category': p.category,
             'createdAt': p.createdAt ?? now,
             'updatedAt': now,
           },
@@ -240,18 +294,50 @@ class SelectaProductService {
     }
 
     // Also sync dealer collection on this database
-    await syncDealerProductsWithAdminCatalog(remoteProducts: products);
+    await syncDealerProductsWithAdminCatalog(remoteProducts: savedProducts);
     return products.length;
   }
 
-  /// Imports Admin products from a remote JSON URL (e.g., GitHub raw JSON URL).
-  Future<int> importAdminProductsFromUrl(String url) async {
+  /// Imports a list of [AdminSelectaProduct] from a raw JSON string into `admin_selecta_products`.
+  Future<int> importAdminProductsFromJsonString(String jsonSource) async {
+    final products = parseAdminProductsFromJson(jsonSource);
+    if (products.isEmpty) {
+      throw const FormatException('No valid Selecta products found in JSON.');
+    }
+    return _saveAdminProductsToFirestore(products);
+  }
+
+  /// Imports a list of [AdminSelectaProduct] from a CSV string into `admin_selecta_products`.
+  Future<int> importAdminProductsFromCsvString(String csvSource) async {
+    final products = parseAdminProductsFromCsv(csvSource);
+    if (products.isEmpty) {
+      throw const FormatException('No valid Selecta products found in CSV.');
+    }
+    return _saveAdminProductsToFirestore(products);
+  }
+
+  /// Imports products from raw data string, auto-detecting whether it is JSON or CSV.
+  Future<int> importAdminProductsFromData(String data) async {
+    final products = parseAdminProductsFromData(data);
+    if (products.isEmpty) {
+      throw const FormatException('No valid Selecta products found in data.');
+    }
+    return _saveAdminProductsToFirestore(products);
+  }
+
+  /// Fetches raw text content from a remote URL.
+  Future<String> fetchRawCatalogFromUrl(String url) async {
     final response = await _dio.get<String>(
       url.trim(),
       options: Options(responseType: ResponseType.plain),
     );
-    final body = response.data ?? '';
-    return importAdminProductsFromJsonString(body);
+    return response.data ?? '';
+  }
+
+  /// Imports Admin products from a remote URL (supporting either JSON or CSV, e.g. GitHub raw, Google Sheets CSV).
+  Future<int> importAdminProductsFromUrl(String url) async {
+    final body = await fetchRawCatalogFromUrl(url);
+    return importAdminProductsFromData(body);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -289,13 +375,14 @@ class SelectaProductService {
           options: Options(responseType: ResponseType.plain),
         );
         if (response.data != null && response.data!.isNotEmpty) {
-          final parsed = _parseAdminProductsFromJson(response.data!);
+          final parsed = parseAdminProductsFromData(response.data!);
           if (parsed.isNotEmpty) return parsed;
         }
       } catch (_) {
         // Fall through to Master Firebase REST API
       }
     }
+
 
     // 2. If connected to the master Firebase project directly, ensure `admin_selecta_products` is seeded
     final currentProjectId = DefaultFirebaseOptions.currentPlatform.projectId;
@@ -371,7 +458,8 @@ class SelectaProductService {
     return results;
   }
 
-  List<AdminSelectaProduct> _parseAdminProductsFromJson(String rawJson) {
+  /// Parses JSON string into a list of [AdminSelectaProduct].
+  static List<AdminSelectaProduct> parseAdminProductsFromJson(String rawJson) {
     final decoded = jsonDecode(rawJson);
     List<dynamic> list = [];
     if (decoded is List) {
@@ -404,22 +492,254 @@ class SelectaProductService {
     return results;
   }
 
+
+  /// Parses CSV or TSV string into rows and cells, properly handling quotes, escaped quotes, and newlines.
+  static List<List<String>> parseCsvRows(String input) {
+    final rows = <List<String>>[];
+    var trimmed = input.trim();
+    if (trimmed.startsWith('\uFEFF')) {
+      trimmed = trimmed.substring(1).trim();
+    }
+    if (trimmed.isEmpty) return rows;
+
+    // Detect delimiter from the first non-empty line
+    final firstLine = trimmed.split(RegExp(r'\r\n|\n|\r')).firstWhere((l) => l.trim().isNotEmpty, orElse: () => '');
+    String delimiter = ',';
+    if (!firstLine.contains(',') && firstLine.contains('\t')) {
+      delimiter = '\t';
+    } else if (!firstLine.contains(',') && firstLine.contains(';')) {
+      delimiter = ';';
+    }
+
+    var currentRow = <String>[];
+    var currentField = StringBuffer();
+    var insideQuotes = false;
+    var i = 0;
+
+    while (i < trimmed.length) {
+      final char = trimmed[i];
+
+      if (char == '"') {
+        if (insideQuotes && i + 1 < trimmed.length && trimmed[i + 1] == '"') {
+          currentField.write('"');
+          i += 2;
+          continue;
+        } else {
+          insideQuotes = !insideQuotes;
+          i++;
+          continue;
+        }
+      }
+
+      if (!insideQuotes) {
+        if (char == delimiter) {
+          currentRow.add(currentField.toString().trim());
+          currentField.clear();
+          i++;
+          continue;
+        } else if (char == '\r' || char == '\n') {
+          if (char == '\r' && i + 1 < trimmed.length && trimmed[i + 1] == '\n') {
+            i++;
+          }
+          currentRow.add(currentField.toString().trim());
+          currentField.clear();
+          if (currentRow.any((c) => c.isNotEmpty)) {
+            rows.add(currentRow);
+          }
+          currentRow = <String>[];
+          i++;
+          continue;
+        }
+      }
+
+      currentField.write(char);
+      i++;
+    }
+
+    currentRow.add(currentField.toString().trim());
+    if (currentRow.any((c) => c.isNotEmpty)) {
+      rows.add(currentRow);
+    }
+
+    return rows;
+  }
+
+  /// Parses CSV text into a list of [AdminSelectaProduct].
+  /// Matches standard column headers (Product Name, Buying Price, Selling Price, Category, Image URL, ID)
+  /// or falls back to standard column positions. Cleans prices with currency symbols (e.g. ₱, $).
+  static List<AdminSelectaProduct> parseAdminProductsFromCsv(String csvSource) {
+    final rows = parseCsvRows(csvSource);
+    if (rows.isEmpty) {
+      throw const FormatException('CSV data is empty.');
+    }
+
+    final firstRow = rows.first;
+    int nameCol = -1;
+    int buyingPriceCol = -1;
+    int sellingPriceCol = -1;
+    int priceCol = -1;
+    int categoryCol = -1;
+    int imageCol = -1;
+    int idCol = -1;
+
+    String normalize(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+    for (var i = 0; i < firstRow.length; i++) {
+      final header = normalize(firstRow[i]);
+      if (header.contains('productname') ||
+          header == 'product' ||
+          header == 'itemname' ||
+          header == 'item' ||
+          header == 'name' ||
+          header == 'description' ||
+          header == 'title') {
+        nameCol = i;
+      } else if (header.contains('buyingprice') ||
+          header.contains('cost') ||
+          header.contains('buyprice') ||
+          header == 'buying' ||
+          header.contains('dealerprice') ||
+          header.contains('purchaseprice')) {
+        buyingPriceCol = i;
+      } else if (header.contains('sellingprice') ||
+          header.contains('retailprice') ||
+          header == 'srp' ||
+          header == 'selling' ||
+          header.contains('sellprice') ||
+          header.contains('retail')) {
+        sellingPriceCol = i;
+      } else if (header == 'price') {
+        priceCol = i;
+      } else if (header.contains('category') ||
+          header == 'cat' ||
+          header == 'type' ||
+          header.contains('classification')) {
+        categoryCol = i;
+      } else if (header.contains('image') ||
+          header.contains('photo') ||
+          header.contains('picture') ||
+          header == 'img' ||
+          header == 'pic' ||
+          header == 'url') {
+        imageCol = i;
+      } else if (header == 'id' ||
+          header.contains('itemcode') ||
+          header.contains('code') ||
+          header.contains('productid')) {
+        idCol = i;
+      }
+    }
+
+    final hasHeader = nameCol != -1 || buyingPriceCol != -1 || sellingPriceCol != -1 || priceCol != -1;
+    final startIndex = hasHeader ? 1 : 0;
+
+    if (!hasHeader) {
+      nameCol = 0;
+      if (firstRow.length > 1) buyingPriceCol = 1;
+      if (firstRow.length > 2) sellingPriceCol = 2;
+      if (firstRow.length > 3) categoryCol = 3;
+      if (firstRow.length > 4) imageCol = 4;
+      if (firstRow.length > 5) idCol = 5;
+    } else {
+      if (sellingPriceCol == -1 && priceCol != -1) {
+        sellingPriceCol = priceCol;
+      }
+      if (buyingPriceCol == -1 && priceCol != -1) {
+        buyingPriceCol = priceCol;
+      }
+    }
+
+    final products = <AdminSelectaProduct>[];
+    for (var r = startIndex; r < rows.length; r++) {
+      final row = rows[r];
+      if (row.isEmpty || (row.length == 1 && row[0].trim().isEmpty)) continue;
+
+      String getCol(int idx) => (idx >= 0 && idx < row.length) ? row[idx].trim() : '';
+
+      final name = nameCol >= 0 ? getCol(nameCol) : (row.isNotEmpty ? row[0].trim() : '');
+      if (name.isEmpty) continue;
+
+      double parseNum(int idx) {
+        if (idx < 0 || idx >= row.length) return 0.0;
+        final raw = row[idx].replaceAll(RegExp(r'[^0-9.]'), '');
+        return double.tryParse(raw) ?? 0.0;
+      }
+
+      var buyingPrice = parseNum(buyingPriceCol);
+      var sellingPrice = parseNum(sellingPriceCol);
+      if (buyingPrice == 0.0 && priceCol >= 0) buyingPrice = parseNum(priceCol);
+      if (sellingPrice == 0.0 && priceCol >= 0) sellingPrice = parseNum(priceCol);
+      if (buyingPrice == 0.0 && sellingPrice > 0.0) buyingPrice = sellingPrice;
+      if (sellingPrice == 0.0 && buyingPrice > 0.0) sellingPrice = buyingPrice;
+
+      final catRaw = categoryCol >= 0 ? getCol(categoryCol) : '';
+      final isCase = catRaw.toLowerCase().contains('case');
+      final category = isCase ? 'By Case' : 'By Piece';
+
+      final imageUrl = imageCol >= 0 ? getCol(imageCol) : '';
+      final id = idCol >= 0 ? getCol(idCol) : '';
+
+      products.add(
+        AdminSelectaProduct(
+          id: id,
+          productName: name,
+          imageUrl: imageUrl,
+          buyingPrice: buyingPrice,
+          sellingPrice: sellingPrice,
+          category: category,
+        ),
+      );
+    }
+
+    if (products.isEmpty) {
+      throw const FormatException('No valid Selecta products found in CSV data.');
+    }
+    return products;
+  }
+
+  /// Parses either JSON or CSV depending on data format.
+  static List<AdminSelectaProduct> parseAdminProductsFromData(String data) {
+    final trimmed = data.trim();
+    if (trimmed.isEmpty) {
+      throw const FormatException('Catalog data is empty.');
+    }
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is List ||
+            (decoded is Map && (decoded.containsKey('products') || decoded.containsKey('documents')))) {
+          return parseAdminProductsFromJson(trimmed);
+        }
+      } catch (_) {
+        // Not valid JSON, fallback to CSV parsing
+      }
+    }
+    return parseAdminProductsFromCsv(trimmed);
+  }
+
   /// Computes a deterministic signature of the Admin catalog so we can detect
   /// whenever any product is added, deleted, renamed, or has its price/image changed.
-  String computeCatalogSignature(List<AdminSelectaProduct> products) {
-    final sorted = [...products]..sort((a, b) => a.id.compareTo(b.id));
+  static String computeCatalogSignature(List<AdminSelectaProduct> products) {
+    final sorted = List<AdminSelectaProduct>.from(products)..sort((a, b) {
+      final nameComp = a.productName.trim().toLowerCase().compareTo(b.productName.trim().toLowerCase());
+      if (nameComp != 0) return nameComp;
+      return a.id.compareTo(b.id);
+    });
     final buffer = StringBuffer();
     for (final p in sorted) {
+      final isCase = p.category.trim().toLowerCase().contains('case');
       buffer
-        ..write(p.id)
-        ..write('|')
-        ..write(p.productName)
+        ..write(p.productName.trim().toLowerCase())
         ..write('|')
         ..write(p.buyingPrice.toStringAsFixed(2))
         ..write('|')
         ..write(p.sellingPrice.toStringAsFixed(2))
         ..write('|')
-        ..write(p.imageUrl)
+        ..write(isCase ? 'case' : 'piece')
+        ..write('|')
+        ..write(p.imageUrl.trim())
+        ..write('|')
+        ..write(p.tag.trim())
         ..write(';');
     }
     var hash = 0xcbf29ce484222325;
@@ -453,21 +773,31 @@ class SelectaProductService {
       final prefs = await SharedPreferences.getInstance();
       final lastSyncSignature = prefs.getString(_prefKeyLastSyncSignature);
 
-      // Also verify if local product count or fields differ from remote
+      // Fast check: if the recorded sync signature matches the remote signature
+      // and local product count matches the remote product count, we are fully up-to-date!
+      if (lastSyncSignature == remoteSignature && localSnapshot.docs.length == remoteProducts.length) {
+        return (needsSync: false, remoteProducts: remoteProducts, reason: '');
+      }
+
+      // Check whether the local catalog content matches the remote catalog signature
       final localAsAdmin = localSnapshot.docs
           .map((d) => AdminSelectaProduct.fromJson(d.id, d.data().cast<String, Object?>()))
           .toList();
       final localSignature = computeCatalogSignature(localAsAdmin);
 
-      if (lastSyncSignature != remoteSignature || localSignature != remoteSignature) {
-        return (
-          needsSync: true,
-          remoteProducts: remoteProducts,
-          reason: 'Updating Selecta products with the latest catalog changes...',
-        );
+      if (localSignature == remoteSignature) {
+        // Local database already matches remote catalog; update the stored pref so future checks are instant
+        if (lastSyncSignature != remoteSignature) {
+          await prefs.setString(_prefKeyLastSyncSignature, remoteSignature);
+        }
+        return (needsSync: false, remoteProducts: remoteProducts, reason: '');
       }
 
-      return (needsSync: false, remoteProducts: remoteProducts, reason: '');
+      return (
+        needsSync: true,
+        remoteProducts: remoteProducts,
+        reason: 'Updating Selecta products with the latest catalog changes...',
+      );
     } catch (_) {
       return (needsSync: false, remoteProducts: <AdminSelectaProduct>[], reason: '');
     }
@@ -553,13 +883,22 @@ class SelectaProductService {
           final oldBuy = (existingData['buyingPrice'] as num?)?.toDouble() ?? 0.0;
           final oldSell = (existingData['sellingPrice'] as num?)?.toDouble() ?? 0.0;
 
+          final oldCat = (existingData['category'] as String? ?? '').trim();
+          final oldTag = (existingData['tag'] as String? ?? '').trim();
+
           if (oldName != adminProd.productName ||
               oldImg != adminProd.imageUrl ||
               oldBuy != adminProd.buyingPrice ||
-              oldSell != adminProd.sellingPrice) {
+              oldSell != adminProd.sellingPrice ||
+              oldCat != adminProd.category ||
+              oldTag != adminProd.tag) {
             updatedCount++;
           }
         }
+
+        final targetCategory = adminProd.category.isNotEmpty
+            ? adminProd.category
+            : (preservedCategory.isNotEmpty ? preservedCategory : 'By Piece');
 
         final dealerProduct = SelectaProduct.fromAdminProduct(
           id: targetId,
@@ -571,7 +910,8 @@ class SelectaProductService {
           stockQuantity: preservedStockQuantity,
           lowStockThreshold: preservedLowStockThreshold,
           itemCode: preservedItemCode,
-          category: preservedCategory,
+          category: targetCategory,
+          tag: adminProd.tag,
           importedAt: importedAt,
           updatedAt: now,
         );
@@ -606,5 +946,41 @@ class SelectaProductService {
       updatedCount: updatedCount,
       versionSignature: signature,
     );
+  }
+
+  /// Fetches all active products tagged as "Best Seller" from the local dealer catalog.
+  /// If none found in `selecta_products`, also checks `admin_selecta_products`.
+  Future<List<SelectaProduct>> getBestSellerProducts() async {
+    final snapshot = await _firestore
+        .collection(SELECTA_PRODUCTS_COLLECTION_REF)
+        .where('tag', isEqualTo: ProductTag.bestSeller)
+        .get();
+
+    var products = snapshot.docs
+        .map((doc) => SelectaProduct.fromJson(doc.id, doc.data()))
+        .where((p) => p.isActive)
+        .toList();
+
+    if (products.isEmpty) {
+      // Fallback: Check admin collection directly
+      final adminSnap = await _firestore
+          .collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF)
+          .where('tag', isEqualTo: ProductTag.bestSeller)
+          .get();
+      products = adminSnap.docs.map((doc) {
+        final adminProd = AdminSelectaProduct.fromSnapshot(doc);
+        return SelectaProduct.fromAdminProduct(
+          id: adminProd.id,
+          productName: adminProd.productName,
+          imageUrl: adminProd.imageUrl,
+          buyingPrice: adminProd.buyingPrice,
+          sellingPrice: adminProd.sellingPrice,
+          category: adminProd.category,
+          tag: adminProd.tag,
+        );
+      }).toList();
+    }
+
+    return products;
   }
 }

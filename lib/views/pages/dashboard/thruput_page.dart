@@ -7,10 +7,13 @@ import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class ThruputPage extends StatelessWidget {
-  ThruputPage({super.key, required this.dashboardDTO});
+  ThruputPage({super.key, required this.dashboardDTO, this.throughputTarget});
 
   final DashboardDTO dashboardDTO;
+  final double? throughputTarget;
   final ThruputController _controller = ThruputController();
+
+  double get effectiveTarget => throughputTarget ?? ThruputController.targetThruput;
 
   Widget _buildThruputSummary(
     BuildContext context, {
@@ -43,7 +46,7 @@ class ThruputPage extends StatelessWidget {
                   children: [
                     Text('Throughput Progress', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                     Text(
-                      '$currentMonth • Target: ${Helperfunctions.formatDoubleAmountForDisplay(ThruputController.targetThruput)} / store',
+                      '$currentMonth • Target: ${Helperfunctions.formatDoubleAmountForDisplay(effectiveTarget)} / store',
                       style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                     ),
                   ],
@@ -187,7 +190,7 @@ class ThruputPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Controller calculates all throughput metrics safely
-    final metrics = _controller.calculateMetrics(dashboardDTO);
+    final metrics = _controller.calculateMetrics(dashboardDTO, target: effectiveTarget);
 
     return Scaffold(
       appBar: const CustomAppbar(title: 'KPI - Throughput', subtitle: 'Store throughput and activity'),

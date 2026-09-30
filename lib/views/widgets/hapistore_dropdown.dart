@@ -68,6 +68,7 @@ class _HapistorePickerFieldState extends State<HapistorePickerField> {
   }
 
   Future<void> _openPicker(FormFieldState<String> fieldState) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     final selected = await showModalBottomSheet<Hapistore>(
       context: context,
       isScrollControlled: true,
@@ -79,9 +80,14 @@ class _HapistorePickerFieldState extends State<HapistorePickerField> {
       ),
     );
 
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+
     if (selected != null) {
       widget.controller.text = selected.storeName;
-      fieldState.didChange(selected.storeName);
+      if (fieldState.mounted) {
+        fieldState.didChange(selected.storeName);
+      }
       if (widget.onChanged != null) {
         widget.onChanged!();
       }
@@ -100,7 +106,7 @@ class _HapistorePickerFieldState extends State<HapistorePickerField> {
       builder: (FormFieldState<String> fieldState) {
         if (fieldState.value != widget.controller.text) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && fieldState.value != widget.controller.text) {
+            if (mounted && fieldState.mounted && fieldState.value != widget.controller.text) {
               fieldState.didChange(widget.controller.text);
             }
           });

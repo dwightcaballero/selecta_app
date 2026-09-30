@@ -11,7 +11,8 @@ import 'package:intl/intl.dart';
 /// Data fetching, sorting by opening date, progress calculations, and search filtering
 /// are managed by [ExpansionController], decoupling presentation from database queries.
 class ExpansionPage extends StatefulWidget {
-  const ExpansionPage({super.key});
+  final int? monthlyTarget;
+  const ExpansionPage({super.key, this.monthlyTarget});
 
   @override
   State<ExpansionPage> createState() => _ExpansionPageState();
@@ -19,7 +20,7 @@ class ExpansionPage extends StatefulWidget {
 
 class _ExpansionPageState extends State<ExpansionPage> {
   final ExpansionController _controller = ExpansionController();
-  static const int monthlyTarget = ExpansionController.monthlyTarget;
+  int get monthlyTarget => widget.monthlyTarget ?? ExpansionController.monthlyTarget;
 
   List<Hapistore> storesThisMonth = [];
   List<Hapistore> storesPastThreeMonths = [];

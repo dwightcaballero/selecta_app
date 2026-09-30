@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/configuration_controller.dart';
 import 'package:flutter_app/models/configuration.dart';
+import 'package:flutter_app/services/thermal_printer_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
 
 /// Presentation page for configuring app-wide settings such as Merch Blitz campaign schedules.
 class ConfigurationPage extends StatefulWidget {
@@ -16,6 +18,7 @@ class ConfigurationPage extends StatefulWidget {
 class _ConfigurationPageState extends State<ConfigurationPage> {
   // Controller managing configuration fetching, validation, and audit logging
   final ConfigurationController _controller = ConfigurationController();
+  final ThermalPrinterService _printerService = ThermalPrinterService();
 
   Configuration? _originalConfig;
   bool _configExistsInDb = false;
@@ -24,16 +27,39 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   bool _isLoading = true;
   bool _isSaving = false;
 
+  ThermalPaperSize _thermalPaperSize = ThermalPaperSize.mm58;
+  String? _printerName;
+  bool _isPrinterConnected = false;
+  bool _isTestingPrint = false;
+
+  late final TextEditingController _salesTargetController;
+  late final TextEditingController _throughputTargetController;
+  late final TextEditingController _expansionTargetController;
+
   @override
   void initState() {
     super.initState();
+    _salesTargetController = TextEditingController(text: '1000000');
+    _throughputTargetController = TextEditingController(text: '8000');
+    _expansionTargetController = TextEditingController(text: '10');
     _loadConfiguration();
+  }
+
+  @override
+  void dispose() {
+    _salesTargetController.dispose();
+    _throughputTargetController.dispose();
+    _expansionTargetController.dispose();
+    super.dispose();
   }
 
   /// Loads current configuration via controller
   Future<void> _loadConfiguration() async {
     try {
       final result = await _controller.loadConfiguration();
+      final paperSize = await _printerService.getPaperSize();
+      final pName = await _printerService.getSavedPrinterName();
+      final isConnected = await _printerService.isConnected();
 
       if (mounted) {
         setState(() {
@@ -41,6 +67,12 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           _configExistsInDb = result.existsInDb;
           _startDate = result.startDate;
           _endDate = result.endDate;
+          _salesTargetController.text = result.config.salesTarget.toStringAsFixed(0);
+          _throughputTargetController.text = result.config.throughputTarget.toStringAsFixed(0);
+          _expansionTargetController.text = result.config.expansionTarget.toString();
+          _thermalPaperSize = paperSize;
+          _printerName = pName;
+          _isPrinterConnected = isConnected;
           _isLoading = false;
         });
       }
@@ -54,12 +86,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   /// Opens date picker for Merch Blitz start date
   Future<void> _pickStartDate() async {
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: _startDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2050),
-    );
+    final pickedDate = await showDatePicker(context: context, initialDate: _startDate, firstDate: DateTime(2020), lastDate: DateTime(2050));
 
     if (pickedDate != null && mounted) {
       setState(() {
@@ -89,6 +116,27 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   /// Saves updated configuration through controller
   Future<void> _saveConfiguration() async {
+    final rawSales = _salesTargetController.text.replaceAll(',', '').trim();
+    final salesTarget = double.tryParse(rawSales);
+    if (salesTarget == null || salesTarget <= 0) {
+      ShowMessage.error(context, 'Sales Target must be a valid positive number.');
+      return;
+    }
+
+    final rawThroughput = _throughputTargetController.text.replaceAll(',', '').trim();
+    final throughputTarget = double.tryParse(rawThroughput);
+    if (throughputTarget == null || throughputTarget <= 0) {
+      ShowMessage.error(context, 'Throughput Target must be a valid positive number.');
+      return;
+    }
+
+    final rawExpansion = _expansionTargetController.text.replaceAll(',', '').trim();
+    final expansionTarget = int.tryParse(rawExpansion);
+    if (expansionTarget == null || expansionTarget < 0) {
+      ShowMessage.error(context, 'Expansion Target must be a valid non-negative integer.');
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -100,6 +148,12 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         aiEnabled: _originalConfig?.aiEnabled ?? true,
         geminiApiKey: _originalConfig?.geminiApiKey ?? '',
         aiMonthlyRequestLimit: _originalConfig?.aiMonthlyRequestLimit ?? 3000,
+        salesTarget: salesTarget,
+        buyingTargetPercentage: 80.0,
+        throughputTarget: throughputTarget,
+        placementTargetPercentage: 80.0,
+        scanningTargetPercentage: 100.0,
+        expansionTarget: expansionTarget,
       );
 
       _configExistsInDb = true;
@@ -119,12 +173,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   }
 
   /// Helper widget for rendering interactive date selection cards
-  Widget _buildDateField({
-    required String label,
-    required DateTime date,
-    required VoidCallback onTap,
-    required IconData icon,
-  }) {
+  Widget _buildDateField({required String label, required DateTime date, required VoidCallback onTap, required IconData icon}) {
     final colorScheme = Theme.of(context).colorScheme;
     final formattedDate = DateFormat('EEE, d MMM yyyy').format(date);
 
@@ -142,10 +191,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
+              decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, size: 20, color: colorScheme.primary),
             ),
             const SizedBox(width: 14),
@@ -155,11 +201,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                 children: [
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 3),
                   Text(formattedDate, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
@@ -167,6 +209,485 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
               ),
             ),
             Icon(Icons.edit_calendar_outlined, size: 20, color: colorScheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKpiTargetsCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: const Color(0xFF6366F1).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.track_changes_rounded, size: 22, color: Color(0xFF6366F1)),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('KPI Monthly Targets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 2),
+                      Text('Set monthly operational goals and performance benchmarks', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+
+            // Subsection: Self-Input Monthly Targets
+            Text(
+              'CUSTOM MONTHLY TARGETS',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: colorScheme.primary),
+            ),
+            const SizedBox(height: 12),
+
+            // Sales Target
+            TextFormField(
+              controller: _salesTargetController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Sales Target *',
+                hintText: '1,000,000',
+                prefixText: '₱ ',
+                prefixIcon: const Icon(Icons.payments_outlined, size: 20),
+                helperText: 'Monthly total invoiced sales target (Default: ₱1,000,000)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Throughput Target
+            TextFormField(
+              controller: _throughputTargetController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Throughput Target *',
+                hintText: '8,000',
+                prefixText: '₱ ',
+                prefixIcon: const Icon(Icons.speed_outlined, size: 20),
+                helperText: 'Target average sales per buying store (Default: ₱8,000)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Expansion Target
+            TextFormField(
+              controller: _expansionTargetController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Expansion Target *',
+                hintText: '10',
+                prefixIcon: const Icon(Icons.store_mall_directory_outlined, size: 20),
+                suffixText: 'stores',
+                helperText: 'Target number of newly opened stores this month (Default: 10)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+
+            // Subsection: Fixed Targets
+            Row(
+              children: [
+                Icon(Icons.lock_outline, size: 14, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Text(
+                  'FIXED BENCHMARK TARGETS',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            _buildFixedTargetTile(
+              title: 'Buying Target',
+              value: '80%',
+              scope: '80% of all stores',
+              icon: Icons.shopping_cart_outlined,
+              accentColor: const Color(0xFF10B981),
+            ),
+            const SizedBox(height: 10),
+
+            _buildFixedTargetTile(
+              title: 'Placement Target',
+              value: '80%',
+              scope: '80% of all stores',
+              icon: Icons.grid_view_outlined,
+              accentColor: const Color(0xFFF59E0B),
+            ),
+            const SizedBox(height: 10),
+
+            _buildFixedTargetTile(
+              title: 'Scanning Target',
+              value: '100%',
+              scope: '100% of all cabinets',
+              icon: Icons.qr_code_scanner_outlined,
+              accentColor: const Color(0xFF3B82F6),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFixedTargetTile({
+    required String title,
+    required String value,
+    required String scope,
+    required IconData icon,
+    required Color accentColor,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: accentColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+            child: Icon(icon, size: 18, color: accentColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                const SizedBox(height: 2),
+                Text(scope, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: accentColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_rounded, size: 11, color: Colors.grey),
+                const SizedBox(width: 4),
+                Text(
+                  value,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: accentColor),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _setThermalPaperSize(ThermalPaperSize size) async {
+    setState(() => _thermalPaperSize = size);
+    await _printerService.setPaperSize(size);
+    if (mounted) {
+      ShowMessage.success(context, 'Thermal paper size set to ${size.code}.');
+    }
+  }
+
+  Future<void> _openPrinterDevicePicker() async {
+    // Proactively request Bluetooth permissions
+    await _printerService.requestBluetoothPermissions();
+
+    if (!mounted) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => PrinterDevicePickerSheet(
+        onConnected: (name) async {
+          final isConn = await _printerService.isConnected();
+          if (ctx.mounted) {
+            Navigator.pop(ctx);
+          }
+          if (mounted) {
+            setState(() {
+              _printerName = name;
+              _isPrinterConnected = isConn;
+            });
+            ShowMessage.success(context, 'Connected to printer: $name');
+          }
+        },
+      ),
+    );
+  }
+
+  Future<void> _disconnectPrinter() async {
+    await _printerService.disconnect();
+    if (mounted) {
+      setState(() {
+        _isPrinterConnected = false;
+      });
+      ShowMessage.success(context, 'Printer disconnected.');
+    }
+  }
+
+  Future<void> _testPrintReceipt() async {
+    if (_isTestingPrint) return;
+    setState(() => _isTestingPrint = true);
+    try {
+      final isEnabled = await _printerService.isBluetoothEnabled();
+      if (!isEnabled) {
+        if (mounted) {
+          ShowMessage.error(context, 'Bluetooth is turned off. Please turn on Bluetooth first.');
+        }
+        return;
+      }
+
+      final hasPerm = await _printerService.checkBluetoothPermissions();
+      if (!hasPerm) {
+        final granted = await _printerService.requestBluetoothPermissions();
+        if (!granted) {
+          if (mounted) {
+            ShowMessage.error(context, 'Bluetooth permission is required to print.');
+          }
+          return;
+        }
+      }
+
+      final isConn = await _printerService.isConnected();
+      if (!isConn) {
+        final savedMac = await _printerService.getSavedPrinterMac();
+        if (savedMac != null && savedMac.isNotEmpty) {
+          final connected = await _printerService.connect(savedMac);
+          if (!connected && mounted) {
+            _openPrinterDevicePicker();
+            return;
+          }
+        } else {
+          if (mounted) {
+            _openPrinterDevicePicker();
+          }
+          return;
+        }
+      }
+
+      final success = await _printerService.printTestReceipt(paperSize: _thermalPaperSize);
+      if (mounted) {
+        if (success) {
+          ShowMessage.success(context, 'Test ticket printed successfully (${_thermalPaperSize.code})!');
+        } else {
+          ShowMessage.error(context, 'Failed to send test print job to printer.');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Test print error: $e');
+      }
+    } finally {
+      if (mounted) {
+        final isConn = await _printerService.isConnected();
+        setState(() {
+          _isTestingPrint = false;
+          _isPrinterConnected = isConn;
+        });
+      }
+    }
+  }
+
+  Widget _buildThermalPrinterCard(ColorScheme colorScheme) {
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.print_outlined, size: 22, color: Color(0xFF6366F1)),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Thermal Printer Setup', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 2),
+                      Text(
+                        'Paper width (58mm / 80mm) & Bluetooth connection for delivery receipts',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+
+            // Paper Size Selection
+            const Text(
+              'Paper Roll Width *',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Choose your thermal printer paper roll size. Text formatting and line wrapping automatically adjust.',
+              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<ThermalPaperSize>(
+                segments: const [
+                  ButtonSegment<ThermalPaperSize>(
+                    value: ThermalPaperSize.mm58,
+                    label: Text('58mm (32 cols)'),
+                    icon: Icon(Icons.receipt_outlined, size: 18),
+                  ),
+                  ButtonSegment<ThermalPaperSize>(
+                    value: ThermalPaperSize.mm80,
+                    label: Text('80mm (48 cols)'),
+                    icon: Icon(Icons.receipt_long_outlined, size: 18),
+                  ),
+                ],
+                selected: {_thermalPaperSize},
+                onSelectionChanged: (val) => _setThermalPaperSize(val.first),
+                style: SegmentedButton.styleFrom(
+                  selectedBackgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                  selectedForegroundColor: const Color(0xFF6366F1),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Bluetooth Connection Status
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _isPrinterConnected
+                              ? Colors.green.withValues(alpha: 0.15)
+                              : Colors.grey.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          _isPrinterConnected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_rounded,
+                          size: 20,
+                          color: _isPrinterConnected ? Colors.green.shade700 : Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _printerName != null && _printerName!.isNotEmpty
+                                  ? _printerName!
+                                  : 'No Printer Selected',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _isPrinterConnected ? 'Connected via Bluetooth' : 'Not Connected',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: _isPrinterConnected ? Colors.green.shade700 : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_isPrinterConnected)
+                        IconButton(
+                          icon: const Icon(Icons.link_off_rounded, color: Colors.red),
+                          tooltip: 'Disconnect Printer',
+                          onPressed: _disconnectPrinter,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _openPrinterDevicePicker,
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          icon: const Icon(Icons.bluetooth_searching_rounded, size: 18),
+                          label: Text(_isPrinterConnected ? 'Change Printer' : 'Select Printer'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          onPressed: _isTestingPrint ? null : _testPrintReceipt,
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          icon: _isTestingPrint
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.print_rounded, size: 18),
+                          label: Text(_isTestingPrint ? 'Testing...' : 'Test Print'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -238,16 +759,21 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                           const SizedBox(height: 14),
 
                           // End Date Picker
-                          _buildDateField(
-                            label: 'Merch Blitz End Date *',
-                            date: _endDate,
-                            onTap: _pickEndDate,
-                            icon: Icons.event_available_rounded,
-                          ),
+                          _buildDateField(label: 'Merch Blitz End Date *', date: _endDate, onTap: _pickEndDate, icon: Icons.event_available_rounded),
                         ],
                       ),
                     ),
                   ),
+
+                  const SizedBox(height: 16),
+
+                  // KPI Monthly Targets Card
+                  _buildKpiTargetsCard(),
+
+                  const SizedBox(height: 16),
+
+                  // Thermal Printer Configuration Card (58mm / 80mm & Bluetooth)
+                  _buildThermalPrinterCard(colorScheme),
 
                   const SizedBox(height: 28),
 
@@ -259,16 +785,9 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.save_rounded, size: 20),
-                    label: Text(
-                      _isSaving ? 'Saving...' : 'Save Configurations',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
+                    label: Text(_isSaving ? 'Saving...' : 'Save Configurations', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   ),
                 ],
               ),

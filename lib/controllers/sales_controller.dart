@@ -84,12 +84,15 @@ class SalesController {
   }
 
   /// Calculates progress towards monthly target clamped between 0.0 and 1.0.
-  double calculateTargetProgress(double totalInvoicedSales) {
-    return (totalInvoicedSales / monthlyTarget).clamp(0.0, 1.0);
+  double calculateTargetProgress(double totalInvoicedSales, {double? target}) {
+    final effectiveTarget = target ?? monthlyTarget;
+    if (effectiveTarget <= 0) return 0.0;
+    return (totalInvoicedSales / effectiveTarget).clamp(0.0, 1.0);
   }
 
   /// Calculates remaining amount needed to reach monthly target.
-  double calculateRemainingAmount(double totalInvoicedSales) {
-    return (monthlyTarget - totalInvoicedSales).clamp(0.0, monthlyTarget);
+  double calculateRemainingAmount(double totalInvoicedSales, {double? target}) {
+    final effectiveTarget = target ?? monthlyTarget;
+    return (effectiveTarget - totalInvoicedSales).clamp(0.0, effectiveTarget);
   }
 }

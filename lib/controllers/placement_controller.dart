@@ -4,6 +4,7 @@ import 'package:flutter_app/data/data.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/placement.dart';
 import 'package:flutter_app/services/placement_service.dart';
+import 'package:flutter_app/services/selecta_product_service.dart';
 import 'package:intl/intl.dart';
 
 /// Available sorting options for the placement checklist overview.
@@ -20,9 +21,13 @@ enum PlacementSort {
 /// Ensures all direct database queries are delegated to [PlacementService].
 class PlacementController {
   final PlacementService _placementService;
+  final SelectaProductService _selectaProductService;
 
-  PlacementController({PlacementService? placementService})
-      : _placementService = placementService ?? PlacementService();
+  PlacementController({
+    PlacementService? placementService,
+    SelectaProductService? selectaProductService,
+  })  : _placementService = placementService ?? PlacementService(),
+        _selectaProductService = selectaProductService ?? SelectaProductService();
 
   // ==========================================
   // List Operations (PlacementlistPage)
@@ -124,6 +129,51 @@ class PlacementController {
     return list;
   }
 
+  /// Hydrates a checklist of products based on products tagged as "Best Seller".
+  /// Falls back to legacy [KData.getListPlacement()] if no products are tagged as Best Seller yet.
+  Future<List<KPlacement>> loadBestSellerPlacements({required Placement placement}) async {
+    final bestSellers = await _selectaProductService.getBestSellerProducts();
+
+    if (bestSellers.isEmpty) {
+      return mapPlacementFlags(placement);
+    }
+
+    final placedLowerNames = placement.placedProductNames.map((n) => n.trim().toLowerCase()).toSet();
+
+    // Also consider legacy cotc flags for backward compatibility
+    final legacyList = KData.getListPlacement();
+    final flags = {
+      'cotc1': placement.cotc1,
+      'cotc2': placement.cotc2,
+      'cotc3': placement.cotc3,
+      'cotc4': placement.cotc4,
+      'cotc5': placement.cotc5,
+      'cotc6': placement.cotc6,
+      'cotc7': placement.cotc7,
+      'cotc8': placement.cotc8,
+      'cotc9': placement.cotc9,
+      'cotc10': placement.cotc10,
+      'cotc11': placement.cotc11,
+      'cotc12': placement.cotc12,
+    };
+    for (final legacyItem in legacyList) {
+      if (flags[legacyItem.itemCode] == true) {
+        placedLowerNames.add(legacyItem.itemName.trim().toLowerCase());
+      }
+    }
+
+    return bestSellers.map((prod) {
+      final isPlaced = placedLowerNames.contains(prod.productName.trim().toLowerCase());
+      return KPlacement(
+        itemName: prod.productName,
+        itemCode: prod.id,
+        isPlaced: isPlaced,
+        isPlacedFromDB: isPlaced,
+        itemImagePath: prod.imageUrl.isNotEmpty ? prod.imageUrl : 'assets/images/placement/watermelon.png',
+      );
+    }).toList();
+  }
+
   /// Persists newly placed items to Firestore via [PlacementService] and logs an audit transaction.
   ///
   /// Returns the updated [Placement] entity.
@@ -131,26 +181,35 @@ class PlacementController {
     required Placement currentPlacement,
     required List<KPlacement> placements,
   }) async {
-    final placedCount = placements.where((p) => p.isPlaced).length;
+    final placedItems = placements.where((p) => p.isPlaced).toList();
+    final placedCount = placedItems.length;
     final isFinished = placements.isNotEmpty && placedCount == placements.length;
+    final placedNames = placedItems.map((p) => p.itemName).toList();
 
-    bool getFlag(String code) =>
-        placements.where((p) => p.itemCode == code).firstOrNull?.isPlaced ?? false;
+    // Map to legacy cotc flags if any matching names exist
+    final legacyList = KData.getListPlacement();
+    final legacyMap = <String, bool>{};
+    for (int i = 0; i < legacyList.length; i++) {
+      final code = 'cotc${i + 1}';
+      final match = placedItems.any((p) => p.itemName.trim().toLowerCase() == legacyList[i].itemName.trim().toLowerCase());
+      legacyMap[code] = match;
+    }
 
     final updated = currentPlacement.copyWith(
       deliveryDate: Timestamp.now(),
-      cotc1: getFlag('cotc1'),
-      cotc2: getFlag('cotc2'),
-      cotc3: getFlag('cotc3'),
-      cotc4: getFlag('cotc4'),
-      cotc5: getFlag('cotc5'),
-      cotc6: getFlag('cotc6'),
-      cotc7: getFlag('cotc7'),
-      cotc8: getFlag('cotc8'),
-      cotc9: getFlag('cotc9'),
-      cotc10: getFlag('cotc10'),
-      cotc11: getFlag('cotc11'),
-      cotc12: getFlag('cotc12'),
+      placedProductNames: placedNames,
+      cotc1: legacyMap['cotc1'] ?? false,
+      cotc2: legacyMap['cotc2'] ?? false,
+      cotc3: legacyMap['cotc3'] ?? false,
+      cotc4: legacyMap['cotc4'] ?? false,
+      cotc5: legacyMap['cotc5'] ?? false,
+      cotc6: legacyMap['cotc6'] ?? false,
+      cotc7: legacyMap['cotc7'] ?? false,
+      cotc8: legacyMap['cotc8'] ?? false,
+      cotc9: legacyMap['cotc9'] ?? false,
+      cotc10: legacyMap['cotc10'] ?? false,
+      cotc11: legacyMap['cotc11'] ?? false,
+      cotc12: legacyMap['cotc12'] ?? false,
       isFinished: isFinished,
       progressCount: placedCount,
     );

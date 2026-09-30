@@ -1,5 +1,5 @@
-// ignore: constant_identifier_names
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/models/scanning.dart';
 
 // ignore: constant_identifier_names
@@ -16,6 +16,29 @@ class ScanningServices {
           fromFirestore: (snapshots, _) => Scanning.fromJson(snapshots.data()!),
           toFirestore: (scanning, _) => scanning.toJson(),
         );
+  }
+
+  /// Normalizes scanning status so scans from prior months reset to notScanned in the new month.
+  static Scanning normalizeMonthlyScanning(Scanning scanning) {
+    if (scanning.status == ScanningStatus.pullout || scanning.status == ScanningStatus.unassigned) {
+      return scanning;
+    }
+    final now = DateTime.now();
+    if (scanning.scannedDate != null) {
+      final date = scanning.scannedDate!.toDate();
+      final isCurrentMonth = date.year == now.year && date.month == now.month;
+      if (!isCurrentMonth) {
+        return scanning.copyWith(
+          clearScannedDate: true,
+          scannedBy: '',
+          status: ScanningStatus.notScanned,
+          imageUrl: '',
+        );
+      }
+    } else if (scanning.status == ScanningStatus.scanned || scanning.status == ScanningStatus.pending) {
+      return scanning.copyWith(status: ScanningStatus.notScanned, imageUrl: '', clearScannedDate: true);
+    }
+    return scanning;
   }
 
   // Save scanning record if it doesnt exist in the database. Else, update the existing record.
@@ -35,7 +58,7 @@ class ScanningServices {
     if (querySnapshot.docs.isNotEmpty) {
       Scanning scanning = querySnapshot.docs.first.data();
       scanning = scanning.copyWith(id: querySnapshot.docs.first.id);
-      return scanning;
+      return normalizeMonthlyScanning(scanning);
     } else {
       return null;
     }
@@ -44,7 +67,7 @@ class ScanningServices {
   // Get scanning records for a specific store
   Future<List<Scanning>> getScanningsByStoreName(String storeName) async {
     final snapshot = await _scanningRef.where('storeName', isEqualTo: storeName).get();
-    return snapshot.docs.map((doc) => doc.data().copyWith(id: doc.id)).toList();
+    return snapshot.docs.map((doc) => normalizeMonthlyScanning(doc.data().copyWith(id: doc.id))).toList();
   }
 
   // Get all scanning records
@@ -59,17 +82,7 @@ class ScanningServices {
     return querySnapshot.docs.map((doc) {
       Scanning scanning = doc.data();
       scanning = scanning.copyWith(id: doc.id);
-
-      // Check if scanned date is within the month
-      if (scanning.scannedDate != null) {
-        final now = DateTime.now();
-        final scannedDate = scanning.scannedDate!.toDate();
-        if (scannedDate.year != now.year && scannedDate.month != now.month) {
-          scanning = scanning.copyWith(scannedDate: null, scannedBy: '');
-        }
-      }
-
-      return scanning;
+      return normalizeMonthlyScanning(scanning);
     }).toList();
   }
 

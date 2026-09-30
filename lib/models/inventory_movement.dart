@@ -26,8 +26,11 @@ class InventoryItem {
   final double sellingPrice;
   final bool isActive;
   final int stockQuantity;
+  final int reservedQuantity;
   final int lowStockThreshold;
   final InventoryProductSource source;
+  final String category;
+  final String tag;
   final Timestamp? updatedAt;
 
   const InventoryItem({
@@ -38,8 +41,11 @@ class InventoryItem {
     required this.sellingPrice,
     required this.isActive,
     required this.stockQuantity,
+    this.reservedQuantity = 0,
     required this.lowStockThreshold,
     required this.source,
+    this.category = '',
+    this.tag = '',
     this.updatedAt,
   });
 
@@ -52,8 +58,11 @@ class InventoryItem {
       sellingPrice: product.sellingPrice,
       isActive: product.isActive,
       stockQuantity: product.stockQuantity,
+      reservedQuantity: product.reservedQuantity,
       lowStockThreshold: product.lowStockThreshold,
       source: InventoryProductSource.selecta,
+      category: product.category,
+      tag: product.tag,
       updatedAt: product.updatedAt,
     );
   }
@@ -67,8 +76,11 @@ class InventoryItem {
       sellingPrice: product.sellingPrice,
       isActive: product.isActive,
       stockQuantity: product.stockQuantity,
+      reservedQuantity: product.reservedQuantity,
       lowStockThreshold: product.lowStockThreshold,
       source: InventoryProductSource.other,
+      category: '',
+      tag: '',
       updatedAt: product.updatedAt,
     );
   }
@@ -78,7 +90,12 @@ class InventoryItem {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
+  int get availableQuantity =>
+      (stockQuantity - reservedQuantity) < 0 ? 0 : (stockQuantity - reservedQuantity);
+
   bool get isOutOfStock => stockQuantity <= 0;
+
+  bool get isAvailableOutOfStock => availableQuantity <= 0;
 
   bool get isLowStock => stockQuantity > 0 && stockQuantity <= lowStockThreshold;
 

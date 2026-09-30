@@ -8,7 +8,7 @@ const String DELIVERY_COLLECTION_REF = 'delivery';
 
 class DeliveryService {
   final _firestore = FirebaseFirestore.instance;
-  late final CollectionReference _ordersRef;
+  late final CollectionReference<Delivery> _ordersRef;
 
   DeliveryService() {
     _ordersRef = _firestore
@@ -19,8 +19,9 @@ class DeliveryService {
         );
   }
 
-  Future<void> addDelivery(Delivery delivery) async {
-    await _ordersRef.add(delivery);
+  Future<String> addDelivery(Delivery delivery) async {
+    final docRef = await _ordersRef.add(delivery);
+    return docRef.id;
   }
 
   Future<void> updateDelivery(String deliveryID, Delivery delivery) async {
@@ -29,6 +30,28 @@ class DeliveryService {
 
   void deleteDelivery(String deliveryID) {
     _ordersRef.doc(deliveryID).delete();
+  }
+
+  Future<Delivery?> getDeliveryById(String deliveryID) async {
+    final doc = await _ordersRef.doc(deliveryID).get();
+    return doc.data();
+  }
+
+  Stream<DocumentSnapshot<Delivery>> getDeliveryStreamById(String deliveryID) {
+    return _ordersRef.doc(deliveryID).snapshots();
+  }
+
+  Stream<QuerySnapshot<Delivery>> getPendingPicklistsStream() {
+    return _ordersRef
+        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist)
+        .snapshots();
+  }
+
+  Stream<int> getPendingPicklistCountStream() {
+    return _ordersRef
+        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist)
+        .snapshots()
+        .map((snap) => snap.docs.length);
   }
 
   Stream<QuerySnapshot> getListDelivery() {

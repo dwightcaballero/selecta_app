@@ -1,0 +1,572 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_app/controllers/delivery_controller.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/models/delivery.dart';
+import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
+import 'package:flutter_app/views/widgets/alert_widget.dart';
+import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/views/widgets/cached_product_image.dart';
+import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
+
+class PicklistPage extends StatefulWidget {
+  final String deliveryID;
+  final Delivery delivery;
+
+  const PicklistPage({super.key, required this.deliveryID, required this.delivery});
+
+  @override
+  State<PicklistPage> createState() => _PicklistPageState();
+}
+
+class _PicklistPageState extends State<PicklistPage> {
+  final DeliveryController _controller = DeliveryController();
+
+  late Delivery _currentDelivery;
+  late List<OrderItem> _items;
+  bool _isDealer = true;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentDelivery = widget.delivery;
+    _items = widget.delivery.items.map((item) => item.copyWith()).toList();
+    _prefetchData();
+  }
+
+  Future<void> _prefetchData() async {
+    _isDealer = await _controller.checkIsDealer();
+    if (mounted) setState(() {});
+  }
+
+  int get _totalUnits {
+    return _items.fold<int>(0, (sum, item) => sum + item.pickedQuantity);
+  }
+
+  int get _pickedLinesCount {
+    return _items.where((item) => item.isPicked).length;
+  }
+
+  bool get _allItemsPicked {
+    return _items.isNotEmpty && _items.every((item) => item.isPicked);
+  }
+
+  void _toggleAllPicked() {
+    final target = !_allItemsPicked;
+    setState(() {
+      for (int i = 0; i < _items.length; i++) {
+        _items[i] = _items[i].copyWith(isPicked: target);
+      }
+    });
+  }
+
+  void _toggleItemPicked(int index) {
+    setState(() {
+      final item = _items[index];
+      _items[index] = item.copyWith(isPicked: !item.isPicked);
+    });
+  }
+
+  Future<void> _openEditOrderProducts() async {
+    final updatedDelivery = await Navigator.push<Delivery>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BookOrderPage(
+          deliveryID: widget.deliveryID,
+          existingDelivery: _currentDelivery.copyWith(items: _items),
+          returnUpdatedDeliveryOnSave: true,
+        ),
+      ),
+    );
+
+    if (updatedDelivery != null && mounted) {
+      setState(() {
+        _currentDelivery = updatedDelivery;
+        _items = updatedDelivery.items.map((e) => e.copyWith()).toList();
+      });
+    }
+  }
+
+  Future<void> _onSaveProgress() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      final updated = await _controller.savePicklistProgress(
+        context: context,
+        deliveryId: widget.deliveryID,
+        currentDelivery: _currentDelivery,
+        storeName: _currentDelivery.storeName,
+        items: _items,
+        imageFile: null,
+        networkImagePath: _currentDelivery.imagePath,
+        placements: const [],
+        placementId: '',
+        remarks: _currentDelivery.remarks,
+      );
+      if (mounted) {
+        setState(() => _currentDelivery = updated);
+        ShowMessage.success(context, 'Picklist draft saved.');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to save progress: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _onCompletePicklist() async {
+    if (!_allItemsPicked) {
+      ShowMessage.error(context, 'Please check all products before marking For Delivery.');
+      return;
+    }
+
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Complete Picklist',
+      message: 'Mark [${_currentDelivery.storeName}] (${_items.length} items • $_totalUnits total units) as For Delivery?',
+      icon: Icons.local_shipping_outlined,
+      confirmText: 'Mark For Delivery',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isSaving = true);
+    try {
+      final updatedDelivery = await _controller.completePicklist(
+        context: context,
+        deliveryId: widget.deliveryID,
+        currentDelivery: _currentDelivery,
+        storeName: _currentDelivery.storeName,
+        pickedItems: _items,
+        imageFile: null,
+        networkImagePath: _currentDelivery.imagePath,
+        placements: const [],
+        placementId: '',
+        sendText: false,
+        smsMessage: '',
+        remarks: _currentDelivery.remarks,
+      );
+
+      if (!mounted) return;
+
+      ShowMessage.success(context, 'Picklist completed! [${updatedDelivery.storeName}] is now For Delivery.');
+
+      // Generate digital receipt (text only) that can also be printed on a thermal printer via Bluetooth
+      await DigitalReceiptDialog.show(
+        context,
+        delivery: updatedDelivery,
+        deliveryId: widget.deliveryID,
+        proceedLabel: 'Proceed to Delivery',
+        onProceed: () {
+          if (!mounted) return;
+          Navigator.pop(context);
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Error completing picklist: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _onDeleteOrder() async {
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Delete Order',
+      message: 'Delete this booked order for [${_currentDelivery.storeName}]? Reserved stock will be released back to inventory.',
+      isDestructive: true,
+      icon: Icons.delete_outline,
+      confirmText: 'Delete',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isSaving = true);
+    try {
+      await _controller.deleteDelivery(context: context, deliveryId: widget.deliveryID, delivery: _currentDelivery);
+      if (mounted) {
+        ShowMessage.success(context, 'Deleted order for [${_currentDelivery.storeName}].');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to delete order: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Widget _buildAppBarIconAction({required IconData icon, required String tooltip, required VoidCallback? onTap}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 18, color: Colors.white),
+        tooltip: tooltip,
+        onPressed: onTap,
+        constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+        padding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildProgressHeader(ColorScheme colorScheme) {
+    final totalLines = _items.length;
+    final pickedLines = _pickedLinesCount;
+    final progress = totalLines == 0 ? 0.0 : pickedLines / totalLines;
+    final isComplete = _allItemsPicked;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                isComplete ? Icons.check_circle_rounded : Icons.checklist_rtl_rounded,
+                size: 20,
+                color: isComplete ? Colors.green.shade700 : colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$pickedLines of $totalLines checked • $_totalUnits units',
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _items.isEmpty ? null : _toggleAllPicked,
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
+                icon: Icon(_allItemsPicked ? Icons.remove_done_rounded : Icons.done_all_rounded, size: 17),
+                label: Text(_allItemsPicked ? 'Uncheck All' : 'Check All', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 7,
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              color: isComplete ? Colors.green.shade700 : colorScheme.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupHeader({required String title, required IconData icon, required Color color, required int totalUnits}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: color),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                  '$totalUnits ${totalUnits == 1 ? "unit" : "units"}',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Divider(height: 1, thickness: 1),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPicklistItemTile(int index, ColorScheme colorScheme) {
+    final item = _items[index];
+    final isPicked = item.isPicked;
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      color: isPicked ? Colors.green.withValues(alpha: 0.06) : colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: isPicked ? Colors.green.withValues(alpha: 0.45) : colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: isPicked ? 1.3 : 1.0,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => _toggleItemPicked(index),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Transform.scale(
+                scale: 1.15,
+                child: Checkbox(
+                  value: isPicked,
+                  activeColor: Colors.green.shade700,
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  onChanged: (_) => _toggleItemPicked(index),
+                ),
+              ),
+              const SizedBox(width: 6),
+              CachedProductImage(imageUrl: item.imageUrl, size: 44, borderRadius: 8),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item.productName,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    height: 1.3,
+                    color: isPicked ? Colors.green.shade800 : colorScheme.onSurface,
+                    decoration: isPicked ? TextDecoration.lineThrough : null,
+                    decorationColor: Colors.green.shade700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isPicked ? Colors.green.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: isPicked ? Colors.green.withValues(alpha: 0.3) : colorScheme.primary.withValues(alpha: 0.2)),
+                ),
+                child: Text(
+                  '×${item.pickedQuantity}',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: isPicked ? Colors.green.shade700 : colorScheme.primary),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStickyBottomBar(ColorScheme colorScheme) {
+    final canComplete = !_isSaving && _allItemsPicked;
+
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                if (_isDealer) ...[
+                  IconButton.outlined(
+                    onPressed: _isSaving ? null : _onDeleteOrder,
+                    tooltip: 'Delete Order',
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(48, 48),
+                      foregroundColor: Colors.red.shade700,
+                      side: BorderSide(color: Colors.red.shade300),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.delete_outline, size: 22),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton(
+                    onPressed: _isSaving ? null : _onSaveProgress,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text(
+                      'Save Draft',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 3,
+                  child: FilledButton.icon(
+                    onPressed: canComplete ? _onCompletePicklist : null,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      backgroundColor: Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: _isSaving
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.local_shipping_outlined, size: 20),
+                    label: const Text(
+                      'For Delivery',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final deliveryDate = _currentDelivery.deliveryDate?.toDate() ?? DateTime.now();
+
+    final selectaCaseItems = <int>[];
+    final selectaPieceItems = <int>[];
+    final otherItems = <int>[];
+
+    for (int i = 0; i < _items.length; i++) {
+      final item = _items[i];
+      final isSelecta = item.productSource.trim().toLowerCase() == 'selecta' || item.productSource.trim().isEmpty;
+      if (isSelecta) {
+        final cat = item.category.trim().toLowerCase();
+        if (cat == 'by case' || cat.contains('case')) {
+          selectaCaseItems.add(i);
+        } else {
+          selectaPieceItems.add(i);
+        }
+      } else {
+        otherItems.add(i);
+      }
+    }
+
+    int compareDeliveryItemIndices(int a, int b) {
+      final itemA = _items[a];
+      final itemB = _items[b];
+      return Helperfunctions.compareBySrpAndName(
+        nameA: itemA.productName,
+        priceA: itemA.sellingPrice,
+        nameB: itemB.productName,
+        priceB: itemB.sellingPrice,
+      );
+    }
+
+    selectaCaseItems.sort(compareDeliveryItemIndices);
+    selectaPieceItems.sort(compareDeliveryItemIndices);
+    otherItems.sort(compareDeliveryItemIndices);
+
+    int calcUnits(List<int> idxs) => idxs.fold<int>(0, (sum, i) => sum + _items[i].pickedQuantity);
+
+    return Scaffold(
+      appBar: CustomAppbar(
+        title: _currentDelivery.storeName,
+        subtitle: 'Picklist • ${Helperfunctions.formatDateForDisplay(deliveryDate)}',
+        centerTitle: false,
+        actions: [
+          _buildAppBarIconAction(
+            icon: Icons.edit_note_rounded,
+            tooltip: 'Edit Order in Book Order Page',
+            onTap: _isSaving ? null : _openEditOrderProducts,
+          ),
+        ],
+      ),
+      bottomNavigationBar: _buildStickyBottomBar(colorScheme),
+      body: Column(
+        children: [
+          _buildProgressHeader(colorScheme),
+          Expanded(
+            child: _items.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.shopping_basket_outlined, size: 44, color: colorScheme.onSurfaceVariant),
+                          const SizedBox(height: 10),
+                          Text(
+                            'No products in this order yet.',
+                            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 15.5, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: _openEditOrderProducts,
+                            icon: const Icon(Icons.edit_note_rounded, size: 20),
+                            label: const Text('Edit Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                    children: [
+                      if (selectaCaseItems.isNotEmpty) ...[
+                        _buildGroupHeader(
+                          title: 'Selecta Products (By Case)',
+                          icon: Icons.all_inbox_rounded,
+                          color: Colors.deepOrange.shade700,
+                          totalUnits: calcUnits(selectaCaseItems),
+                        ),
+                        ...selectaCaseItems.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                      ],
+                      if (selectaPieceItems.isNotEmpty) ...[
+                        _buildGroupHeader(
+                          title: 'Selecta Products (By Piece)',
+                          icon: Icons.icecream_outlined,
+                          color: colorScheme.primary,
+                          totalUnits: calcUnits(selectaPieceItems),
+                        ),
+                        ...selectaPieceItems.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                      ],
+                      if (otherItems.isNotEmpty) ...[
+                        _buildGroupHeader(
+                          title: 'Other Products',
+                          icon: Icons.inventory_2_outlined,
+                          color: colorScheme.onSurfaceVariant,
+                          totalUnits: calcUnits(otherItems),
+                        ),
+                        ...otherItems.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}

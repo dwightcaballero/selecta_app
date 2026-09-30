@@ -5,6 +5,8 @@ import 'package:flutter_app/services/inventory_service.dart';
 class InventorySummary {
   final int totalProducts;
   final int totalUnits;
+  final int totalReservedUnits;
+  final int totalAvailableUnits;
   final double totalCostValue;
   final double totalRetailValue;
   final int lowStockCount;
@@ -13,6 +15,8 @@ class InventorySummary {
   const InventorySummary({
     required this.totalProducts,
     required this.totalUnits,
+    this.totalReservedUnits = 0,
+    this.totalAvailableUnits = 0,
     required this.totalCostValue,
     required this.totalRetailValue,
     required this.lowStockCount,
@@ -33,6 +37,8 @@ class InventoryController {
   /// Computes summary KPIs for a list of [InventoryItem]s.
   InventorySummary computeSummary(List<InventoryItem> items) {
     int totalUnits = 0;
+    int totalReserved = 0;
+    int totalAvailable = 0;
     double totalCost = 0.0;
     double totalRetail = 0.0;
     int lowStock = 0;
@@ -40,6 +46,8 @@ class InventoryController {
 
     for (final item in items) {
       totalUnits += item.stockQuantity;
+      totalReserved += item.reservedQuantity;
+      totalAvailable += item.availableQuantity;
       totalCost += item.stockCostValue;
       totalRetail += item.stockRetailValue;
       if (item.isOutOfStock) {
@@ -52,6 +60,8 @@ class InventoryController {
     return InventorySummary(
       totalProducts: items.length,
       totalUnits: totalUnits,
+      totalReservedUnits: totalReserved,
+      totalAvailableUnits: totalAvailable,
       totalCostValue: totalCost,
       totalRetailValue: totalRetail,
       lowStockCount: lowStock,

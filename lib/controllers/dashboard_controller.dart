@@ -22,6 +22,7 @@ class DashboardController {
   final TasksService _tasksService = TasksService();
   final HapiStoreService _hapiStoreService = HapiStoreService();
   final PurchaseOrderService _purchaseOrderService = PurchaseOrderService();
+  final DeliveryService _deliveryService = DeliveryService();
   final UserService _userService = UserService();
 
   /// Live count stream for pending and overdue tasks.
@@ -35,6 +36,10 @@ class DashboardController {
   /// Live count stream for purchase orders awaiting invoice upload.
   Stream<int> getPurchaseOrdersAwaitingCountStream() =>
       _purchaseOrderService.getAwaitingInvoiceCountStream();
+
+  /// Live count stream for orders currently awaiting picklist completion.
+  Stream<int> getPendingPicklistsCountStream() =>
+      _deliveryService.getPendingPicklistCountStream();
 
   /// Fetches the currently logged in user profile from storage.
   Future<Users?> getCurrentUser() => KVariables.getUser();
@@ -83,17 +88,33 @@ class DashboardController {
     await authService.value.signOut();
   }
 
+  /// Saves [DashboardDTO] and sync timestamp to SharedPreferences.
+  Future<void> saveDashboardData(DashboardDTO dashboardDTO, [String? lastSyncDateTime]) =>
+      saveDashboardDataStatic(dashboardDTO, lastSyncDateTime);
+
+  /// Static helper to save [DashboardDTO] and sync timestamp to SharedPreferences.
+  static Future<void> saveDashboardDataStatic(DashboardDTO dashboardDTO, [String? lastSyncDateTime]) async {
+    final prefs = await SharedPreferences.getInstance();
+    DateTime syncTime = DateTime.now();
+    if (lastSyncDateTime != null && lastSyncDateTime.isNotEmpty) {
+      final parsed = DateTime.tryParse(lastSyncDateTime);
+      if (parsed != null) {
+        syncTime = parsed;
+      }
+    }
+    await prefs.setString('last_sync_time', syncTime.toIso8601String());
+    final jsonString = jsonEncode(dashboardDTO.toJson());
+    await prefs.setString('dashboard_DTO', jsonString);
+  }
+
   /// Computes and caches fresh dashboard statistics across all operational domains.
   static Future<DashboardDTO> getLatestDashboardData() async {
     // Initialize Components
     var dashboardDTO = DashboardDTO.empty();
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    // SAVE: last sync date and time
-    await prefs.setString('last_sync_time', DateTime.now().toIso8601String());
 
     // DASHBOARD: notifications
     dashboardDTO.unpaidCreditCount = await DeliveryService.getCountDeliveryWithCreditNotYetPaid() ?? 0;
+    dashboardDTO.pendingPicklistCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pendingPicklist) ?? 0;
     dashboardDTO.pendingDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending) ?? 0;
     dashboardDTO.returnedDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.returned) ?? 0;
     dashboardDTO.overpaymentCount = await PurchaseOrderService.getCountDeliveriesNotYetSettled() ?? 0;
@@ -124,7 +145,9 @@ class DashboardController {
     dashboardDTO.totalHapiStores = listStores.length;
 
     // DASHBOARD: thruput of buying stores
-    dashboardDTO.buyingThruput = dashboardDTO.totalBuyingSales / dashboardDTO.buyingCount;
+    dashboardDTO.buyingThruput = dashboardDTO.buyingCount == 0
+        ? 0.0
+        : dashboardDTO.totalBuyingSales / dashboardDTO.buyingCount;
 
     // DASHBOARD: total invoice amount for the current month
     dashboardDTO.totalInvoiceAmount = await PurchaseOrderService.getTotalInvoiceAmountForCurrentMonth();
@@ -135,11 +158,13 @@ class DashboardController {
     // DASHBOARD: total stores opened this month
     dashboardDTO.totalExpansionCount = (await HapiStoreService.getListHapiStoresWithOpeningDateInCurrentMonth()).length;
 
-    // DASHBOARD: total scanned, not scanned, and unassigned stores
+    // DASHBOARD: total scanned, not scanned (including pending), and unassigned stores
     var listScannings = await ScanningServices.getAllScannings();
     listScannings = listScannings.where((scanning) => scanning.status != ScanningStatus.pullout).toList();
     dashboardDTO.totalScanCount = listScannings.where((scanning) => scanning.status == ScanningStatus.scanned).length;
-    dashboardDTO.totalNotScannedCount = listScannings.where((scanning) => scanning.status == ScanningStatus.notScanned).length;
+    dashboardDTO.totalNotScannedCount = listScannings
+        .where((scanning) => scanning.status == ScanningStatus.notScanned || scanning.status == ScanningStatus.pending)
+        .length;
 
     final assignedStoreNames = <String>{};
     for (final s in listScannings) {
@@ -159,9 +184,8 @@ class DashboardController {
     unassignedCount += listScannings.where((s) => s.status == ScanningStatus.unassigned).length;
     dashboardDTO.totalUnassignedCount = unassignedCount;
 
-    // SAVE: dashboard data
-    String jsonString = jsonEncode(dashboardDTO.toJson());
-    await prefs.setString('dashboard_DTO', jsonString);
+    // SAVE: dashboard data and sync timestamp
+    await saveDashboardDataStatic(dashboardDTO);
 
     return dashboardDTO;
   }

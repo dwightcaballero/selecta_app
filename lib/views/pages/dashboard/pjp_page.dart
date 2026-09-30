@@ -1,25 +1,30 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/pjp_controller.dart';
+import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/models/placement.dart';
+import 'package:flutter_app/models/proof_of_visit.dart';
 import 'package:flutter_app/models/scanning.dart';
 import 'package:flutter_app/models/tasks.dart';
+import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
 import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/placement_page.dart';
 import 'package:flutter_app/views/pages/dashboard/scanning_page.dart';
 import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
+import 'package:flutter_app/views/widgets/imageviewer_page.dart';
 import 'package:flutter_app/services/error_log_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
+import 'package:image_picker/image_picker.dart';
 
 /// Presentation view for inspecting and completing individual PJP store visits.
 ///
-/// Geolocation distance calculation, barcode check, placement checklist status,
-/// task queries, and Merch Blitz validation are managed by [PjpController].
+/// Geolocation distance calculation, barcode check, book order verification,
+/// proof of visit photograph, task queries, and Merch Blitz validation are managed by [PjpController].
 class PjpPage extends StatefulWidget {
   const PjpPage({super.key, required this.hapiStoreID, required this.initialHapistore, required this.selectedDay});
 
@@ -36,33 +41,40 @@ class _PjpPageState extends State<PjpPage> {
 
   late Hapistore _currentHapistore;
 
-  // Task 1: Location state
+  // Step 1: Location state
   bool _isLoadingLocation = true;
   bool _isUpdatingLocation = false;
   bool _locationPassed = false;
   String _locationStatus = '';
   String? _locationError;
 
-  // Task 2: Scanning state
+  // Step 2: Scanning state
   bool _isLoadingScanning = true;
   bool _scanningPassed = false;
   String _scanningStatus = '';
   List<Scanning> _storeScannings = [];
 
-  // Task 3: Placement state
-  bool _isLoadingPlacement = true;
-  bool _placementPassed = false;
-  bool _placementViewed = false;
-  String _placementStatus = '';
-  Placement? _storePlacement;
+  // Step 3: Book Order state
+  bool _isLoadingBookOrder = true;
+  bool _bookOrderPassed = false;
+  bool _hasBookedOrder = false;
+  String? _noOrderReason;
+  String _bookOrderStatus = '';
 
-  // Task 4: Tasks state
+  // Step 4: Proof of Visit state
+  bool _isLoadingProofOfVisit = true;
+  bool _isUploadingProofOfVisit = false;
+  bool _proofOfVisitPassed = false;
+  String _proofOfVisitStatus = '';
+  ProofOfVisit? _proofOfVisit;
+
+  // Step 5: Tasks state
   bool _isLoadingTasks = true;
   bool _tasksPassed = false;
   String _tasksStatus = '';
   List<Tasks> _pendingTasks = [];
 
-  // Task 5: Merch Blitz state
+  // Step 6: Merch Blitz state (Optional)
   bool _isLoadingMerchBlitz = true;
   bool _merchBlitzPassed = false;
   String _merchBlitzStatus = '';
@@ -82,7 +94,9 @@ class _PjpPageState extends State<PjpPage> {
     return Helperfunctions.isSameWeek(visit, DateTime.now());
   }
 
-  bool get _allPassed => _locationPassed && _scanningPassed && _placementPassed && _tasksPassed && _merchBlitzPassed;
+  /// All required criteria: 1 to 5.
+  /// Step 6 (Merch Blitz) is optional.
+  bool get _canCompleteVisit => _locationPassed && _scanningPassed && _bookOrderPassed && _proofOfVisitPassed && _tasksPassed;
 
   @override
   void initState() {
@@ -130,7 +144,7 @@ class _PjpPageState extends State<PjpPage> {
   }
 
   Future<void> _runAllChecks() async {
-    await Future.wait([_checkLocation(), _checkScanning(), _checkPlacement(), _checkTasks(), _checkMerchBlitz()]);
+    await Future.wait([_checkLocation(), _checkScanning(), _checkBookOrder(), _checkProofOfVisit(), _checkTasks(), _checkMerchBlitz()]);
   }
 
   Future<void> _checkLocation() async {
@@ -158,31 +172,46 @@ class _PjpPageState extends State<PjpPage> {
     final result = await _controller.checkScanning(_currentHapistore.storeName);
     if (!mounted) return;
 
+    final hasPendingOrScanned = result.storeScannings.any(
+      (s) => s.status == ScanningStatus.pending || s.status == ScanningStatus.scanned,
+    );
+
     setState(() {
       _isLoadingScanning = false;
-      _scanningPassed = result.passed;
+      _scanningPassed = result.passed || hasPendingOrScanned;
       _scanningStatus = result.status;
       _storeScannings = result.storeScannings;
     });
   }
 
-  Future<void> _checkPlacement() async {
+  Future<void> _checkBookOrder() async {
     if (!mounted) return;
-    setState(() => _isLoadingPlacement = true);
+    setState(() => _isLoadingBookOrder = true);
 
-    final result = await _controller.checkPlacement(
-      store: _currentHapistore,
-      placementViewed: _placementViewed,
-    );
+    final result = await _controller.checkBookOrder(_currentHapistore.storeName);
     if (!mounted) return;
 
     setState(() {
-      _isLoadingPlacement = false;
-      _placementPassed = result.passed;
-      _placementStatus = result.status;
-      if (result.storePlacement != null) {
-        _storePlacement = result.storePlacement;
-      }
+      _isLoadingBookOrder = false;
+      _bookOrderPassed = result.passed;
+      _bookOrderStatus = result.status;
+      _hasBookedOrder = result.hasBookedOrder;
+      _noOrderReason = result.noOrderReason;
+    });
+  }
+
+  Future<void> _checkProofOfVisit() async {
+    if (!mounted) return;
+    setState(() => _isLoadingProofOfVisit = true);
+
+    final result = await _controller.checkProofOfVisit(_currentHapistore.storeName);
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingProofOfVisit = false;
+      _proofOfVisitPassed = result.passed;
+      _proofOfVisitStatus = result.status;
+      _proofOfVisit = result.proofOfVisit;
     });
   }
 
@@ -198,6 +227,20 @@ class _PjpPageState extends State<PjpPage> {
       _tasksPassed = result.passed;
       _tasksStatus = result.status;
       _pendingTasks = result.pendingTasks;
+    });
+  }
+
+  Future<void> _checkMerchBlitz() async {
+    if (!mounted) return;
+    setState(() => _isLoadingMerchBlitz = true);
+
+    final result = await _controller.checkMerchBlitz(_currentHapistore);
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingMerchBlitz = false;
+      _merchBlitzPassed = result.passed;
+      _merchBlitzStatus = result.status;
     });
   }
 
@@ -229,10 +272,7 @@ class _PjpPageState extends State<PjpPage> {
         action: 'Update Store Location',
         error: e,
         stackTrace: s,
-        extraData: {
-          'hapiStoreID': widget.hapiStoreID,
-          'storeName': _currentHapistore.storeName,
-        },
+        extraData: {'hapiStoreID': widget.hapiStoreID, 'storeName': _currentHapistore.storeName},
       );
       if (!mounted) return;
       ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
@@ -250,11 +290,8 @@ class _PjpPageState extends State<PjpPage> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ScanningPage(
-            initialBarcode: _storeScannings.first.barcode,
-            initialStoreName: _currentHapistore.storeName,
-            isEditing: true,
-          ),
+          builder: (context) =>
+              ScanningPage(initialBarcode: _storeScannings.first.barcode, initialStoreName: _currentHapistore.storeName, isEditing: true),
         ),
       );
     } else {
@@ -274,16 +311,247 @@ class _PjpPageState extends State<PjpPage> {
     await _checkScanning();
   }
 
-  Future<void> _onPlacementAction() async {
-    final placementToView =
-        _storePlacement ?? Placement.empty().copyWith(storeName: _currentHapistore.storeName);
+  // --- Step 3: Book Order Handlers ---
 
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => PlacementPage(placement: placementToView)));
+  Future<void> _onBookOrderDecisionPrompt() async {
+    // Show a modal to select whether to book an order or not
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Text(
+                  'Book Order for ${_currentHapistore.storeName}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.add_shopping_cart_rounded, color: Colors.green),
+                title: const Text('Yes, Book an Order', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Create a new order for this store'),
+                onTap: () => Navigator.pop(ctx, 'yes'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.do_not_disturb_on_outlined, color: Colors.orange),
+                title: const Text('Will Not Book an Order', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Provide a required reason why no order is placed'),
+                onTap: () => Navigator.pop(ctx, 'no'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (choice == 'yes') {
+      await _onBookOrderYes();
+    } else if (choice == 'no') {
+      await _onBookOrderNo();
+    }
+  }
+
+  Future<void> _onBookOrderYes() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => BookOrderPage(initialStoreName: _currentHapistore.storeName)),
+    );
 
     if (!mounted) return;
-    _placementViewed = true;
-    await _checkPlacement();
+    await _checkBookOrder();
+
+    if (result != null && mounted) {
+      ShowMessage.success(context, 'Order saved! Step marked as passed.');
+    }
   }
+
+  Future<void> _onBookOrderNo() async {
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final reason = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.edit_note_rounded, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Reason Required', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Why will you not book an order for ${_currentHapistore.storeName} today?', style: const TextStyle(fontSize: 13)),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: ['Sufficient Stock', 'Store Closed', 'Owner Not Around', 'No Budget'].map((preset) {
+                          return ActionChip(
+                            label: Text(preset, style: const TextStyle(fontSize: 11)),
+                            onPressed: () {
+                              setDialogState(() {
+                                reasonController.text = preset;
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: reasonController,
+                        autofocus: true,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Reason (Required) *',
+                          hintText: 'Enter reason why no order was booked...',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Reason is required';
+                          }
+                          if (value.trim().length < 3) {
+                            return 'Please provide a more descriptive reason';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, null), child: const Text('Cancel')),
+                FilledButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      Navigator.pop(ctx, reasonController.text.trim());
+                    }
+                  },
+                  child: const Text('Save Reason'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (reason != null && reason.isNotEmpty && mounted) {
+      try {
+        final currentUserName = authService.value.currentUser?.displayName ?? 'Salesman';
+        await _controller.recordNoOrderReason(storeName: _currentHapistore.storeName, reason: reason, createdBy: currentUserName);
+        if (!mounted) return;
+        ShowMessage.success(context, 'Reason recorded successfully! Step marked as passed.');
+        await _checkBookOrder();
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to record reason: $e');
+        }
+      }
+    }
+  }
+
+  // --- Step 4: Proof of Visit Handlers ---
+
+  Future<void> _onProofOfVisitAction() async {
+    if (_isUploadingProofOfVisit) return;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(8.0),
+              child: Text('Proof of Visit Photo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded),
+              title: const Text('Take Picture with Camera'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null || !mounted) return;
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: source, imageQuality: 80);
+
+    if (picked == null || !mounted) return;
+
+    setState(() => _isUploadingProofOfVisit = true);
+
+    try {
+      final imageFile = File(picked.path);
+      final downloadUrl = await Helperfunctions.saveImage(context, imageFile);
+      if (!mounted) return;
+
+      final currentUserName = authService.value.currentUser?.displayName ?? 'Salesman';
+      await _controller.saveProofOfVisit(storeName: _currentHapistore.storeName, imageUrl: downloadUrl, takenBy: currentUserName);
+
+      if (!mounted) return;
+      ShowMessage.success(context, 'Proof of visit photo captured and saved!');
+      await _checkProofOfVisit();
+    } catch (e, s) {
+      ErrorLogService.logError(
+        page: 'PjpPage',
+        action: 'Proof of Visit Photo Upload',
+        error: e,
+        stackTrace: s,
+        extraData: {'storeName': _currentHapistore.storeName},
+      );
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to save proof of visit photo: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingProofOfVisit = false);
+      }
+    }
+  }
+
+  // --- Step 5: Store Tasks Handlers ---
 
   Future<void> _onTasksAction() async {
     await Navigator.push(context, MaterialPageRoute(builder: (context) => TasklistPage(initialStoreName: _currentHapistore.storeName)));
@@ -292,19 +560,7 @@ class _PjpPageState extends State<PjpPage> {
     await _checkTasks();
   }
 
-  Future<void> _checkMerchBlitz() async {
-    if (!mounted) return;
-    setState(() => _isLoadingMerchBlitz = true);
-
-    final result = await _controller.checkMerchBlitz(_currentHapistore);
-    if (!mounted) return;
-
-    setState(() {
-      _isLoadingMerchBlitz = false;
-      _merchBlitzPassed = result.passed;
-      _merchBlitzStatus = result.status;
-    });
-  }
+  // --- Step 6: Merch Blitz Handlers ---
 
   Future<void> _onMerchBlitzAction() async {
     await Navigator.push(context, MaterialPageRoute(builder: (context) => MerchBlitzListPage(initialSearchQuery: _currentHapistore.storeName)));
@@ -315,15 +571,11 @@ class _PjpPageState extends State<PjpPage> {
   }
 
   Future<void> _completeVisit() async {
-    if (!_allPassed || _isCompleting) return;
+    if (!_canCompleteVisit || _isCompleting) return;
 
     setState(() => _isCompleting = true);
     try {
-      await _controller.completeVisit(
-        hapiStoreID: widget.hapiStoreID,
-        store: _currentHapistore,
-        selectedDay: widget.selectedDay,
-      );
+      await _controller.completeVisit(hapiStoreID: widget.hapiStoreID, store: _currentHapistore, selectedDay: widget.selectedDay);
 
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully completed PJP visit for ${_currentHapistore.storeName}!');
@@ -334,11 +586,7 @@ class _PjpPageState extends State<PjpPage> {
         action: 'Complete PJP Visit',
         error: e,
         stackTrace: s,
-        extraData: {
-          'hapiStoreID': widget.hapiStoreID,
-          'storeName': _currentHapistore.storeName,
-          'selectedDay': widget.selectedDay,
-        },
+        extraData: {'hapiStoreID': widget.hapiStoreID, 'storeName': _currentHapistore.storeName, 'selectedDay': widget.selectedDay},
       );
       if (!mounted) return;
       ShowMessage.error(context, 'Failed to complete visit: $e');
@@ -348,17 +596,18 @@ class _PjpPageState extends State<PjpPage> {
   }
 
   Widget _buildVerificationProgress() {
-    final passedCount = [_locationPassed, _scanningPassed, _placementPassed, _tasksPassed, _merchBlitzPassed].where((p) => p).length;
-    final progress = passedCount / 5.0;
+    final requiredCount = [_locationPassed, _scanningPassed, _bookOrderPassed, _proofOfVisitPassed, _tasksPassed].where((p) => p).length;
+    final progress = requiredCount / 5.0;
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final allRequired = requiredCount == 5;
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: passedCount == 5 ? Colors.green.withValues(alpha: isDark ? 0.2 : 0.08) : colorScheme.surface,
+        color: allRequired ? Colors.green.withValues(alpha: isDark ? 0.2 : 0.08) : colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: passedCount == 5 ? Colors.green.withValues(alpha: 0.4) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        border: Border.all(color: allRequired ? Colors.green.withValues(alpha: 0.4) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,9 +618,9 @@ class _PjpPageState extends State<PjpPage> {
               Row(
                 children: [
                   Icon(
-                    passedCount == 5 ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
+                    allRequired ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
                     size: 16,
-                    color: passedCount == 5 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
+                    color: allRequired ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -381,11 +630,13 @@ class _PjpPageState extends State<PjpPage> {
                 ],
               ),
               Text(
-                '$passedCount of 5 Passed (${(progress * 100).toInt()}%)',
+                allRequired && _merchBlitzPassed
+                    ? 'All 5 Required + Merch Blitz (100%)'
+                    : '$requiredCount of 5 Required (${(progress * 100).toInt()}%)',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: passedCount == 5 ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
+                  color: allRequired ? (isDark ? Colors.greenAccent : Colors.green.shade700) : colorScheme.primary,
                 ),
               ),
             ],
@@ -397,7 +648,7 @@ class _PjpPageState extends State<PjpPage> {
               value: progress,
               minHeight: 6,
               backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              valueColor: AlwaysStoppedAnimation<Color>(passedCount == 5 ? Colors.green : colorScheme.primary),
+              valueColor: AlwaysStoppedAnimation<Color>(allRequired ? Colors.green : colorScheme.primary),
             ),
           ),
         ],
@@ -417,6 +668,8 @@ class _PjpPageState extends State<PjpPage> {
     required String actionLabel,
     String? actionLabelWhenPassed,
     bool showActionWhenPassed = false,
+    bool showActionWhenNotPassed = true,
+    bool isOptional = false,
     IconData? actionIcon,
     String? loadingLabel,
     required VoidCallback onAction,
@@ -433,6 +686,9 @@ class _PjpPageState extends State<PjpPage> {
     } else if (isPassed) {
       statusColor = isDark ? Colors.greenAccent : Colors.green.shade700;
       statusLabel = 'Passed';
+    } else if (isOptional) {
+      statusColor = isDark ? Colors.blueAccent : Colors.indigo.shade600;
+      statusLabel = 'Optional';
     } else {
       statusColor = isDark ? Colors.amberAccent : Colors.orange.shade800;
       statusLabel = 'Action Needed';
@@ -519,7 +775,7 @@ class _PjpPageState extends State<PjpPage> {
                     ),
                   ),
                 ],
-                if (!isPassed && !isLoading) ...[
+                if (!isPassed && !isLoading && showActionWhenNotPassed) ...[
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
@@ -692,18 +948,15 @@ class _PjpPageState extends State<PjpPage> {
             icon: Icons.location_on_outlined,
             isLoading: _isLoadingLocation || _isUpdatingLocation,
             isPassed: _locationPassed,
-            statusMessage: _isUpdatingLocation
-                ? 'Acquiring GPS and updating store location...'
-                : _locationStatus,
+            statusMessage: _isUpdatingLocation ? 'Acquiring GPS and updating store location...' : _locationStatus,
             errorMessage: _locationError,
-            actionLabel: _isUpdatingLocation
-                ? 'Updating...'
-                : (_currentHapistore.latitude == null ? 'Get Location' : 'Update Location'),
+            actionLabel: _isUpdatingLocation ? 'Updating...' : (_currentHapistore.latitude == null ? 'Get Location' : 'Update Location'),
             actionIcon: Icons.my_location_rounded,
             loadingLabel: _isUpdatingLocation ? 'Updating...' : null,
             onAction: _onLocationAction,
             onRetry: _locationError != null ? _checkLocation : null,
           ),
+
           // Step 2: Scanning
           _buildChecklistCard(
             stepNumber: 2,
@@ -717,22 +970,177 @@ class _PjpPageState extends State<PjpPage> {
             showActionWhenPassed: true,
             onAction: _onScanningAction,
           ),
-          // Step 3: Placement
+
+          // Step 3: Book Order (Replaces Product Placement)
           _buildChecklistCard(
             stepNumber: 3,
-            title: 'Product Placement',
-            icon: Icons.inventory_2_outlined,
-            isLoading: _isLoadingPlacement,
-            isPassed: _placementPassed,
-            statusMessage: _placementStatus,
-            actionLabel: 'Review Placement',
-            actionLabelWhenPassed: 'View Placement',
+            title: 'Book Order',
+            icon: Icons.shopping_bag_outlined,
+            isLoading: _isLoadingBookOrder,
+            isPassed: _bookOrderPassed,
+            statusMessage: _bookOrderStatus,
+            actionLabel: 'Order Options',
+            actionIcon: Icons.touch_app_outlined,
+            showActionWhenNotPassed: false,
+            actionLabelWhenPassed: _hasBookedOrder ? 'Add / View Order' : 'Change Decision',
             showActionWhenPassed: true,
-            onAction: _onPlacementAction,
+            onAction: _hasBookedOrder ? _onBookOrderYes : _onBookOrderDecisionPrompt,
+            extraContent: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _bookOrderPassed ? Colors.green.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: _bookOrderPassed ? Colors.green.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _bookOrderPassed
+                          ? (_hasBookedOrder ? 'An order has been booked for this store.' : 'Decision: No order booked (Reason: $_noOrderReason)')
+                          : 'Will you book an order for this store today?',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: _bookOrderPassed ? Colors.green.shade800 : colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _isLoadingBookOrder ? null : _onBookOrderYes,
+                            icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
+                            label: Text(_hasBookedOrder ? 'View / New Order' : 'Book Order (Yes)', style: const TextStyle(fontSize: 12)),
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isLoadingBookOrder ? null : _onBookOrderNo,
+                            icon: Icon(_noOrderReason != null ? Icons.edit_note_rounded : Icons.do_not_disturb_on_outlined, size: 15),
+                            label: Text(_noOrderReason != null ? 'Edit Reason' : 'Will Not Book', style: const TextStyle(fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          // Step 4: Tasks
+
+          // Step 4: Proof of Visit
           _buildChecklistCard(
             stepNumber: 4,
+            title: 'Proof of Visit',
+            icon: Icons.camera_alt_outlined,
+            isLoading: _isLoadingProofOfVisit || _isUploadingProofOfVisit,
+            isPassed: _proofOfVisitPassed,
+            statusMessage: _isUploadingProofOfVisit ? 'Uploading proof of visit photo...' : _proofOfVisitStatus,
+            actionLabel: _isUploadingProofOfVisit ? 'Uploading...' : 'Take Picture',
+            actionLabelWhenPassed: 'Retake Photo',
+            showActionWhenPassed: true,
+            actionIcon: Icons.photo_camera_rounded,
+            loadingLabel: _isUploadingProofOfVisit ? 'Uploading...' : null,
+            onAction: _onProofOfVisitAction,
+            extraContent: (_proofOfVisit != null && _proofOfVisit!.imageUrl.isNotEmpty)
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => ImageViewerPage(image: null, networkImagePath: _proofOfVisit!.imageUrl)),
+                              );
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Stack(
+                                alignment: Alignment.bottomRight,
+                                children: [
+                                  Image.network(
+                                    _proofOfVisit!.imageUrl,
+                                    width: 60,
+                                    height: 60,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      width: 60,
+                                      height: 60,
+                                      color: Colors.grey.shade300,
+                                      child: const Icon(Icons.broken_image, size: 24),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black54,
+                                      borderRadius: BorderRadius.only(topLeft: Radius.circular(4)),
+                                    ),
+                                    child: const Icon(Icons.fullscreen, color: Colors.white, size: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _currentHapistore.storeName,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Date: ${DateFormat('EEE, MMM d, yyyy • h:mm a').format(_proofOfVisit!.visitDate.toDate())}',
+                                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                ),
+                                const SizedBox(height: 3),
+                                const Text(
+                                  'Tap photo thumbnail to view full image',
+                                  style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.teal),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : null,
+          ),
+
+          // Step 5: Store Tasks (formerly Step 4)
+          _buildChecklistCard(
+            stepNumber: 5,
             title: 'Store Tasks',
             icon: Icons.task_alt_outlined,
             isLoading: _isLoadingTasks,
@@ -804,14 +1212,16 @@ class _PjpPageState extends State<PjpPage> {
             showActionWhenPassed: true,
             onAction: _onTasksAction,
           ),
-          // Step 5: Merch Blitz
+
+          // Step 6: Merch Blitz (formerly Step 5, now Optional)
           _buildChecklistCard(
-            stepNumber: 5,
-            title: 'Merch Blitz',
+            stepNumber: 6,
+            title: 'Merch Blitz (Optional)',
             icon: Icons.campaign_outlined,
             isLoading: _isLoadingMerchBlitz,
             isPassed: _merchBlitzPassed,
-            statusMessage: _merchBlitzStatus,
+            isOptional: true,
+            statusMessage: _merchBlitzStatus.isNotEmpty ? _merchBlitzStatus : 'Optional: Store has not yet been surveyed for Merch Blitz.',
             actionLabel: 'Go to Merch Blitz',
             actionLabelWhenPassed: 'View Merch Blitz',
             showActionWhenPassed: true,
@@ -827,10 +1237,10 @@ class _PjpPageState extends State<PjpPage> {
             border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
           ),
           child: FilledButton(
-            onPressed: _allPassed && !_isCompleting ? _completeVisit : null,
+            onPressed: _canCompleteVisit && !_isCompleting ? _completeVisit : null,
             style: FilledButton.styleFrom(
               minimumSize: const Size(double.infinity, 50),
-              backgroundColor: _allPassed ? Colors.green.shade600 : null,
+              backgroundColor: _canCompleteVisit ? Colors.green.shade600 : null,
               disabledBackgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -840,21 +1250,21 @@ class _PjpPageState extends State<PjpPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        _allPassed ? Icons.check_circle_outline_rounded : Icons.lock_outline_rounded,
+                        _canCompleteVisit ? Icons.check_circle_outline_rounded : Icons.lock_outline_rounded,
                         size: 20,
-                        color: _allPassed ? Colors.white : colorScheme.onSurfaceVariant,
+                        color: _canCompleteVisit ? Colors.white : colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          _allPassed ? (_isCompletedThisWeek ? 'Re-complete Store Visit' : 'Complete Store Visit') : 'Complete Store Visit',
+                          _canCompleteVisit ? (_isCompletedThisWeek ? 'Re-complete Store Visit' : 'Complete Store Visit') : 'Complete Store Visit',
                           textAlign: TextAlign.center,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
-                            color: _allPassed ? Colors.white : colorScheme.onSurfaceVariant,
+                            color: _canCompleteVisit ? Colors.white : colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),

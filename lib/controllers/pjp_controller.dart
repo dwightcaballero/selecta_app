@@ -2,13 +2,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/data/variables.dart';
+import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/models/placement.dart';
+import 'package:flutter_app/models/proof_of_visit.dart';
 import 'package:flutter_app/models/scanning.dart';
 import 'package:flutter_app/models/tasks.dart';
 import 'package:flutter_app/services/configuration_service.dart';
+import 'package:flutter_app/services/delivery_service.dart';
 import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:flutter_app/services/pjp_order_decision_service.dart';
 import 'package:flutter_app/services/placement_service.dart';
+import 'package:flutter_app/services/proof_of_visit_service.dart';
 import 'package:flutter_app/services/scanning_services.dart';
 import 'package:flutter_app/services/tasks_services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -53,6 +58,34 @@ class PlacementCheckResult {
   });
 }
 
+/// Result container for Book Order checklist check.
+class BookOrderCheckResult {
+  final bool passed;
+  final String status;
+  final bool hasBookedOrder;
+  final String? noOrderReason;
+
+  const BookOrderCheckResult({
+    required this.passed,
+    required this.status,
+    this.hasBookedOrder = false,
+    this.noOrderReason,
+  });
+}
+
+/// Result container for Proof of Visit photographic checklist check.
+class ProofOfVisitCheckResult {
+  final bool passed;
+  final String status;
+  final ProofOfVisit? proofOfVisit;
+
+  const ProofOfVisitCheckResult({
+    required this.passed,
+    required this.status,
+    this.proofOfVisit,
+  });
+}
+
 /// Result container for store tasks check.
 class TasksCheckResult {
   final bool passed;
@@ -84,16 +117,27 @@ class PjpController {
   final ScanningServices _scanningService;
   final TasksService _tasksService;
   final ConfigurationService _configurationService;
+  final DeliveryService _deliveryService;
+  final ProofOfVisitService _proofOfVisitService;
+  final PjpOrderDecisionService _orderDecisionService;
 
   PjpController({
     HapiStoreService? hapiStoreService,
     ScanningServices? scanningService,
     TasksService? tasksService,
     ConfigurationService? configurationService,
+    DeliveryService? deliveryService,
+    ProofOfVisitService? proofOfVisitService,
+    PjpOrderDecisionService? orderDecisionService,
   })  : _hapiStoreService = hapiStoreService ?? HapiStoreService(),
         _scanningService = scanningService ?? ScanningServices(),
         _tasksService = tasksService ?? TasksService(),
-        _configurationService = configurationService ?? ConfigurationService();
+        _configurationService = configurationService ?? ConfigurationService(),
+        _deliveryService = deliveryService ?? DeliveryService(),
+        _proofOfVisitService = proofOfVisitService ?? ProofOfVisitService(),
+        _orderDecisionService = orderDecisionService ?? PjpOrderDecisionService();
+
+  DeliveryService get deliveryService => _deliveryService;
 
   static const double maxAllowedDistanceMeters = 200.0;
 
@@ -366,6 +410,7 @@ class PjpController {
 
       final now = DateTime.now();
       Scanning? scannedThisMonth;
+      Scanning? pendingThisMonth;
 
       for (final s in scannings) {
         if (s.status == ScanningStatus.scanned) {
@@ -379,6 +424,8 @@ class PjpController {
             scannedThisMonth = s;
             break;
           }
+        } else if (s.status == ScanningStatus.pending) {
+          pendingThisMonth ??= s;
         }
       }
 
@@ -386,6 +433,12 @@ class PjpController {
         return ScanningCheckResult(
           passed: true,
           status: 'Barcode (${scannedThisMonth.barcode}) scanned for ${DateFormat('MMMM yyyy').format(now)}.',
+          storeScannings: scannings,
+        );
+      } else if (pendingThisMonth != null) {
+        return ScanningCheckResult(
+          passed: true,
+          status: 'Barcode (${pendingThisMonth.barcode}) pending dealer verification.',
           storeScannings: scannings,
         );
       } else {
@@ -533,6 +586,144 @@ class PjpController {
     }
   }
 
+  /// Verifies whether an order has been booked for the store today or a no-order reason was provided.
+  Future<BookOrderCheckResult> checkBookOrder(String storeName) async {
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day, 0, 0, 0);
+      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+      bool hasOrderToday = false;
+      try {
+        final querySnap = await FirebaseFirestore.instance
+            .collection(DELIVERY_COLLECTION_REF)
+            .where(DeliveryModelString.storeName, isEqualTo: storeName)
+            .where(DeliveryModelString.createdDate, isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+            .where(DeliveryModelString.createdDate, isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+            .limit(1)
+            .get();
+        hasOrderToday = querySnap.docs.isNotEmpty;
+      } catch (_) {
+        // Fallback in case composite index is not yet built
+        try {
+          final querySnap = await FirebaseFirestore.instance
+              .collection(DELIVERY_COLLECTION_REF)
+              .where(DeliveryModelString.storeName, isEqualTo: storeName)
+              .limit(10)
+              .get();
+          for (final doc in querySnap.docs) {
+            final data = doc.data();
+            final ts = data[DeliveryModelString.createdDate] as Timestamp?;
+            if (ts != null) {
+              final d = ts.toDate();
+              if (d.year == now.year && d.month == now.month && d.day == now.day) {
+                hasOrderToday = true;
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (hasOrderToday) {
+        return const BookOrderCheckResult(
+          passed: true,
+          status: 'Order booked for today (Pending Picklist).',
+          hasBookedOrder: true,
+        );
+      }
+
+      // Check if a "no order" decision was recorded for this store today
+      final decision = await _orderDecisionService.getTodayNoOrderDecision(storeName);
+      if (decision != null) {
+        return BookOrderCheckResult(
+          passed: true,
+          status: 'No order booked today. Reason: ${decision.reason}',
+          hasBookedOrder: false,
+          noOrderReason: decision.reason,
+        );
+      }
+
+      return const BookOrderCheckResult(
+        passed: false,
+        status: 'Order not yet booked and no reason recorded.',
+        hasBookedOrder: false,
+      );
+    } catch (e) {
+      return BookOrderCheckResult(
+        passed: false,
+        status: 'Failed to verify order status: $e',
+      );
+    }
+  }
+
+  /// Records required reason for not booking an order.
+  Future<void> recordNoOrderReason({
+    required String storeName,
+    required String reason,
+    required String createdBy,
+  }) async {
+    await _orderDecisionService.recordNoOrderReason(
+      storeName: storeName,
+      reason: reason,
+      createdBy: createdBy,
+    );
+    await Helperfunctions.logTransaction(
+      'PJP Order Decision - $storeName',
+      'No order booked. Reason: $reason',
+      LogAction.create,
+      page: AppPages.pjp,
+    );
+  }
+
+  /// Verifies photographic proof of visit for the store.
+  Future<ProofOfVisitCheckResult> checkProofOfVisit(String storeName) async {
+    try {
+      final proof = await _proofOfVisitService.getProofOfVisitForStoreToday(storeName);
+      if (proof != null) {
+        final visitTime = DateFormat('EEE, MMM d • h:mm a').format(proof.visitDate.toDate());
+        return ProofOfVisitCheckResult(
+          passed: true,
+          status: 'Proof of visit photo verified ($visitTime).',
+          proofOfVisit: proof,
+        );
+      } else {
+        return const ProofOfVisitCheckResult(
+          passed: false,
+          status: 'Proof of visit photo not yet captured.',
+        );
+      }
+    } catch (e) {
+      return ProofOfVisitCheckResult(
+        passed: false,
+        status: 'Failed to verify proof of visit: $e',
+      );
+    }
+  }
+
+  /// Saves a new proof of visit record and logs transaction.
+  Future<ProofOfVisit> saveProofOfVisit({
+    required String storeName,
+    required String imageUrl,
+    required String takenBy,
+  }) async {
+    final record = ProofOfVisit(
+      storeName: storeName,
+      visitDate: Timestamp.now(),
+      imageUrl: imageUrl,
+      takenBy: takenBy,
+      createdAt: Timestamp.now(),
+    );
+    final id = await _proofOfVisitService.addProofOfVisit(record);
+    await Helperfunctions.logTransaction(
+      'Proof of Visit Captured - $storeName',
+      'Proof of visit photo saved for visit today',
+      LogAction.create,
+      page: AppPages.pjp,
+    );
+    return record.copyWith(id: id);
+  }
+
   /// Marks the store PJP visit as completed and logs an audit transaction.
   Future<void> completeVisit({
     required String hapiStoreID,
@@ -542,7 +733,7 @@ class PjpController {
     await _hapiStoreService.updateLastPjpVisit(hapiStoreID);
     await Helperfunctions.logTransaction(
       'PJP Visit Completed - ${store.storeName}',
-      'Completed all 5 PJP criteria for $selectedDay',
+      'Completed PJP visit criteria for $selectedDay',
       LogAction.update,
       page: AppPages.pjp,
     );

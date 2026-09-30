@@ -2,8 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/selecta_product_controller.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/admin_selecta_product.dart';
 import 'package:flutter_app/models/selecta_product.dart';
+import 'package:flutter_app/services/selecta_product_service.dart';
 import 'package:flutter_app/views/pages/sidebar/inventory_page.dart';
 import 'package:flutter_app/views/pages/sidebar/selecta_product_form_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
@@ -111,75 +113,108 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
 
   Future<void> _handleAdminExport() async {
     try {
+      String exportFormat = 'CSV'; // 'CSV' or 'JSON'
+      final csvStr = await _controller.exportAdminCatalogCsv();
       final jsonStr = await _controller.exportAdminCatalogJson();
-      final savedFile = await _controller.exportAdminCatalogToFile();
+      final csvFile = await _controller.exportAdminCatalogToCsvFile();
+      final jsonFile = await _controller.exportAdminCatalogToFile();
       if (!mounted) return;
 
       final colorScheme = Theme.of(context).colorScheme;
       await showDialog<void>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Row(
-            children: [
-              Icon(Icons.file_upload_outlined, size: 22),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Export Admin Catalog',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Saved to:\n${savedFile.path}',
-                  style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 220),
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: colorScheme.outlineVariant),
-                  ),
-                  child: SingleChildScrollView(
-                    child: SelectableText(
-                      jsonStr,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final isCsv = exportFormat == 'CSV';
+            final currentContent = isCsv ? csvStr : jsonStr;
+            final currentFile = isCsv ? csvFile : jsonFile;
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              title: const Row(
+                children: [
+                  Icon(Icons.file_upload_outlined, size: 22),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Export Admin Catalog',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                     ),
                   ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment<String>(
+                            value: 'CSV',
+                            label: Text('CSV (Excel)'),
+                            icon: Icon(Icons.table_chart_outlined, size: 16),
+                          ),
+                          ButtonSegment<String>(
+                            value: 'JSON',
+                            label: Text('JSON'),
+                            icon: Icon(Icons.code_rounded, size: 16),
+                          ),
+                        ],
+                        selected: {exportFormat},
+                        onSelectionChanged: (val) {
+                          setDialogState(() => exportFormat = val.first);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Saved to:\n${currentFile.path}',
+                      style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: colorScheme.outlineVariant),
+                      ),
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          currentContent,
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton.icon(
+                  onPressed: () => OpenFilex.open(currentFile.path),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                  label: Text('Open ${isCsv ? 'CSV' : 'JSON'}'),
+                ),
+                FilledButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: currentContent));
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (mounted) {
+                      ShowMessage.success(context, 'Admin catalog $exportFormat copied to clipboard!');
+                    }
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: Text('Copy $exportFormat'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton.icon(
-              onPressed: () => OpenFilex.open(savedFile.path),
-              icon: const Icon(Icons.open_in_new_rounded, size: 16),
-              label: const Text('Open File'),
-            ),
-            FilledButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: jsonStr));
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) {
-                  ShowMessage.success(context, 'Admin catalog JSON copied to clipboard!');
-                }
-              },
-              icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('Copy JSON'),
-            ),
-          ],
+            );
+          },
         ),
       );
     } catch (e) {
@@ -192,8 +227,15 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
     if (!mounted) return;
 
     final urlController = TextEditingController(text: currentUrl);
-    final jsonController = TextEditingController();
+    final dataController = TextEditingController();
+    String selectedFormat = 'Auto-Detect'; // 'Auto-Detect', 'CSV', 'JSON'
     bool isImporting = false;
+    bool isFetchingUrl = false;
+
+    const sampleCsv = 'Product Name,Buying Price,Selling Price,Category,Image URL\n'
+        'Cornetto Chocolate,25.00,30.00,By Piece,\n'
+        'Magnum Classic,50.00,65.00,By Piece,\n'
+        'Selecta Super Thick Vanilla 1.4L,180.00,210.00,By Case,';
 
     await showDialog<void>(
       context: context,
@@ -203,6 +245,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
           builder: (ctx, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               title: const Row(
                 children: [
                   Icon(Icons.file_download_outlined, size: 22),
@@ -223,31 +266,246 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Import from a remote JSON URL (e.g., GitHub raw JSON) or paste exported catalog JSON below.',
+                        'Import products from a CSV spreadsheet (Excel / Google Sheets), JSON catalog, or a remote URL.',
                         style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
+
+                      // Format toggle
+                      Row(
+                        children: [
+                          Text(
+                            'Format:',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  ChoiceChip(
+                                    label: const Text('Auto-Detect', style: TextStyle(fontSize: 11)),
+                                    selected: selectedFormat == 'Auto-Detect',
+                                    onSelected: (s) {
+                                      if (s) setDialogState(() => selectedFormat = 'Auto-Detect');
+                                    },
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  ChoiceChip(
+                                    label: const Text('CSV', style: TextStyle(fontSize: 11)),
+                                    selected: selectedFormat == 'CSV',
+                                    onSelected: (s) {
+                                      if (s) setDialogState(() => selectedFormat = 'CSV');
+                                    },
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  ChoiceChip(
+                                    label: const Text('JSON', style: TextStyle(fontSize: 11)),
+                                    selected: selectedFormat == 'JSON',
+                                    onSelected: (s) {
+                                      if (s) setDialogState(() => selectedFormat = 'JSON');
+                                    },
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Remote URL input with fetch action
                       TextField(
                         controller: urlController,
                         decoration: InputDecoration(
-                          labelText: 'Remote JSON API / GitHub Raw URL',
-                          hintText: 'https://raw.githubusercontent.com/.../catalog.json',
+                          labelText: 'Remote URL (CSV or JSON)',
+                          hintText: 'https://raw.githubusercontent.com/.../catalog.csv',
                           prefixIcon: const Icon(Icons.link_rounded, size: 18),
+                          suffixIcon: isFetchingUrl
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: const Icon(Icons.cloud_download_outlined, size: 20),
+                                  tooltip: 'Fetch & load URL content into editor',
+                                  onPressed: () async {
+                                    final fetchUrl = urlController.text.trim();
+                                    if (fetchUrl.isEmpty) {
+                                      ShowMessage.alert(ctx, title: 'URL Required', message: 'Please enter a valid remote URL first.');
+                                      return;
+                                    }
+                                    setDialogState(() => isFetchingUrl = true);
+                                    try {
+                                      final raw = await _controller.fetchRawCatalogFromUrl(fetchUrl);
+                                      if (raw.isNotEmpty) {
+                                        dataController.text = raw;
+                                        final isJson = raw.trim().startsWith('[') || raw.trim().startsWith('{');
+                                        selectedFormat = isJson ? 'JSON' : 'CSV';
+                                      }
+                                    } catch (e) {
+                                      if (ctx.mounted) {
+                                        ShowMessage.error(ctx, 'Failed to fetch URL: $e');
+                                      }
+                                    } finally {
+                                      setDialogState(() => isFetchingUrl = false);
+                                    }
+                                  },
+                                ),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           isDense: true,
+                          helperText: 'Supports GitHub raw files, Google Sheets CSV links, or REST APIs. Tap download icon to preview.',
+                          helperMaxLines: 2,
+                          helperStyle: const TextStyle(fontSize: 10.5),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
+
+                      // Paste Data Header with Quick Action Buttons
+                      Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            'Paste Catalog Data:',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () {
+                                  dataController.text = sampleCsv;
+                                  setDialogState(() => selectedFormat = 'CSV');
+                                },
+                                icon: const Icon(Icons.description_outlined, size: 14),
+                                label: const Text('Sample CSV', style: TextStyle(fontSize: 11)),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                                  if (data?.text != null && data!.text!.trim().isNotEmpty) {
+                                    dataController.text = data.text!.trim();
+                                    setDialogState(() {});
+                                  }
+                                },
+                                icon: const Icon(Icons.paste_rounded, size: 14),
+                                label: const Text('Paste', style: TextStyle(fontSize: 11)),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
                       TextField(
-                        controller: jsonController,
-                        maxLines: 5,
+                        controller: dataController,
+                        maxLines: 6,
+                        onChanged: (_) => setDialogState(() {}),
                         decoration: InputDecoration(
-                          labelText: 'Or Paste Catalog JSON',
-                          hintText: '[{"productName": "...", "buyingPrice": 20, "sellingPrice": 25, "imageUrl": "..."}]',
-                          alignLabelWithHint: true,
+                          hintText: selectedFormat == 'JSON'
+                              ? '[{"productName": "...", "buyingPrice": 20, "sellingPrice": 25, "category": "By Piece", "imageUrl": "..."}]'
+                              : 'Product Name,Buying Price,Selling Price,Category,Image URL\nCornetto Chocolate,25.00,30.00,By Piece,\nMagnum Classic,50.00,65.00,By Piece,',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5),
+                      ),
+                      const SizedBox(height: 4),
+
+                      // Live preview of parsed products
+                      Builder(
+                        builder: (_) {
+                          final currentText = dataController.text.trim();
+                          if (currentText.isEmpty) {
+                            return Text(
+                              'Columns supported: Product Name, Buying Price, Selling Price, Category (By Piece / By Case), Image URL',
+                              style: TextStyle(fontSize: 10.5, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
+                            );
+                          }
+                          if (currentText.startsWith('http://') || currentText.startsWith('https://')) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.link_rounded, size: 15, color: colorScheme.primary),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Remote link detected: Click Import to fetch and import products.',
+                                      style: TextStyle(fontSize: 11, color: colorScheme.primary, fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          try {
+                            final parsed = SelectaProductService.parseAdminProductsFromData(currentText);
+                            final isJson = currentText.startsWith('[') || currentText.startsWith('{');
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.check_circle_outline_rounded, size: 15, color: Color(0xFF15803D)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      '✓ ${parsed.length} valid products detected (${isJson ? 'JSON' : 'CSV'})',
+                                      style: const TextStyle(fontSize: 11, color: Color(0xFF15803D), fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } catch (e) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline, size: 15, color: colorScheme.error),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Format note: $e',
+                                      style: TextStyle(fontSize: 10.5, color: colorScheme.error),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                        },
                       ),
                     ],
                   ),
@@ -262,23 +520,39 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                   onPressed: isImporting
                       ? null
                       : () async {
-                          final rawJson = jsonController.text.trim();
-                          final url = urlController.text.trim();
-                          if (rawJson.isEmpty && url.isEmpty) {
-                            ShowMessage.error(ctx, 'Please provide a URL or paste JSON data.');
+                          final rawData = dataController.text.trim();
+                          var url = urlController.text.trim();
+
+                          if (rawData.isEmpty && url.isEmpty) {
+                            ShowMessage.error(ctx, 'Please provide a URL or paste CSV / JSON data.');
                             return;
                           }
+
+                          // If the user pasted a URL into the large text area, treat it as remote URL
+                          final isRawDataUrl = rawData.startsWith('http://') || rawData.startsWith('https://');
+                          if (isRawDataUrl && url.isEmpty) {
+                            url = rawData;
+                          }
+
                           setDialogState(() => isImporting = true);
                           try {
                             int count = 0;
                             if (url.isNotEmpty) {
                               await _controller.setCustomCatalogApiUrl(url);
                             }
-                            if (rawJson.isNotEmpty) {
-                              count = await _controller.importAdminCatalogFromJson(rawJson);
-                            } else {
+
+                            if (rawData.isNotEmpty && !isRawDataUrl) {
+                              if (selectedFormat == 'CSV') {
+                                count = await _controller.importAdminCatalogFromCsv(rawData);
+                              } else if (selectedFormat == 'JSON') {
+                                count = await _controller.importAdminCatalogFromJson(rawData);
+                              } else {
+                                count = await _controller.importAdminCatalog(rawData);
+                              }
+                            } else if (url.isNotEmpty) {
                               count = await _controller.importAdminCatalogFromUrl(url);
                             }
+
                             if (ctx.mounted) Navigator.pop(ctx);
                             if (mounted) {
                               ShowMessage.success(context, 'Imported $count products into Admin catalog!');
@@ -301,6 +575,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                 ),
               ],
             );
+
           },
         );
       },
@@ -322,7 +597,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyFilters(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) {
-    return docs.where((doc) {
+    final filtered = docs.where((doc) {
       final data = doc.data();
       final name = (data['productName'] as String? ?? '').toLowerCase();
       final matchesSearch = _searchQuery.isEmpty || name.contains(_searchQuery);
@@ -335,6 +610,29 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
           (_filterStatus == 'Inactive' && !isActive);
       return matchesSearch && matchesStatus;
     }).toList();
+
+    filtered.sort((a, b) {
+      final dataA = a.data();
+      final dataB = b.data();
+      final catA = (dataA['category'] as String? ?? '').trim();
+      final catB = (dataB['category'] as String? ?? '').trim();
+      final catComp = Helperfunctions.compareCategoryHierarchy(catA, catB);
+      if (catComp != 0) return catComp;
+
+      final nameA = dataA['productName'] as String? ?? '';
+      final nameB = dataB['productName'] as String? ?? '';
+      final priceA = (dataA['sellingPrice'] as num?)?.toDouble() ?? 0.0;
+      final priceB = (dataB['sellingPrice'] as num?)?.toDouble() ?? 0.0;
+
+      return Helperfunctions.compareBySrpAndName(
+        nameA: nameA,
+        priceA: priceA,
+        nameB: nameB,
+        priceB: priceB,
+      );
+    });
+
+    return filtered;
   }
 
   Future<void> _navigateToForm({String? productId, AdminSelectaProduct? product}) async {
@@ -646,15 +944,47 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      product.productName,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13.5,
-                        color: colorScheme.onSurface,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            product.productName,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13.5,
+                              color: colorScheme.onSurface,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: product.category == 'By Case'
+                                ? Colors.deepOrange.withValues(alpha: 0.12)
+                                : colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: product.category == 'By Case'
+                                  ? Colors.deepOrange.withValues(alpha: 0.4)
+                                  : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            product.category,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              color: product.category == 'By Case'
+                                  ? Colors.deepOrange.shade800
+                                  : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Row(
@@ -760,6 +1090,32 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                         const SizedBox(width: 6),
                         _buildStockBadge(product, colorScheme),
                       ],
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: product.category == 'By Case'
+                              ? Colors.deepOrange.withValues(alpha: 0.12)
+                              : colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: product.category == 'By Case'
+                                ? Colors.deepOrange.withValues(alpha: 0.4)
+                                : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          product.category,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: product.category == 'By Case'
+                                ? Colors.deepOrange.shade800
+                                : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
