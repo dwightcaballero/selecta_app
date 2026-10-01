@@ -1,19 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_app/models/proof_of_visit.dart';
 
+// ignore: constant_identifier_names
 const String PROOF_OF_VISIT_COLLECTION = 'proof_of_visit';
 
 class ProofOfVisitService {
   final FirebaseFirestore _firestore;
 
-  ProofOfVisitService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  ProofOfVisitService({FirebaseFirestore? firestore}) : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  CollectionReference<ProofOfVisit> get _collection =>
-      _firestore.collection(PROOF_OF_VISIT_COLLECTION).withConverter<ProofOfVisit>(
-            fromFirestore: (snapshot, _) => ProofOfVisit.fromSnapshot(snapshot),
-            toFirestore: (proof, _) => proof.toJson(),
-          );
+  CollectionReference<ProofOfVisit> get _collection => _firestore
+      .collection(PROOF_OF_VISIT_COLLECTION)
+      .withConverter<ProofOfVisit>(fromFirestore: (snapshot, _) => ProofOfVisit.fromSnapshot(snapshot), toFirestore: (proof, _) => proof.toJson());
 
   /// Saves a new Proof of Visit record in Firestore.
   Future<String> addProofOfVisit(ProofOfVisit proof) async {
@@ -42,10 +40,7 @@ class ProofOfVisitService {
     } catch (_) {
       // Fallback in case composite index is still building: query store and filter in memory
       try {
-        final snapshot = await _collection
-            .where('storeName', isEqualTo: storeName)
-            .limit(10)
-            .get();
+        final snapshot = await _collection.where('storeName', isEqualTo: storeName).limit(10).get();
 
         for (final doc in snapshot.docs) {
           final data = doc.data();
@@ -61,19 +56,13 @@ class ProofOfVisitService {
 
   /// Retrieves all proof of visit records for a specific store.
   Future<List<ProofOfVisit>> getProofsOfVisitByStore(String storeName) async {
-    final snapshot = await _collection
-        .where('storeName', isEqualTo: storeName)
-        .orderBy('visitDate', descending: true)
-        .get();
+    final snapshot = await _collection.where('storeName', isEqualTo: storeName).orderBy('visitDate', descending: true).get();
 
     return snapshot.docs.map((d) => d.data()).toList();
   }
 
   /// Realtime stream of all proof of visit records, ordered by visit date descending.
   Stream<List<ProofOfVisit>> getAllProofsOfVisitStream() {
-    return _collection
-        .orderBy('visitDate', descending: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+    return _collection.orderBy('visitDate', descending: true).snapshots().map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
 }

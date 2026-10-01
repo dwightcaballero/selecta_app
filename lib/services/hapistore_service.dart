@@ -7,6 +7,15 @@ import 'package:flutter_app/models/configuration.dart';
 import 'package:flutter_app/models/hapistore.dart';
 import 'package:flutter_app/services/configuration_service.dart';
 
+import 'package:flutter_app/data/notifiers.dart';
+import 'package:flutter_app/services/badorder_service.dart';
+import 'package:flutter_app/services/delivery_service.dart';
+import 'package:flutter_app/services/pjp_order_decision_service.dart';
+import 'package:flutter_app/services/placement_service.dart';
+import 'package:flutter_app/services/proof_of_visit_service.dart';
+import 'package:flutter_app/services/scanning_services.dart';
+import 'package:flutter_app/services/tasks_services.dart';
+
 // ignore: constant_identifier_names
 const String HAPISTORE_COLLECTION_REF = 'hapistores';
 
@@ -34,9 +43,89 @@ class HapiStoreService {
     _hapistoresRef.add(hapistore);
   }
 
-  void updateHapiStore(String hapiStoreID, Hapistore hapistore) {
+  Future<void> updateHapiStore(String hapiStoreID, Hapistore hapistore) async {
     invalidateCache();
-    _hapistoresRef.doc(hapiStoreID).update(hapistore.toJson());
+    await _hapistoresRef.doc(hapiStoreID).update(hapistore.toJson());
+  }
+
+  /// Cascades a store name change to all child/transaction collections in Firestore.
+  ///
+  /// Collections updated:
+  /// - `deliveries` (`storeName`)
+  /// - `badorder` (`hapistore`)
+  /// - `tasks` (`storeName`)
+  /// - `scanning` (`storeName`)
+  /// - `placement` (`storeName`)
+  /// - `proof_of_visit` (`storeName`)
+  /// - `pjp_order_decisions` (`storeName`)
+  ///
+  /// Returns the total count of documents updated across all collections.
+  Future<int> cascadeUpdateStoreName({
+    required String oldStoreName,
+    required String newStoreName,
+  }) async {
+    final oldClean = oldStoreName.trim();
+    final newClean = newStoreName.trim().toUpperCase();
+
+    if (oldClean.isEmpty || newClean.isEmpty || oldClean.toUpperCase() == newClean) {
+      return 0;
+    }
+
+    // Build candidate search terms for the old name to catch exact, uppercase, or lowercase matches
+    final oldVariants = <String>{
+      oldClean,
+      oldClean.toUpperCase(),
+      oldClean.toLowerCase(),
+    }..remove(newClean);
+
+    int totalUpdated = 0;
+
+    Future<void> updateCollectionField(String collectionName, String fieldName) async {
+      final updatedDocIds = <String>{};
+      for (final variant in oldVariants) {
+        try {
+          final querySnapshot = await _firestore
+              .collection(collectionName)
+              .where(fieldName, isEqualTo: variant)
+              .get();
+
+          if (querySnapshot.docs.isEmpty) continue;
+
+          // Filter out docs already processed in this cascade run
+          final docsToUpdate = querySnapshot.docs.where((doc) => !updatedDocIds.contains(doc.id)).toList();
+          if (docsToUpdate.isEmpty) continue;
+
+          const chunkSize = 400; // Under Firestore limit of 500
+          for (var i = 0; i < docsToUpdate.length; i += chunkSize) {
+            final end = (i + chunkSize < docsToUpdate.length) ? i + chunkSize : docsToUpdate.length;
+            final batch = _firestore.batch();
+            for (var j = i; j < end; j++) {
+              final doc = docsToUpdate[j];
+              batch.update(doc.reference, {fieldName: newClean});
+              updatedDocIds.add(doc.id);
+              totalUpdated++;
+            }
+            await batch.commit();
+          }
+        } catch (_) {
+          // Continue updating other collections even if one encounters an issue
+        }
+      }
+    }
+
+    // Cascade update across all related collections
+    await updateCollectionField(DELIVERY_COLLECTION_REF, 'storeName');
+    await updateCollectionField(BADORDER_COLLECTION_REF, 'hapistore');
+    await updateCollectionField(TASKS_COLLECTION_REF, 'storeName');
+    await updateCollectionField(SCANNING_COLLECTION_REF, 'storeName');
+    await updateCollectionField(PLACEMENT_COLLECTION_REF, 'storeName');
+    await updateCollectionField(PROOF_OF_VISIT_COLLECTION, 'storeName');
+    await updateCollectionField(PJP_ORDER_DECISIONS_COLLECTION, 'storeName');
+
+    invalidateCache();
+    dashboardNeedsRefreshNotifier.value = true;
+
+    return totalUpdated;
   }
 
   Future<void> updateMerchBlitzStatus(

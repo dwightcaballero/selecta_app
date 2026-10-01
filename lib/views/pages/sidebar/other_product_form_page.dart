@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_app/controllers/other_product_controller.dart';
@@ -10,19 +11,27 @@ import 'package:flutter_app/views/widgets/imageviewer_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
-/// Add / Edit form for a single OtherProduct entry in the dealer catalog.
+/// Add / Edit / View form for a single OtherProduct entry in the catalog.
 class OtherProductFormPage extends StatefulWidget {
   final String? productId;
   final OtherProduct? existingProduct;
+  final bool isReadOnly;
+  final String userRole;
 
-  const OtherProductFormPage({super.key, this.productId, this.existingProduct});
+  const OtherProductFormPage({
+    super.key,
+    this.productId,
+    this.existingProduct,
+    this.isReadOnly = false,
+    this.userRole = 'Dealer',
+  });
 
   @override
   State<OtherProductFormPage> createState() => _OtherProductFormPageState();
 }
 
 class _OtherProductFormPageState extends State<OtherProductFormPage> {
-  final OtherProductController _controller = OtherProductController();
+  late final OtherProductController _controller = OtherProductController();
   final _formKey = GlobalKey<FormState>();
 
   late final TextEditingController _nameController;
@@ -35,14 +44,21 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
 
   bool _isSaving = false;
   bool _isActive = true;
+  late bool _isReadOnly;
 
   bool get _isEditing => widget.productId != null;
+
+  bool get _isAdmin {
+    final role = widget.userRole.trim().toLowerCase();
+    return role == 'admin' || role == 'super admin' || role == 'superadmin';
+  }
 
   final currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
   @override
   void initState() {
     super.initState();
+    _isReadOnly = widget.isReadOnly;
     final p = widget.existingProduct;
     _nameController = TextEditingController(text: p?.productName ?? '');
     _networkImagePath = p?.imageUrl ?? '';
@@ -247,170 +263,715 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final p = widget.existingProduct;
+    final isPositiveMargin = _margin >= 0;
+    final marginColor = isPositiveMargin ? const Color(0xFF15803D) : colorScheme.error;
 
     return Scaffold(
       appBar: CustomAppbar(
-        title: _isEditing ? 'Edit Product' : 'Add Product',
-        subtitle: _isEditing ? 'Update product details' : 'New catalog entry',
-        actions: _isEditing
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
-                  onPressed: _confirmDelete,
-                  tooltip: 'Delete Product',
-                ),
-              ]
-            : null,
+        title: _isReadOnly ? 'Product Details' : (_isEditing ? 'Edit Product' : 'Add Product'),
+        subtitle: _isReadOnly
+            ? 'Other product details'
+            : (_isEditing ? 'Update product details' : 'New catalog entry'),
+        actions: _isReadOnly
+            ? (_isAdmin
+                ? [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, color: Colors.white),
+                      tooltip: 'Edit Product',
+                      onPressed: () => setState(() => _isReadOnly = false),
+                    ),
+                  ]
+                : null)
+            : [
+                if (_isEditing && widget.isReadOnly && _isAdmin)
+                  IconButton(
+                    icon: const Icon(Icons.visibility_outlined, color: Colors.white),
+                    tooltip: 'View Details',
+                    onPressed: () => setState(() => _isReadOnly = true),
+                  ),
+                if (_isEditing)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+                    onPressed: _confirmDelete,
+                    tooltip: 'Delete Product',
+                  ),
+              ],
       ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── Product Image Picker Card ─────────────────────────────
-              _buildImagePickerCard(colorScheme),
+      body: _isReadOnly
+          ? _buildReadOnlyBody(colorScheme, p, marginColor, isPositiveMargin)
+          : Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── Product Image Picker Card ─────────────────────────────
+                    _buildImagePickerCard(colorScheme),
 
-              const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-              // ── Product Details Card ───────────────────────────────────
-              _buildSectionCard(
-                colorScheme: colorScheme,
-                icon: Icons.inventory_2_outlined,
-                iconColor: colorScheme.primary,
-                title: 'Product Information',
-                children: [
-                  _buildField(
-                    label: 'Product Name *',
-                    controller: _nameController,
-                    hint: 'e.g. P20 SELECTA OOH CRUNCHY BALLS 24X50ML',
-                    icon: Icons.label_outline_rounded,
-                    textCapitalization: TextCapitalization.characters,
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Product name is required' : null,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // ── Pricing Card ───────────────────────────────────────────
-              _buildSectionCard(
-                colorScheme: colorScheme,
-                icon: Icons.attach_money_rounded,
-                iconColor: const Color(0xFF15803D),
-                title: 'Pricing',
-                children: [
-                  Row(
-                    spacing: 12,
-                    children: [
-                      Expanded(
-                        child: _buildPriceField(
-                          label: 'Buying Price *',
-                          controller: _buyingPriceController,
-                          color: const Color(0xFF2563EB),
-                          icon: Icons.shopping_cart_outlined,
+                    // ── Product Details Card ───────────────────────────────────
+                    _buildSectionCard(
+                      colorScheme: colorScheme,
+                      icon: Icons.inventory_2_outlined,
+                      iconColor: colorScheme.primary,
+                      title: 'Product Information',
+                      children: [
+                        _buildField(
+                          label: 'Product Name *',
+                          controller: _nameController,
+                          hint: 'e.g. P20 SELECTA OOH CRUNCHY BALLS 24X50ML',
+                          icon: Icons.label_outline_rounded,
+                          textCapitalization: TextCapitalization.characters,
+                          validator: (v) => (v == null || v.trim().isEmpty) ? 'Product name is required' : null,
                         ),
-                      ),
-                      Expanded(
-                        child: _buildPriceField(
-                          label: 'Selling Price *',
-                          controller: _sellingPriceController,
-                          color: const Color(0xFF15803D),
-                          icon: Icons.sell_outlined,
-                        ),
-                      ),
-                    ],
-                  ),
-                  AnimatedBuilder(
-                    animation: Listenable.merge([_buyingPriceController, _sellingPriceController]),
-                    builder: (context, child) {
-                      final showMargin = _buyingPrice > 0 && _sellingPrice > 0;
-                      if (!showMargin) return const SizedBox.shrink();
-                      final isPositive = _margin >= 0;
-                      final marginColor = isPositive ? const Color(0xFF15803D) : Colors.red;
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 14),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: marginColor.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: marginColor.withValues(alpha: 0.25)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _buildMarginStat(label: 'Margin', value: currencyFormat.format(_margin), color: marginColor),
-                              Container(width: 1, height: 28, color: marginColor.withValues(alpha: 0.3)),
-                              _buildMarginStat(label: 'Margin %', value: '${_marginPercent.toStringAsFixed(1)}%', color: marginColor),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                      ],
+                    ),
 
-              const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-              // ── Status Card ────────────────────────────────────────────
-              _buildSectionCard(
-                colorScheme: colorScheme,
-                icon: Icons.toggle_on_outlined,
-                iconColor: colorScheme.primary,
-                title: 'Status',
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    // ── Pricing Card ───────────────────────────────────────────
+                    _buildSectionCard(
+                      colorScheme: colorScheme,
+                      icon: Icons.attach_money_rounded,
+                      iconColor: const Color(0xFF15803D),
+                      title: 'Pricing',
+                      children: [
+                        Row(
+                          spacing: 12,
                           children: [
-                            Text(
-                              _isActive ? 'Active' : 'Inactive',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: _isActive ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                            Expanded(
+                              child: _buildPriceField(
+                                label: 'Buying Price *',
+                                controller: _buyingPriceController,
+                                color: const Color(0xFF2563EB),
+                                icon: Icons.shopping_cart_outlined,
                               ),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _isActive ? 'This product is visible and available for ordering.' : 'This product is hidden from ordering.',
-                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            Expanded(
+                              child: _buildPriceField(
+                                label: 'Selling Price *',
+                                controller: _sellingPriceController,
+                                color: const Color(0xFF15803D),
+                                icon: Icons.sell_outlined,
+                              ),
                             ),
                           ],
                         ),
+                        AnimatedBuilder(
+                          animation: Listenable.merge([_buyingPriceController, _sellingPriceController]),
+                          builder: (context, child) {
+                            final showMargin = _buyingPrice > 0 && _sellingPrice > 0;
+                            if (!showMargin) return const SizedBox.shrink();
+                            final isPositive = _margin >= 0;
+                            final marginColor = isPositive ? const Color(0xFF15803D) : Colors.red;
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 14),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: marginColor.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: marginColor.withValues(alpha: 0.25)),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    _buildMarginStat(label: 'Margin', value: currencyFormat.format(_margin), color: marginColor),
+                                    Container(width: 1, height: 28, color: marginColor.withValues(alpha: 0.3)),
+                                    _buildMarginStat(label: 'Margin %', value: '${_marginPercent.toStringAsFixed(1)}%', color: marginColor),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ── Status Card ────────────────────────────────────────────
+                    _buildSectionCard(
+                      colorScheme: colorScheme,
+                      icon: Icons.toggle_on_outlined,
+                      iconColor: colorScheme.primary,
+                      title: 'Status',
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _isActive ? 'Active' : 'Inactive',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: _isActive ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _isActive ? 'This product is visible and available for ordering.' : 'This product is hidden from ordering.',
+                                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(value: _isActive, onChanged: (v) => setState(() => _isActive = v), activeThumbColor: colorScheme.primary),
+                          ],
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    // ── Save Button ────────────────────────────────────────────
+                    FilledButton.icon(
+                      onPressed: _isSaving ? null : _save,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 52),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      Switch(value: _isActive, onChanged: (v) => setState(() => _isActive = v), activeThumbColor: colorScheme.primary),
+                      icon: _isSaving
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : Icon(_isEditing ? Icons.save_rounded : Icons.add_rounded, size: 20),
+                      label: Text(
+                        _isSaving ? 'Saving...' : (_isEditing ? 'Save Changes' : 'Add Product'),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+
+  Widget _buildReadOnlyBody(
+    ColorScheme colorScheme,
+    OtherProduct? p,
+    Color marginColor,
+    bool isPositiveMargin,
+  ) {
+    final bool hasImageData = _image != null || _networkImagePath.isNotEmpty;
+    final stockQty = p?.stockQuantity ?? 0;
+    final reservedQty = p?.reservedQuantity ?? 0;
+    final availableQty = p?.availableQuantity ?? stockQty;
+    final lowStockThreshold = p?.lowStockThreshold ?? 10;
+    final isOutOfStock = p?.isOutOfStock ?? (stockQty <= 0);
+    final isLowStock = p?.isLowStock ?? (stockQty > 0 && stockQty <= lowStockThreshold);
+
+    final Color stockBadgeColor = isOutOfStock
+        ? colorScheme.error
+        : isLowStock
+            ? const Color(0xFFD97706)
+            : const Color(0xFF15803D);
+
+    final String stockStatusLabel = isOutOfStock
+        ? 'Out of Stock'
+        : isLowStock
+            ? 'Low Stock'
+            : 'In Stock';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Product Image Card ──────────────────────────────────────
+          _buildSectionCard(
+            colorScheme: colorScheme,
+            icon: Icons.image_outlined,
+            iconColor: colorScheme.primary,
+            title: 'Product Image',
+            children: [
+              if (hasImageData)
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: colorScheme.outlineVariant),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
+                          onTap: () => Helperfunctions.navigateTo(
+                            context,
+                            ImageViewerPage(image: _image, networkImagePath: _networkImagePath),
+                          ),
+                          child: Container(
+                            height: 220,
+                            width: double.infinity,
+                            decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(10)),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                _image != null
+                                    ? Image.file(_image!, fit: BoxFit.contain)
+                                    : Image.network(
+                                        _networkImagePath,
+                                        fit: BoxFit.contain,
+                                        loadingBuilder: (context, child, loadingProgress) {
+                                          if (loadingProgress == null) return child;
+                                          return const Center(child: CircularProgressIndicator());
+                                        },
+                                        errorBuilder: (_, _, _) => Container(
+                                          color: colorScheme.surfaceContainerHighest,
+                                          alignment: Alignment.center,
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.broken_image_outlined, size: 36, color: colorScheme.onSurfaceVariant),
+                                              const SizedBox(height: 4),
+                                              Text('Unable to load image', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                Positioned(
+                                  bottom: 8,
+                                  right: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.6),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.fullscreen_rounded, size: 14, color: Colors.white),
+                                        SizedBox(width: 4),
+                                        Text('Tap to expand', style: TextStyle(color: Colors.white, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => Helperfunctions.navigateTo(
+                          context,
+                          ImageViewerPage(image: _image, networkImagePath: _networkImagePath),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.fullscreen_rounded, size: 18),
+                        label: const Text('View Full Image', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      ),
                     ],
+                  ),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: colorScheme.outlineVariant, width: 1.2),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+                        child: Icon(Icons.inventory_2_outlined, size: 32, color: colorScheme.primary),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text('No Image Available', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      Text('No photo has been uploaded for this product.', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Product Information Card ────────────────────────────────
+          _buildSectionCard(
+            colorScheme: colorScheme,
+            icon: Icons.inventory_2_outlined,
+            iconColor: colorScheme.primary,
+            title: 'Product Information',
+            children: [
+              _buildReadOnlyTile(
+                label: 'Product Name',
+                value: _nameController.text.trim().isNotEmpty
+                    ? _nameController.text.trim()
+                    : 'Unnamed Product',
+                icon: Icons.label_outline_rounded,
+                colorScheme: colorScheme,
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Pricing & Margins Card ──────────────────────────────────
+          _buildSectionCard(
+            colorScheme: colorScheme,
+            icon: Icons.payments_outlined,
+            iconColor: const Color(0xFF15803D),
+            title: 'Pricing & Margins',
+            children: [
+              Row(
+                spacing: 12,
+                children: [
+                  Expanded(
+                    child: _buildReadOnlyPriceBox(
+                      label: 'Buying Price',
+                      value: currencyFormat.format(_buyingPrice),
+                      color: const Color(0xFF2563EB),
+                      icon: Icons.shopping_cart_outlined,
+                      colorScheme: colorScheme,
+                    ),
+                  ),
+                  Expanded(
+                    child: _buildReadOnlyPriceBox(
+                      label: 'Selling Price',
+                      value: currencyFormat.format(_sellingPrice),
+                      color: const Color(0xFF15803D),
+                      icon: Icons.sell_outlined,
+                      colorScheme: colorScheme,
+                    ),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 28),
-
-              // ── Save Button ────────────────────────────────────────────
-              FilledButton.icon(
-                onPressed: _isSaving ? null : _save,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 52),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              if (_buyingPrice > 0 && _sellingPrice > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: marginColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: marginColor.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildMarginStat(label: 'Margin', value: currencyFormat.format(_margin), color: marginColor),
+                        Container(width: 1, height: 28, color: marginColor.withValues(alpha: 0.3)),
+                        _buildMarginStat(
+                          label: 'Margin %',
+                          value: '${isPositiveMargin ? '+' : ''}${_marginPercent.toStringAsFixed(1)}%',
+                          color: marginColor,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                icon: _isSaving
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Icon(_isEditing ? Icons.save_rounded : Icons.add_rounded, size: 20),
-                label: Text(
-                  _isSaving ? 'Saving...' : (_isEditing ? 'Save Changes' : 'Add Product'),
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // ── Stock & Inventory Card ──────────────────────────────────
+          _buildSectionCard(
+            colorScheme: colorScheme,
+            icon: Icons.warehouse_outlined,
+            iconColor: stockBadgeColor,
+            title: 'Stock & Inventory',
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '$stockQty',
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(width: 6),
+                            const Text('pcs in stock', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                          ],
+                        ),
+                        if (reservedQty > 0) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Reserved: $reservedQty pcs • Available: $availableQty pcs',
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: stockBadgeColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: stockBadgeColor.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isOutOfStock
+                              ? Icons.cancel_outlined
+                              : isLowStock
+                                  ? Icons.warning_amber_rounded
+                                  : Icons.check_circle_outline_rounded,
+                          size: 15,
+                          color: stockBadgeColor,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          stockStatusLabel,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: stockBadgeColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 14, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Low Stock Threshold: $lowStockThreshold pcs',
+                      style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-        ),
+
+          const SizedBox(height: 16),
+
+          // ── Status Card ─────────────────────────────────────────────
+          _buildSectionCard(
+            colorScheme: colorScheme,
+            icon: Icons.toggle_on_outlined,
+            iconColor: colorScheme.primary,
+            title: 'Catalog Status',
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: (_isActive ? const Color(0xFF15803D) : colorScheme.onSurfaceVariant).withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isActive ? Icons.check_circle_rounded : Icons.pause_circle_rounded,
+                      size: 20,
+                      color: _isActive ? const Color(0xFF15803D) : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isActive ? 'Active in Catalog' : 'Inactive in Catalog',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: _isActive ? const Color(0xFF15803D) : colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _isActive
+                              ? 'This product is visible and available for salesman order booking.'
+                              : 'This product is hidden from salesman order booking.',
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          if (p?.createdAt != null || p?.updatedAt != null) ...[
+            const SizedBox(height: 16),
+            _buildSectionCard(
+              colorScheme: colorScheme,
+              icon: Icons.history_rounded,
+              iconColor: colorScheme.onSurfaceVariant,
+              title: 'Record History',
+              children: [
+                if (p?.createdAt != null)
+                  _buildHistoryRow(
+                    label: 'Created',
+                    timestamp: p!.createdAt!,
+                    colorScheme: colorScheme,
+                  ),
+                if (p?.updatedAt != null) ...[
+                  if (p?.createdAt != null) const SizedBox(height: 6),
+                  _buildHistoryRow(
+                    label: 'Last Updated',
+                    timestamp: p!.updatedAt!,
+                    colorScheme: colorScheme,
+                  ),
+                ],
+              ],
+            ),
+          ],
+
+          const SizedBox(height: 24),
+
+          // ── Actions ─────────────────────────────────────────────────
+          if (_isAdmin) ...[
+            FilledButton.icon(
+              onPressed: () => setState(() => _isReadOnly = false),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.edit_rounded, size: 18),
+              label: const Text('Edit Product (Admin)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            ),
+            const SizedBox(height: 10),
+          ],
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.arrow_back_rounded, size: 18),
+            label: const Text('Back to Catalog', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildReadOnlyTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    required ColorScheme colorScheme,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: colorScheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyPriceBox({
+    required String label,
+    required String value,
+    required Color color,
+    required IconData icon,
+    required ColorScheme colorScheme,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryRow({
+    required String label,
+    required Timestamp timestamp,
+    required ColorScheme colorScheme,
+  }) {
+    final formatted = DateFormat('MMM dd, yyyy • hh:mm a').format(timestamp.toDate());
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+        Text(formatted, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 

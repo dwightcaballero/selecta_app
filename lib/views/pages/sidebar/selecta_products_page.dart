@@ -22,10 +22,7 @@ import 'package:open_filex/open_filex.dart';
 class SelectaProductsPage extends StatefulWidget {
   final String userRole;
 
-  const SelectaProductsPage({
-    super.key,
-    this.userRole = 'Dealer',
-  });
+  const SelectaProductsPage({super.key, this.userRole = 'Dealer'});
 
   @override
   State<SelectaProductsPage> createState() => _SelectaProductsPageState();
@@ -40,7 +37,6 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
   String _filterStatus = 'All'; // 'All', 'Active', 'Inactive' (Dealer mode only)
   bool _isSyncing = false;
   bool _hasRemoteChanges = false;
-  List<AdminSelectaProduct>? _pendingRemoteProducts;
 
   bool get _isAdmin {
     final role = widget.userRole.trim().toLowerCase();
@@ -68,7 +64,6 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
     if (mounted) {
       setState(() {
         _hasRemoteChanges = check.needsSync;
-        _pendingRemoteProducts = check.remoteProducts.isNotEmpty ? check.remoteProducts : null;
       });
     }
   }
@@ -77,30 +72,19 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
     try {
-      final result = await _controller.syncWithAdminCatalog(
-        remoteProducts: _pendingRemoteProducts,
-      );
+      final result = await _controller.syncWithAdminCatalog();
       if (!mounted) return;
       setState(() {
         _hasRemoteChanges = false;
-        _pendingRemoteProducts = null;
       });
+      await _checkForAdminCatalogUpdates();
+      if (!mounted) return;
       if (result.totalFetched == 0) {
-        ShowMessage.alert(
-          context,
-          title: 'Sync Selecta Catalog',
-          message: 'No products found in the master Admin catalog yet.',
-        );
+        ShowMessage.alert(context, title: 'Sync Selecta Catalog', message: 'No products found in the master Admin catalog yet.');
       } else if (result.addedCount == 0 && result.updatedCount == 0) {
-        ShowMessage.success(
-          context,
-          'Catalog is up to date (${result.totalFetched} products).',
-        );
+        ShowMessage.success(context, 'Catalog is up to date (${result.totalFetched} products).');
       } else {
-        ShowMessage.success(
-          context,
-          'Synced ${result.totalFetched} products (${result.addedCount} new, ${result.updatedCount} updated).',
-        );
+        ShowMessage.success(context, 'Synced ${result.totalFetched} products (${result.addedCount} new, ${result.updatedCount} updated).');
       }
     } catch (e) {
       if (mounted) {
@@ -137,10 +121,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                   Icon(Icons.file_upload_outlined, size: 22),
                   SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      'Export Admin Catalog',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                    ),
+                    child: Text('Export Admin Catalog', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -153,16 +134,8 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                     Center(
                       child: SegmentedButton<String>(
                         segments: const [
-                          ButtonSegment<String>(
-                            value: 'CSV',
-                            label: Text('CSV (Excel)'),
-                            icon: Icon(Icons.table_chart_outlined, size: 16),
-                          ),
-                          ButtonSegment<String>(
-                            value: 'JSON',
-                            label: Text('JSON'),
-                            icon: Icon(Icons.code_rounded, size: 16),
-                          ),
+                          ButtonSegment<String>(value: 'CSV', label: Text('CSV (Excel)'), icon: Icon(Icons.table_chart_outlined, size: 16)),
+                          ButtonSegment<String>(value: 'JSON', label: Text('JSON'), icon: Icon(Icons.code_rounded, size: 16)),
                         ],
                         selected: {exportFormat},
                         onSelectionChanged: (val) {
@@ -171,10 +144,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      'Saved to:\n${currentFile.path}',
-                      style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
-                    ),
+                    Text('Saved to:\n${currentFile.path}', style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
                     const SizedBox(height: 10),
                     Container(
                       constraints: const BoxConstraints(maxHeight: 200),
@@ -186,10 +156,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                         border: Border.all(color: colorScheme.outlineVariant),
                       ),
                       child: SingleChildScrollView(
-                        child: SelectableText(
-                          currentContent,
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-                        ),
+                        child: SelectableText(currentContent, style: const TextStyle(fontFamily: 'monospace', fontSize: 11)),
                       ),
                     ),
                   ],
@@ -232,7 +199,8 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
     bool isImporting = false;
     bool isFetchingUrl = false;
 
-    const sampleCsv = 'Product Name,Buying Price,Selling Price,Category,Image URL\n'
+    const sampleCsv =
+        'Product Name,Buying Price,Selling Price,Category,Image URL\n'
         'Cornetto Chocolate,25.00,30.00,By Piece,\n'
         'Magnum Classic,50.00,65.00,By Piece,\n'
         'Selecta Super Thick Vanilla 1.4L,180.00,210.00,By Case,';
@@ -251,10 +219,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                   Icon(Icons.file_download_outlined, size: 22),
                   SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      'Import Admin Catalog',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                    ),
+                    child: Text('Import Admin Catalog', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -276,11 +241,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                         children: [
                           Text(
                             'Format:',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -332,11 +293,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                           suffixIcon: isFetchingUrl
                               ? const Padding(
                                   padding: EdgeInsets.all(12),
-                                  child: SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
+                                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                                 )
                               : IconButton(
                                   icon: const Icon(Icons.cloud_download_outlined, size: 20),
@@ -382,11 +339,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                         children: [
                           Text(
                             'Paste Catalog Data:',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                           ),
                           Wrap(
                             spacing: 4,
@@ -512,10 +465,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: isImporting ? null : () => Navigator.pop(ctx),
-                  child: const Text('Cancel'),
-                ),
+                TextButton(onPressed: isImporting ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
                 FilledButton.icon(
                   onPressed: isImporting
                       ? null
@@ -537,9 +487,6 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                           setDialogState(() => isImporting = true);
                           try {
                             int count = 0;
-                            if (url.isNotEmpty) {
-                              await _controller.setCustomCatalogApiUrl(url);
-                            }
 
                             if (rawData.isNotEmpty && !isRawDataUrl) {
                               if (selectedFormat == 'CSV') {
@@ -565,17 +512,12 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                           }
                         },
                   icon: isImporting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.download_done_rounded, size: 18),
                   label: Text(isImporting ? 'Importing...' : 'Import'),
                 ),
               ],
             );
-
           },
         );
       },
@@ -594,10 +536,8 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
     });
   }
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyFilters(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
-    final filtered = docs.where((doc) {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _applyFilters(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    return docs.where((doc) {
       final data = doc.data();
       final name = (data['productName'] as String? ?? '').toLowerCase();
       final matchesSearch = _searchQuery.isEmpty || name.contains(_searchQuery);
@@ -605,41 +545,25 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
         return matchesSearch;
       }
       final isActive = data['isActive'] as bool? ?? true;
-      final matchesStatus = _filterStatus == 'All' ||
-          (_filterStatus == 'Active' && isActive) ||
-          (_filterStatus == 'Inactive' && !isActive);
+      final matchesStatus = _filterStatus == 'All' || (_filterStatus == 'Active' && isActive) || (_filterStatus == 'Inactive' && !isActive);
       return matchesSearch && matchesStatus;
     }).toList();
-
-    filtered.sort((a, b) {
-      final dataA = a.data();
-      final dataB = b.data();
-      final catA = (dataA['category'] as String? ?? '').trim();
-      final catB = (dataB['category'] as String? ?? '').trim();
-      final catComp = Helperfunctions.compareCategoryHierarchy(catA, catB);
-      if (catComp != 0) return catComp;
-
-      final nameA = dataA['productName'] as String? ?? '';
-      final nameB = dataB['productName'] as String? ?? '';
-      final priceA = (dataA['sellingPrice'] as num?)?.toDouble() ?? 0.0;
-      final priceB = (dataB['sellingPrice'] as num?)?.toDouble() ?? 0.0;
-
-      return Helperfunctions.compareBySrpAndName(
-        nameA: nameA,
-        priceA: priceA,
-        nameB: nameB,
-        priceB: priceB,
-      );
-    });
-
-    return filtered;
   }
 
   Future<void> _navigateToForm({String? productId, AdminSelectaProduct? product}) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SelectaProductFormPage(productId: productId, existingProduct: product),
+        builder: (_) => SelectaProductFormPage(productId: productId, existingProduct: product, isReadOnly: false, userRole: widget.userRole),
+      ),
+    );
+  }
+
+  Future<void> _navigateToDealerDetails({required String productId, required SelectaProduct product}) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SelectaProductFormPage(productId: productId, existingDealerProduct: product, isReadOnly: true, userRole: widget.userRole),
       ),
     );
   }
@@ -681,10 +605,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                   icon: const Icon(Icons.warehouse_outlined, color: Colors.white, size: 20),
                   tooltip: 'Manage Inventory',
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const InventoryPage()),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryPage()));
                   },
                 ),
               ],
@@ -724,17 +645,14 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                   Expanded(
                     child: Text(
                       'New updates available in the master Selecta catalog.',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
                     ),
                   ),
                   TextButton.icon(
                     onPressed: _isSyncing ? null : _handleDealerSync,
                     icon: const Icon(Icons.sync_rounded, size: 15),
-                    label: Text(_isSyncing ? 'Syncing...' : 'Sync Now', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
+                    label: Text(_isSyncing ? 'Syncing...' : 'Sync Now', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8)),
                   ),
                 ],
               ),
@@ -746,9 +664,10 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
             child: TextField(
               controller: _searchController,
               onChanged: _onSearchChanged,
+              style: const TextStyle(fontSize: 14.5),
               decoration: InputDecoration(
                 hintText: 'Search Selecta products...',
-                hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
                 prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -796,8 +715,8 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                     label: Text(
                       status,
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                         color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
                       ),
                     ),
@@ -807,9 +726,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                     showCheckmark: false,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
-                      side: BorderSide(
-                        color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                      ),
+                      side: BorderSide(color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5)),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
                     onSelected: (_) => setState(() => _filterStatus = status),
@@ -837,6 +754,40 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                   return _buildEmptyState();
                 }
 
+                final selectaCaseItems = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                final selectaPieceItems = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                final otherItems = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+
+                for (final doc in filtered) {
+                  final data = doc.data();
+                  final source = (data['productSource'] as String? ?? 'Selecta').trim().toLowerCase();
+                  final isSelecta = source == 'selecta' || source.isEmpty;
+                  if (isSelecta) {
+                    final cat = (data['category'] as String? ?? '').trim().toLowerCase();
+                    if (cat == 'by case' || cat.contains('case')) {
+                      selectaCaseItems.add(doc);
+                    } else {
+                      selectaPieceItems.add(doc);
+                    }
+                  } else {
+                    otherItems.add(doc);
+                  }
+                }
+
+                int compareProducts(QueryDocumentSnapshot<Map<String, dynamic>> a, QueryDocumentSnapshot<Map<String, dynamic>> b) {
+                  final dataA = a.data();
+                  final dataB = b.data();
+                  final nameA = dataA['productName'] as String? ?? '';
+                  final nameB = dataB['productName'] as String? ?? '';
+                  final priceA = (dataA['sellingPrice'] as num?)?.toDouble() ?? 0.0;
+                  final priceB = (dataB['sellingPrice'] as num?)?.toDouble() ?? 0.0;
+                  return Helperfunctions.compareBySrpAndName(nameA: nameA, priceA: priceA, nameB: nameB, priceB: priceB);
+                }
+
+                selectaCaseItems.sort(compareProducts);
+                selectaPieceItems.sort(compareProducts);
+                otherItems.sort(compareProducts);
+
                 final isFiltered = _searchQuery.isNotEmpty || (!_isAdmin && _filterStatus != 'All');
 
                 return Column(
@@ -850,11 +801,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                             isFiltered
                                 ? 'Showing ${filtered.length} of ${allDocs.length} products'
                                 : '${allDocs.length} product${allDocs.length == 1 ? '' : 's'} in catalog',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                           ),
                           if (isFiltered)
                             InkWell(
@@ -865,15 +812,11 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.filter_alt_off_outlined, size: 14, color: colorScheme.primary),
+                                    Icon(Icons.filter_alt_off_outlined, size: 15, color: colorScheme.primary),
                                     const SizedBox(width: 4),
                                     Text(
                                       'Reset',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: colorScheme.primary,
-                                      ),
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
                                     ),
                                   ],
                                 ),
@@ -885,14 +828,52 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                     Expanded(
                       child: filtered.isEmpty
                           ? _buildNoResultsState()
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 6, 16, 88),
-                              itemCount: filtered.length,
-                              separatorBuilder: (_, _) => const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final doc = filtered[index];
-                                return _isAdmin ? _buildAdminProductCard(doc) : _buildDealerProductCard(doc);
-                              },
+                          : ListView(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
+                              children: [
+                                if (selectaCaseItems.isNotEmpty) ...[
+                                  _buildGroupHeader(
+                                    title: 'Selecta Products (By Case)',
+                                    icon: Icons.all_inbox_rounded,
+                                    color: Colors.deepOrange.shade700,
+                                    count: selectaCaseItems.length,
+                                  ),
+                                  ...selectaCaseItems.map(
+                                    (doc) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: _isAdmin ? _buildAdminProductCard(doc) : _buildDealerProductCard(doc),
+                                    ),
+                                  ),
+                                ],
+                                if (selectaPieceItems.isNotEmpty) ...[
+                                  _buildGroupHeader(
+                                    title: 'Selecta Products (By Piece)',
+                                    icon: Icons.icecream_outlined,
+                                    color: colorScheme.primary,
+                                    count: selectaPieceItems.length,
+                                  ),
+                                  ...selectaPieceItems.map(
+                                    (doc) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: _isAdmin ? _buildAdminProductCard(doc) : _buildDealerProductCard(doc),
+                                    ),
+                                  ),
+                                ],
+                                if (otherItems.isNotEmpty) ...[
+                                  _buildGroupHeader(
+                                    title: 'Other Products',
+                                    icon: Icons.inventory_2_outlined,
+                                    color: colorScheme.onSurfaceVariant,
+                                    count: otherItems.length,
+                                  ),
+                                  ...otherItems.map(
+                                    (doc) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: _isAdmin ? _buildAdminProductCard(doc) : _buildDealerProductCard(doc),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                     ),
                   ],
@@ -914,14 +895,44 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
     );
   }
 
+  Widget _buildGroupHeader({required String title, required IconData icon, required Color color, required int count}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: color),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                  '$count ${count == 1 ? "product" : "products"}',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Divider(height: 1, thickness: 1),
+        ],
+      ),
+    );
+  }
+
   /// Renders a card for the Admin Master Model ([AdminSelectaProduct]):
-  /// Only image, product name, buying price, selling price, and margin.
+  /// Image, product name, buying price, and selling price.
   Widget _buildAdminProductCard(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     final product = AdminSelectaProduct.fromJson(doc.id, data.cast<String, Object?>());
     final colorScheme = Theme.of(context).colorScheme;
-    final isPositiveMargin = product.margin >= 0;
-    final marginColor = isPositiveMargin ? const Color(0xFF15803D) : colorScheme.error;
 
     return Card(
       elevation: 0,
@@ -937,6 +948,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _buildProductImage(product.imageUrl, true),
               const SizedBox(width: 12),
@@ -944,91 +956,29 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            product.productName,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13.5,
-                              color: colorScheme.onSurface,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: product.category == 'By Case'
-                                ? Colors.deepOrange.withValues(alpha: 0.12)
-                                : colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: product.category == 'By Case'
-                                  ? Colors.deepOrange.withValues(alpha: 0.4)
-                                  : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Text(
-                            product.category,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w600,
-                              color: product.category == 'By Case'
-                                  ? Colors.deepOrange.shade800
-                                  : colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      product.productName,
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5, height: 1.25, color: colorScheme.onSurface),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            currencyFormat.format(product.buyingPrice),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        Text(
+                          'Buy: ',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
                         ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            currencyFormat.format(product.sellingPrice),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.onSurface,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                        Text(
+                          currencyFormat.format(product.buyingPrice),
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                         ),
-                        Expanded(
-                          flex: 4,
-                          child: product.sellingPrice > 0 && product.buyingPrice > 0
-                              ? Text(
-                                  '${currencyFormat.format(product.margin)} (${isPositiveMargin ? '+' : ''}${product.marginPercent.round()}%)',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: marginColor,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                )
-                              : const SizedBox.shrink(),
+                        const SizedBox(width: 16),
+                        Text(
+                          'Sell: ',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          currencyFormat.format(product.sellingPrice),
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
                         ),
                       ],
                     ),
@@ -1036,7 +986,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(Icons.chevron_right_rounded, size: 20, color: colorScheme.onSurfaceVariant),
+              Icon(Icons.chevron_right_rounded, size: 22, color: colorScheme.onSurfaceVariant),
             ],
           ),
         ),
@@ -1045,14 +995,13 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
   }
 
   /// Renders a card for the Dealer Model ([SelectaProduct]):
-  /// Dealer can only switch the active/inactive status.
+  /// Tapping the card opens the full product record in read-only mode.
+  /// Dealer can also switch the active/inactive status using the toggle.
   Widget _buildDealerProductCard(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     final product = SelectaProduct.fromJson(doc.id, data.cast<String, Object?>());
     final colorScheme = Theme.of(context).colorScheme;
     final isActive = product.isActive;
-    final isPositiveMargin = product.margin >= 0;
-    final marginColor = isPositiveMargin ? const Color(0xFF15803D) : colorScheme.error;
 
     return Card(
       elevation: 0,
@@ -1062,172 +1011,68 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            _buildProductImage(product.imageUrl, isActive),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          product.productName,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13.5,
-                            color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _navigateToDealerDetails(productId: doc.id, product: product),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _buildProductImage(product.imageUrl, isActive),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.productName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        height: 1.25,
+                        color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
                       ),
-                      if (isActive) ...[
-                        const SizedBox(width: 6),
-                        _buildStockBadge(product, colorScheme),
-                      ],
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: product.category == 'By Case'
-                              ? Colors.deepOrange.withValues(alpha: 0.12)
-                              : colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: product.category == 'By Case'
-                                ? Colors.deepOrange.withValues(alpha: 0.4)
-                                : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                            width: 0.8,
-                          ),
-                        ),
-                        child: Text(
-                          product.category,
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                            color: product.category == 'By Case'
-                                ? Colors.deepOrange.shade800
-                                : colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          currencyFormat.format(product.buyingPrice),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: isActive
-                                ? colorScheme.onSurfaceVariant
-                                : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          currencyFormat.format(product.sellingPrice),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Expanded(
-                        flex: 4,
-                        child: product.sellingPrice > 0 && product.buyingPrice > 0
-                            ? Text(
-                                '${currencyFormat.format(product.margin)} (${isPositiveMargin ? '+' : ''}${product.marginPercent.round()}%)',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: isActive ? marginColor : colorScheme.onSurfaceVariant,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              )
-                            : const SizedBox.shrink(),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _toggleActive(doc.id, product.productName, product.isActive),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 38,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: isActive ? colorScheme.primary : colorScheme.outlineVariant,
-                  borderRadius: BorderRadius.circular(11),
+                    ),
+                  ],
                 ),
-                child: Align(
-                  alignment: isActive ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.all(2.5),
-                    child: Container(
-                      width: 17,
-                      height: 17,
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _toggleActive(doc.id, product.productName, product.isActive),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 40,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isActive ? colorScheme.primary : colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Align(
+                    alignment: isActive ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.all(2.5),
+                      child: Container(
+                        width: 19,
+                        height: 19,
+                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStockBadge(SelectaProduct product, ColorScheme colorScheme) {
-    final Color badgeColor = product.isOutOfStock
-        ? colorScheme.error
-        : product.isLowStock
-            ? const Color(0xFFD97706)
-            : const Color(0xFF15803D);
-    final String label = product.isOutOfStock
-        ? 'Out: 0'
-        : 'Stock: ${product.stockQuantity}';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: badgeColor.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.bold,
-          color: badgeColor,
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, size: 22, color: colorScheme.onSurfaceVariant),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildProductImage(String imageUrl, bool isActive) {
-    return CachedProductImage(imageUrl: imageUrl, isActive: isActive);
+    return CachedProductImage(imageUrl: imageUrl, isActive: isActive, size: 48, borderRadius: 8);
   }
 
   Widget _buildEmptyState() {
@@ -1240,10 +1085,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: colorScheme.primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.08), shape: BoxShape.circle),
               child: Icon(Icons.inventory_2_outlined, size: 40, color: colorScheme.primary),
             ),
             const SizedBox(height: 20),
@@ -1290,16 +1132,9 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
               FilledButton.icon(
                 onPressed: _isSyncing ? null : _handleDealerSync,
                 icon: _isSyncing
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.sync_rounded, size: 18),
-                label: Text(
-                  _isSyncing ? 'Syncing Catalog...' : 'Sync from Master Catalog',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
+                label: Text(_isSyncing ? 'Syncing Catalog...' : 'Sync from Master Catalog', style: const TextStyle(fontWeight: FontWeight.bold)),
                 style: FilledButton.styleFrom(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -1320,10 +1155,7 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08), shape: BoxShape.circle),
               child: Icon(Icons.search_off_rounded, size: 40, color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(height: 20),
@@ -1357,7 +1189,11 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
             const SizedBox(height: 12),
             const Text('Something went wrong', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 8),
-            Text(error, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ],
         ),
       ),

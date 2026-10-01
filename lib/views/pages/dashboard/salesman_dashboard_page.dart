@@ -22,6 +22,7 @@ import 'package:flutter_app/views/pages/sidebar/superadmin_page.dart';
 import 'package:flutter_app/views/widgets/ai_chat_modal.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/services/app_update_service.dart';
 
 class SalesmanDashboardPage extends StatefulWidget {
   const SalesmanDashboardPage({super.key});
@@ -66,6 +67,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _dashboardDTO = dto;
           _isLoading = false;
         });
+        AppUpdateService.checkAndPromptUpdate(context, silent: true);
       }
     } catch (_) {
       if (mounted) {
@@ -412,6 +414,9 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _buildDrawerItem(Icons.shopping_cart_outlined, 'Buying Stores', const BuyinglistPage()),
           _buildDrawerItem(Icons.grid_view_outlined, 'Placement', const PlacementlistPage()),
           _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),
+          _buildDrawerItem(Icons.system_update_alt_rounded, 'Check for Updates', null, onTap: () {
+            AppUpdateService.checkAndPromptUpdate(context, silent: false);
+          }),
 
           const Divider(indent: 16, endIndent: 16),
 

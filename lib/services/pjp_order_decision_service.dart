@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// ignore: constant_identifier_names
 const String PJP_ORDER_DECISIONS_COLLECTION = 'pjp_order_decisions';
 
 class PjpOrderDecision {
@@ -22,14 +23,14 @@ class PjpOrderDecision {
   }) : createdAt = createdAt ?? Timestamp.now();
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'storeName': storeName,
-        'decision': decision,
-        'reason': reason,
-        'date': date,
-        'createdBy': createdBy,
-        'createdAt': createdAt,
-      };
+    'id': id,
+    'storeName': storeName,
+    'decision': decision,
+    'reason': reason,
+    'date': date,
+    'createdBy': createdBy,
+    'createdAt': createdAt,
+  };
 
   factory PjpOrderDecision.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
@@ -48,18 +49,12 @@ class PjpOrderDecision {
 class PjpOrderDecisionService {
   final FirebaseFirestore _firestore;
 
-  PjpOrderDecisionService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? FirebaseFirestore.instance;
+  PjpOrderDecisionService({FirebaseFirestore? firestore}) : _firestore = firestore ?? FirebaseFirestore.instance;
 
-  CollectionReference<Map<String, dynamic>> get _collection =>
-      _firestore.collection(PJP_ORDER_DECISIONS_COLLECTION);
+  CollectionReference<Map<String, dynamic>> get _collection => _firestore.collection(PJP_ORDER_DECISIONS_COLLECTION);
 
   /// Saves a decision (e.g. no order booked with required reason) for a store.
-  Future<String> recordNoOrderReason({
-    required String storeName,
-    required String reason,
-    required String createdBy,
-  }) async {
+  Future<String> recordNoOrderReason({required String storeName, required String reason, required String createdBy}) async {
     final docRef = await _collection.add({
       'storeName': storeName,
       'decision': 'no_order',
@@ -92,11 +87,7 @@ class PjpOrderDecisionService {
       }
     } catch (_) {
       try {
-        final snapshot = await _collection
-            .where('storeName', isEqualTo: storeName)
-            .where('decision', isEqualTo: 'no_order')
-            .limit(10)
-            .get();
+        final snapshot = await _collection.where('storeName', isEqualTo: storeName).where('decision', isEqualTo: 'no_order').limit(10).get();
 
         for (final doc in snapshot.docs) {
           final decision = PjpOrderDecision.fromSnapshot(doc);

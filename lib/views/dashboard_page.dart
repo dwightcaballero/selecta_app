@@ -40,6 +40,7 @@ import 'package:flutter_app/views/pages/sidebar/superadmin_page.dart';
 import 'package:flutter_app/views/widgets/ai_chat_modal.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/services/app_update_service.dart';
 import 'package:intl/intl.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -106,7 +107,10 @@ class _DashboardPageState extends State<DashboardPage> {
     lastSyncDateTime = await DashboardController.getLastSync();
     _configuration = await ConfigurationService().getConfiguration();
     await _syncDashboardFromSharedPreferences();
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      AppUpdateService.checkAndPromptUpdate(context, silent: true);
+    }
   }
 
   // Compute fresh dashboard totals and refresh view
@@ -943,6 +947,9 @@ class _DashboardPageState extends State<DashboardPage> {
           _buildDrawerItem(Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),
+          _buildDrawerItem(Icons.system_update_alt_rounded, 'Check for Updates', null, onTap: () {
+            AppUpdateService.checkAndPromptUpdate(context, silent: false);
+          }),
           _buildDrawerItem(Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
 
           const Divider(indent: 16, endIndent: 16),

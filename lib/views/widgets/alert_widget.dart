@@ -70,6 +70,14 @@ class ShowMessage {
     SnackBarWidget.error(context, error);
   }
 
+  static void warning(BuildContext context, String warning) {
+    SnackBarWidget.warning(context, warning);
+  }
+
+  static void info(BuildContext context, String info) {
+    SnackBarWidget.info(context, info);
+  }
+
   static void success(BuildContext context, String message) {
     SnackBarWidget.success(context, message);
   }

@@ -43,6 +43,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
   double? _latitude;
   double? _longitude;
   bool _isLocating = false;
+  bool _isSaving = false;
   final MapController _mapController = MapController();
   DateTime? _selectedOpeningDate;
   String? _selectedPjpSchedule;
@@ -164,55 +165,84 @@ class _HapiStorePageState extends State<HapiStorePage> {
   /// Saves a new Hapi Store
   void onSave() async {
     if (_formKey.currentState!.validate()) {
-      final lat = double.tryParse(txtLatitude.text.trim());
-      final lng = double.tryParse(txtLongitude.text.trim());
-      final newHs = Hapistore(
-        storeName: txtName.text.trim().toUpperCase(),
-        storeAddress: txtAddress.text.trim(),
-        storeContact: txtContact.text.trim(),
-        openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
-        pjpSchedule: _selectedPjpSchedule,
-        latitude: lat,
-        longitude: lng,
-      );
+      setState(() => _isSaving = true);
+      try {
+        final lat = double.tryParse(txtLatitude.text.trim());
+        final lng = double.tryParse(txtLongitude.text.trim());
+        final newHs = Hapistore(
+          storeName: txtName.text.trim().toUpperCase(),
+          storeAddress: txtAddress.text.trim(),
+          storeContact: txtContact.text.trim(),
+          openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
+          pjpSchedule: _selectedPjpSchedule,
+          latitude: lat,
+          longitude: lng,
+        );
 
-      await _controller.addStore(newHs);
+        await _controller.addStore(newHs);
 
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
-        Navigator.pop(context);
+        if (mounted) {
+          ShowMessage.success(context, 'Successfully created Hapi Store [${newHs.storeName}]!');
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to save store: $e');
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isSaving = false);
+        }
       }
     } else {
       ShowMessage.error(context, 'Please fill up all required fields');
     }
   }
 
-  /// Updates an existing Hapi Store
+  /// Updates an existing Hapi Store and cascades name change to all past records
   void onUpdate() async {
     if (_formKey.currentState!.validate()) {
-      final lat = double.tryParse(txtLatitude.text.trim());
-      final lng = double.tryParse(txtLongitude.text.trim());
-      final updatedHS = widget.hapistore.copyWith(
-        storeName: txtName.text.trim().toUpperCase(),
-        storeAddress: txtAddress.text.trim(),
-        storeContact: txtContact.text.trim(),
-        openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
-        clearOpeningDate: _selectedOpeningDate == null,
-        pjpSchedule: _selectedPjpSchedule,
-        latitude: lat,
-        longitude: lng,
-        clearLocation: lat == null || lng == null,
-      );
+      setState(() => _isSaving = true);
+      try {
+        final lat = double.tryParse(txtLatitude.text.trim());
+        final lng = double.tryParse(txtLongitude.text.trim());
+        final updatedHS = widget.hapistore.copyWith(
+          storeName: txtName.text.trim().toUpperCase(),
+          storeAddress: txtAddress.text.trim(),
+          storeContact: txtContact.text.trim(),
+          openingDate: _selectedOpeningDate != null ? Timestamp.fromDate(_selectedOpeningDate!) : null,
+          clearOpeningDate: _selectedOpeningDate == null,
+          pjpSchedule: _selectedPjpSchedule,
+          latitude: lat,
+          longitude: lng,
+          clearLocation: lat == null || lng == null,
+        );
 
-      await _controller.updateStore(
-        id: widget.hapiStoreID,
-        oldStore: widget.hapistore,
-        updatedStore: updatedHS,
-      );
+        final recordsMigrated = await _controller.updateStore(
+          id: widget.hapiStoreID,
+          oldStore: widget.hapistore,
+          updatedStore: updatedHS,
+        );
 
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
-        Navigator.pop(context);
+        if (mounted) {
+          if (recordsMigrated > 0) {
+            ShowMessage.success(
+              context,
+              'Successfully updated Hapi Store [${updatedHS.storeName}] and linked $recordsMigrated associated record(s)!',
+            );
+          } else {
+            ShowMessage.success(context, 'Successfully updated Hapi Store [${updatedHS.storeName}]!');
+          }
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ShowMessage.error(context, 'Failed to update store: $e');
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isSaving = false);
+        }
       }
     } else {
       ShowMessage.error(context, 'Please fill up all required fields');
@@ -221,14 +251,136 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   /// Deletes the Hapi Store
   void onDelete() async {
-    await _controller.deleteStore(
-      id: widget.hapiStoreID,
-      store: widget.hapistore,
+    setState(() => _isSaving = true);
+    try {
+      await _controller.deleteStore(
+        id: widget.hapiStoreID,
+        store: widget.hapistore,
+      );
+
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully deleted Hapi Store [${widget.hapistore.storeName}]!');
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to delete store: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  /// Opens a dialog to re-link orphaned or older records from a previous store name
+  Future<void> _showRelinkPastRecordsDialog() async {
+    final oldNameController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final currentName = txtName.text.trim().toUpperCase();
+
+    final shouldRelink = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.link_outlined, color: colorScheme.primary),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Re-link Past Records',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'If this store was previously renamed and previous orders, deliveries, scans, or tasks are not showing up, enter the previous store name below to re-link them to "$currentName".',
+                  style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: oldNameController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    labelText: 'Previous Store Name',
+                    hintText: 'e.g. OLD SARI-SARI STORE',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                  ),
+                  autofocus: true,
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) {
+                      return 'Please enter the previous store name';
+                    }
+                    if (val.trim().toUpperCase() == currentName) {
+                      return 'Previous name cannot be the same as current name';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.pop(ctx, true);
+                }
+              },
+              icon: const Icon(Icons.sync, size: 18),
+              label: const Text('Re-link Records'),
+            ),
+          ],
+        );
+      },
     );
 
-    if (mounted) {
-      ShowMessage.success(context, 'Successfully deleted Hapi Store [${widget.hapistore.storeName}]!');
-      Navigator.pop(context);
+    if (shouldRelink != true || !mounted) return;
+
+    final oldName = oldNameController.text.trim();
+    setState(() => _isSaving = true);
+    try {
+      final count = await _controller.relinkPreviousStoreRecords(
+        oldStoreName: oldName,
+        currentStoreName: currentName,
+      );
+
+      if (mounted) {
+        if (count > 0) {
+          ShowMessage.success(
+            context,
+            'Successfully recovered and linked $count record(s) from "$oldName" to "$currentName"!',
+          );
+        } else {
+          ShowMessage.warning(
+            context,
+            'No records found matching "$oldName". Please check spelling.',
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to re-link records: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -354,6 +506,42 @@ class _HapiStorePageState extends State<HapiStorePage> {
               });
             },
           ),
+          if (widget.hapiStoreID.isNotEmpty) ...[
+            const Divider(height: 8),
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: _isSaving ? null : _showRelinkPastRecordsDialog,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.link_outlined, size: 18, color: colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Missing records from a previous store name?',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                          Text(
+                            'Re-link deliveries, scans, and tasks from an old name to this store',
+                            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, size: 18, color: colorScheme.onSurfaceVariant),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -418,17 +606,19 @@ class _HapiStorePageState extends State<HapiStorePage> {
                   Expanded(
                     flex: 1,
                     child: OutlinedButton.icon(
-                      onPressed: () async {
-                        final confirmed = await ShowMessage.confirm(
-                          context,
-                          title: ConfirmTitle.delete,
-                          message: 'Are you sure you want to delete [${widget.hapistore.storeName}]?',
-                          isDestructive: true,
-                          icon: Icons.delete_outline,
-                          confirmText: 'Delete',
-                        );
-                        if (confirmed) onDelete();
-                      },
+                      onPressed: _isSaving
+                          ? null
+                          : () async {
+                              final confirmed = await ShowMessage.confirm(
+                                context,
+                                title: ConfirmTitle.delete,
+                                message: 'Are you sure you want to delete [${widget.hapistore.storeName}]?',
+                                isDestructive: true,
+                                icon: Icons.delete_outline,
+                                confirmText: 'Delete',
+                              );
+                              if (confirmed) onDelete();
+                            },
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
                         foregroundColor: Colors.red.shade700,
@@ -443,43 +633,66 @@ class _HapiStorePageState extends State<HapiStorePage> {
                   Expanded(
                     flex: 2,
                     child: FilledButton.icon(
-                      onPressed: () async {
-                        final confirmed = await ShowMessage.confirm(
-                          context,
-                          title: ConfirmTitle.update,
-                          message: 'Save changes to store [${txtName.text.trim().toUpperCase()}]?',
-                          icon: Icons.check_circle_outline,
-                          confirmText: 'Update',
-                        );
-                        if (confirmed) onUpdate();
-                      },
+                      onPressed: _isSaving
+                          ? null
+                          : () async {
+                              final newName = txtName.text.trim().toUpperCase();
+                              final oldName = widget.hapistore.storeName.trim();
+                              final isRenaming = oldName.isNotEmpty && oldName.toUpperCase() != newName;
+
+                              final confirmed = await ShowMessage.confirm(
+                                context,
+                                title: isRenaming ? 'Rename Store & Link Records' : ConfirmTitle.update,
+                                message: isRenaming
+                                    ? 'Rename store from "$oldName" to "$newName"?\n\n'
+                                      'All existing records (deliveries, orders, barcode scans, tasks, placements, and visits) will be automatically updated to the new name so no history is lost.'
+                                    : 'Save changes to store [$newName]?',
+                                icon: isRenaming ? Icons.sync : Icons.check_circle_outline,
+                                confirmText: isRenaming ? 'Rename & Update Records' : 'Update Store',
+                              );
+                              if (confirmed) onUpdate();
+                            },
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      icon: const Icon(Icons.check_circle_outline, size: 20),
-                      label: const Text('Update Store', style: TextStyle(fontWeight: FontWeight.bold)),
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.check_circle_outline, size: 20),
+                      label: Text(_isSaving ? 'Updating...' : 'Update Store', style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
               )
             : FilledButton.icon(
-                onPressed: () async {
-                  final confirmed = await ShowMessage.confirm(
-                    context,
-                    title: ConfirmTitle.save,
-                    message: 'Save new store [${txtName.text.trim().toUpperCase()}]?',
-                    icon: Icons.save_outlined,
-                    confirmText: 'Save',
-                  );
-                  if (confirmed) onSave();
-                },
+                onPressed: _isSaving
+                    ? null
+                    : () async {
+                        final confirmed = await ShowMessage.confirm(
+                          context,
+                          title: ConfirmTitle.save,
+                          message: 'Save new store [${txtName.text.trim().toUpperCase()}]?',
+                          icon: Icons.save_outlined,
+                          confirmText: 'Save',
+                        );
+                        if (confirmed) onSave();
+                      },
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50.0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('Save Store', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(_isSaving ? 'Saving...' : 'Save Store', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
       ),
     );
@@ -656,7 +869,19 @@ class _HapiStorePageState extends State<HapiStorePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppbar(title: 'Hapi Store', subtitle: widget.hapiStoreID.isEmpty ? 'New Store Record' : widget.hapistore.storeName),
+      appBar: CustomAppbar(
+        title: 'Hapi Store',
+        subtitle: widget.hapiStoreID.isEmpty ? 'New Store Record' : widget.hapistore.storeName,
+        actions: widget.hapiStoreID.isNotEmpty
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.link_outlined),
+                  tooltip: 'Re-link Past Records',
+                  onPressed: _isSaving ? null : _showRelinkPastRecordsDialog,
+                ),
+              ]
+            : null,
+      ),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: Form(
         key: _formKey,

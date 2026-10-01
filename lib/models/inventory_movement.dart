@@ -49,6 +49,38 @@ class InventoryItem {
     this.updatedAt,
   });
 
+  InventoryItem copyWith({
+    String? id,
+    String? productName,
+    String? imageUrl,
+    double? buyingPrice,
+    double? sellingPrice,
+    bool? isActive,
+    int? stockQuantity,
+    int? reservedQuantity,
+    int? lowStockThreshold,
+    InventoryProductSource? source,
+    String? category,
+    String? tag,
+    Timestamp? updatedAt,
+  }) {
+    return InventoryItem(
+      id: id ?? this.id,
+      productName: productName ?? this.productName,
+      imageUrl: imageUrl ?? this.imageUrl,
+      buyingPrice: buyingPrice ?? this.buyingPrice,
+      sellingPrice: sellingPrice ?? this.sellingPrice,
+      isActive: isActive ?? this.isActive,
+      stockQuantity: stockQuantity ?? this.stockQuantity,
+      reservedQuantity: reservedQuantity ?? this.reservedQuantity,
+      lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
+      source: source ?? this.source,
+      category: category ?? this.category,
+      tag: tag ?? this.tag,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
   factory InventoryItem.fromSelectaProduct(SelectaProduct product) {
     return InventoryItem(
       id: product.id,

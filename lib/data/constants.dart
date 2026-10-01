@@ -118,8 +118,17 @@ class ProductTag {
 
   static const List<String> all = [none, bestSeller, newProduct];
 
-  static bool isBestSeller(String? tag) => tag?.trim().toLowerCase() == 'best seller';
-  static bool isNewProduct(String? tag) => tag?.trim().toLowerCase() == 'new product';
+  static bool isBestSeller(String? tag) {
+    if (tag == null) return false;
+    final t = tag.trim().toLowerCase();
+    return t == 'best seller' || t == 'best sellers' || t == 'bestseller' || t == 'bestsellers';
+  }
+
+  static bool isNewProduct(String? tag) {
+    if (tag == null) return false;
+    final t = tag.trim().toLowerCase();
+    return t == 'new product' || t == 'new products' || t == 'newproduct' || t == 'newproducts';
+  }
 }
 
 // ₱

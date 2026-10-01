@@ -4,6 +4,8 @@ import 'package:flutter_app/models/configuration.dart';
 import 'package:flutter_app/services/thermal_printer_service.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:flutter_app/models/app_version_info.dart';
+import 'package:flutter_app/services/app_update_service.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
 
@@ -31,6 +33,10 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   String? _printerName;
   bool _isPrinterConnected = false;
   bool _isTestingPrint = false;
+
+  String _localVersion = '1.0.0';
+  int _localBuildNumber = 0;
+  AppVersionInfo? _remoteVersionInfo;
 
   late final TextEditingController _salesTargetController;
   late final TextEditingController _throughputTargetController;
@@ -74,6 +80,17 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           _printerName = pName;
           _isPrinterConnected = isConnected;
           _isLoading = false;
+        });
+      }
+
+      // Load app version info in background
+      final pkg = await AppUpdateService.getCurrentPackageInfo();
+      final latest = await AppUpdateService().getLatestVersionInfo();
+      if (mounted) {
+        setState(() {
+          _localVersion = pkg.version;
+          _localBuildNumber = int.tryParse(pkg.buildNumber) ?? 0;
+          _remoteVersionInfo = latest;
         });
       }
     } catch (e) {
@@ -775,6 +792,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                   // Thermal Printer Configuration Card (58mm / 80mm & Bluetooth)
                   _buildThermalPrinterCard(colorScheme),
 
+                  const SizedBox(height: 16),
+
+                  // App Version & Self-Update Card
+                  _buildAppVersionCard(colorScheme),
+
                   const SizedBox(height: 28),
 
                   // Save Configurations Button
@@ -792,6 +814,242 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildAppVersionCard(ColorScheme colorScheme) {
+    final hasRemote = _remoteVersionInfo != null && _remoteVersionInfo!.latestVersionCode > 0;
+    final isNewerAvailable = hasRemote && _remoteVersionInfo!.latestVersionCode > _localBuildNumber;
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.system_update_rounded, size: 22, color: Color(0xFF10B981)),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('App Updates & Releases', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 2),
+                      Text('Sideload and distribute seamless in-app APK updates', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Installed Version:', style: TextStyle(fontSize: 13)),
+                      Text(
+                        'v$_localVersion (Build $_localBuildNumber)',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Latest Release in Cloud:', style: TextStyle(fontSize: 13)),
+                      Text(
+                        hasRemote
+                            ? 'v${_remoteVersionInfo!.latestVersionName} (Build ${_remoteVersionInfo!.latestVersionCode})'
+                            : 'Not Configured',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: isNewerAvailable ? colorScheme.primary : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => AppUpdateService.checkAndPromptUpdate(context, silent: false),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Check for Updates'),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _openPublishUpdateModal,
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                    label: const Text('Publish Release'),
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openPublishUpdateModal() {
+    final versionNameCtrl = TextEditingController(text: _remoteVersionInfo?.latestVersionName ?? '1.0.1');
+    final versionCodeCtrl = TextEditingController(
+      text: (_remoteVersionInfo != null && _remoteVersionInfo!.latestVersionCode > 0)
+          ? (_remoteVersionInfo!.latestVersionCode + 1).toString()
+          : (_localBuildNumber + 1).toString(),
+    );
+    final apkUrlCtrl = TextEditingController(text: _remoteVersionInfo?.apkUrl ?? '');
+    final notesCtrl = TextEditingController(text: _remoteVersionInfo?.releaseNotes ?? '');
+    bool isForce = _remoteVersionInfo?.forceUpdate ?? false;
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              title: const Row(
+                children: [
+                  Icon(Icons.cloud_upload_rounded, color: Colors.blue),
+                  SizedBox(width: 10),
+                  Text('Publish App Release', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: versionNameCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Version Name (e.g. 1.0.1)',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: versionCodeCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Build Number (e.g. 22)',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: apkUrlCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'APK Download URL',
+                          hintText: 'https://.../app-release.apk',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: notesCtrl,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Release Notes / What\'s New',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Mandatory Update', style: TextStyle(fontSize: 14)),
+                        subtitle: const Text('Users must update before using app', style: TextStyle(fontSize: 11)),
+                        value: isForce,
+                        onChanged: (val) => setDialogState(() => isForce = val),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final code = int.tryParse(versionCodeCtrl.text.trim()) ?? 0;
+                    final name = versionNameCtrl.text.trim();
+                    final url = apkUrlCtrl.text.trim();
+
+                    if (code <= 0 || name.isEmpty || url.isEmpty) {
+                      ShowMessage.error(context, 'Please enter a valid version name, build number, and APK URL.');
+                      return;
+                    }
+
+                    Navigator.of(dialogCtx).pop();
+
+                    final newInfo = AppVersionInfo(
+                      latestVersionCode: code,
+                      latestVersionName: name,
+                      apkUrl: url,
+                      releaseNotes: notesCtrl.text.trim(),
+                      forceUpdate: isForce,
+                      publishedAt: DateTime.now(),
+                    );
+
+                    await AppUpdateService().saveLatestVersionInfo(newInfo);
+                    if (mounted) {
+                      setState(() {
+                        _remoteVersionInfo = newInfo;
+                      });
+                      ShowMessage.success(context, 'Release v$name+$code published to Cloud Firestore!');
+                    }
+                  },
+                  child: const Text('Publish'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

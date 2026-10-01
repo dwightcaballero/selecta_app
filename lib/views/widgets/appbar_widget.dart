@@ -84,12 +84,16 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
           Text(
             title,
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: titleColor, letterSpacing: -0.3),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           if (subtitle != null) ...[
             const SizedBox(height: 2),
             Text(
               subtitle!,
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: subtitleColor),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ],

@@ -109,18 +109,44 @@ class HapiStoreController {
     );
   }
 
-  /// Updates an existing Hapi Store and writes an audit log with change diff.
-  Future<void> updateStore({
+  /// Updates an existing Hapi Store, cascades name updates to related records if renamed,
+  /// and writes an audit log with change diff. Returns number of child records updated.
+  Future<int> updateStore({
     required String id,
     required Hapistore oldStore,
     required Hapistore updatedStore,
   }) async {
-    _service.updateHapiStore(id, updatedStore);
+    await _service.updateHapiStore(id, updatedStore);
+
+    int recordsMigrated = 0;
+    final oldName = oldStore.storeName.trim();
+    final newName = updatedStore.storeName.trim().toUpperCase();
+
+    if (oldName.isNotEmpty && oldName.toUpperCase() != newName) {
+      recordsMigrated = await _service.cascadeUpdateStoreName(
+        oldStoreName: oldName,
+        newStoreName: newName,
+      );
+    }
+
     Helperfunctions.logUpdate(
       updatedStore.storeName,
       oldStore.toJson(),
       updatedStore.toJson(),
       page: AppPages.hapiStore,
+    );
+
+    return recordsMigrated;
+  }
+
+  /// Re-links orphaned or previously disconnected records from an old store name to a current store name.
+  Future<int> relinkPreviousStoreRecords({
+    required String oldStoreName,
+    required String currentStoreName,
+  }) async {
+    return await _service.cascadeUpdateStoreName(
+      oldStoreName: oldStoreName,
+      newStoreName: currentStoreName,
     );
   }
 

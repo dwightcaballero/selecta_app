@@ -17,7 +17,15 @@ class PicklistListPage extends StatefulWidget {
 class _PicklistListPageState extends State<PicklistListPage> {
   final DeliveryController _controller = DeliveryController();
   final TextEditingController _searchController = TextEditingController();
+  bool isDealer = false;
+  DateTime _selectedDate = DateTime.now();
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    prefetchData();
+  }
 
   @override
   void dispose() {
@@ -25,23 +33,116 @@ class _PicklistListPageState extends State<PicklistListPage> {
     super.dispose();
   }
 
+  void prefetchData() async {
+    isDealer = await _controller.checkIsDealer();
+    if (mounted) setState(() {});
+  }
+
+  void onChangeDate() async {
+    if (!isDealer) return;
+    final DateTime? dateTime = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(3000),
+    );
+
+    if (dateTime != null) {
+      setState(() {
+        _selectedDate = dateTime;
+      });
+    }
+  }
+
+  void _changeDate(int days) {
+    if (!isDealer) return;
+    setState(() {
+      _selectedDate = _selectedDate.add(Duration(days: days));
+    });
+  }
+
+  String _dateLabel() => _controller.formatDateLabel(_selectedDate);
+
+  Widget _buildDateNavigator(ThemeData theme) {
+    final colorScheme = theme.colorScheme;
+    final bool isToday = DateUtils.isSameDay(_selectedDate, DateTime.now());
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Previous day',
+            visualDensity: VisualDensity.compact,
+            onPressed: isDealer ? () => _changeDate(-1) : null,
+            icon: const Icon(Icons.chevron_left, size: 24),
+          ),
+          Expanded(
+            child: InkWell(
+              onTap: isDealer ? onChangeDate : null,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.calendar_today_outlined, size: 18, color: colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        _dateLabel(),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Next day',
+            visualDensity: VisualDensity.compact,
+            onPressed: isDealer ? () => _changeDate(1) : null,
+            icon: const Icon(Icons.chevron_right, size: 24),
+          ),
+          if (isDealer && !isToday) ...[
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ActionChip(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                label: const Text('Today', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                onPressed: () => setState(() => _selectedDate = DateTime.now()),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: const CustomAppbar(
-        title: 'Pending Picklists',
-      ),
+      appBar: const CustomAppbar(title: 'Pending Picklists'),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Helperfunctions.navigateTo(context, const BookOrderPage()),
+        onPressed: () => Helperfunctions.navigateTo(context, BookOrderPage(initialDate: _selectedDate)),
         icon: const Icon(Icons.add_shopping_cart_rounded, size: 24),
         label: const Text('Book Order', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       ),
       body: Column(
         children: [
+          Padding(padding: const EdgeInsets.fromLTRB(16, 10, 16, 4), child: _buildDateNavigator(Theme.of(context))),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
             child: SizedBox(
               height: 50,
               child: TextField(
@@ -70,9 +171,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(
-                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-                    ),
+                    borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                   ),
                 ),
               ),
@@ -100,8 +199,13 @@ class _PicklistListPageState extends State<PicklistListPage> {
 
                 final allDocs = snapshot.data?.docs ?? [];
                 final filtered = allDocs.where((doc) {
+                  final delivery = doc.data();
+                  final dDate = delivery.deliveryDate?.toDate() ?? delivery.createdDate.toDate();
+                  if (!DateUtils.isSameDay(dDate, _selectedDate)) {
+                    return false;
+                  }
                   if (_searchQuery.isEmpty) return true;
-                  return doc.data().storeName.toLowerCase().contains(_searchQuery);
+                  return delivery.storeName.toLowerCase().contains(_searchQuery);
                 }).toList();
 
                 final totalOrders = filtered.length;
@@ -117,33 +221,15 @@ class _PicklistListPageState extends State<PicklistListPage> {
                       decoration: BoxDecoration(
                         color: colorScheme.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-                        ),
+                        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildSummaryStat(
-                            label: 'Orders',
-                            value: '$totalOrders',
-                            color: colorScheme.onSurface,
-                          ),
-                          Container(
-                            width: 1,
-                            height: 36,
-                            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-                          ),
-                          _buildSummaryStat(
-                            label: 'Total Units',
-                            value: '$totalUnits',
-                            color: colorScheme.onSurface,
-                          ),
-                          Container(
-                            width: 1,
-                            height: 36,
-                            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
-                          ),
+                          _buildSummaryStat(label: 'Orders', value: '$totalOrders', color: colorScheme.onSurface),
+                          Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                          _buildSummaryStat(label: 'Total Units', value: '$totalUnits', color: colorScheme.onSurface),
+                          Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
                           _buildSummaryStat(
                             label: 'Total Value',
                             value: Helperfunctions.formatDoubleAmountForDisplay(totalValue),
@@ -164,32 +250,20 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                     Container(
                                       padding: const EdgeInsets.all(18),
                                       decoration: BoxDecoration(
-                                        color: colorScheme.surfaceContainerHighest
-                                            .withValues(alpha: 0.5),
+                                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: Icon(
-                                        Icons.fact_check_outlined,
-                                        size: 52,
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
+                                      child: Icon(Icons.fact_check_outlined, size: 52, color: colorScheme.onSurfaceVariant),
                                     ),
                                     const SizedBox(height: 16),
-                                    const Text(
-                                      'No Pending Picklists',
-                                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                                    ),
+                                    const Text('No Pending Picklists', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                                     const SizedBox(height: 8),
                                     Text(
                                       _searchQuery.isNotEmpty
                                           ? 'No orders matching "$_searchQuery"'
-                                          : 'All booked orders have been picked and moved to Delivery.',
+                                          : 'All booked orders for ${_dateLabel()} have been picked and moved to Delivery.',
                                       textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 15.5,
-                                        height: 1.35,
-                                        color: colorScheme.onSurfaceVariant,
-                                      ),
+                                      style: TextStyle(fontSize: 15.5, height: 1.35, color: colorScheme.onSurfaceVariant),
                                     ),
                                   ],
                                 ),
@@ -203,13 +277,10 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                 final doc = filtered[index];
                                 final deliveryId = doc.id;
                                 final delivery = doc.data();
-                                final pickedCount =
-                                    delivery.items.where((i) => i.isPicked).length;
+                                final pickedCount = delivery.items.where((i) => i.isPicked).length;
                                 final totalLines = delivery.items.length;
-                                final isComplete =
-                                    totalLines > 0 && pickedCount == totalLines;
-                                final deliveryDate =
-                                    delivery.deliveryDate?.toDate() ?? DateTime.now();
+                                final isComplete = totalLines > 0 && pickedCount == totalLines;
+                                final deliveryDate = delivery.deliveryDate?.toDate() ?? DateTime.now();
 
                                 return Card(
                                   elevation: 0,
@@ -217,35 +288,22 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                   color: colorScheme.surface,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
-                                    side: BorderSide(
-                                      color: colorScheme.outlineVariant.withValues(alpha: 0.55),
-                                    ),
+                                    side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.55)),
                                   ),
                                   child: InkWell(
                                     borderRadius: BorderRadius.circular(12),
-                                    onTap: () => Helperfunctions.navigateTo(
-                                      context,
-                                      PicklistPage(deliveryID: deliveryId, delivery: delivery),
-                                    ),
+                                    onTap: () => Helperfunctions.navigateTo(context, PicklistPage(deliveryID: deliveryId, delivery: delivery)),
                                     child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 14,
-                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                                       child: Row(
                                         children: [
                                           Container(
                                             padding: const EdgeInsets.all(11),
                                             decoration: BoxDecoration(
-                                              color: colorScheme.surfaceContainerHighest
-                                                  .withValues(alpha: 0.5),
+                                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                                               borderRadius: BorderRadius.circular(10),
                                             ),
-                                            child: Icon(
-                                              Icons.storefront_outlined,
-                                              color: colorScheme.onSurfaceVariant,
-                                              size: 24,
-                                            ),
+                                            child: Icon(Icons.storefront_outlined, color: colorScheme.onSurfaceVariant, size: 24),
                                           ),
                                           const SizedBox(width: 12),
                                           Expanded(
@@ -254,22 +312,14 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                               children: [
                                                 Text(
                                                   delivery.storeName,
-                                                  style: const TextStyle(
-                                                    fontSize: 17.5,
-                                                    fontWeight: FontWeight.bold,
-                                                    height: 1.25,
-                                                  ),
+                                                  style: const TextStyle(fontSize: 17.5, fontWeight: FontWeight.bold, height: 1.25),
                                                   maxLines: 2,
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  '${Helperfunctions.formatDateForDisplay(deliveryDate)}  •  $totalLines SKU${totalLines == 1 ? '' : 's'} (${delivery.totalUnits} units)',
-                                                  style: TextStyle(
-                                                    fontSize: 14.5,
-                                                    fontWeight: FontWeight.w500,
-                                                    color: colorScheme.onSurfaceVariant,
-                                                  ),
+                                                  Helperfunctions.formatDateForDisplay(deliveryDate),
+                                                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
@@ -281,26 +331,16 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                             crossAxisAlignment: CrossAxisAlignment.end,
                                             children: [
                                               Text(
-                                                Helperfunctions.formatDoubleAmountForDisplay(
-                                                  delivery.orderAmount,
-                                                ),
-                                                style: TextStyle(
-                                                  fontSize: 17.5,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: colorScheme.primary,
-                                                ),
+                                                Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
+                                                style: TextStyle(fontSize: 17.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
                                               ),
                                               const SizedBox(height: 5),
                                               Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 10,
-                                                  vertical: 4,
-                                                ),
+                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                                 decoration: BoxDecoration(
                                                   color: isComplete
                                                       ? Colors.green.withValues(alpha: 0.12)
-                                                      : colorScheme.surfaceContainerHighest
-                                                          .withValues(alpha: 0.6),
+                                                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
                                                   borderRadius: BorderRadius.circular(8),
                                                 ),
                                                 child: Text(
@@ -308,9 +348,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                                   style: TextStyle(
                                                     fontSize: 13,
                                                     fontWeight: FontWeight.w700,
-                                                    color: isComplete
-                                                        ? Colors.green.shade700
-                                                        : colorScheme.onSurfaceVariant,
+                                                    color: isComplete ? Colors.green.shade700 : colorScheme.onSurfaceVariant,
                                                   ),
                                                 ),
                                               ),
@@ -334,11 +372,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
     );
   }
 
-  Widget _buildSummaryStat({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
+  Widget _buildSummaryStat({required String label, required String value, required Color color}) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -349,14 +383,9 @@ class _PicklistListPageState extends State<PicklistListPage> {
         const SizedBox(height: 2),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 13.5,
-            fontWeight: FontWeight.w600,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );
   }
-
 }

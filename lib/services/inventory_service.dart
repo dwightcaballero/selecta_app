@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_app/models/admin_selecta_product.dart';
 import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/models/inventory_movement.dart';
 import 'package:flutter_app/models/other_product.dart';
@@ -19,21 +20,70 @@ class InventoryService {
 
   /// Combines real-time streams of active [SelectaProduct] and active [OtherProduct]
   /// into a single unified stream of [InventoryItem]s sorted alphabetically by product name.
+  /// Seamlessly resolves tags from `admin_selecta_products` if empty on local product records,
+  /// and surfaces any newly added Admin products even before manual sync.
   Stream<List<InventoryItem>> getActiveInventoryStream() {
     late StreamController<List<InventoryItem>> controller;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? selectaSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? adminSub;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? otherSub;
 
     List<InventoryItem> selectaItems = [];
     List<InventoryItem> otherItems = [];
+    Map<String, String> adminTagMap = {};
+    Map<String, String> adminTagByName = {};
+    List<AdminSelectaProduct> adminProducts = [];
     bool selectaLoaded = false;
     bool otherLoaded = false;
 
     void emitCombined() {
       if (!selectaLoaded || !otherLoaded) return;
       if (controller.isClosed) return;
+
+      final existingSelectaIds = <String>{};
+      final existingSelectaNames = <String>{};
+
+      final resolvedSelecta = selectaItems.map((item) {
+        existingSelectaIds.add(item.id);
+        final nameKey = item.productName.trim().toLowerCase();
+        if (nameKey.isNotEmpty) existingSelectaNames.add(nameKey);
+
+        if (item.tag.isNotEmpty) return item;
+        final fallbackTag = adminTagMap[item.id] ?? adminTagByName[nameKey] ?? '';
+        if (fallbackTag.isNotEmpty) {
+          return item.copyWith(tag: fallbackTag);
+        }
+        return item;
+      }).toList();
+
+      // Include newly added Admin products that are not yet in dealer's local selecta_products
+      for (final adminProd in adminProducts) {
+        final nameKey = adminProd.productName.trim().toLowerCase();
+        if (adminProd.productName.isNotEmpty &&
+            !existingSelectaIds.contains(adminProd.id) &&
+            !existingSelectaNames.contains(nameKey)) {
+          resolvedSelecta.add(
+            InventoryItem(
+              id: adminProd.id,
+              productName: adminProd.productName,
+              imageUrl: adminProd.imageUrl,
+              buyingPrice: adminProd.buyingPrice,
+              sellingPrice: adminProd.sellingPrice,
+              isActive: true,
+              stockQuantity: 0,
+              reservedQuantity: 0,
+              lowStockThreshold: 10,
+              source: InventoryProductSource.selecta,
+              category: adminProd.category,
+              tag: adminProd.tag,
+              updatedAt: adminProd.updatedAt,
+            ),
+          );
+        }
+      }
+
       final combined = <InventoryItem>[
-        ...selectaItems,
+        ...resolvedSelecta,
         ...otherItems,
       ]..sort((a, b) => a.productName.toLowerCase().compareTo(b.productName.toLowerCase()));
       controller.add(combined);
@@ -61,6 +111,30 @@ class InventoryService {
           },
         );
 
+        adminSub = _firestore
+            .collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF)
+            .snapshots()
+            .listen(
+          (snap) {
+            adminProducts = snap.docs
+                .map((doc) => AdminSelectaProduct.fromSnapshot(doc))
+                .where((p) => p.productName.isNotEmpty)
+                .toList();
+            adminTagMap = {
+              for (final p in adminProducts)
+                if (p.tag.isNotEmpty) p.id: p.tag,
+            };
+            adminTagByName = {
+              for (final p in adminProducts)
+                if (p.tag.isNotEmpty) p.productName.trim().toLowerCase(): p.tag,
+            };
+            emitCombined();
+          },
+          onError: (Object _, StackTrace _) {
+            // Non-critical fallback; dealer can continue with local selecta products
+          },
+        );
+
         otherSub = _firestore
             .collection(OTHER_PRODUCTS_COLLECTION_REF)
             .snapshots()
@@ -83,6 +157,7 @@ class InventoryService {
       },
       onCancel: () async {
         await selectaSub?.cancel();
+        await adminSub?.cancel();
         await otherSub?.cancel();
       },
     );

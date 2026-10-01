@@ -59,6 +59,17 @@ Super Thick Vanilla 1.4L,180.00,210.00,By Case,
       expect(products[2].imageUrl, isEmpty);
     });
 
+    test('parseAdminProductsFromCsv maps Tag column headers correctly', () {
+      const csv = '''Product Name,Buying Price,Selling Price,Category,Tag,Image URL
+Cornetto Chocolate,25.00,30.00,By Piece,Best Seller,https://example.com/c.png
+Boom Boom,15.00,18.00,By Piece,New Product,
+''';
+      final products = SelectaProductService.parseAdminProductsFromCsv(csv);
+      expect(products.length, equals(2));
+      expect(products[0].tag, equals('Best Seller'));
+      expect(products[1].tag, equals('New Product'));
+    });
+
     test('parseAdminProductsFromCsv normalizes currency symbols and commas in numbers', () {
       const csv = '''Item,Cost,SRP,Type
 Premium Pint,"₱ 1,250.50","\\\$ 1,500.00",Case

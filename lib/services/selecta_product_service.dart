@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/firebase_options.dart';
 import 'package:flutter_app/models/admin_selecta_product.dart';
 import 'package:flutter_app/models/selecta_product.dart';
 import 'package:path_provider/path_provider.dart';
@@ -86,27 +85,42 @@ class SelectaProductService {
   }
 
   /// Ensures `admin_selecta_products` is populated from existing `selecta_products`
-  /// on the master database if `admin_selecta_products` is currently empty.
+  /// and vice-versa so no products are dropped.
   Future<void> ensureAdminCatalogSeededFromExisting() async {
-    final adminSnap = await _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).limit(1).get();
-    if (adminSnap.docs.isNotEmpty) return;
-
+    final adminSnap = await _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).get();
     final existingSnap = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
-    if (existingSnap.docs.isEmpty) return;
+
+    if (existingSnap.docs.isEmpty && adminSnap.docs.isEmpty) return;
+
+    final existingAdminNames = <String>{};
+    for (final doc in adminSnap.docs) {
+      final name = (doc.data()['productName'] as String? ?? '').trim().toLowerCase();
+      if (name.isNotEmpty) existingAdminNames.add(name);
+    }
 
     final batch = _firestore.batch();
     final now = Timestamp.now();
+    bool hasBatched = false;
+
     for (final doc in existingSnap.docs) {
-      final adminProduct = AdminSelectaProduct.fromJson(doc.id, doc.data().cast<String, Object?>());
-      if (adminProduct.productName.isEmpty) continue;
-      final ref = _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc(doc.id);
-      batch.set(ref, {
-        ...adminProduct.toJson(),
-        'createdAt': adminProduct.createdAt ?? now,
-        'updatedAt': adminProduct.updatedAt ?? now,
-      });
+      final name = (doc.data()['productName'] as String? ?? '').trim().toLowerCase();
+      if (name.isNotEmpty && !existingAdminNames.contains(name)) {
+        final adminProduct = AdminSelectaProduct.fromJson(doc.id, doc.data().cast<String, Object?>());
+        if (adminProduct.productName.isEmpty) continue;
+        final ref = _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc(doc.id);
+        batch.set(ref, {
+          ...adminProduct.toJson(),
+          'createdAt': adminProduct.createdAt ?? now,
+          'updatedAt': adminProduct.updatedAt ?? now,
+        });
+        existingAdminNames.add(name);
+        hasBatched = true;
+      }
     }
-    await batch.commit();
+
+    if (hasBatched) {
+      await batch.commit();
+    }
   }
 
   /// Returns all Admin Selecta products.
@@ -216,13 +230,14 @@ class SelectaProductService {
   Future<String> exportAdminProductsToCsvString() async {
     final products = await getAllAdminProducts();
     final buffer = StringBuffer();
-    buffer.writeln('Product Name,Buying Price,Selling Price,Category,Image URL,ID');
+    buffer.writeln('Product Name,Buying Price,Selling Price,Category,Tag,Image URL,ID');
     for (final p in products) {
       buffer.writeln(
         '${_escapeCsv(p.productName)},'
         '${p.buyingPrice.toStringAsFixed(2)},'
         '${p.sellingPrice.toStringAsFixed(2)},'
         '${_escapeCsv(p.category)},'
+        '${_escapeCsv(p.tag)},'
         '${_escapeCsv(p.imageUrl)},'
         '${_escapeCsv(p.id)}',
       );
@@ -284,6 +299,7 @@ class SelectaProductService {
             'buyingPrice': p.buyingPrice,
             'sellingPrice': p.sellingPrice,
             'category': p.category,
+            'tag': p.tag,
             'createdAt': p.createdAt ?? now,
             'updatedAt': now,
           },
@@ -351,6 +367,10 @@ class SelectaProductService {
   Future<String?> getCustomCatalogApiUrl() async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString(_prefKeyCustomApiUrl)?.trim();
+    if (url != null && (url.contains('dwightcaballero.github.io') || url.contains('importselecta.csv'))) {
+      await prefs.remove(_prefKeyCustomApiUrl);
+      return null;
+    }
     return (url != null && url.isNotEmpty) ? url : null;
   }
 
@@ -366,34 +386,16 @@ class SelectaProductService {
   /// Fetches the authoritative list of [AdminSelectaProduct] from the central API source.
   /// Works even when the dealer is on a completely separate Firebase project/database.
   Future<List<AdminSelectaProduct>> fetchMasterAdminCatalogFromApi() async {
-    // 1. Check if a custom GitHub / JSON API URL is configured
-    final customUrl = await getCustomCatalogApiUrl();
-    if (customUrl != null && customUrl.isNotEmpty) {
-      try {
-        final response = await _dio.get<String>(
-          customUrl,
-          options: Options(responseType: ResponseType.plain),
-        );
-        if (response.data != null && response.data!.isNotEmpty) {
-          final parsed = parseAdminProductsFromData(response.data!);
-          if (parsed.isNotEmpty) return parsed;
-        }
-      } catch (_) {
-        // Fall through to Master Firebase REST API
-      }
-    }
-
-
-    // 2. If connected to the master Firebase project directly, ensure `admin_selecta_products` is seeded
-    final currentProjectId = DefaultFirebaseOptions.currentPlatform.projectId;
-    if (currentProjectId == masterFirebaseProjectId) {
+    // 1. Primary Source: Live master Firestore admin catalog
+    try {
       await ensureAdminCatalogSeededFromExisting();
       final localAdmin = await getAllAdminProducts();
       if (localAdmin.isNotEmpty) return localAdmin;
+    } catch (_) {
+      // Continue to REST API / fallback
     }
 
-    // 3. Fetch from Master Firebase Project (`selectaapp`) via Firestore REST API
-    // First try `admin_selecta_products`, then fallback to `selecta_products` on the master project.
+    // 2. Fetch from Master Firebase Project (`selectaapp`) via Firestore REST API (cross-DB)
     for (final collectionName in [
       ADMIN_SELECTA_PRODUCTS_COLLECTION_REF,
       SELECTA_PRODUCTS_COLLECTION_REF,
@@ -411,9 +413,30 @@ class SelectaProductService {
       }
     }
 
-    // 4. Final fallback: read from current Firestore instance
-    await ensureAdminCatalogSeededFromExisting();
-    return getAllAdminProducts();
+    // 3. Fallback: Custom GitHub / JSON API URL (only if Firestore is unavailable or empty)
+    final customUrl = await getCustomCatalogApiUrl();
+    if (customUrl != null && customUrl.isNotEmpty) {
+      try {
+        final response = await _dio.get<String>(
+          customUrl,
+          options: Options(responseType: ResponseType.plain),
+        );
+        if (response.data != null && response.data!.isNotEmpty) {
+          final parsed = parseAdminProductsFromData(response.data!);
+          if (parsed.isNotEmpty) return parsed;
+        }
+      } catch (_) {
+        // Fallback exhausted
+      }
+    }
+
+    // 4. Final safety fallback: ensure seeded and read local collection
+    try {
+      await ensureAdminCatalogSeededFromExisting();
+      return await getAllAdminProducts();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<AdminSelectaProduct>> _fetchFromFirestoreRestApi({
@@ -579,6 +602,7 @@ class SelectaProductService {
     int sellingPriceCol = -1;
     int priceCol = -1;
     int categoryCol = -1;
+    int tagCol = -1;
     int imageCol = -1;
     int idCol = -1;
 
@@ -615,6 +639,10 @@ class SelectaProductService {
           header == 'type' ||
           header.contains('classification')) {
         categoryCol = i;
+      } else if (header.contains('tag') ||
+          header == 'label' ||
+          header == 'badge') {
+        tagCol = i;
       } else if (header.contains('image') ||
           header.contains('photo') ||
           header.contains('picture') ||
@@ -677,6 +705,7 @@ class SelectaProductService {
       final category = isCase ? 'By Case' : 'By Piece';
 
       final imageUrl = imageCol >= 0 ? getCol(imageCol) : '';
+      final tag = tagCol >= 0 ? getCol(tagCol) : '';
       final id = idCol >= 0 ? getCol(idCol) : '';
 
       products.add(
@@ -687,6 +716,7 @@ class SelectaProductService {
           buyingPrice: buyingPrice,
           sellingPrice: sellingPrice,
           category: category,
+          tag: tag,
         ),
       );
     }

@@ -13,12 +13,16 @@ void main() {
       expect(ProductTag.isBestSeller('Best Seller'), isTrue);
       expect(ProductTag.isBestSeller('best seller'), isTrue);
       expect(ProductTag.isBestSeller('  Best Seller  '), isTrue);
+      expect(ProductTag.isBestSeller('Best Sellers'), isTrue);
+      expect(ProductTag.isBestSeller('best sellers'), isTrue);
       expect(ProductTag.isBestSeller('New Product'), isFalse);
       expect(ProductTag.isBestSeller(null), isFalse);
       expect(ProductTag.isBestSeller(''), isFalse);
 
       expect(ProductTag.isNewProduct('New Product'), isTrue);
       expect(ProductTag.isNewProduct('new product'), isTrue);
+      expect(ProductTag.isNewProduct('New Products'), isTrue);
+      expect(ProductTag.isNewProduct('new products'), isTrue);
       expect(ProductTag.isNewProduct('Best Seller'), isFalse);
       expect(ProductTag.isNewProduct(null), isFalse);
     });

@@ -11,6 +11,10 @@ class SnackBarWidget {
     _show(context, message: message, icon: Icons.error_outline_rounded, backgroundColor: const Color(0xFFD32F2F));
   }
 
+  static void warning(BuildContext context, String message) {
+    _show(context, message: message, icon: Icons.warning_amber_rounded, backgroundColor: const Color(0xFFE65100));
+  }
+
   static void info(BuildContext context, String message) {
     _show(context, message: message, icon: Icons.info_outline_rounded, backgroundColor: Theme.of(context).colorScheme.primary);
   }

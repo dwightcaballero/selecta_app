@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/other_product_controller.dart';
+import 'package:flutter_app/data/helperfunctions.dart';
 import 'package:flutter_app/models/other_product.dart';
 import 'package:flutter_app/views/pages/sidebar/inventory_page.dart';
 import 'package:flutter_app/views/pages/sidebar/other_product_form_page.dart';
@@ -10,8 +11,16 @@ import 'package:flutter_app/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
 
 /// Other Products catalog page — list, search, add, edit, delete, toggle active.
+/// - **Dealer Mode**: Reads from `other_products` ([OtherProduct]).
+///   Dealers can toggle active/inactive status and view product details in read-only mode.
+/// - **Admin Mode**: Admins can Add, Edit, Delete, and toggle active status.
 class OtherProductsPage extends StatefulWidget {
-  const OtherProductsPage({super.key});
+  final String userRole;
+
+  const OtherProductsPage({
+    super.key,
+    this.userRole = 'Dealer',
+  });
 
   @override
   State<OtherProductsPage> createState() => _OtherProductsPageState();
@@ -24,6 +33,11 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
 
   String _searchQuery = '';
   String _filterStatus = 'All'; // 'All', 'Active', 'Inactive'
+
+  bool get _isAdmin {
+    final role = widget.userRole.trim().toLowerCase();
+    return role == 'admin' || role == 'super admin' || role == 'superadmin';
+  }
 
   @override
   void dispose() {
@@ -44,19 +58,37 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
   }
 
   List<QueryDocumentSnapshot<OtherProduct>> _applyFilters(List<QueryDocumentSnapshot<OtherProduct>> docs) {
-    return docs.where((doc) {
+    final filtered = docs.where((doc) {
       final p = doc.data();
       final matchesSearch = _searchQuery.isEmpty || p.productName.toLowerCase().contains(_searchQuery);
       final matchesStatus = _filterStatus == 'All' || (_filterStatus == 'Active' && p.isActive) || (_filterStatus == 'Inactive' && !p.isActive);
       return matchesSearch && matchesStatus;
     }).toList();
+
+    filtered.sort((a, b) {
+      final pA = a.data();
+      final pB = b.data();
+      return Helperfunctions.compareBySrpAndName(
+        nameA: pA.productName,
+        priceA: pA.sellingPrice,
+        nameB: pB.productName,
+        priceB: pB.sellingPrice,
+      );
+    });
+
+    return filtered;
   }
 
   Future<void> _navigateToForm({String? productId, OtherProduct? product}) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => OtherProductFormPage(productId: productId, existingProduct: product),
+        builder: (_) => OtherProductFormPage(
+          productId: productId,
+          existingProduct: product,
+          isReadOnly: !_isAdmin, // Dealers view details in read-only mode
+          userRole: widget.userRole,
+        ),
       ),
     );
   }
@@ -79,7 +111,7 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
     return Scaffold(
       appBar: CustomAppbar(
         title: 'Other Products',
-        subtitle: 'Dealer Other Products Catalog',
+        subtitle: _isAdmin ? 'Admin Other Products Catalog' : 'Dealer Other Products Catalog',
         actions: [
           IconButton(
             icon: const Icon(Icons.warehouse_outlined, color: Colors.white, size: 20),
@@ -101,9 +133,10 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
             child: TextField(
               controller: _searchController,
               onChanged: _onSearchChanged,
+              style: const TextStyle(fontSize: 14.5),
               decoration: InputDecoration(
                 hintText: 'Search other products...',
-                hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
                 prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -150,8 +183,8 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
                   label: Text(
                     status,
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      fontSize: 13,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                       color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
                     ),
                   ),
@@ -209,7 +242,7 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
                                 ? 'Showing ${filtered.length} of ${allDocs.length} products'
                                 : '${allDocs.length} product${allDocs.length == 1 ? '' : 's'} in catalog',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: colorScheme.onSurfaceVariant,
                             ),
@@ -223,12 +256,12 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.filter_alt_off_outlined, size: 14, color: colorScheme.primary),
+                                    Icon(Icons.filter_alt_off_outlined, size: 15, color: colorScheme.primary),
                                     const SizedBox(width: 4),
                                     Text(
                                       'Reset',
                                       style: TextStyle(
-                                        fontSize: 12,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.bold,
                                         color: colorScheme.primary,
                                       ),
@@ -248,14 +281,22 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
                               subtitle: 'Try adjusting your search or filter to find products.',
                               showResetButton: true,
                             )
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 6, 16, 88),
-                              itemCount: filtered.length,
-                              separatorBuilder: (_, _) => const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final doc = filtered[index];
-                                return _buildProductCard(doc);
-                              },
+                          : ListView(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
+                              children: [
+                                if (filtered.isNotEmpty) ...[
+                                  _buildGroupHeader(
+                                    title: 'Other Products',
+                                    icon: Icons.inventory_2_outlined,
+                                    color: colorScheme.onSurfaceVariant,
+                                    count: filtered.length,
+                                  ),
+                                  ...filtered.map((doc) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: _buildProductCard(doc),
+                                  )),
+                                ],
+                              ],
                             ),
                     ),
                   ],
@@ -265,12 +306,62 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _navigateToForm(),
-        backgroundColor: colorScheme.primary,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_rounded, size: 20),
-        label: const Text('Add Product', style: TextStyle(fontWeight: FontWeight.bold)),
+      floatingActionButton: _isAdmin
+          ? FloatingActionButton.extended(
+              onPressed: () => _navigateToForm(),
+              backgroundColor: colorScheme.primary,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text('Add Product', style: TextStyle(fontWeight: FontWeight.bold)),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildGroupHeader({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required int count,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '$count ${count == 1 ? "product" : "products"}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Divider(height: 1, thickness: 1),
+        ],
       ),
     );
   }
@@ -279,8 +370,6 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
     final product = doc.data();
     final colorScheme = Theme.of(context).colorScheme;
     final isActive = product.isActive;
-    final isPositiveMargin = product.margin >= 0;
-    final marginColor = isPositiveMargin ? const Color(0xFF15803D) : colorScheme.error;
 
     return Card(
       elevation: 0,
@@ -296,6 +385,7 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _buildProductImage(product.imageUrl, isActive),
               const SizedBox(width: 12),
@@ -303,69 +393,50 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            product.productName,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13.5,
-                              color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (isActive) ...[
-                          const SizedBox(width: 6),
-                          _buildStockBadge(product, colorScheme),
-                        ],
-                      ],
+                    Text(
+                      product.productName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15.5,
+                        height: 1.25,
+                        color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            currencyFormat.format(product.buyingPrice),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        Text(
+                          'Buy: ',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
                         ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            currencyFormat.format(product.sellingPrice),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        Text(
+                          currencyFormat.format(product.buyingPrice),
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                           ),
                         ),
-                        Expanded(
-                          flex: 4,
-                          child: product.sellingPrice > 0 && product.buyingPrice > 0
-                              ? Text(
-                                  '${currencyFormat.format(product.margin)} (${isPositiveMargin ? '+' : ''}${product.marginPercent.round()}%)',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: isActive ? marginColor : colorScheme.onSurfaceVariant,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                )
-                              : const SizedBox.shrink(),
+                        const SizedBox(width: 16),
+                        Text(
+                          'Sell: ',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        Text(
+                          currencyFormat.format(product.sellingPrice),
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w700,
+                            color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -374,28 +445,31 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
               ),
               const SizedBox(width: 8),
               GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => _toggleActive(doc.id, product.productName, product.isActive),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  width: 38,
-                  height: 22,
+                  width: 40,
+                  height: 24,
                   decoration: BoxDecoration(
                     color: isActive ? colorScheme.primary : colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(11),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Align(
                     alignment: isActive ? Alignment.centerRight : Alignment.centerLeft,
                     child: Padding(
                       padding: const EdgeInsets.all(2.5),
                       child: Container(
-                        width: 17,
-                        height: 17,
+                        width: 19,
+                        height: 19,
                         decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                       ),
                     ),
                   ),
                 ),
               ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, size: 22, color: colorScheme.onSurfaceVariant),
             ],
           ),
         ),
@@ -403,35 +477,13 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
     );
   }
 
-  Widget _buildStockBadge(OtherProduct product, ColorScheme colorScheme) {
-    final Color badgeColor = product.isOutOfStock
-        ? colorScheme.error
-        : product.isLowStock
-            ? const Color(0xFFD97706)
-            : const Color(0xFF15803D);
-    final String label = product.isOutOfStock
-        ? 'Out: 0'
-        : 'Stock: ${product.stockQuantity}';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: badgeColor.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.bold,
-          color: badgeColor,
-        ),
-      ),
-    );
-  }
-
   Widget _buildProductImage(String imageUrl, bool isActive) {
-    return CachedProductImage(imageUrl: imageUrl, isActive: isActive);
+    return CachedProductImage(
+      imageUrl: imageUrl,
+      isActive: isActive,
+      size: 48,
+      borderRadius: 8,
+    );
   }
 
   Widget _buildEmptyState({required IconData icon, required String title, required String subtitle, bool showResetButton = false}) {

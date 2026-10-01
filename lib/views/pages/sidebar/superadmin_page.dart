@@ -8,6 +8,7 @@ import 'package:flutter_app/services/gemini_ai_service.dart';
 import 'package:flutter_app/views/dashboard_page.dart';
 import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:flutter_app/views/pages/sidebar/error_logs_page.dart';
+import 'package:flutter_app/views/pages/sidebar/other_products_page.dart';
 import 'package:flutter_app/views/pages/sidebar/selecta_products_page.dart';
 import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
@@ -311,6 +312,25 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             icon: const Icon(Icons.admin_panel_settings_outlined, size: 20),
                             label: const Text(
                               'Manage Selecta Products (Admin)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const OtherProductsPage(userRole: 'Admin'),
+                                ),
+                              );
+                            },
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 48),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.inventory_2_outlined, size: 20),
+                            label: const Text(
+                              'Manage Other Products (Admin)',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                             ),
                           ),
