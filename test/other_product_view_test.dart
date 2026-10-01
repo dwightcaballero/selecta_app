@@ -49,8 +49,8 @@ void main() {
     });
   });
 
-  group('OtherProductFormPage Read-Only Tests', () {
-    testWidgets('Dealer mode isReadOnly renders Product Details without Save or Delete buttons', (tester) async {
+  group('OtherProductFormPage Editable Form Tests', () {
+    testWidgets('Dealer can edit existing product with Save Changes and Delete buttons', (tester) async {
       final product = OtherProduct(
         productName: 'P20 CORNETTO DISK CHOCO',
         imageUrl: '',
@@ -66,38 +66,44 @@ void main() {
           home: OtherProductFormPage(
             productId: 'test_product_1',
             existingProduct: product,
-            isReadOnly: true,
             userRole: 'Dealer',
           ),
         ),
       );
       await tester.pump();
 
-      // Appbar should indicate details
-      expect(find.text('Product Details'), findsOneWidget);
-      expect(find.text('Other product details'), findsOneWidget);
+      // Appbar should indicate Edit Product
+      expect(find.text('Edit Product'), findsOneWidget);
+      expect(find.text('Update product details'), findsOneWidget);
 
-      // Product information displayed
+      // Form fields populated
       expect(find.text('P20 CORNETTO DISK CHOCO'), findsOneWidget);
-      expect(find.text('₱16.50'), findsOneWidget);
-      expect(find.text('₱20.00'), findsOneWidget);
+      expect(find.text('16.50'), findsOneWidget);
+      expect(find.text('20.00'), findsOneWidget);
 
-      // Stock information displayed
-      expect(find.text('24'), findsOneWidget);
-      expect(find.text('In Stock'), findsOneWidget);
+      // Save Changes button exists
+      expect(find.text('Save Changes'), findsOneWidget);
 
-      // Status displayed
-      expect(find.text('Active in Catalog'), findsOneWidget);
+      // Delete button exists in app bar for editing
+      expect(find.byIcon(Icons.delete_outline_rounded), findsOneWidget);
+    });
 
-      // No Save Changes button
-      expect(find.text('Save Changes'), findsNothing);
-      expect(find.text('Add Product'), findsNothing);
+    testWidgets('Dealer can add new product with Add Product button and no delete button', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: OtherProductFormPage(
+            userRole: 'Dealer',
+          ),
+        ),
+      );
+      await tester.pump();
 
-      // No Delete button
+      // Appbar should indicate Add Product
+      expect(find.text('Add Product'), findsNWidgets(2)); // in appbar and in button
+      expect(find.text('New catalog entry'), findsOneWidget);
+
+      // No delete button when creating new
       expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
-
-      // Back to catalog button exists
-      expect(find.text('Back to Catalog'), findsOneWidget);
     });
 
     testWidgets('Admin edit mode renders Save Changes and Delete buttons', (tester) async {
@@ -114,7 +120,6 @@ void main() {
           home: OtherProductFormPage(
             productId: 'test_product_1',
             existingProduct: product,
-            isReadOnly: false,
             userRole: 'Admin',
           ),
         ),

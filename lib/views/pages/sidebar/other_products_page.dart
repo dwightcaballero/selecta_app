@@ -86,7 +86,6 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
         builder: (_) => OtherProductFormPage(
           productId: productId,
           existingProduct: product,
-          isReadOnly: !_isAdmin, // Dealers view details in read-only mode
           userRole: widget.userRole,
         ),
       ),
@@ -306,15 +305,13 @@ class _OtherProductsPageState extends State<OtherProductsPage> {
           ),
         ],
       ),
-      floatingActionButton: _isAdmin
-          ? FloatingActionButton.extended(
-              onPressed: () => _navigateToForm(),
-              backgroundColor: colorScheme.primary,
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text('Add Product', style: TextStyle(fontWeight: FontWeight.bold)),
-            )
-          : null,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _navigateToForm(),
+        backgroundColor: colorScheme.primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded, size: 20),
+        label: const Text('Add Product', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
     );
   }
 
