@@ -171,10 +171,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
     final clamped = newQty.clamp(0, maxAllowed);
 
     if (newQty > maxAllowed && maxAllowed >= 0) {
+      final incomingInfo = item.incomingQuantity > 0 ? ' (including ${item.incomingQuantity} incoming via PO)' : '';
+      final reservedInfo = item.reservedQuantity > 0 ? ' (${item.reservedQuantity} reserved in pending picklists)' : '';
       ShowMessage.error(
         context,
-        'Only $maxAllowed available in stock for "${item.productName}"'
-        '${item.reservedQuantity > 0 ? ' (${item.reservedQuantity} reserved in pending picklists)' : ''}.',
+        'Only $maxAllowed available for "${item.productName}"$incomingInfo$reservedInfo.',
       );
     }
 
@@ -300,15 +301,18 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                   style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.2),
                                 ),
                                 const SizedBox(height: 3),
-                                Row(
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 6,
+                                  runSpacing: 2,
                                   children: [
                                     Text(
                                       _currencyFormat.format(item.sellingPrice),
                                       style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: colorScheme.primary),
                                     ),
-                                    Text(' • ', style: TextStyle(color: colorScheme.outline)),
+                                    Text('•', style: TextStyle(color: colorScheme.outline)),
                                     Text(
-                                      '$maxAllowed in stock',
+                                      '$maxAllowed available',
                                       style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                                     ),
                                   ],
@@ -323,6 +327,29 @@ class _BookOrderPageState extends State<BookOrderPage> {
                           ),
                         ],
                       ),
+
+                      if (item.incomingQuantity > 0) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.local_shipping_outlined, size: 14, color: Color(0xFF0284C7)),
+                              const SizedBox(width: 5),
+                              Expanded(
+                                child: Text(
+                                  '${item.incomingQuantity} incoming via Purchase Order (${item.stockQuantity} physical on hand)',
+                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
 
                       if (item.reservedQuantity > 0) ...[
                         const SizedBox(height: 8),
@@ -1425,10 +1452,35 @@ class _BookOrderPageState extends State<BookOrderPage> {
                           _currencyFormat.format(item.sellingPrice),
                           style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: colorScheme.primary),
                         ),
-                        Text(
-                          isOutOfStock ? 'Out of stock' : '',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: stockColor),
-                        ),
+                        if (isOutOfStock)
+                          Text(
+                            'Out of stock',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: stockColor),
+                          )
+                        else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.local_shipping_outlined, size: 12, color: Color(0xFF0284C7)),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '${item.incomingQuantity} incoming PO',
+                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (item.incomingQuantity > 0)
+                          Text(
+                            '+${item.incomingQuantity} incoming',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)),
+                          ),
                       ],
                     ),
                   ],

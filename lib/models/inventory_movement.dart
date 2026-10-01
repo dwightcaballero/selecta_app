@@ -27,6 +27,7 @@ class InventoryItem {
   final double sellingPrice;
   final bool isActive;
   final int stockQuantity;
+  final int incomingQuantity;
   final int reservedQuantity;
   final int lowStockThreshold;
   final InventoryProductSource source;
@@ -43,6 +44,7 @@ class InventoryItem {
     required this.sellingPrice,
     required this.isActive,
     required this.stockQuantity,
+    this.incomingQuantity = 0,
     this.reservedQuantity = 0,
     required this.lowStockThreshold,
     required this.source,
@@ -60,6 +62,7 @@ class InventoryItem {
     double? sellingPrice,
     bool? isActive,
     int? stockQuantity,
+    int? incomingQuantity,
     int? reservedQuantity,
     int? lowStockThreshold,
     InventoryProductSource? source,
@@ -76,6 +79,7 @@ class InventoryItem {
       sellingPrice: sellingPrice ?? this.sellingPrice,
       isActive: isActive ?? this.isActive,
       stockQuantity: stockQuantity ?? this.stockQuantity,
+      incomingQuantity: incomingQuantity ?? this.incomingQuantity,
       reservedQuantity: reservedQuantity ?? this.reservedQuantity,
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       source: source ?? this.source,
@@ -95,6 +99,7 @@ class InventoryItem {
       sellingPrice: product.sellingPrice,
       isActive: product.isActive,
       stockQuantity: product.stockQuantity,
+      incomingQuantity: product.incomingQuantity,
       reservedQuantity: product.reservedQuantity,
       lowStockThreshold: product.lowStockThreshold,
       source: InventoryProductSource.selecta,
@@ -113,6 +118,7 @@ class InventoryItem {
       sellingPrice: product.sellingPrice,
       isActive: product.isActive,
       stockQuantity: product.stockQuantity,
+      incomingQuantity: 0,
       reservedQuantity: product.reservedQuantity,
       lowStockThreshold: product.lowStockThreshold,
       source: InventoryProductSource.other,
@@ -127,8 +133,11 @@ class InventoryItem {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
+  /// Available stock after subtracting floating/reserved orders and including incoming PO stock.
   int get availableQuantity =>
-      (stockQuantity - reservedQuantity) < 0 ? 0 : (stockQuantity - reservedQuantity);
+      ((stockQuantity + incomingQuantity) - reservedQuantity) < 0
+          ? 0
+          : ((stockQuantity + incomingQuantity) - reservedQuantity);
 
   bool get isOutOfStock => stockQuantity <= 0;
 

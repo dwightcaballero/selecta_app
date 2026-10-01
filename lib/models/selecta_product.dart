@@ -12,6 +12,7 @@ class SelectaProduct {
   final String tag;
   final bool isActive;
   final int stockQuantity;
+  final int incomingQuantity;
   final int reservedQuantity;
   final int lowStockThreshold;
   final Timestamp? importedAt;
@@ -28,6 +29,7 @@ class SelectaProduct {
     this.tag = '',
     this.isActive = true,
     this.stockQuantity = 0,
+    this.incomingQuantity = 0,
     this.reservedQuantity = 0,
     this.lowStockThreshold = 10,
     this.importedAt,
@@ -44,14 +46,16 @@ class SelectaProduct {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
-  /// Available stock after subtracting floating/reserved orders.
+  /// Available stock after subtracting floating/reserved orders and adding incoming PO stock.
   int get availableQuantity =>
-      (stockQuantity - reservedQuantity) < 0 ? 0 : (stockQuantity - reservedQuantity);
+      ((stockQuantity + incomingQuantity) - reservedQuantity) < 0
+          ? 0
+          : ((stockQuantity + incomingQuantity) - reservedQuantity);
 
   /// True when physical stock is 0 or less.
   bool get isOutOfStock => stockQuantity <= 0;
 
-  /// True when available (unreserved) stock is 0 or less.
+  /// True when both physical stock and incoming stock are exhausted or committed.
   bool get isAvailableOutOfStock => availableQuantity <= 0;
 
   /// True when stock is positive but at or below [lowStockThreshold].
@@ -74,6 +78,7 @@ class SelectaProduct {
         tag: '',
         isActive: true,
         stockQuantity: 0,
+        incomingQuantity: 0,
         reservedQuantity: 0,
         lowStockThreshold: 10,
       );
@@ -98,6 +103,7 @@ class SelectaProduct {
       tag: (json['tag'] as String? ?? '').trim(),
       isActive: json['isActive'] as bool? ?? true,
       stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? 0,
+      incomingQuantity: (json['incomingQuantity'] as num?)?.toInt() ?? 0,
       reservedQuantity: (json['reservedQuantity'] as num?)?.toInt() ?? 0,
       lowStockThreshold: (json['lowStockThreshold'] as num?)?.toInt() ?? 10,
       importedAt: json['importedAt'] as Timestamp?,
@@ -123,6 +129,7 @@ class SelectaProduct {
     String? tag,
     bool? isActive,
     int? stockQuantity,
+    int? incomingQuantity,
     int? reservedQuantity,
     int? lowStockThreshold,
     Timestamp? importedAt,
@@ -139,6 +146,7 @@ class SelectaProduct {
       tag: tag ?? this.tag,
       isActive: isActive ?? this.isActive,
       stockQuantity: stockQuantity ?? this.stockQuantity,
+      incomingQuantity: incomingQuantity ?? this.incomingQuantity,
       reservedQuantity: reservedQuantity ?? this.reservedQuantity,
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       importedAt: importedAt ?? this.importedAt,
@@ -156,6 +164,7 @@ class SelectaProduct {
     required double sellingPrice,
     bool isActive = true,
     int stockQuantity = 0,
+    int incomingQuantity = 0,
     int reservedQuantity = 0,
     int lowStockThreshold = 10,
     String itemCode = '',
@@ -175,6 +184,7 @@ class SelectaProduct {
       tag: tag,
       isActive: isActive,
       stockQuantity: stockQuantity,
+      incomingQuantity: incomingQuantity,
       reservedQuantity: reservedQuantity,
       lowStockThreshold: lowStockThreshold,
       importedAt: importedAt,
@@ -194,6 +204,7 @@ class SelectaProduct {
       'tag': tag,
       'isActive': isActive,
       'stockQuantity': stockQuantity,
+      'incomingQuantity': incomingQuantity,
       'reservedQuantity': reservedQuantity,
       'lowStockThreshold': lowStockThreshold,
       'importedAt': importedAt,

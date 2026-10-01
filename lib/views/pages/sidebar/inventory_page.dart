@@ -936,9 +936,11 @@ class _InventoryPageState extends State<InventoryPage> {
                     child: _buildMetricTile(
                       label: 'Total Units',
                       value: '${summary.totalUnits}',
-                      sublabel: summary.totalReservedUnits > 0
-                          ? '${summary.totalAvailableUnits} avail • ${summary.totalReservedUnits} reserved'
-                          : '${summary.totalProducts} active items',
+                      sublabel: summary.totalIncomingUnits > 0
+                          ? '${summary.totalUnits} on hand • ${summary.totalIncomingUnits} incoming'
+                          : (summary.totalReservedUnits > 0
+                              ? '${summary.totalAvailableUnits} avail • ${summary.totalReservedUnits} reserved'
+                              : '${summary.totalProducts} active items'),
                       icon: Icons.inventory_2_outlined,
                       accent: colorScheme.primary,
                     ),
@@ -1276,15 +1278,31 @@ class _InventoryPageState extends State<InventoryPage> {
                         ],
                       ],
                     ),
-                    if (item.reservedQuantity > 0) ...[
+                    if (item.incomingQuantity > 0 || item.reservedQuantity > 0) ...[
                       const SizedBox(height: 4),
-                      Text(
-                        '${item.availableQuantity} available • ${item.reservedQuantity} in pending picklist',
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF7C3AED),
-                        ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 2,
+                        children: [
+                          if (item.incomingQuantity > 0)
+                            Text(
+                              '${item.incomingQuantity} incoming PO',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF0284C7),
+                              ),
+                            ),
+                          if (item.reservedQuantity > 0)
+                            Text(
+                              '${item.availableQuantity} available • ${item.reservedQuantity} in picklist',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF7C3AED),
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ],

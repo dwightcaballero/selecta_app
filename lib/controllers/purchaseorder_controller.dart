@@ -222,8 +222,14 @@ class PurchaseOrderController {
       status: 'pending',
     );
 
-    // Persist purchase order record (no inventory changes in Phase 1)
+    // Persist purchase order record
     _service.addPurchaseorder(newPurchaseorder);
+
+    // Create floating incoming inventory for products in the purchase order
+    if (cleanItems.isNotEmpty) {
+      await _inventoryService.addIncomingStockForPurchaseOrder(items: cleanItems);
+    }
+
     await Helperfunctions.logCreate(
       newPurchaseorder.poNumber.isNotEmpty
           ? newPurchaseorder.poNumber
@@ -317,13 +323,14 @@ class PurchaseOrderController {
         ? double.parse(rawOverpayment.toStringAsFixed(2))
         : 0.0;
 
-    // Replenish inventory permanently for confirmed items only
-    await _inventoryService.replenishStockForPurchaseOrder(
+    // Replenish inventory permanently for confirmed items and clear floating incoming stock from original PO
+    await _inventoryService.replenishAndClearIncomingStockForPurchaseOrder(
       invoiceNumber: officialInvoiceNumber.isNotEmpty
           ? officialInvoiceNumber
           : currentOrder.invoiceNumber,
       orderDate: officialInvoiceDate,
-      items: confirmedOrderItems,
+      originalPoItems: currentOrder.items,
+      confirmedItems: confirmedOrderItems,
     );
 
     // Update PO to invoiced state
@@ -369,7 +376,7 @@ class PurchaseOrderController {
   // ============================================================
 
   /// Updates an existing **pending** purchase order (before official invoice confirmation).
-  /// Inventory is still NOT touched — items remain floating.
+  /// Synchronizes floating incoming stock to reflect new item quantities.
   Future<void> updatePendingPurchaseOrder({
     required BuildContext context,
     required String purchaseOrderId,
@@ -414,6 +421,14 @@ class PurchaseOrderController {
       status: 'pending',
     );
 
+    // Adjust incoming stock if items/quantities were edited in pending status
+    if (currentOrder.status == 'pending') {
+      await _inventoryService.adjustIncomingStockForPurchaseOrder(
+        oldItems: currentOrder.items,
+        newItems: cleanItems.isNotEmpty ? cleanItems : currentOrder.items,
+      );
+    }
+
     _service.updatePurchaseorder(purchaseOrderId, updatedPurchaseorder);
     await Helperfunctions.logUpdate(
       updatedPurchaseorder.poNumber.isNotEmpty
@@ -431,7 +446,7 @@ class PurchaseOrderController {
   // DELETE
   // ============================================================
 
-  /// Deletes a purchase order, reverts replenished stock if confirmed, removes image, and logs deletion.
+  /// Deletes a purchase order, reverts replenished stock if confirmed, removes incoming stock if pending, removes image, and logs deletion.
   Future<void> deletePurchaseOrder({
     required BuildContext context,
     required String purchaseOrderId,
@@ -441,6 +456,11 @@ class PurchaseOrderController {
     if (order.isInventoryReplenished && order.items.isNotEmpty) {
       await _inventoryService.revertReplenishedStockForPurchaseOrder(
         invoiceNumber: order.invoiceNumber,
+        items: order.items,
+      );
+    } else if (order.status == 'pending' && order.items.isNotEmpty) {
+      // Release floating incoming stock
+      await _inventoryService.removeIncomingStockForPurchaseOrder(
         items: order.items,
       );
     }
