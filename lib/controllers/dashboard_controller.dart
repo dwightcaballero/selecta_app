@@ -37,9 +37,9 @@ class DashboardController {
   Stream<int> getPurchaseOrdersAwaitingCountStream() =>
       _purchaseOrderService.getAwaitingInvoiceCountStream();
 
-  /// Live count stream for orders currently awaiting picklist completion.
-  Stream<int> getPendingPicklistsCountStream() =>
-      _deliveryService.getPendingPicklistCountStream();
+  /// Live count stream for orders currently awaiting picklist completion for [date] (defaults to current day).
+  Stream<int> getPendingPicklistsCountStream({DateTime? date}) =>
+      _deliveryService.getPendingPicklistCountStream(date: date);
 
   /// Fetches the currently logged in user profile from storage.
   Future<Users?> getCurrentUser() => KVariables.getUser();
@@ -114,7 +114,7 @@ class DashboardController {
 
     // DASHBOARD: notifications
     dashboardDTO.unpaidCreditCount = await DeliveryService.getCountDeliveryWithCreditNotYetPaid() ?? 0;
-    dashboardDTO.pendingPicklistCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pendingPicklist) ?? 0;
+    dashboardDTO.pendingPicklistCount = await DeliveryService.getCountPendingPicklistsForDate(DateTime.now());
     dashboardDTO.pendingDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending) ?? 0;
     dashboardDTO.returnedDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.returned) ?? 0;
     dashboardDTO.overpaymentCount = await PurchaseOrderService.getCountDeliveriesNotYetSettled() ?? 0;

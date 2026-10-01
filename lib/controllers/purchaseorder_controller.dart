@@ -3,8 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/data/constants.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
+import 'package:flutter_app/models/delivery.dart';
 import 'package:flutter_app/models/purchaseorder.dart';
 import 'package:flutter_app/services/auth_service.dart';
+import 'package:flutter_app/services/gemini_ai_service.dart';
+import 'package:flutter_app/services/inventory_service.dart';
 import 'package:flutter_app/services/purchaseorder_service.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 
@@ -25,8 +28,20 @@ class PurchaseOrderCounts {
 
 /// Controller managing business logic, filtering, calculation,
 /// scanner, and data operations for Purchase Orders.
+///
+/// ## Workflow (3 Phases):
+/// - **Phase 1 — Create PO (Floating):** Scan digital invoice → AI extracts items →
+///   Save PO with `status='pending'`, quantities are floating, NO inventory replenishment.
+///   Stocks haven't arrived yet.
+/// - **Phase 2 — Confirm Official Invoice:** Stocks arrive with paper invoice →
+///   AI compares official invoice vs original PO → shows confirmed/missing items →
+///   User confirms → inventory permanently replenished for confirmed items,
+///   missing items deleted, overpayment computed → `status='confirmed'`.
+/// - **Phase 3 — Settled:** If any overpayment remains, it can be applied to the
+///   next PO. Once settled, `isSettled = true`.
 class PurchaseOrderController {
   final PurchaseOrderService _service = PurchaseOrderService();
+  final InventoryService _inventoryService = InventoryService();
 
   /// Real-time stream of purchase orders from Firestore
   Stream<QuerySnapshot> getPurchaseOrdersStream() {
@@ -60,8 +75,8 @@ class PurchaseOrderController {
 
     for (final doc in monthDocs) {
       final order = doc.data() as Purchaseorder;
-      final hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
-      if (!hasInvoice) {
+      // "Pending" = PO created but not yet confirmed with official invoice
+      if (order.status == 'pending') {
         pendingCount++;
       } else if (order.isSettled == true) {
         settledCount++;
@@ -87,11 +102,11 @@ class PurchaseOrderController {
   }) {
     final filtered = docs.where((doc) {
       final order = doc.data() as Purchaseorder;
-      final hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
+      final isPending = order.status == 'pending';
 
       bool matchesFilter = true;
       if (selectedFilter == 'Pending') {
-        matchesFilter = !hasInvoice;
+        matchesFilter = isPending;
       } else if (selectedFilter == 'Overpayment') {
         matchesFilter = order.overpayment > 0 && order.isSettled != true;
       } else if (selectedFilter == 'Settled') {
@@ -100,6 +115,7 @@ class PurchaseOrderController {
 
       final dateStr = Helperfunctions.formatTimestampForDisplay(order.orderDate).toLowerCase();
       final matchesSearch = searchQuery.isEmpty ||
+          order.poNumber.toLowerCase().contains(searchQuery) ||
           order.invoiceNumber.toLowerCase().contains(searchQuery) ||
           dateStr.contains(searchQuery);
 
@@ -149,15 +165,22 @@ class PurchaseOrderController {
     return null;
   }
 
-  /// Saves a new purchase order, settles selected overpayments, and logs audit entries
+  // ============================================================
+  // PHASE 1: Create PO (floating quantities, NO inventory replenishment)
+  // ============================================================
+
+  /// Saves a new purchase order as **PENDING** (floating quantities).
+  /// Inventory is NOT replenished yet — stocks have not arrived.
+  /// At creation time, the official invoice has not arrived yet.
   Future<void> savePurchaseOrder({
     required BuildContext context,
     required double orderAmount,
     required DateTime selectedOrderDate,
-    required DateTime selectedInvoiceDate,
     required File? pickedImage,
     required Set<String> selectedOverpaymentIds,
     required List<QueryDocumentSnapshot<Purchaseorder>> unsettledOverpayments,
+    List<OrderItem> items = const [],
+    String poNumber = '',
   }) async {
     String imageFilePath = '';
     if (pickedImage != null) {
@@ -165,10 +188,23 @@ class PurchaseOrderController {
     }
 
     final currentUserDisplayName = authService.value.currentUser?.displayName ?? 'User';
+    final cleanItems = items.where((i) => i.effectiveQuantity > 0).toList();
 
+    // Compute effective orderAmount from items cost if not provided
+    double effectiveOrderAmount = orderAmount;
+    if (cleanItems.isNotEmpty && effectiveOrderAmount <= 0) {
+      effectiveOrderAmount = cleanItems.fold(0.0, (acc, item) => acc + (item.effectiveQuantity * item.buyingPrice));
+    }
+
+    final cleanPoNumber = poNumber.trim().toUpperCase();
+
+    // Phase 1: Create PO with status='pending', isInventoryReplenished=false
+    // Inventory is NOT touched yet — stocks haven't arrived.
+    // Invoice number and amount remain empty/0 until invoice is attached.
     final newPurchaseorder = Purchaseorder(
+      poNumber: cleanPoNumber,
       invoiceNumber: '',
-      orderAmount: orderAmount,
+      orderAmount: effectiveOrderAmount,
       orderDate: Timestamp.fromDate(selectedOrderDate),
       overpayment: 0,
       isSettled: null,
@@ -176,21 +212,27 @@ class PurchaseOrderController {
       lastUpdatedBy: currentUserDisplayName,
       createdDate: Timestamp.now(),
       lastupdatedDate: Timestamp.now(),
-      invoiceAmount: 0,
+      invoiceAmount: 0.0,
       imagePath: imageFilePath,
-      invoiceDate: Timestamp.fromDate(selectedInvoiceDate),
+      invoiceDate: Timestamp.fromDate(selectedOrderDate),
       createdPage: AppPages.purchaseOrder,
       lastUpdatedPage: AppPages.purchaseOrder,
+      items: cleanItems,
+      isInventoryReplenished: false,
+      status: 'pending',
     );
 
+    // Persist purchase order record (no inventory changes in Phase 1)
     _service.addPurchaseorder(newPurchaseorder);
     await Helperfunctions.logCreate(
-      Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate),
+      newPurchaseorder.poNumber.isNotEmpty
+          ? newPurchaseorder.poNumber
+          : Helperfunctions.formatTimestampForDisplay(newPurchaseorder.orderDate),
       newPurchaseorder.toJson(),
       page: AppPages.purchaseOrder,
     );
 
-    // Settle selected overpayments
+    // Settle selected overpayments if any were selected as deductions
     if (selectedOverpaymentIds.isNotEmpty) {
       for (final doc in unsettledOverpayments) {
         if (selectedOverpaymentIds.contains(doc.id)) {
@@ -212,23 +254,136 @@ class PurchaseOrderController {
     }
   }
 
-  /// Updates existing purchase order with invoice information and audit logging
-  Future<void> updatePurchaseOrder({
+  // ============================================================
+  // PHASE 2: Attach Official Invoice (permanent inventory replenishment)
+  // ============================================================
+
+  /// Attaches and confirms the official paper invoice for an existing pending PO.
+  ///
+  /// - Replenishes inventory **only** for confirmed items (items that arrived).
+  /// - Missing items (out of stock from supplier) are removed from the PO.
+  /// - Overpayment = original order amount − confirmed invoice total.
+  /// - Updates PO status to `'invoiced'`, sets `isInventoryReplenished = true`.
+  Future<void> confirmOfficialInvoice({
     required BuildContext context,
     required String purchaseOrderId,
     required Purchaseorder currentOrder,
-    required String invoiceNumber,
-    required double invoiceAmount,
-    required DateTime selectedOrderDate,
-    required DateTime selectedInvoiceDate,
+    required List<ConfirmedInvoiceItem> confirmedItems,
+    required List<OrderItem> missingItems,
+    required String officialInvoiceNumber,
+    required double officialInvoiceAmount,
+    required DateTime officialInvoiceDate,
     required File? pickedImage,
-    required String networkImagePath,
   }) async {
-    if (invoiceAmount > currentOrder.orderAmount) {
-      throw Exception('Invoice amount cannot exceed the order amount.');
+    if (confirmedItems.isEmpty) {
+      throw Exception('No confirmed items. Please scan the official invoice and verify at least one delivered product.');
     }
 
-    final double overpayment = currentOrder.orderAmount - invoiceAmount;
+    final currentUserDisplayName = authService.value.currentUser?.displayName ?? 'User';
+
+    // Save official invoice image (overwrites digital invoice image)
+    final String imageFilePath = await Helperfunctions.updateImage(
+      context,
+      pickedImage,
+      '', // no existing network path for replacement
+      currentOrder.imagePath,
+    );
+
+    // Build OrderItems from confirmed items (isPicked = true, permanent)
+    final List<OrderItem> confirmedOrderItems = confirmedItems.map((ci) {
+      return OrderItem(
+        productId: ci.productId,
+        productName: ci.productName,
+        imageUrl: ci.imageUrl,
+        productSource: ci.productSource,
+        category: ci.category,
+        tag: ci.tag,
+        buyingPrice: ci.unitCost,
+        sellingPrice: ci.sellingPrice,
+        orderedQuantity: ci.orderedQuantity,
+        pickedQuantity: ci.deliveredQuantity,
+        isPicked: true,
+      );
+    }).toList();
+
+    // Compute final invoice amount
+    final double finalInvoiceAmount = officialInvoiceAmount > 0
+        ? officialInvoiceAmount
+        : confirmedItems.fold(0.0, (acc, i) => acc + i.lineTotal);
+
+    // Overpayment = original order amount − actual invoice amount (if positive)
+    final double rawOverpayment = currentOrder.orderAmount - finalInvoiceAmount;
+    final double overpayment = rawOverpayment > 0.009
+        ? double.parse(rawOverpayment.toStringAsFixed(2))
+        : 0.0;
+
+    // Replenish inventory permanently for confirmed items only
+    await _inventoryService.replenishStockForPurchaseOrder(
+      invoiceNumber: officialInvoiceNumber.isNotEmpty
+          ? officialInvoiceNumber
+          : currentOrder.invoiceNumber,
+      orderDate: officialInvoiceDate,
+      items: confirmedOrderItems,
+    );
+
+    // Update PO to invoiced state
+    final resolvedInvoiceNumber = officialInvoiceNumber.trim().isNotEmpty
+        ? officialInvoiceNumber.trim().toUpperCase()
+        : currentOrder.invoiceNumber;
+
+    final updatedPurchaseorder = Purchaseorder(
+      poNumber: currentOrder.poNumber.isNotEmpty ? currentOrder.poNumber : currentOrder.invoiceNumber,
+      invoiceNumber: resolvedInvoiceNumber,
+      orderAmount: currentOrder.orderAmount,
+      orderDate: currentOrder.orderDate,
+      overpayment: overpayment,
+      isSettled: overpayment > 0 ? false : null,
+      createdBy: currentOrder.createdBy,
+      lastUpdatedBy: currentUserDisplayName,
+      createdDate: currentOrder.createdDate,
+      lastupdatedDate: Timestamp.now(),
+      invoiceAmount: finalInvoiceAmount,
+      imagePath: imageFilePath.isNotEmpty ? imageFilePath : currentOrder.imagePath,
+      invoiceDate: Timestamp.fromDate(officialInvoiceDate),
+      createdPage: currentOrder.createdPage,
+      lastUpdatedPage: AppPages.purchaseOrder,
+      items: confirmedOrderItems,
+      isInventoryReplenished: true,
+      status: 'invoiced',
+    );
+
+    final prevJson = currentOrder.toJson();
+    _service.updatePurchaseorder(purchaseOrderId, updatedPurchaseorder);
+    await Helperfunctions.logUpdate(
+      resolvedInvoiceNumber.isNotEmpty
+          ? resolvedInvoiceNumber
+          : Helperfunctions.formatTimestampForDisplay(updatedPurchaseorder.orderDate),
+      prevJson,
+      updatedPurchaseorder.toJson(),
+      page: AppPages.purchaseOrder,
+    );
+  }
+
+  // ============================================================
+  // UPDATE (edit existing pending PO before confirmation)
+  // ============================================================
+
+  /// Updates an existing **pending** purchase order (before official invoice confirmation).
+  /// Inventory is still NOT touched — items remain floating.
+  Future<void> updatePendingPurchaseOrder({
+    required BuildContext context,
+    required String purchaseOrderId,
+    required Purchaseorder currentOrder,
+    required String poNumber,
+    required DateTime selectedOrderDate,
+    required File? pickedImage,
+    required String networkImagePath,
+    List<OrderItem> items = const [],
+    double? updatedOrderAmount,
+  }) async {
+    final cleanItems = items.where((i) => i.effectiveQuantity > 0).toList();
+    final effectiveOrderAmount = updatedOrderAmount ?? currentOrder.orderAmount;
+
     final String imageFilePath = await Helperfunctions.updateImage(
       context,
       pickedImage,
@@ -239,41 +394,61 @@ class PurchaseOrderController {
     final currentUserDisplayName = authService.value.currentUser?.displayName ?? 'User';
 
     final updatedPurchaseorder = Purchaseorder(
-      invoiceNumber: invoiceNumber.trim().toUpperCase(),
-      orderAmount: currentOrder.orderAmount,
+      poNumber: poNumber.trim().toUpperCase(),
+      invoiceNumber: currentOrder.invoiceNumber,
+      orderAmount: effectiveOrderAmount,
       orderDate: Timestamp.fromDate(selectedOrderDate),
-      overpayment: overpayment > 0 ? overpayment : 0,
-      isSettled: overpayment > 0 ? (currentOrder.isSettled ?? false) : null,
+      overpayment: 0,
+      isSettled: null,
       createdBy: currentOrder.createdBy,
       lastUpdatedBy: currentUserDisplayName,
       createdDate: currentOrder.createdDate,
       lastupdatedDate: Timestamp.now(),
-      invoiceAmount: invoiceAmount,
+      invoiceAmount: currentOrder.invoiceAmount,
       imagePath: imageFilePath,
-      invoiceDate: Timestamp.fromDate(selectedInvoiceDate),
+      invoiceDate: currentOrder.invoiceDate,
       createdPage: currentOrder.createdPage,
       lastUpdatedPage: AppPages.purchaseOrder,
+      items: cleanItems.isNotEmpty ? cleanItems : currentOrder.items,
+      isInventoryReplenished: false,
+      status: 'pending',
     );
 
     _service.updatePurchaseorder(purchaseOrderId, updatedPurchaseorder);
     await Helperfunctions.logUpdate(
-      updatedPurchaseorder.invoiceNumber.isNotEmpty
-          ? updatedPurchaseorder.invoiceNumber
-          : Helperfunctions.formatTimestampForDisplay(updatedPurchaseorder.orderDate),
+      updatedPurchaseorder.poNumber.isNotEmpty
+          ? updatedPurchaseorder.poNumber
+          : (updatedPurchaseorder.invoiceNumber.isNotEmpty
+              ? updatedPurchaseorder.invoiceNumber
+              : Helperfunctions.formatTimestampForDisplay(updatedPurchaseorder.orderDate)),
       currentOrder.toJson(),
       updatedPurchaseorder.toJson(),
       page: AppPages.purchaseOrder,
     );
   }
 
-  /// Deletes a purchase order, removes image if present, and logs deletion
+  // ============================================================
+  // DELETE
+  // ============================================================
+
+  /// Deletes a purchase order, reverts replenished stock if confirmed, removes image, and logs deletion.
   Future<void> deletePurchaseOrder({
     required BuildContext context,
     required String purchaseOrderId,
     required Purchaseorder order,
   }) async {
+    // Only revert stock if already confirmed (Phase 2 complete)
+    if (order.isInventoryReplenished && order.items.isNotEmpty) {
+      await _inventoryService.revertReplenishedStockForPurchaseOrder(
+        invoiceNumber: order.invoiceNumber,
+        items: order.items,
+      );
+    }
+
     if (order.imagePath.isNotEmpty) {
-      await Helperfunctions.deleteImage(context, order.imagePath);
+      if (context.mounted) {
+        await Helperfunctions.deleteImage(context, order.imagePath);
+      }
     }
 
     _service.deletePurchaseorder(purchaseOrderId);

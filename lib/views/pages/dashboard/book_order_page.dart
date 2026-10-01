@@ -15,7 +15,7 @@ import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
 import 'package:intl/intl.dart';
 
 /// Book Order Page where users select a Hapi Store and choose products.
-/// Selecta products are categorized as Best Sellers, New Products, By Case, and By Piece, followed by Other Products at the very bottom.
+/// Selecta products are categorized as Best Sellers, By Case, and By Piece, followed by Other Products at the very bottom.
 ///
 /// When saved:
 /// 1. Marks the unified order-delivery transaction as `Pending Picklist`.
@@ -1209,11 +1209,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
     final bestSellerProducts = selectaFiltered.where((i) => ProductTag.isBestSeller(i.tag)).toList()..sort(_compareProducts);
     final nonBestSellerSelecta = selectaFiltered.where((i) => !ProductTag.isBestSeller(i.tag)).toList();
 
-    final newProducts = nonBestSellerSelecta.where((i) => ProductTag.isNewProduct(i.tag)).toList()..sort(_compareProducts);
-    final remainingSelecta = nonBestSellerSelecta.where((i) => !ProductTag.isNewProduct(i.tag)).toList();
-
-    final caseProducts = remainingSelecta.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
-    final pieceProducts = remainingSelecta.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
+    final caseProducts = nonBestSellerSelecta.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
+    final pieceProducts = nonBestSellerSelecta.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
 
     final entries = <_BookOrderListEntry>[];
 
@@ -1227,22 +1224,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       }
     }
 
-    // 2. New Products
-    if (newProducts.isNotEmpty) {
-      entries.add(
-        _BookOrderHeaderEntry(
-          title: 'New Products',
-          count: newProducts.length,
-          icon: Icons.fiber_new_rounded,
-          accentColor: const Color(0xFF0284C7),
-        ),
-      );
-      for (final p in newProducts) {
-        entries.add(_BookOrderCardEntry(p));
-      }
-    }
-
-    // 3. Selecta: By Case
+    // 2. Selecta: By Case
     if (caseProducts.isNotEmpty) {
       entries.add(
         _BookOrderHeaderEntry(title: 'By Case', count: caseProducts.length, icon: Icons.all_inbox_rounded, accentColor: const Color(0xFFEA580C)),
@@ -1252,7 +1234,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       }
     }
 
-    // 4. Selecta: By Piece
+    // 3. Selecta: By Piece
     if (pieceProducts.isNotEmpty) {
       entries.add(
         _BookOrderHeaderEntry(title: 'By Piece', count: pieceProducts.length, icon: Icons.icecream_outlined, accentColor: colorScheme.primary),

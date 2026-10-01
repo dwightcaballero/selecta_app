@@ -393,6 +393,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _buildDrawerItem(Icons.add_shopping_cart_rounded, 'Book Order', const BookOrderPage()),
           StreamBuilder<int>(
             stream: _pendingPicklistsCountStream,
+            initialData: _dashboardDTO.pendingPicklistCount,
             builder: (context, snapshot) {
               return _buildDrawerItem(
                 Icons.fact_check_outlined,
@@ -559,6 +560,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                         Expanded(
                           child: StreamBuilder<int>(
                             stream: _pendingPicklistsCountStream,
+                            initialData: _dashboardDTO.pendingPicklistCount,
                             builder: (context, snapshot) {
                               return _buildQuickAccessCard(
                                 label: 'Picklists',

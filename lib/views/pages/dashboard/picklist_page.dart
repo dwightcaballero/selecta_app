@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/controllers/delivery_controller.dart';
 import 'package:flutter_app/data/helperfunctions.dart';
@@ -7,6 +8,8 @@ import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/cached_product_image.dart';
 import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
+import 'package:flutter_app/views/widgets/imageviewer_page.dart';
+import 'package:image_picker/image_picker.dart';
 
 class PicklistPage extends StatefulWidget {
   final String deliveryID;
@@ -20,9 +23,12 @@ class PicklistPage extends StatefulWidget {
 
 class _PicklistPageState extends State<PicklistPage> {
   final DeliveryController _controller = DeliveryController();
+  final ImagePicker _picker = ImagePicker();
 
   late Delivery _currentDelivery;
   late List<OrderItem> _items;
+  File? _pickedImage;
+  String _networkImagePath = '';
   bool _isDealer = true;
   bool _isSaving = false;
 
@@ -31,12 +37,92 @@ class _PicklistPageState extends State<PicklistPage> {
     super.initState();
     _currentDelivery = widget.delivery;
     _items = widget.delivery.items.map((item) => item.copyWith()).toList();
+    _networkImagePath = widget.delivery.imagePath;
     _prefetchData();
   }
 
   Future<void> _prefetchData() async {
     _isDealer = await _controller.checkIsDealer();
     if (mounted) setState(() {});
+  }
+
+  bool get _hasProofOfDelivery => _pickedImage != null || _networkImagePath.trim().isNotEmpty;
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(source: source, maxWidth: 1200, maxHeight: 1200, imageQuality: 80);
+      if (pickedFile != null) {
+        setState(() {
+          _pickedImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to capture image: $e');
+      }
+    }
+  }
+
+  void _showImageSourceSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Attach Proof of Delivery', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                  child: Icon(Icons.camera_alt_outlined, color: colorScheme.primary),
+                ),
+                title: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Capture with camera'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                  child: Icon(Icons.photo_library_outlined, color: colorScheme.primary),
+                ),
+                title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Select existing photo'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _removeImage() {
+    setState(() {
+      _pickedImage = null;
+      _networkImagePath = '';
+    });
   }
 
   int get _totalUnits {
@@ -73,7 +159,7 @@ class _PicklistPageState extends State<PicklistPage> {
       MaterialPageRoute(
         builder: (_) => BookOrderPage(
           deliveryID: widget.deliveryID,
-          existingDelivery: _currentDelivery.copyWith(items: _items),
+          existingDelivery: _currentDelivery.copyWith(items: _items, imagePath: _networkImagePath),
           returnUpdatedDeliveryOnSave: true,
         ),
       ),
@@ -83,6 +169,9 @@ class _PicklistPageState extends State<PicklistPage> {
       setState(() {
         _currentDelivery = updatedDelivery;
         _items = updatedDelivery.items.map((e) => e.copyWith()).toList();
+        if (updatedDelivery.imagePath.isNotEmpty) {
+          _networkImagePath = updatedDelivery.imagePath;
+        }
       });
     }
   }
@@ -97,14 +186,18 @@ class _PicklistPageState extends State<PicklistPage> {
         currentDelivery: _currentDelivery,
         storeName: _currentDelivery.storeName,
         items: _items,
-        imageFile: null,
-        networkImagePath: _currentDelivery.imagePath,
+        imageFile: _pickedImage,
+        networkImagePath: _networkImagePath,
         placements: const [],
         placementId: '',
         remarks: _currentDelivery.remarks,
       );
       if (mounted) {
-        setState(() => _currentDelivery = updated);
+        setState(() {
+          _currentDelivery = updated;
+          _networkImagePath = updated.imagePath;
+          _pickedImage = null;
+        });
         ShowMessage.success(context, 'Picklist draft saved.');
         Navigator.pop(context);
       }
@@ -120,6 +213,11 @@ class _PicklistPageState extends State<PicklistPage> {
   Future<void> _onCompletePicklist() async {
     if (!_allItemsPicked) {
       ShowMessage.error(context, 'Please check all products before marking For Delivery.');
+      return;
+    }
+
+    if (!_hasProofOfDelivery) {
+      ShowMessage.error(context, 'Please attach a Proof of Delivery image before marking For Delivery.');
       return;
     }
 
@@ -140,8 +238,8 @@ class _PicklistPageState extends State<PicklistPage> {
         currentDelivery: _currentDelivery,
         storeName: _currentDelivery.storeName,
         pickedItems: _items,
-        imageFile: null,
-        networkImagePath: _currentDelivery.imagePath,
+        imageFile: _pickedImage,
+        networkImagePath: _networkImagePath,
         placements: const [],
         placementId: '',
         sendText: false,
@@ -151,6 +249,12 @@ class _PicklistPageState extends State<PicklistPage> {
 
       if (!mounted) return;
 
+      setState(() {
+        _currentDelivery = updatedDelivery;
+        _networkImagePath = updatedDelivery.imagePath;
+        _pickedImage = null;
+      });
+
       ShowMessage.success(context, 'Picklist completed! [${updatedDelivery.storeName}] is now For Delivery.');
 
       // Generate digital receipt (text only) that can also be printed on a thermal printer via Bluetooth
@@ -158,7 +262,7 @@ class _PicklistPageState extends State<PicklistPage> {
         context,
         delivery: updatedDelivery,
         deliveryId: widget.deliveryID,
-        proceedLabel: 'Proceed to Delivery',
+        proceedLabel: 'Close',
         onProceed: () {
           if (!mounted) return;
           Navigator.pop(context);
@@ -372,8 +476,221 @@ class _PicklistPageState extends State<PicklistPage> {
     );
   }
 
+  Widget _buildProofOfDeliveryCard(ColorScheme colorScheme) {
+    final hasImage = _hasProofOfDelivery;
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(top: 6, bottom: 8),
+      color: hasImage ? Colors.green.withValues(alpha: 0.04) : colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: hasImage ? Colors.green.withValues(alpha: 0.5) : Colors.amber.shade600.withValues(alpha: 0.6), width: 1.2),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: hasImage ? Colors.green.withValues(alpha: 0.12) : Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    hasImage ? Icons.verified_outlined : Icons.camera_alt_outlined,
+                    size: 18,
+                    color: hasImage ? Colors.green.shade700 : Colors.amber.shade900,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Text('Proof of Delivery', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: hasImage ? Colors.green.withValues(alpha: 0.12) : Colors.red.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          hasImage ? 'Attached' : 'Required',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: hasImage ? Colors.green.shade800 : Colors.red.shade800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (hasImage)
+                  TextButton.icon(
+                    onPressed: _showImageSourceSelector,
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    ),
+                    icon: const Icon(Icons.replay, size: 15),
+                    label: const Text('Retake', style: TextStyle(fontSize: 12.5)),
+                  )
+                else
+                  FilledButton.tonalIcon(
+                    onPressed: _showImageSourceSelector,
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    ),
+                    icon: const Icon(Icons.add_a_photo_outlined, size: 16),
+                    label: const Text('Attach', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (hasImage) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: _pickedImage, networkImagePath: _networkImagePath)),
+                  child: Stack(
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      Container(
+                        height: 160,
+                        width: double.infinity,
+                        color: Colors.black12,
+                        child: _pickedImage != null
+                            ? Image.file(_pickedImage!, fit: BoxFit.cover)
+                            : Image.network(
+                                _networkImagePath,
+                                fit: BoxFit.cover,
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return const Center(child: CircularProgressIndicator());
+                                },
+                                errorBuilder: (_, _, _) => Container(
+                                  height: 160,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  alignment: Alignment.center,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.broken_image_outlined, size: 32, color: colorScheme.onSurfaceVariant),
+                                      const SizedBox(height: 4),
+                                      Text('Unable to load image', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                      ),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, Colors.black.withValues(alpha: 0.75)],
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.zoom_in, color: Colors.white, size: 15),
+                            SizedBox(width: 4),
+                            Text(
+                              'Tap to view full screen',
+                              style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: _pickedImage, networkImagePath: _networkImagePath)),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      icon: const Icon(Icons.fullscreen, size: 16),
+                      label: const Text('View Full Screen', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.outlined(
+                    onPressed: _removeImage,
+                    tooltip: 'Remove Image',
+                    style: IconButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      foregroundColor: Colors.red.shade700,
+                      side: BorderSide(color: Colors.red.shade200),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                  ),
+                ],
+              ),
+            ] else ...[
+              InkWell(
+                onTap: _showImageSourceSelector,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.amber.shade300, style: BorderStyle.solid),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: Colors.amber.shade100, shape: BoxShape.circle),
+                        child: Icon(Icons.add_a_photo_outlined, size: 22, color: Colors.amber.shade900),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Attach Proof of Delivery photo',
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Take photo of signed receipt or items to enable "For Delivery"',
+                              style: TextStyle(fontSize: 11.5, color: Colors.amber.shade800),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, color: Colors.amber.shade900),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildStickyBottomBar(ColorScheme colorScheme) {
-    final canComplete = !_isSaving && _allItemsPicked;
+    final hasProof = _hasProofOfDelivery;
+    final canComplete = !_isSaving && _allItemsPicked && hasProof;
 
     return SafeArea(
       child: Container(
@@ -386,6 +703,44 @@ class _PicklistPageState extends State<PicklistPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_allItemsPicked && !hasProof)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  onTap: _showImageSourceSelector,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.shade400),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.camera_alt_outlined, size: 18, color: Colors.amber.shade900),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Proof of Delivery photo is required before clicking For Delivery.',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Attach',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.primary,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             Row(
               children: [
                 if (_isDealer) ...[
@@ -562,6 +917,7 @@ class _PicklistPageState extends State<PicklistPage> {
                         ),
                         ...otherItems.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
                       ],
+                      _buildProofOfDeliveryCard(colorScheme),
                     ],
                   ),
           ),

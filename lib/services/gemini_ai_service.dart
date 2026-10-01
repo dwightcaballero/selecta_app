@@ -1,7 +1,125 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_app/models/delivery.dart';
+import 'package:flutter_app/models/inventory_movement.dart';
+import 'package:flutter_app/models/supplier_product_mapping.dart';
 import 'package:flutter_app/services/configuration_service.dart';
+import 'package:flutter_app/services/image_slicing_service.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:intl/intl.dart';
+
+/// A confirmed item that was present on the official supplier invoice during Phase 2.
+class ConfirmedInvoiceItem {
+  final String productId;
+  final String productName;
+  final String imageUrl;
+  final String productSource;
+  final String category;
+  final String tag;
+  final double unitCost;
+  final double sellingPrice;
+  final int orderedQuantity;
+  final int deliveredQuantity;
+
+  const ConfirmedInvoiceItem({
+    required this.productId,
+    required this.productName,
+    this.imageUrl = '',
+    this.productSource = 'selecta',
+    this.category = '',
+    this.tag = '',
+    required this.unitCost,
+    this.sellingPrice = 0.0,
+    required this.orderedQuantity,
+    required this.deliveredQuantity,
+  });
+
+  double get lineTotal => deliveredQuantity * unitCost;
+}
+
+/// Result of comparing an official paper invoice against the original PO items.
+class InvoiceComparisonResult {
+  final String invoiceNumber;
+  final DateTime? invoiceDate;
+  final double totalAmount;
+  final List<ConfirmedInvoiceItem> confirmedItems;
+  final List<OrderItem> missingItems;
+  final String rawAiResponse;
+
+  const InvoiceComparisonResult({
+    this.invoiceNumber = '',
+    this.invoiceDate,
+    this.totalAmount = 0.0,
+    this.confirmedItems = const [],
+    this.missingItems = const [],
+    this.rawAiResponse = '',
+  });
+
+  double get confirmedTotal => confirmedItems.fold(0.0, (acc, i) => acc + i.lineTotal);
+  int get totalDeliveredUnits => confirmedItems.fold(0, (acc, i) => acc + i.deliveredQuantity);
+}
+
+/// Represents an item on the invoice that was truncated, had low confidence, or had multiple plausible matches.
+class AmbiguousPoItem {
+  final String rawText;
+  final int quantity;
+  final double detectedUnitPrice;
+  final List<String> candidateProductIds;
+  final String reason;
+  final int? documentIndex;
+
+  const AmbiguousPoItem({
+    required this.rawText,
+    required this.quantity,
+    this.detectedUnitPrice = 0.0,
+    this.candidateProductIds = const [],
+    this.reason = '',
+    this.documentIndex,
+  });
+}
+
+/// Result containing extracted purchase order data from Gemini multimodal vision.
+class ExtractedPurchaseOrderData {
+  final String invoiceNumber;
+  final DateTime? invoiceDate;
+  final double totalAmount;
+  final List<ExtractedPoItem> matchedItems;
+  final List<AmbiguousPoItem> ambiguousItems;
+  final List<String> unmatchedItems;
+  final String rawAiResponse;
+
+  const ExtractedPurchaseOrderData({
+    this.invoiceNumber = '',
+    this.invoiceDate,
+    this.totalAmount = 0.0,
+    this.matchedItems = const [],
+    this.ambiguousItems = const [],
+    this.unmatchedItems = const [],
+    this.rawAiResponse = '',
+  });
+
+  int get totalExtractedUnits =>
+      matchedItems.fold(0, (acc, i) => acc + i.quantity) +
+      ambiguousItems.fold(0, (acc, i) => acc + i.quantity);
+}
+
+class ExtractedPoItem {
+  final String productId;
+  final String matchedProductName;
+  final String rawText;
+  final int quantity;
+  final double confidence;
+
+  const ExtractedPoItem({
+    required this.productId,
+    required this.matchedProductName,
+    required this.rawText,
+    required this.quantity,
+    this.confidence = 1.0,
+  });
+}
 
 /// Result status when verifying if AI operations are allowed.
 class AiStatusCheck {
@@ -301,5 +419,594 @@ class GeminiAiService {
     }
 
     throw Exception('Unable to generate response. Please try again.');
+  }
+
+  /// Extracts purchase order details, invoice number, date, and product quantities from one or multiple images/screenshots,
+  /// matching abbreviated or altered product names against the active inventory catalog,
+  /// utilizing confirmed supplier aliases and price verification.
+  Future<ExtractedPurchaseOrderData> extractPurchaseOrderFromImages({
+    required List<Uint8List> imagesBytesList,
+    List<String>? mimeTypes,
+    required List<InventoryItem> catalog,
+    List<SupplierProductMapping>? knownMappings,
+  }) async {
+    final status = await checkAiAvailability();
+    if (!status.isAllowed) {
+      throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
+    }
+    if (imagesBytesList.isEmpty) {
+      throw Exception('No document images provided for analysis.');
+    }
+
+    final catalogLines = catalog.map((item) {
+      final codePart = item.itemCode.isNotEmpty ? ' | Code: "${item.itemCode}"' : '';
+      return '- ID: "${item.id}"$codePart | Name: "${item.productName}" | Source: "${item.source.key}" | Cost: ₱${item.buyingPrice.toStringAsFixed(2)} | Category: "${item.category}"';
+    }).join('\n');
+
+    final singleMappings = (knownMappings ?? []).where((m) => !m.isMultiMatch).toList();
+    final multiMappings = (knownMappings ?? []).where((m) => m.isMultiMatch).toList();
+
+    final buffer = StringBuffer();
+    if (singleMappings.isNotEmpty) {
+      buffer.writeln('CONFIRMED SINGLE-PRODUCT SUPPLIER ALIASES (Learned & Verified by Dealer):');
+      buffer.writeln('If the invoice description matches or starts with any of these, use the corresponding product ID immediately:');
+      for (final m in singleMappings.take(30)) {
+        buffer.writeln('• "${m.rawSupplierText}" -> ID: "${m.productId}" (${m.productName})');
+      }
+      buffer.writeln();
+    }
+
+    if (multiMappings.isNotEmpty) {
+      final Map<String, InventoryItem> catalogById = {for (final item in catalog) item.id: item};
+      buffer.writeln('KNOWN MULTI-VARIANT SUPPLIER ALIASES (Truncated descriptions with multiple Selecta flavors):');
+      buffer.writeln('The following raw invoice texts are known to represent more than one distinct Selecta product:');
+      for (final m in multiMappings.take(20)) {
+        final variantNames = m.candidateProductIds
+            .map((cid) => catalogById[cid]?.productName ?? cid)
+            .join(' OR ');
+        final idsJson = jsonEncode(m.candidateProductIds);
+        buffer.writeln('• "${m.rawSupplierText}":');
+        buffer.writeln('   - Possible Variants: $variantNames');
+        buffer.writeln('   - Candidate IDs: $idsJson');
+        buffer.writeln('   - MULTIMODAL INSTRUCTION: Check the product thumbnail image on the invoice (Option C). If lid/foil color identifies the flavor, output that exact product ID in "items". If no thumbnail or unclear, place in "ambiguous_items" with "candidate_product_ids": $idsJson.');
+      }
+      buffer.writeln();
+    }
+
+    final mappingsSection = buffer.toString();
+
+    // Pre-process images: Automatically slice long scrolling screenshots into high-res chunks
+    final List<Uint8List> processedBytesList = [];
+    final List<String> processedMimeTypes = [];
+
+    for (int i = 0; i < imagesBytesList.length; i++) {
+      final originalBytes = imagesBytesList[i];
+      final slices = await ImageSlicingService.sliceIfScrollingScreenshot(originalBytes);
+      if (slices.length > 1) {
+        for (final slice in slices) {
+          processedBytesList.add(slice);
+          processedMimeTypes.add('image/png');
+        }
+      } else {
+        processedBytesList.add(originalBytes);
+        final mime = (mimeTypes != null && i < mimeTypes.length) ? mimeTypes[i] : 'image/jpeg';
+        processedMimeTypes.add(mime);
+      }
+    }
+
+    final isMulti = processedBytesList.length > 1;
+
+    final prompt = '''
+You are an expert OCR, purchasing, and inventory AI assistant for a Selecta ice cream dealership in the Philippines.
+You are inspecting ${isMulti ? '${processedBytesList.length} sequential screenshots or document pages' : 'an image'} of a supplier Sales Invoice, Purchase Order, Delivery Receipt, or digital ordering screenshot.
+
+${isMulti ? '''
+MULTI-SCREENSHOT / MULTI-PAGE RULES:
+1. The images provided are sequential screenshots (e.g. Page 1, Page 2, etc.) of the SAME order.
+2. Read and extract all items across ALL screenshots in the continuous top-to-bottom sequence they appear.
+3. PREVENT DUPLICATES FROM OVERLAPS: If adjacent screenshots overlap (e.g. the last row of Page 1 is repeated as the first row of Page 2), do NOT output that item twice! Detect identical rows at boundaries and output them only once.
+''' : ''}
+
+YOUR OBJECTIVES:
+1. Extract the Invoice/Receipt Number (e.g. "HM30471505", "INV-12345"). If not present, leave empty.
+2. Extract the Invoice/Order Date in YYYY-MM-DD format. If not present, leave null.
+3. Extract the total invoice or order monetary amount (numeric value). If not present, set 0.0.
+4. Extract all ordered or delivered items and their quantities.
+
+$mappingsSection
+CRITICAL QUANTITY & NUMBER EXTRACTION RULES:
+1. QUANTITY COLUMN SELECTION:
+   - Always extract the actual invoiced, shipped, or delivered quantity (the quantity being charged).
+   - If there are multiple quantity columns (e.g. Ordered vs Delivered / Invoiced), choose the DELIVERED / INVOICED quantity.
+   - Do NOT confuse unit price (e.g. ₱45.00), total line amount, or Item Code (e.g. 68021) with quantity.
+2. UNIT OF MEASURE (Cases vs Pieces):
+   - Check if quantities are given in cases (CS / BOX) or individual units (PC / PCS). Extract the primary count displayed on the line item.
+3. DIGIT CLARITY:
+   - Carefully distinguish visually similar characters (1 vs 7, 3 vs 8, 5 vs 6, 0 vs 8).
+
+CRITICAL PRODUCT MATCHING RULES:
+1. TRUNCATIONS, ABBREVIATIONS & ELLIPSIS:
+   - Supplier systems regularly truncate product descriptions at column boundaries (e.g., ending with "...", "…", or cutting off mid-word like "MAGNUM CLASS...", "CORNETTO DISC WH...").
+   - Use the unit price / line cost on the receipt: match it against the catalog Cost to distinguish sizes (e.g. Pint at ~₱105 vs Tub at ~₱225, or Cornetto vs Magnum).
+   - If a supplier product code / SKU is printed on the invoice, match it against "Code" in the ACTIVE CATALOG.
+
+2. MULTIMODAL THUMBNAIL PACKAGING COLOR & GRAPHICS (OPTION C):
+   - In digital ordering apps and modern invoices, each row displays a thumbnail photo of the actual ice cream packaging.
+   - Inspect visual packaging details to disambiguate truncated descriptions:
+     * Cones (Cornetto): Look at the cone top lid disc color and foil wrapper (e.g. WHITE lid disc for Cornetto Disc White, BROWN/CHOCOLATE lid disc for Cornetto Disc Chocolate, RED lid for Strawberry, BLUE for Cookies & Dream).
+     * Sticks (Magnum/Solero): Look at wrapper foil color (e.g. gold foil for Magnum Almond, dark brown/red for Magnum Classic, green for Solero Lime).
+     * Tubs / Pints: Inspect tub rim color, flavor banner, or label artwork.
+   - If the thumbnail packaging photo clearly reveals the exact flavor/variant, assign that specific product ID in "items" with confidence >= 0.95.
+
+3. COLLIDING TRUNCATED ITEMS & MULTI-MATCH VARIANTS:
+   - In supplier invoices, the SAME product is almost NEVER listed on two separate rows.
+   - If two or more separate rows have the SAME or nearly identical truncated text ending in "..." or "…" (e.g. two separate rows both showing "CORNETTO DISC..."):
+     THEY ARE DIFFERENT FLAVORS / VARIANTS!
+     DO NOT assign both rows to the same catalog product!
+     - First, look at packaging thumbnail color, item code, or unit price differences to distinguish the variants.
+     - If you cannot be 100% sure which variant is which, place BOTH rows into "ambiguous_items" with candidate product IDs.
+   - If a row has truncated text that matches a KNOWN MULTI-VARIANT ALIAS (or could be 2+ variants):
+     - If the thumbnail packaging reveals the flavor, output it in "items".
+     - If NO thumbnail is visible or the packaging is ambiguous: DO NOT GUESS RANDOMLY! Place it in "ambiguous_items" with the candidate product IDs so the dealer can clarify with 1 tap.
+
+4. CONFIDENCE & AMBIGUITY:
+   - If you are confident (confidence >= 0.85) in the exact product, place it in "items".
+   - If a line item is truncated with ellipsis or could plausibly be one of multiple catalog items:
+     Place it in "ambiguous_items" with:
+     - "raw_text": exact printed text on the receipt
+     - "quantity": quantity ordered/delivered
+     - "detected_unit_price": unit buying price if visible (0.0 if not)
+     - "candidate_product_ids": [array of 2 to 4 potential matching product IDs from catalog]
+     - "reason": brief explanation (e.g. "Truncated name with multiple Cornetto variants")
+   - If a line item clearly cannot be matched to any ice cream product (e.g. pallet deposit, delivery fee), place it in "unmatched_items".
+
+ACTIVE CATALOG:
+$catalogLines
+
+CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT include commentary outside JSON):
+{
+  "invoice_number": "HM30471505",
+  "invoice_date": "2026-10-01",
+  "total_amount": 12500.00,
+  "items": [
+    {
+      "product_id": "exact-catalog-id",
+      "matched_product_name": "exact-catalog-name",
+      "raw_text": "text seen on invoice",
+      "quantity": 10,
+      "confidence": 0.95
+    }
+  ],
+  "ambiguous_items": [
+    {
+      "raw_text": "CORNETTO DISC WH...",
+      "quantity": 24,
+      "detected_unit_price": 32.50,
+      "candidate_product_ids": ["candidate-id-1", "candidate-id-2"],
+      "reason": "Truncated name with multiple possible flavors"
+    }
+  ],
+  "unmatched_items": [
+    {
+      "raw_text": "unmatched item text",
+      "quantity": 5
+    }
+  ]
+}
+''';
+
+    for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
+      try {
+        final model = await getModel(modelIndex: _activeModelIndex);
+        if (model == null) {
+          throw Exception('Failed to initialize AI model session.');
+        }
+
+        final parts = <Part>[TextPart(prompt)];
+        for (int i = 0; i < processedBytesList.length; i++) {
+          parts.add(DataPart(processedMimeTypes[i], processedBytesList[i]));
+        }
+
+        final content = [Content.multi(parts)];
+
+        final response = await model.generateContent(content);
+        await recordAiUsage();
+        final rawText = response.text ?? '';
+        return _parseExtractedPurchaseOrderData(rawText, catalog, knownMappings);
+      } catch (e) {
+        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
+          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
+          await Future.delayed(const Duration(milliseconds: 750));
+          continue;
+        }
+
+        if (_isOverloadedError(e)) {
+          throw Exception(
+            'Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.',
+          );
+        }
+        rethrow;
+      }
+    }
+
+    throw Exception('Failed to process invoice images.');
+  }
+
+  /// Single image convenience method
+  Future<ExtractedPurchaseOrderData> extractPurchaseOrderFromImage({
+    required Uint8List imageBytes,
+    String mimeType = 'image/jpeg',
+    required List<InventoryItem> catalog,
+    List<SupplierProductMapping>? knownMappings,
+  }) {
+    return extractPurchaseOrderFromImages(
+      imagesBytesList: [imageBytes],
+      mimeTypes: [mimeType],
+      catalog: catalog,
+      knownMappings: knownMappings,
+    );
+  }
+
+  /// Compares one or more official paper invoice images against the original PO items.
+  /// Returns which items were confirmed (possibly with adjusted quantities) and which
+  /// are missing (out of stock from supplier), along with the invoice total and number.
+  Future<InvoiceComparisonResult> compareOfficialInvoiceWithPoItems({
+    required List<Uint8List> invoiceImagesBytesList,
+    required List<String> mimeTypes,
+    required List<OrderItem> originalPoItems,
+    required String originalPoNumber,
+  }) async {
+    final status = await checkAiAvailability();
+    if (!status.isAllowed) {
+      throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
+    }
+
+    // Pre-process images: Automatically slice long scrolling screenshots or receipts
+    final List<Uint8List> processedBytesList = [];
+    final List<String> processedMimeTypes = [];
+
+    for (int i = 0; i < invoiceImagesBytesList.length; i++) {
+      final originalBytes = invoiceImagesBytesList[i];
+      final slices = await ImageSlicingService.sliceIfScrollingScreenshot(originalBytes);
+      if (slices.length > 1) {
+        for (final slice in slices) {
+          processedBytesList.add(slice);
+          processedMimeTypes.add('image/png');
+        }
+      } else {
+        processedBytesList.add(originalBytes);
+        final mime = i < mimeTypes.length ? mimeTypes[i] : 'image/jpeg';
+        processedMimeTypes.add(mime);
+      }
+    }
+
+    // Build the original PO manifest for the prompt
+    final poLines = originalPoItems.map((item) {
+      return '- ID: "${item.productId}" | Name: "${item.productName}" | Ordered Qty: ${item.orderedQuantity} | Unit Cost: ${item.buyingPrice}';
+    }).join('\n');
+
+    final prompt = '''
+You are an expert purchasing and inventory AI assistant for a Selecta ice cream dealership in the Philippines.
+You are comparing an official supplier invoice (paper copy) against a digital purchase order (PO) that was previously placed.
+
+ORIGINAL PURCHASE ORDER: $originalPoNumber
+$poLines
+
+YOUR TASK:
+1. Read the official invoice image(s) carefully.
+2. For each item in the ORIGINAL PO, determine if it appears on the official invoice:
+   - If YES (it arrived): include it in "confirmed_items" with the ACTUAL quantity from the official invoice.
+   - If NO (it is absent / out of stock): include its ID in "missing_product_ids".
+3. Extract the total invoice amount (numeric).
+4. Extract the official invoice number / reference code.
+
+CRITICAL MATCHING RULES:
+- Invoice may use abbreviations (e.g. "CORN CHOC" for "Cornetto Chocolate"). Match by context.
+- Always use the exact product_id from the ORIGINAL PO.
+- The quantity on the official invoice (actual delivered) may differ from the ordered quantity — use the invoice quantity.
+
+CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
+{
+  "invoice_number": "HM30471505",
+  "invoice_date": "2026-10-01",
+  "total_amount": 12500.00,
+  "confirmed_items": [
+    {
+      "product_id": "exact-po-product-id",
+      "product_name": "exact product name from PO",
+      "delivered_quantity": 10,
+      "unit_cost": 45.00
+    }
+  ],
+  "missing_product_ids": ["product-id-1", "product-id-2"]
+}
+''';
+
+    for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
+      try {
+        final model = await getModel(modelIndex: _activeModelIndex);
+        if (model == null) throw Exception('Failed to initialize AI model session.');
+
+        // Build multipart content with all invoice images
+        final parts = <Part>[TextPart(prompt)];
+        for (int i = 0; i < processedBytesList.length; i++) {
+          parts.add(DataPart(processedMimeTypes[i], processedBytesList[i]));
+        }
+
+        final response = await model.generateContent([Content.multi(parts)]);
+        await recordAiUsage();
+        final rawText = response.text ?? '';
+        return _parseInvoiceComparisonResult(rawText, originalPoItems);
+      } catch (e) {
+        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
+          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
+          await Future.delayed(const Duration(milliseconds: 750));
+          continue;
+        }
+        if (_isOverloadedError(e)) {
+          throw Exception('Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.');
+        }
+        rethrow;
+      }
+    }
+
+    throw Exception('Unable to compare official invoice with PO. Please try again.');
+  }
+
+  InvoiceComparisonResult _parseInvoiceComparisonResult(String rawText, List<OrderItem> originalPoItems) {
+    if (rawText.trim().isEmpty) {
+      return InvoiceComparisonResult(confirmedItems: const [], missingItems: originalPoItems);
+    }
+
+    String cleaned = rawText.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replaceFirst(RegExp(r'^```(?:json)?\s*'), '');
+      if (cleaned.endsWith('```')) cleaned = cleaned.substring(0, cleaned.length - 3).trim();
+    }
+    final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(cleaned);
+    if (jsonMatch != null) cleaned = jsonMatch.group(0)!;
+
+    try {
+      final decoded = jsonDecode(cleaned) as Map<String, dynamic>;
+
+      final invoiceNumber = (decoded['invoice_number'] as String? ?? '').trim();
+      final totalAmount = (decoded['total_amount'] as num?)?.toDouble() ?? 0.0;
+
+      DateTime? invoiceDate;
+      final dateStr = decoded['invoice_date'] as String?;
+      if (dateStr != null && dateStr.trim().isNotEmpty) {
+        try { invoiceDate = DateTime.parse(dateStr.trim()); } catch (_) {}
+      }
+
+      // Build a map of original PO items by ID for quick lookup
+      final Map<String, OrderItem> poById = {for (final item in originalPoItems) item.productId: item};
+
+      // Parse confirmed items
+      final List<ConfirmedInvoiceItem> confirmedItems = [];
+      final rawConfirmed = decoded['confirmed_items'] as List<dynamic>? ?? [];
+      for (final raw in rawConfirmed) {
+        if (raw is! Map) continue;
+        final map = Map<String, dynamic>.from(raw);
+        final productId = (map['product_id'] as String? ?? '').trim();
+        final deliveredQty = (map['delivered_quantity'] as num?)?.toInt() ?? 0;
+        if (productId.isEmpty || deliveredQty <= 0) continue;
+        final poItem = poById[productId];
+        if (poItem != null) {
+          confirmedItems.add(ConfirmedInvoiceItem(
+            productId: productId,
+            productName: poItem.productName,
+            orderedQuantity: poItem.orderedQuantity,
+            deliveredQuantity: deliveredQty,
+            unitCost: poItem.buyingPrice,
+            imageUrl: poItem.imageUrl,
+            productSource: poItem.productSource,
+            category: poItem.category,
+            tag: poItem.tag,
+            sellingPrice: poItem.sellingPrice,
+          ));
+        }
+      }
+
+      // Parse missing product IDs
+      final rawMissingIds = decoded['missing_product_ids'] as List<dynamic>? ?? [];
+      final Set<String> missingIdSet = rawMissingIds.map((e) => e.toString().trim()).toSet();
+
+      // Build missing items list from original PO
+      final List<OrderItem> missingItems = originalPoItems
+          .where((item) => missingIdSet.contains(item.productId))
+          .toList();
+
+      // Any items from original PO not accounted for in confirmed or missing => treat as missing
+      final confirmedIds = confirmedItems.map((e) => e.productId).toSet();
+      for (final item in originalPoItems) {
+        if (!confirmedIds.contains(item.productId) && !missingIdSet.contains(item.productId)) {
+          missingItems.add(item);
+        }
+      }
+
+      return InvoiceComparisonResult(
+        invoiceNumber: invoiceNumber,
+        invoiceDate: invoiceDate,
+        totalAmount: totalAmount,
+        confirmedItems: confirmedItems,
+        missingItems: missingItems,
+        rawAiResponse: rawText,
+      );
+    } catch (_) {
+      // Fallback: all items are unconfirmed
+      return InvoiceComparisonResult(
+        confirmedItems: const [],
+        missingItems: originalPoItems,
+        rawAiResponse: rawText,
+      );
+    }
+  }
+
+  ExtractedPurchaseOrderData _parseExtractedPurchaseOrderData(
+    String rawText,
+    List<InventoryItem> catalog, [
+    List<SupplierProductMapping>? knownMappings,
+  ]) {
+    if (rawText.trim().isEmpty) {
+      return const ExtractedPurchaseOrderData();
+    }
+
+    String cleaned = rawText.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replaceFirst(RegExp(r'^```(?:json)?\s*'), '');
+      if (cleaned.endsWith('```')) {
+        cleaned = cleaned.substring(0, cleaned.length - 3).trim();
+      }
+    }
+
+    // Try finding JSON block between { and }
+    final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(cleaned);
+    if (jsonMatch != null) {
+      cleaned = jsonMatch.group(0)!;
+    }
+
+    try {
+      final decoded = jsonDecode(cleaned) as Map<String, dynamic>;
+
+      final invoiceNumber = (decoded['invoice_number'] as String? ?? '').trim();
+      DateTime? invoiceDate;
+      final dateStr = decoded['invoice_date'] as String?;
+      if (dateStr != null && dateStr.trim().isNotEmpty) {
+        try {
+          invoiceDate = DateTime.parse(dateStr.trim());
+        } catch (_) {}
+      }
+
+      final totalAmount = (decoded['total_amount'] as num?)?.toDouble() ?? 0.0;
+
+      final Map<String, InventoryItem> catalogById = {for (final item in catalog) item.id: item};
+      final Map<String, InventoryItem> catalogByName = {
+        for (final item in catalog) item.productName.trim().toLowerCase(): item
+      };
+
+      final List<ExtractedPoItem> matchedItems = [];
+      final rawItems = decoded['items'] as List<dynamic>? ?? [];
+
+      for (final raw in rawItems) {
+        if (raw is! Map) continue;
+        final map = Map<String, dynamic>.from(raw);
+        final productId = (map['product_id'] as String? ?? '').trim();
+        final matchedName = (map['matched_product_name'] as String? ?? '').trim();
+        final rawTextItem = (map['raw_text'] as String? ?? matchedName).trim();
+        final qty = (map['quantity'] as num?)?.toInt() ?? 0;
+        final confidence = (map['confidence'] as num?)?.toDouble() ?? 0.9;
+
+        if (qty <= 0) continue;
+
+        // Verify ID against catalog
+        InventoryItem? matchedItem = catalogById[productId];
+        if (matchedItem == null && matchedName.isNotEmpty) {
+          matchedItem = catalogByName[matchedName.toLowerCase()];
+        }
+
+        if (matchedItem != null) {
+          matchedItems.add(
+            ExtractedPoItem(
+              productId: matchedItem.id,
+              matchedProductName: matchedItem.productName,
+              rawText: rawTextItem,
+              quantity: qty,
+              confidence: confidence,
+            ),
+          );
+        }
+      }
+
+      final List<AmbiguousPoItem> ambiguousItems = [];
+      final rawAmbiguous = decoded['ambiguous_items'] as List<dynamic>? ?? [];
+
+      for (final raw in rawAmbiguous) {
+        if (raw is! Map) continue;
+        final map = Map<String, dynamic>.from(raw);
+        final rawTextItem = (map['raw_text'] as String? ?? '').trim();
+        final qty = (map['quantity'] as num?)?.toInt() ?? 1;
+        final price = (map['detected_unit_price'] as num?)?.toDouble() ?? 0.0;
+        final reason = (map['reason'] as String? ?? '').trim();
+        final candidateIds = (map['candidate_product_ids'] as List<dynamic>? ?? [])
+            .map((e) => e.toString().trim())
+            .where((id) => catalogById.containsKey(id))
+            .toList();
+
+        if (qty <= 0) continue;
+
+        // Check if we have a confirmed mapping for this rawText
+        SupplierProductMapping? learnedMatch;
+        if (knownMappings != null && rawTextItem.isNotEmpty) {
+          final targetNorm = SupplierProductMapping.normalize(rawTextItem);
+          for (final m in knownMappings) {
+            if (m.normalizedText == targetNorm ||
+                (targetNorm.length >= 6 &&
+                    (m.normalizedText.startsWith(targetNorm) ||
+                        targetNorm.startsWith(m.normalizedText)))) {
+              learnedMatch = m;
+              break;
+            }
+          }
+        }
+
+        if (learnedMatch != null && !learnedMatch.isMultiMatch && catalogById.containsKey(learnedMatch.productId)) {
+          final inv = catalogById[learnedMatch.productId]!;
+          matchedItems.add(
+            ExtractedPoItem(
+              productId: inv.id,
+              matchedProductName: inv.productName,
+              rawText: rawTextItem,
+              quantity: qty,
+              confidence: 1.0,
+            ),
+          );
+        } else {
+          final Set<String> combinedCandidates = {};
+          if (learnedMatch != null && learnedMatch.isMultiMatch) {
+            combinedCandidates.addAll(learnedMatch.candidateProductIds);
+          }
+          combinedCandidates.addAll(candidateIds);
+          final validCandidates = combinedCandidates.where((id) => catalogById.containsKey(id)).toList();
+
+          ambiguousItems.add(
+            AmbiguousPoItem(
+              rawText: rawTextItem,
+              quantity: qty,
+              detectedUnitPrice: price,
+              candidateProductIds: validCandidates,
+              reason: (learnedMatch != null && learnedMatch.isMultiMatch)
+                  ? 'Known multi-variant supplier alias with ${validCandidates.length} options'
+                  : reason,
+            ),
+          );
+        }
+      }
+
+      final List<String> unmatchedItems = [];
+      final rawUnmatched = decoded['unmatched_items'] as List<dynamic>? ?? [];
+      for (final raw in rawUnmatched) {
+        if (raw is Map) {
+          final t = (raw['raw_text'] as String? ?? '').trim();
+          final q = (raw['quantity'] as num?)?.toInt();
+          if (t.isNotEmpty) {
+            unmatchedItems.add(q != null && q > 0 ? '$t (Qty: $q)' : t);
+          }
+        } else if (raw is String && raw.trim().isNotEmpty) {
+          unmatchedItems.add(raw.trim());
+        }
+      }
+
+      return ExtractedPurchaseOrderData(
+        invoiceNumber: invoiceNumber,
+        invoiceDate: invoiceDate,
+        totalAmount: totalAmount,
+        matchedItems: matchedItems,
+        ambiguousItems: ambiguousItems,
+        unmatchedItems: unmatchedItems,
+        rawAiResponse: rawText,
+      );
+    } catch (_) {
+      return ExtractedPurchaseOrderData(rawAiResponse: rawText);
+    }
   }
 }

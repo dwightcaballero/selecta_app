@@ -291,8 +291,8 @@ class _EndofdayPageState extends State<EndofdayPage> {
   Widget _buildCashReconciliationCard() {
     final colorScheme = Theme.of(context).colorScheme;
     bool hasBreakdown = breakdownID.isNotEmpty || endOfDayData.actualcashonhand != 0;
-    bool isBalanced = endOfDayData.discrepancy == 0;
-    bool isOver = endOfDayData.discrepancy > 0;
+    bool isBalanced = endOfDayData.discrepancy.abs() < 0.005;
+    bool isOver = endOfDayData.discrepancy >= 0.005;
 
     return Container(
       width: double.infinity,

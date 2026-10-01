@@ -9,6 +9,7 @@ import 'package:flutter_app/models/other_product.dart';
 import 'package:flutter_app/models/selecta_product.dart';
 import 'package:flutter_app/services/other_product_service.dart';
 import 'package:flutter_app/services/selecta_product_service.dart';
+import 'package:intl/intl.dart';
 
 // ignore: constant_identifier_names
 const String INVENTORY_MOVEMENTS_COLLECTION_REF = 'inventory_movements';
@@ -458,5 +459,181 @@ class InventoryService {
           list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           return list;
         });
+  }
+
+  /// Replenishes inventory stock for items received in a Purchase Order.
+  /// Increments `stockQuantity` and logs an [InventoryMovement] audit entry for each product.
+  Future<void> replenishStockForPurchaseOrder({
+    required String invoiceNumber,
+    required DateTime orderDate,
+    required List<OrderItem> items,
+  }) async {
+    if (items.isEmpty) return;
+    final now = Timestamp.now();
+    final createdBy = _currentActorName();
+    final batch = _firestore.batch();
+    final invoiceRef = invoiceNumber.trim().isNotEmpty
+        ? invoiceNumber.trim()
+        : 'PO-${DateFormat('yyyyMMdd').format(orderDate)}';
+
+    for (final item in items) {
+      final qty = item.effectiveQuantity;
+      if (item.productId.isEmpty || qty <= 0) continue;
+      final collectionName = _collectionForSource(item.productSource);
+      final productRef = _firestore.collection(collectionName).doc(item.productId);
+      final snap = await productRef.get();
+      if (!snap.exists) continue;
+      final data = snap.data() ?? {};
+
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final nextStock = currentStock + qty;
+
+      batch.update(productRef, {
+        'stockQuantity': nextStock,
+        'updatedAt': now,
+      });
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        productSource: item.productSource,
+        previousStock: currentStock,
+        newStock: nextStock,
+        delta: qty,
+        reason: 'Purchase Order Replenishment',
+        notes: 'PO Ref: $invoiceRef',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
+    }
+
+    await batch.commit();
+  }
+
+  /// Adjusts stock when an already-replenished Purchase Order is edited.
+  Future<void> adjustReplenishedStockForPurchaseOrder({
+    required String invoiceNumber,
+    required DateTime orderDate,
+    required List<OrderItem> oldItems,
+    required List<OrderItem> newItems,
+  }) async {
+    final now = Timestamp.now();
+    final createdBy = _currentActorName();
+    final batch = _firestore.batch();
+    final invoiceRef = invoiceNumber.trim().isNotEmpty
+        ? invoiceNumber.trim()
+        : 'PO-${DateFormat('yyyyMMdd').format(orderDate)}';
+
+    final Map<String, int> oldQtyByKey = {
+      for (final item in oldItems) '${item.productSource}:${item.productId}': item.effectiveQuantity
+    };
+    final Map<String, int> newQtyByKey = {
+      for (final item in newItems) '${item.productSource}:${item.productId}': item.effectiveQuantity
+    };
+
+    final allKeys = {...oldQtyByKey.keys, ...newQtyByKey.keys};
+    bool hasChanges = false;
+
+    for (final key in allKeys) {
+      final parts = key.split(':');
+      if (parts.length != 2) continue;
+      final source = parts[0];
+      final productId = parts[1];
+
+      final oldQty = oldQtyByKey[key] ?? 0;
+      final newQty = newQtyByKey[key] ?? 0;
+      final delta = newQty - oldQty;
+      if (delta == 0) continue;
+
+      final collectionName = _collectionForSource(source);
+      final productRef = _firestore.collection(collectionName).doc(productId);
+      final snap = await productRef.get();
+      if (!snap.exists) continue;
+      final data = snap.data() ?? {};
+
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final nextStock = (currentStock + delta) < 0 ? 0 : (currentStock + delta);
+
+      batch.update(productRef, {
+        'stockQuantity': nextStock,
+        'updatedAt': now,
+      });
+
+      final itemSample = newItems.firstWhere(
+        (i) => '${i.productSource}:${i.productId}' == key,
+        orElse: () => oldItems.firstWhere((i) => '${i.productSource}:${i.productId}' == key),
+      );
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: productId,
+        productName: itemSample.productName,
+        productSource: source,
+        previousStock: currentStock,
+        newStock: nextStock,
+        delta: delta,
+        reason: 'Purchase Order Adjustment',
+        notes: 'PO Ref: $invoiceRef (${delta > 0 ? "+$delta" : "$delta"})',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
+      hasChanges = true;
+    }
+
+    if (hasChanges) {
+      await batch.commit();
+    }
+  }
+
+  /// Reverts replenished stock if a purchase order is deleted.
+  Future<void> revertReplenishedStockForPurchaseOrder({
+    required String invoiceNumber,
+    required List<OrderItem> items,
+  }) async {
+    if (items.isEmpty) return;
+    final now = Timestamp.now();
+    final createdBy = _currentActorName();
+    final batch = _firestore.batch();
+
+    for (final item in items) {
+      final qty = item.effectiveQuantity;
+      if (item.productId.isEmpty || qty <= 0) continue;
+      final collectionName = _collectionForSource(item.productSource);
+      final productRef = _firestore.collection(collectionName).doc(item.productId);
+      final snap = await productRef.get();
+      if (!snap.exists) continue;
+      final data = snap.data() ?? {};
+
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final nextStock = (currentStock - qty) < 0 ? 0 : (currentStock - qty);
+
+      batch.update(productRef, {
+        'stockQuantity': nextStock,
+        'updatedAt': now,
+      });
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        productSource: item.productSource,
+        previousStock: currentStock,
+        newStock: nextStock,
+        delta: -qty,
+        reason: 'Purchase Order Deleted (Stock Reverted)',
+        notes: 'PO Ref: $invoiceNumber',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
+    }
+
+    await batch.commit();
   }
 }

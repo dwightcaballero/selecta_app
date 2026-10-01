@@ -21,7 +21,7 @@ class DigitalReceiptDialog extends StatefulWidget {
     required this.deliveryId,
     this.dealerName,
     this.onProceed,
-    this.proceedLabel = 'Proceed to Delivery',
+    this.proceedLabel = 'Close',
   });
 
   /// Static helper to display the receipt dialog easily from any page.
@@ -31,18 +31,13 @@ class DigitalReceiptDialog extends StatefulWidget {
     required String deliveryId,
     String? dealerName,
     VoidCallback? onProceed,
-    String proceedLabel = 'Proceed to Delivery',
+    String proceedLabel = 'Close',
   }) {
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => DigitalReceiptDialog(
-        delivery: delivery,
-        deliveryId: deliveryId,
-        dealerName: dealerName,
-        onProceed: onProceed,
-        proceedLabel: proceedLabel,
-      ),
+      builder: (_) =>
+          DigitalReceiptDialog(delivery: delivery, deliveryId: deliveryId, dealerName: dealerName, onProceed: onProceed, proceedLabel: proceedLabel),
     );
   }
 
@@ -122,10 +117,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
       final isEnabled = await _printerService.isBluetoothEnabled();
       if (!isEnabled) {
         if (mounted) {
-          ShowMessage.error(
-            context,
-            'Bluetooth is turned off. Please turn on Bluetooth to connect to your thermal printer.',
-          );
+          ShowMessage.error(context, 'Bluetooth is turned off. Please turn on Bluetooth to connect to your thermal printer.');
         }
         return;
       }
@@ -180,9 +172,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => PrinterDevicePickerSheet(
         onConnected: (name) {
           setState(() {
@@ -208,13 +198,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
         decoration: BoxDecoration(
           color: colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 10))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -232,10 +216,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
                     child: const Icon(Icons.receipt_long_rounded, color: Color(0xFF0284C7), size: 22),
                   ),
                   const SizedBox(width: 12),
@@ -243,15 +224,9 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Digital Receipt',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
+                        Text('Digital Receipt', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         SizedBox(height: 2),
-                        Text(
-                          'Text-only receipt for thermal printing',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
+                        Text('Text-only receipt for thermal printing', style: TextStyle(fontSize: 12, color: Colors.grey)),
                       ],
                     ),
                   ),
@@ -317,19 +292,14 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
                             icon: const Icon(Icons.remove_rounded, size: 16),
-                            onPressed: _fontScale > 0.85
-                                ? () => setState(() => _fontScale = (_fontScale - 0.15).clamp(0.85, 2.2))
-                                : null,
+                            onPressed: _fontScale > 0.85 ? () => setState(() => _fontScale = (_fontScale - 0.15).clamp(0.85, 2.2)) : null,
                           ),
                           InkWell(
                             onTap: () => setState(() => _fontScale = 1.0),
                             borderRadius: BorderRadius.circular(4),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-                              child: Text(
-                                '${(_fontScale * 100).round()}%',
-                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                              ),
+                              child: Text('${(_fontScale * 100).round()}%', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
                             ),
                           ),
                           IconButton(
@@ -338,9 +308,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                             padding: const EdgeInsets.symmetric(horizontal: 4),
                             constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
                             icon: const Icon(Icons.add_rounded, size: 16),
-                            onPressed: _fontScale < 2.1
-                                ? () => setState(() => _fontScale = (_fontScale + 0.15).clamp(0.85, 2.2))
-                                : null,
+                            onPressed: _fontScale < 2.1 ? () => setState(() => _fontScale = (_fontScale + 0.15).clamp(0.85, 2.2)) : null,
                           ),
                         ],
                       ),
@@ -353,20 +321,16 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
             // ── Scrollable Monospace Thermal Paper Preview with Pinch-to-Zoom ──
             Flexible(
               child: _isLoading
-                  ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+                  ? const Center(
+                      child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()),
+                    )
                   : Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFAF9F6), // Warm paper white
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.grey.shade300),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
@@ -424,11 +388,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           icon: _isPrinting
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                               : const Icon(Icons.print_rounded, size: 20),
                           label: FittedBox(
                             fit: BoxFit.scaleDown,
@@ -450,24 +410,14 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                           constraints: const BoxConstraints(maxWidth: 135),
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           decoration: BoxDecoration(
-                            color: _isConnected
-                                ? Colors.green.withValues(alpha: 0.12)
-                                : Colors.grey.withValues(alpha: 0.12),
+                            color: _isConnected ? Colors.green.withValues(alpha: 0.12) : Colors.grey.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _isConnected
-                                  ? Colors.green.withValues(alpha: 0.3)
-                                  : Colors.grey.withValues(alpha: 0.3),
-                            ),
+                            border: Border.all(color: _isConnected ? Colors.green.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.3)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                Icons.print_rounded,
-                                size: 16,
-                                color: _isConnected ? Colors.green.shade700 : Colors.grey.shade700,
-                              ),
+                              Icon(Icons.print_rounded, size: 16, color: _isConnected ? Colors.green.shade700 : Colors.grey.shade700),
                               const SizedBox(width: 6),
                               Flexible(
                                 child: Text(
@@ -497,10 +447,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                       minimumSize: const Size(double.infinity, 46),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: Text(
-                      widget.proceedLabel,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
+                    child: Text(widget.proceedLabel, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   ),
                 ],
               ),
@@ -647,11 +594,7 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
                 const SizedBox(width: 10),
                 const Text('Select Thermal Printer', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.refresh_rounded, size: 20),
-                  tooltip: 'Rescan',
-                  onPressed: _scanDevices,
-                ),
+                IconButton(icon: const Icon(Icons.refresh_rounded, size: 20), tooltip: 'Rescan', onPressed: _scanDevices),
               ],
             ),
             const SizedBox(height: 4),
@@ -661,7 +604,9 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
             ),
             const Divider(height: 24),
             if (_isLoading)
-              const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+              const Center(
+                child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()),
+              )
             else if (!_hasPermission)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
@@ -669,10 +614,7 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.15), shape: BoxShape.circle),
                       child: const Icon(Icons.security_rounded, size: 36, color: Colors.amber),
                     ),
                     const SizedBox(height: 12),
@@ -703,17 +645,11 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withValues(alpha: 0.15),
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.15), shape: BoxShape.circle),
                       child: const Icon(Icons.bluetooth_disabled_rounded, size: 36, color: Colors.blue),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Bluetooth is Turned Off',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
+                    const Text('Bluetooth is Turned Off', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                     const SizedBox(height: 6),
                     const Text(
                       'Please turn ON Bluetooth on your phone, then tap the button below to detect paired printers.',
@@ -721,11 +657,7 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: _scanDevices,
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: const Text('Check Again'),
-                    ),
+                    FilledButton.icon(onPressed: _scanDevices, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Check Again')),
                   ],
                 ),
               )
@@ -752,7 +684,10 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
                           Text('1. Turn ON the thermal printer.', style: TextStyle(fontSize: 12, color: Colors.grey)),
                           Text('2. Open your phone\'s Bluetooth Settings.', style: TextStyle(fontSize: 12, color: Colors.grey)),
                           Text('3. Pair with your printer (PIN: usually 0000 or 1234).', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                          Text('4. Once paired under "Paired devices", return here and tap Refresh.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          Text(
+                            '4. Once paired under "Paired devices", return here and tap Refresh.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
                         ],
                       ),
                     ),

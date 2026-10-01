@@ -269,8 +269,8 @@ class _BreakdownPageState extends State<BreakdownPage> {
     double totalCollected = widget.breakdown.breakdownAmount + widget.breakdown.bankDepositAmount;
     double expected = widget.breakdown.expectedAmount;
     double discrepancy = widget.breakdown.discrepancy;
-    bool isBalanced = discrepancy == 0;
-    bool isOver = discrepancy > 0;
+    bool isBalanced = discrepancy.abs() < 0.005;
+    bool isOver = discrepancy >= 0.005;
 
     Color badgeColor = isBalanced ? Colors.green : (isOver ? Colors.orange.shade800 : Colors.red.shade700);
     Color bgColor = isBalanced
@@ -638,12 +638,12 @@ class _BreakdownPageState extends State<BreakdownPage> {
               ),
             FilledButton.icon(
               onPressed: () async {
-                final bool isBalanced = widget.breakdown.discrepancy == 0;
+                final bool isBalanced = widget.breakdown.discrepancy.abs() < 0.005;
                 final double disc = widget.breakdown.discrepancy.abs();
                 final String baseMsg = isUpdating ? ConfirmMessage.update : ConfirmMessage.save;
                 final String message = isBalanced
                     ? baseMsg
-                    : '$baseMsg\n\n⚠️ Note: Discrepancy is ${Helperfunctions.formatDoubleAmountForDisplay(disc)} (${widget.breakdown.discrepancy > 0 ? "Overpaid" : "Shortage"}).';
+                    : '$baseMsg\n\n⚠️ Note: Discrepancy is ${Helperfunctions.formatDoubleAmountForDisplay(disc)} (${widget.breakdown.discrepancy >= 0.005 ? "Overpaid" : "Shortage"}).';
 
                 final confirmed = await ShowMessage.confirm(
                   context,

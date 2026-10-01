@@ -351,17 +351,22 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
   /// Order card with status indicators, amounts, and navigation
   Widget _buildOrderCard({required String orderId, required Purchaseorder order}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final bool hasInvoice = order.invoiceNumber.trim().isNotEmpty && order.invoiceAmount > 0;
-    final String invoiceNumber = hasInvoice ? order.invoiceNumber : (order.invoiceNumber.isNotEmpty ? order.invoiceNumber : 'Pending Invoice');
-    final dateStr = Helperfunctions.formatTimestampForDisplay(order.orderDate);
+    final bool isInvoiced = order.status == 'invoiced' || order.status == 'confirmed';
+    final bool isPending = order.status == 'pending' || !isInvoiced;
+
+    final String poNumber = order.poNumber.isNotEmpty ? order.poNumber : (isPending ? order.invoiceNumber : '');
+    final String invoiceNumber = order.invoiceNumber.trim();
+
+    final orderDateStr = Helperfunctions.formatTimestampForDisplay(order.orderDate);
+    final invoiceDateStr = Helperfunctions.formatTimestampForDisplay(order.invoiceDate);
 
     Color badgeColor;
     String badgeText;
     IconData badgeIcon;
 
-    if (!hasInvoice) {
+    if (isPending) {
       badgeColor = Colors.orange.shade800;
-      badgeText = 'Pending Invoice';
+      badgeText = 'Pending';
       badgeIcon = Icons.hourglass_top_rounded;
     } else if (order.isSettled == true) {
       badgeColor = Colors.green.shade700;
@@ -400,7 +405,10 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                     children: [
                       Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
-                      Text(dateStr, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                      Text(
+                        isPending ? 'P.O. Date: $orderDateStr' : 'Inv Date: $invoiceDateStr',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
                     ],
                   ),
                   Container(
@@ -426,7 +434,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
               ),
               const SizedBox(height: 10),
 
-              // Main row: Invoice # and Order target amount
+              // Main row: PO / Invoice # and Order target amount
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -435,21 +443,28 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          invoiceNumber,
+                          isInvoiced
+                              ? (invoiceNumber.isNotEmpty ? 'Invoice #$invoiceNumber' : 'PO #${poNumber.isNotEmpty ? poNumber : order.invoiceNumber}')
+                              : (poNumber.isNotEmpty ? 'PO #$poNumber' : 'Pending PO'),
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
-                            color: hasInvoice ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
-                            fontStyle: hasInvoice ? FontStyle.normal : FontStyle.italic,
+                            color: colorScheme.onSurface,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        if (order.invoiceAmount > 0) ...[
+                        if (isInvoiced && order.invoiceAmount > 0) ...[
                           const SizedBox(height: 2),
                           Text(
                             'Invoiced: ${Helperfunctions.formatDoubleAmountForDisplay(order.invoiceAmount)}',
                             style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                          ),
+                        ] else if (isPending) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Awaiting invoice arrival',
+                            style: TextStyle(fontSize: 11.5, fontStyle: FontStyle.italic, color: Colors.orange.shade800),
                           ),
                         ],
                       ],

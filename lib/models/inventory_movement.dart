@@ -22,6 +22,7 @@ class InventoryItem {
   final String id;
   final String productName;
   final String imageUrl;
+  final String itemCode;
   final double buyingPrice;
   final double sellingPrice;
   final bool isActive;
@@ -37,6 +38,7 @@ class InventoryItem {
     required this.id,
     required this.productName,
     required this.imageUrl,
+    this.itemCode = '',
     required this.buyingPrice,
     required this.sellingPrice,
     required this.isActive,
@@ -53,6 +55,7 @@ class InventoryItem {
     String? id,
     String? productName,
     String? imageUrl,
+    String? itemCode,
     double? buyingPrice,
     double? sellingPrice,
     bool? isActive,
@@ -68,6 +71,7 @@ class InventoryItem {
       id: id ?? this.id,
       productName: productName ?? this.productName,
       imageUrl: imageUrl ?? this.imageUrl,
+      itemCode: itemCode ?? this.itemCode,
       buyingPrice: buyingPrice ?? this.buyingPrice,
       sellingPrice: sellingPrice ?? this.sellingPrice,
       isActive: isActive ?? this.isActive,
@@ -86,6 +90,7 @@ class InventoryItem {
       id: product.id,
       productName: product.productName,
       imageUrl: product.imageUrl,
+      itemCode: product.itemCode,
       buyingPrice: product.buyingPrice,
       sellingPrice: product.sellingPrice,
       isActive: product.isActive,

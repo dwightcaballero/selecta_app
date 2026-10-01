@@ -380,6 +380,7 @@ class _DashboardPageState extends State<DashboardPage> {
             _buildQuickAccessCard(
               label: 'Picklists',
               icon: Icons.fact_check_outlined,
+              count: dashboardDTO.pendingPicklistCount,
               stream: _pendingPicklistsCountStream,
               color: primaryColor,
               nextPage: const PicklistListPage(),

@@ -142,7 +142,7 @@ class EndOfDayController {
         breakdownTotal.totalCent;
 
     final effectiveBankDeposit = withBankDeposit ? bankDepositAmount : 0.0;
-    final double discrepancy = (effectiveBankDeposit + breakdownAmount) - expectedAmount;
+    final double discrepancy = double.parse(((effectiveBankDeposit + breakdownAmount) - expectedAmount).toStringAsFixed(2));
 
     return RecomputeResult(
       breakdownTotal: breakdownTotal,

@@ -47,11 +47,20 @@ class DeliveryService {
         .snapshots();
   }
 
-  Stream<int> getPendingPicklistCountStream() {
+  Stream<int> getPendingPicklistCountStream({DateTime? date}) {
     return _ordersRef
         .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist)
         .snapshots()
-        .map((snap) => snap.docs.length);
+        .map((snap) {
+          final target = date ?? DateTime.now();
+          return snap.docs.where((doc) {
+            final delivery = doc.data();
+            final dDate = delivery.deliveryDate?.toDate() ?? delivery.createdDate.toDate();
+            return dDate.year == target.year &&
+                dDate.month == target.month &&
+                dDate.day == target.day;
+          }).length;
+        });
   }
 
   Stream<QuerySnapshot> getListDelivery() {
@@ -139,6 +148,27 @@ class DeliveryService {
         .get();
 
     return snapshot.count;
+  }
+
+  /// Counts pending picklists specifically scheduled/created for [date].
+  static Future<int> getCountPendingPicklistsForDate(DateTime date) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection(DELIVERY_COLLECTION_REF)
+          .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist)
+          .get();
+
+      return snapshot.docs.where((doc) {
+        final data = doc.data();
+        final deliveryDate = data[DeliveryModelString.deliveryDate] as Timestamp?;
+        final createdDate = data[DeliveryModelString.createdDate] as Timestamp?;
+        final dDate = deliveryDate?.toDate() ?? createdDate?.toDate();
+        if (dDate == null) return false;
+        return dDate.year == date.year && dDate.month == date.month && dDate.day == date.day;
+      }).length;
+    } catch (e) {
+      return 0;
+    }
   }
 
   static Future<int?> getCountReturnedDeliveriesOnOtherDays() async {

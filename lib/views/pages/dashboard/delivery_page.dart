@@ -10,6 +10,7 @@ import 'package:flutter_app/views/widgets/alert_widget.dart';
 import 'package:flutter_app/views/widgets/appbar_widget.dart';
 import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
 import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
+import 'package:flutter_app/views/widgets/imageviewer_page.dart';
 
 class DeliveryPage extends StatefulWidget {
   const DeliveryPage({super.key, required this.deliveryID, required this.delivery});
@@ -27,6 +28,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
   bool get isSalesmanLocked => !isDealer && hasBreakdownForDay;
 
   double discrepancy = 0;
+  double get effectiveOrderAmount => txtOrderAmount.text.isNotEmpty
+      ? Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text)
+      : widget.delivery.orderAmount;
   TextEditingController dropdownHapiStore = TextEditingController();
   TextEditingController dropdownStatus = TextEditingController();
   bool isDealer = true;
@@ -166,7 +170,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     }
     final listError = _controller.validateDeliveryForm(
       status: dropdownStatus.text,
-      orderAmount: widget.delivery.orderAmount,
+      orderAmount: effectiveOrderAmount,
       cash: txtCashAmount.text,
       online: txtOnlineAmount.text,
       credit: txtCreditAmount.text,
@@ -238,7 +242,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   void computeDiscrepancy() {
     discrepancy = _controller.computeDiscrepancy(
-      orderAmount: widget.delivery.orderAmount,
+      orderAmount: effectiveOrderAmount,
       cash: txtCashAmount.text,
       online: txtOnlineAmount.text,
       credit: txtCreditAmount.text,
@@ -310,6 +314,101 @@ class _DeliveryPageState extends State<DeliveryPage> {
             const Divider(height: 24),
             child,
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProofOfDeliveryCard() {
+    final imagePath = networkImagePath.trim();
+    if (imagePath.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _buildSectionCard(
+      title: 'Proof of Delivery',
+      icon: Icons.image_outlined,
+      trailing: OutlinedButton.icon(
+        onPressed: () => Helperfunctions.navigateTo(
+          context,
+          ImageViewerPage(image: null, networkImagePath: imagePath),
+        ),
+        style: OutlinedButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        icon: const Icon(Icons.fullscreen, size: 16),
+        label: const Text('View Full Screen'),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => Helperfunctions.navigateTo(
+          context,
+          ImageViewerPage(image: null, networkImagePath: imagePath),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Stack(
+            alignment: Alignment.bottomCenter,
+            children: [
+              Image.network(
+                imagePath,
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    height: 200,
+                    width: double.infinity,
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                    child: const Center(child: CircularProgressIndicator()),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) => Container(
+                  height: 200,
+                  width: double.infinity,
+                  color: colorScheme.surfaceContainerHighest,
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.broken_image_outlined, size: 36, color: colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Unable to load Proof of Delivery image',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withValues(alpha: 0.75)],
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.zoom_in, color: Colors.white, size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'Tap image to zoom / inspect proof',
+                      style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -586,7 +685,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void _quickFillPayment({required String target}) {
-    String formattedOrder = Helperfunctions.formatDoubleAmountForField(widget.delivery.orderAmount);
+    String formattedOrder = Helperfunctions.formatDoubleAmountForField(effectiveOrderAmount);
 
     setState(() {
       txtCashAmount.text = target == 'cash' ? formattedOrder : '';
@@ -605,9 +704,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
       credit: txtCreditAmount.text,
       returnAmount: txtReturnAmount.text,
     );
-    double orderAmt = widget.delivery.orderAmount;
-    bool isBalanced = discrepancy == 0;
-    bool isOver = discrepancy > 0;
+    double orderAmt = effectiveOrderAmount;
+    bool isBalanced = discrepancy.abs() < 0.005;
+    bool isOver = discrepancy >= 0.005;
 
     Color badgeColor = isBalanced ? Colors.green : (isOver ? Colors.orange.shade800 : Colors.red.shade700);
     Color bgColor = isBalanced
@@ -1118,7 +1217,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 // 1. Order & Store Info Card
                 _buildOrderAndStoreCard(),
 
-                // 2. Payment Breakdown Card (Animated for Delivered status)
+                // 2. Proof of Delivery Card for reviewing uploaded photo
+                if (networkImagePath.trim().isNotEmpty) _buildProofOfDeliveryCard(),
+
+                // 3. Payment Breakdown Card (Animated for Delivered status)
                 if (widget.deliveryID.isNotEmpty)
                   AnimatedSize(
                     duration: const Duration(milliseconds: 300),

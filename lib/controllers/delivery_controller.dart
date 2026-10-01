@@ -107,9 +107,9 @@ class DeliveryController {
     return _deliveryService.getPendingPicklistsStream();
   }
 
-  /// Live count stream of orders currently in `Pending Picklist` status.
-  Stream<int> getPendingPicklistCountStream() {
-    return _deliveryService.getPendingPicklistCountStream();
+  /// Live count stream of orders currently in `Pending Picklist` status for [date] (defaults to current day).
+  Stream<int> getPendingPicklistCountStream({DateTime? date}) {
+    return _deliveryService.getPendingPicklistCountStream(date: date);
   }
 
   /// Fetches the count of returned deliveries from past days that need attention/rescheduling.
@@ -190,11 +190,11 @@ class DeliveryController {
 
   /// Computes total order amount from a list of [OrderItem]s.
   double computeItemsOrderAmount(List<OrderItem> items) {
-    double total = 0.0;
+    Decimal total = Decimal.zero;
     for (final item in items) {
-      total += item.lineTotal;
+      total += Decimal.parse(item.lineTotal.toStringAsFixed(2));
     }
-    return total;
+    return total.toDouble();
   }
 
   /// Creates a new Booked Order (`Pending Picklist`) in the unified `delivery` collection,
@@ -489,7 +489,7 @@ class DeliveryController {
     final Decimal returnAmt = Helperfunctions.formatStringAmountToDecimal(returnAmount);
 
     final Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmt;
-    final Decimal orderAmt = Decimal.parse(orderAmount.toString());
+    final Decimal orderAmt = Decimal.parse(orderAmount.toStringAsFixed(2));
 
     return (totalAmount - orderAmt).toDouble();
   }
@@ -528,7 +528,7 @@ class DeliveryController {
     final Decimal returnAmt = Helperfunctions.formatStringAmountToDecimal(returnAmount);
 
     final Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmt;
-    final Decimal orderAmt = Decimal.parse(orderAmount.toString());
+    final Decimal orderAmt = Decimal.parse(orderAmount.toStringAsFixed(2));
 
     if (status == DeliveryStatus.delivered && totalAmount != orderAmt) {
       listError.add('Total amount does not match the order amount!');
