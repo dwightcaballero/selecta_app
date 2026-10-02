@@ -181,9 +181,33 @@ class AppUpdateService {
     bool silent = true,
     bool forceRefresh = false,
   }) async {
+    ScaffoldMessengerState? messenger;
+    if (!silent && context.mounted) {
+      messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.hideCurrentSnackBar();
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              SizedBox(width: 12),
+              Text('Checking for updates...'),
+            ],
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+
     try {
       final service = AppUpdateService();
       final result = await service.checkUpdate(forceRefresh: forceRefresh);
+
+      messenger?.hideCurrentSnackBar();
 
       if (!context.mounted) return;
 
@@ -198,7 +222,7 @@ class AppUpdateService {
           ),
         );
       } else if (!silent) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger?.showSnackBar(
           SnackBar(
             content: Text(
               'You are already on the latest version (v${result.currentVersion}+${result.currentBuildNumber}).',
@@ -209,6 +233,7 @@ class AppUpdateService {
         );
       }
     } catch (e, stack) {
+      messenger?.hideCurrentSnackBar();
       ErrorLogService.logError(
         action: 'AppUpdateService.checkAndPromptUpdate',
         error: e.toString(),
@@ -216,7 +241,7 @@ class AppUpdateService {
         page: 'AppUpdateService',
       );
       if (!silent && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger?.showSnackBar(
           SnackBar(
             content: Text('Failed to check for updates: $e'),
             backgroundColor: Colors.red.shade700,

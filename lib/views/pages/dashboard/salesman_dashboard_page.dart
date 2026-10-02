@@ -432,6 +432,30 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           const Divider(indent: 16, endIndent: 16),
 
           _buildDrawerItem(Icons.logout_rounded, 'Sign Out', null, isLogout: true),
+
+          const SizedBox(height: 8),
+
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20, top: 4),
+            child: FutureBuilder(
+              future: AppUpdateService.getCurrentPackageInfo(),
+              builder: (context, snapshot) {
+                final versionText = snapshot.hasData
+                    ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                    : '';
+                return Center(
+                  child: Text(
+                    'Selecta Ops $versionText'.trim(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );

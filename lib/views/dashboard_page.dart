@@ -369,6 +369,7 @@ class _DashboardPageState extends State<DashboardPage> {
         onSync: syncDashboard,
         onUploadErrorLogs: _handleUploadErrorLogs,
         onLogout: onLogout,
+        onCheckForUpdates: () => AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true),
         onNavigate: _navigateToPage,
       ),
       floatingActionButton: FloatingActionButton.extended(

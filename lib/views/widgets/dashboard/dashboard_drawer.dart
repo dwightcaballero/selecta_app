@@ -39,6 +39,7 @@ class DashboardDrawer extends StatelessWidget {
   final VoidCallback onSync;
   final VoidCallback onUploadErrorLogs;
   final VoidCallback onLogout;
+  final VoidCallback? onCheckForUpdates;
   final Future<void> Function(Widget page) onNavigate;
 
   const DashboardDrawer({
@@ -52,6 +53,7 @@ class DashboardDrawer extends StatelessWidget {
     required this.onSync,
     required this.onUploadErrorLogs,
     required this.onLogout,
+    this.onCheckForUpdates,
     required this.onNavigate,
   });
 
@@ -222,7 +224,11 @@ class DashboardDrawer extends StatelessWidget {
             'Check for Updates',
             null,
             onTap: () {
-              AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true);
+              if (onCheckForUpdates != null) {
+                onCheckForUpdates!();
+              } else {
+                AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true);
+              }
             },
           ),
           _buildDrawerItem(context, Icons.tune_rounded, 'Settings & Appearance', const SettingsPage()),
@@ -258,6 +264,31 @@ class DashboardDrawer extends StatelessWidget {
 
           // 5. Logout
           _buildDrawerItem(context, Icons.logout_rounded, 'Logout', null, isLogout: true, onTap: onLogout),
+
+          const SizedBox(height: 8),
+
+          // 6. Current App Version Display
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20, top: 4),
+            child: FutureBuilder(
+              future: AppUpdateService.getCurrentPackageInfo(),
+              builder: (context, snapshot) {
+                final versionText = snapshot.hasData
+                    ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
+                    : '';
+                return Center(
+                  child: Text(
+                    'Selecta Ops $versionText'.trim(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
