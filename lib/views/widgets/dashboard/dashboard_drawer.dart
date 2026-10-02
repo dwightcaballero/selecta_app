@@ -222,7 +222,7 @@ class DashboardDrawer extends StatelessWidget {
             'Check for Updates',
             null,
             onTap: () {
-              AppUpdateService.checkAndPromptUpdate(context, silent: false);
+              AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true);
             },
           ),
           _buildDrawerItem(context, Icons.tune_rounded, 'Settings & Appearance', const SettingsPage()),

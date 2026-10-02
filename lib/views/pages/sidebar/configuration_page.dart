@@ -908,7 +908,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => AppUpdateService.checkAndPromptUpdate(context, silent: false),
+                    onPressed: () => AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true),
                     icon: const Icon(Icons.refresh_rounded, size: 18),
                     label: const Text('Check for Updates'),
                     style: OutlinedButton.styleFrom(

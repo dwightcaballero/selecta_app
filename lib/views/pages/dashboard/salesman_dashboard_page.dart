@@ -426,7 +426,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           ),
           _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),
           _buildDrawerItem(Icons.system_update_alt_rounded, 'Check for Updates', null, onTap: () {
-            AppUpdateService.checkAndPromptUpdate(context, silent: false);
+            AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true);
           }),
 
           const Divider(indent: 16, endIndent: 16),
