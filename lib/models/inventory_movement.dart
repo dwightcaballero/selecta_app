@@ -145,6 +145,9 @@ class InventoryItem {
 
   bool get isLowStock => stockQuantity > 0 && stockQuantity <= lowStockThreshold;
 
+  /// True if item is either completely out of stock or at or below low stock threshold.
+  bool get isNeedsRestock => isOutOfStock || isLowStock;
+
   double get stockCostValue => stockQuantity * buyingPrice;
 
   double get stockRetailValue => stockQuantity * sellingPrice;

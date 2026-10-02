@@ -24,7 +24,7 @@ class _InventoryPageState extends State<InventoryPage> {
   final DateFormat _dateFormat = DateFormat('MMM d, yyyy • h:mm a');
 
   String _searchQuery = '';
-  String _selectedFilter = 'All'; // 'All', 'Selecta', 'Other', 'Low Stock', 'Out of Stock'
+  String _selectedFilter = 'All'; // 'All', 'Selecta', 'Other', 'Needs Restock', 'Low Stock', 'Out of Stock'
   bool _isSummaryExpanded = false;
 
   @override
@@ -54,6 +54,7 @@ class _InventoryPageState extends State<InventoryPage> {
       return switch (_selectedFilter) {
         'Selecta' => item.source == InventoryProductSource.selecta,
         'Other' => item.source == InventoryProductSource.other,
+        'Needs Restock' => item.isNeedsRestock,
         'Low Stock' => item.isLowStock,
         'Out of Stock' => item.isOutOfStock,
         _ => true,
@@ -194,6 +195,13 @@ class _InventoryPageState extends State<InventoryPage> {
                     _buildFilterChip('Selecta', null, colorScheme),
                     const SizedBox(width: 8),
                     _buildFilterChip('Other', null, colorScheme),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(
+                      'Needs Restock',
+                      summary.needsRestockCount > 0 ? summary.needsRestockCount : null,
+                      colorScheme,
+                      alertColor: const Color(0xFFE11D48),
+                    ),
                     const SizedBox(width: 8),
                     _buildFilterChip(
                       'Low Stock',
@@ -398,6 +406,41 @@ class _InventoryPageState extends State<InventoryPage> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (summary.needsRestockCount > 0) ...[
+                    GestureDetector(
+                      onTap: () => setState(() => _selectedFilter = 'Needs Restock'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        margin: const EdgeInsets.only(right: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE11D48).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFFE11D48).withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              size: 13,
+                              color: Color(0xFFE11D48),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${summary.needsRestockCount} restock',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFE11D48),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   Icon(
                     _isSummaryExpanded
                         ? Icons.keyboard_arrow_up_rounded
@@ -514,6 +557,11 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   int _compareProducts(InventoryItem a, InventoryItem b) {
+    if (_selectedFilter == 'Needs Restock') {
+      if (a.isOutOfStock != b.isOutOfStock) {
+        return a.isOutOfStock ? -1 : 1;
+      }
+    }
     return Helperfunctions.compareBySrpAndName(
       nameA: a.productName,
       priceA: a.sellingPrice,

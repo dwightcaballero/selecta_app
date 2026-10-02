@@ -26,6 +26,7 @@ class InventorySummary {
   });
 
   double get estimatedMarginValue => totalRetailValue - totalCostValue;
+  int get needsRestockCount => lowStockCount + outOfStockCount;
 }
 
 /// Controller mediating between [InventoryService] and [InventoryPage].
