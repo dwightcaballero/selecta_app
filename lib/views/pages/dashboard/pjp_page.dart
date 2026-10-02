@@ -154,14 +154,15 @@ class _PjpPageState extends State<PjpPage> {
       _locationError = null;
     });
 
+    final hasExistingLocation = _currentHapistore.latitude != null && _currentHapistore.longitude != null;
     final result = await _controller.checkLocation(_currentHapistore);
     if (!mounted) return;
 
     setState(() {
       _isLoadingLocation = false;
-      _locationPassed = result.passed;
+      _locationPassed = hasExistingLocation || result.passed;
       _locationStatus = result.status;
-      _locationError = result.error;
+      _locationError = hasExistingLocation ? null : result.error;
     });
   }
 
@@ -953,6 +954,8 @@ class _PjpPageState extends State<PjpPage> {
             actionLabel: _isUpdatingLocation ? 'Updating...' : (_currentHapistore.latitude == null ? 'Get Location' : 'Update Location'),
             actionIcon: Icons.my_location_rounded,
             loadingLabel: _isUpdatingLocation ? 'Updating...' : null,
+            showActionWhenPassed: true,
+            actionLabelWhenPassed: 'Update Location',
             onAction: _onLocationAction,
             onRetry: _locationError != null ? _checkLocation : null,
           ),

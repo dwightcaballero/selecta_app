@@ -24,11 +24,13 @@ class LocationCheckResult {
   final bool passed;
   final String status;
   final String? error;
+  final double? distanceMeters;
 
   const LocationCheckResult({
     required this.passed,
     required this.status,
     this.error,
+    this.distanceMeters,
   });
 }
 
@@ -264,7 +266,7 @@ class PjpController {
     return await _hapiStoreService.getHapiStoreById(hapiStoreID);
   }
 
-  /// Verifies current device GPS location against store coordinates.
+  /// Verifies store location coordinates. If coordinates already exist, marks as passed.
   Future<LocationCheckResult> checkLocation(Hapistore store) async {
     if (store.latitude == null || store.longitude == null) {
       return const LocationCheckResult(
@@ -273,40 +275,29 @@ class PjpController {
       );
     }
 
+    // If store already has a store location, it is marked as passed.
+    // Try to get current device GPS position for distance status if available.
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        return const LocationCheckResult(
-          passed: false,
-          status: 'GPS services disabled',
-          error: 'GPS is turned off. Please enable device location services.',
+        return LocationCheckResult(
+          passed: true,
+          status: 'Store location saved (${store.latitude!.toStringAsFixed(4)}, ${store.longitude!.toStringAsFixed(4)})',
         );
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          return const LocationCheckResult(
-            passed: false,
-            status: 'Location permission denied',
-            error: 'Location permission denied.',
-          );
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        return const LocationCheckResult(
-          passed: false,
-          status: 'Permission permanently denied',
-          error: 'Location permission permanently denied. Enable in device settings.',
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        return LocationCheckResult(
+          passed: true,
+          status: 'Store location saved (${store.latitude!.toStringAsFixed(4)}, ${store.longitude!.toStringAsFixed(4)})',
         );
       }
 
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 4),
         ),
       );
 
@@ -317,25 +308,19 @@ class PjpController {
         store.longitude!,
       );
 
-      if (distance <= maxAllowedDistanceMeters) {
-        return LocationCheckResult(
-          passed: true,
-          status: 'Within range (${distance.toStringAsFixed(0)}m away, max ${maxAllowedDistanceMeters.toStringAsFixed(0)}m)',
-        );
-      } else {
-        final distLabel = distance >= 1000
-            ? '${(distance / 1000).toStringAsFixed(1)}km'
-            : '${distance.toStringAsFixed(0)}m';
-        return LocationCheckResult(
-          passed: false,
-          status: 'Out of range ($distLabel away, max ${maxAllowedDistanceMeters.toStringAsFixed(0)}m)',
-        );
-      }
-    } catch (e) {
+      final distLabel = distance >= 1000
+          ? '${(distance / 1000).toStringAsFixed(1)}km'
+          : '${distance.toStringAsFixed(0)}m';
+
       return LocationCheckResult(
-        passed: false,
-        status: 'Unable to acquire location',
-        error: 'Failed to get GPS location: $e',
+        passed: true,
+        status: 'Store location verified ($distLabel away)',
+        distanceMeters: distance,
+      );
+    } catch (_) {
+      return LocationCheckResult(
+        passed: true,
+        status: 'Store location saved (${store.latitude!.toStringAsFixed(4)}, ${store.longitude!.toStringAsFixed(4)})',
       );
     }
   }

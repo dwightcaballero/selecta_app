@@ -1,8 +1,35 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/controllers/pjp_controller.dart';
+import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/proof_of_visit.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/services/delivery_service.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/services/pjp_order_decision_service.dart';
+import 'package:selecta_ops/services/proof_of_visit_service.dart';
+import 'package:selecta_ops/services/scanning_services.dart';
+import 'package:selecta_ops/services/tasks_services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class FakeHapiStoreService extends Fake implements HapiStoreService {}
+class FakeScanningServices extends Fake implements ScanningServices {}
+class FakeTasksService extends Fake implements TasksService {}
+class FakeConfigurationService extends Fake implements ConfigurationService {}
+class FakeDeliveryService extends Fake implements DeliveryService {}
+class FakeProofOfVisitService extends Fake implements ProofOfVisitService {}
+class FakePjpOrderDecisionService extends Fake implements PjpOrderDecisionService {}
+
+PjpController createTestController() {
+  return PjpController(
+    hapiStoreService: FakeHapiStoreService(),
+    scanningService: FakeScanningServices(),
+    tasksService: FakeTasksService(),
+    configurationService: FakeConfigurationService(),
+    deliveryService: FakeDeliveryService(),
+    proofOfVisitService: FakeProofOfVisitService(),
+    orderDecisionService: FakePjpOrderDecisionService(),
+  );
+}
 
 void main() {
   group('PJP Checklist Workflow & Models Tests', () {
@@ -132,6 +159,38 @@ void main() {
       expect(isScanningPassed(['Pullout']), isFalse);
       expect(isScanningPassed([]), isFalse);
       expect(isScanningPassed(['Not Scanned', 'Pending']), isTrue);
+    });
+
+    test('Location check marks as passed if store already has a store location', () async {
+      final controller = createTestController();
+      final storeWithLocation = Hapistore(
+        storeName: 'Test Store with Coordinates',
+        storeAddress: '123 Main St',
+        storeContact: '09123456789',
+        openingDate: Timestamp.now(),
+        latitude: 14.5995,
+        longitude: 120.9842,
+      );
+
+      final result = await controller.checkLocation(storeWithLocation);
+      expect(result.passed, isTrue, reason: 'Store with existing coordinates must be marked as passed');
+      expect(result.status, contains('Store location'));
+    });
+
+    test('Location check marks as not passed if store has no location', () async {
+      final controller = createTestController();
+      final storeWithoutLocation = Hapistore(
+        storeName: 'Test Store without Coordinates',
+        storeAddress: '456 Side St',
+        storeContact: '09987654321',
+        openingDate: Timestamp.now(),
+        latitude: null,
+        longitude: null,
+      );
+
+      final result = await controller.checkLocation(storeWithoutLocation);
+      expect(result.passed, isFalse, reason: 'Store with null coordinates must not pass location check');
+      expect(result.status, contains('No store location saved'));
     });
   });
 }

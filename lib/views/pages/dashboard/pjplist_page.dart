@@ -567,32 +567,58 @@ class _PjpListPageState extends State<PjpListPage> {
         title: 'Permanent Journey Plan',
         subtitle: '$_selectedDay Route',
         actions: [
-          // Map Route button — always visible
-          IconButton(
-            icon: const Icon(Icons.map_outlined, color: Colors.white),
-            tooltip: 'Route Map',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay)),
-            ),
-          ),
-          // History button — always visible
-          IconButton(
-            icon: const Icon(Icons.history_rounded, color: Colors.white),
-            tooltip: 'Visit History',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PjpHistoryPage())),
-          ),
-          if (!_isEditing && _isDealer)
+          if (!_isEditing) ...[
+            // Route Map shortcut
             IconButton(
-              icon: const Icon(Icons.edit_outlined, color: Colors.white),
-              tooltip: 'Rearrange stores',
-              onPressed: () async {
-                final snapshot = await _controller.getStoresForDayStream(_selectedDay).first;
-                if (!mounted) return;
-                _startEditing(_sortedDocs(snapshot.docs));
-              },
+              icon: const Icon(Icons.map_outlined, color: Colors.white),
+              tooltip: 'Route Map',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay)),
+              ),
             ),
-          if (_isEditing)
+            // More options overflow menu
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+              tooltip: 'More options',
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              onSelected: (value) async {
+                switch (value) {
+                  case 'rearrange':
+                    final snapshot = await _controller.getStoresForDayStream(_selectedDay).first;
+                    if (!mounted) return;
+                    _startEditing(_sortedDocs(snapshot.docs));
+                    break;
+                  case 'history':
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const PjpHistoryPage()));
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                if (_isDealer)
+                  const PopupMenuItem(
+                    value: 'rearrange',
+                    child: Row(
+                      children: [
+                        Icon(Icons.swap_vert_rounded, size: 20),
+                        SizedBox(width: 10),
+                        Text('Rearrange stores'),
+                      ],
+                    ),
+                  ),
+                const PopupMenuItem(
+                  value: 'history',
+                  child: Row(
+                    children: [
+                      Icon(Icons.history_rounded, size: 20),
+                      SizedBox(width: 10),
+                      Text('Visit History'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ] else
             IconButton(
               icon: const Icon(Icons.add_business_outlined, color: Colors.white),
               tooltip: 'Add store to $_selectedDay',
