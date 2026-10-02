@@ -84,8 +84,13 @@ class AppVersionInfo {
       if (asset is Map<String, dynamic>) {
         final assetName = (asset['name'] as String? ?? '').toLowerCase();
         if (assetName.endsWith('.apk')) {
-          apkUrl = asset['browser_download_url'] as String? ?? '';
-          if (assetName == 'app-release.apk') break;
+          // Prioritize arm64-v8a (modern Android phones) for lightweight ~28MB download size
+          if (assetName.contains('arm64-v8a')) {
+            apkUrl = asset['browser_download_url'] as String? ?? '';
+            break;
+          } else if (apkUrl.isEmpty || assetName == 'app-release.apk') {
+            apkUrl = asset['browser_download_url'] as String? ?? '';
+          }
         }
       }
     }

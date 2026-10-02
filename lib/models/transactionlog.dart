@@ -9,6 +9,7 @@ class TransactionLog {
   String message;
   String details;
   String page;
+  String appVersion;
 
   TransactionLog({
     required this.dealerName,
@@ -19,6 +20,7 @@ class TransactionLog {
     required this.message,
     required this.details,
     this.page = '',
+    this.appVersion = '',
   });
 
   static TransactionLog empty() => TransactionLog(
@@ -30,6 +32,7 @@ class TransactionLog {
     message: '',
     details: '',
     page: '',
+    appVersion: '',
   );
 
   TransactionLog.fromJson(Map<String, Object?> json)
@@ -42,6 +45,7 @@ class TransactionLog {
         message: json['message']! as String,
         details: json['details']! as String,
         page: json['page'] as String? ?? '',
+        appVersion: json['appVersion'] as String? ?? '',
       );
 
   factory TransactionLog.fromSnapshot(
@@ -58,6 +62,7 @@ class TransactionLog {
         message: data?['message'],
         details: data?['details'],
         page: data?['page'] as String? ?? '',
+        appVersion: data?['appVersion'] as String? ?? '',
       );
     } else {
       return TransactionLog.empty();
@@ -73,6 +78,7 @@ class TransactionLog {
     String? message,
     String? details,
     String? page,
+    String? appVersion,
   }) {
     return TransactionLog(
       dealerName: dealerName ?? this.dealerName,
@@ -83,6 +89,7 @@ class TransactionLog {
       message: message ?? this.message,
       details: details ?? this.details,
       page: page ?? this.page,
+      appVersion: appVersion ?? this.appVersion,
     );
   }
 
@@ -96,6 +103,7 @@ class TransactionLog {
       'message': message,
       'details': details,
       'page': page,
+      'appVersion': appVersion,
     };
   }
 }

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/models/transactionlog.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
 
 // ignore: constant_identifier_names
 const String LOG_COLLECTION_REF = 'transactionlogs';
@@ -56,6 +57,11 @@ class TransactionLogService {
   }
 
   Future<void> addLog(TransactionLog log) async {
+    if (log.appVersion.isEmpty) {
+      try {
+        log.appVersion = await ErrorLogService.getAppVersion();
+      } catch (_) {}
+    }
     await _logRef.add(log);
     dashboardNeedsRefreshNotifier.value = true;
   }

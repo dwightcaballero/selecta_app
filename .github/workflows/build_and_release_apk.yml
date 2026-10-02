@@ -52,16 +52,25 @@ jobs:
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          BODY=""
+          if echo "$COMMIT_MSG" | grep -qi "\[force-update\]"; then
+            BODY="[force-update] Critical update required for all users."
+          elif echo "$COMMIT_MSG" | grep -qi "\[mandatory\]"; then
+            BODY="[mandatory] This update is required to continue using Selecta Ops."
+          fi
+          echo "body=$BODY" >> $GITHUB_OUTPUT
 
-      - name: Build Android Release APK
-        run: flutter build apk --release
+      - name: Build Android Release APK (Split ABI for lightweight ~28MB APKs)
+        run: flutter build apk --release --split-per-abi
 
       - name: Create or Update GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version_step.outputs.tag }}
           name: "Release ${{ steps.version_step.outputs.tag }}"
-          files: build/app/outputs/flutter-apk/app-release.apk
+          body: ${{ steps.version_step.outputs.body }}
+          files: build/app/outputs/flutter-apk/*.apk
           generate_release_notes: true
           draft: false
           prerelease: false

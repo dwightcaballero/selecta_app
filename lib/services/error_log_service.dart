@@ -7,6 +7,8 @@ import 'package:selecta_ops/data/variables.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'package:package_info_plus/package_info_plus.dart';
+
 /// Data model representing a structured error log entry.
 class ErrorLogItem {
   final String id;
@@ -18,6 +20,7 @@ class ErrorLogItem {
   final String? userEmail;
   final String? userRole;
   final String platform;
+  final String? appVersion;
   final Map<String, dynamic>? extraData;
   bool isUploaded;
 
@@ -31,6 +34,7 @@ class ErrorLogItem {
     this.userEmail,
     this.userRole,
     required this.platform,
+    this.appVersion,
     this.extraData,
     this.isUploaded = false,
   });
@@ -47,6 +51,7 @@ class ErrorLogItem {
       'userEmail': userEmail,
       'userRole': userRole,
       'platform': platform,
+      if (appVersion != null) 'appVersion': appVersion,
       if (extraData != null) 'extraData': extraData,
       'isUploaded': isUploaded,
     };
@@ -72,6 +77,7 @@ class ErrorLogItem {
       userEmail: json['userEmail'] as String?,
       userRole: json['userRole'] as String?,
       platform: json['platform'] as String? ?? Platform.operatingSystem,
+      appVersion: json['appVersion'] as String?,
       extraData: json['extraData'] is Map ? Map<String, dynamic>.from(json['extraData'] as Map) : null,
       isUploaded: json['isUploaded'] as bool? ?? false,
     );
@@ -85,6 +91,7 @@ class ErrorLogService {
   static const String _localLogFileName = 'error_logs_queue.json';
 
   static String _currentPage = 'AppInit';
+  static String? _cachedAppVersion;
 
   /// Returns the current active screen/page name.
   static String get currentPage => _currentPage;
@@ -94,6 +101,20 @@ class ErrorLogService {
     if (page.isNotEmpty) {
       _currentPage = page;
     }
+  }
+
+  /// Retrieves and caches the running application version string (e.g. v1.0.0+24).
+  static Future<String> getAppVersion() async {
+    if (_cachedAppVersion != null && _cachedAppVersion!.isNotEmpty) {
+      return _cachedAppVersion!;
+    }
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _cachedAppVersion = 'v${info.version}+${info.buildNumber}';
+    } catch (_) {
+      _cachedAppVersion = 'v1.0.0+24';
+    }
+    return _cachedAppVersion!;
   }
 
   /// Helper to get the private application documents file for error queueing.
@@ -151,6 +172,13 @@ class ErrorLogService {
 
     String? userEmail;
     String? userRole;
+    String? currentVersion;
+
+    try {
+      currentVersion = await getAppVersion();
+    } catch (_) {
+      currentVersion = _cachedAppVersion;
+    }
 
     try {
       final user = await KVariables.getUser();
@@ -170,6 +198,7 @@ class ErrorLogService {
       userEmail: userEmail,
       userRole: userRole,
       platform: Platform.operatingSystem,
+      appVersion: currentVersion,
       extraData: extraData,
       isUploaded: false,
     );

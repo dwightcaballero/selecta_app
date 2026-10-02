@@ -388,6 +388,38 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
                                   ),
                                 ),
                               ],
+                              if (log.appVersion.isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.phone_android_rounded,
+                                        size: 11,
+                                        color: colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        log.appVersion,
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ],
