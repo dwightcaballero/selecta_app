@@ -53,8 +53,12 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
 
   /// Initial load of user role state
   void prefetchData() async {
-    _isDealer = await _controller.checkIsDealer();
-    if (mounted) setState(() {});
+    final isDealer = await _controller.checkIsDealer();
+    if (mounted) {
+      setState(() {
+        _isDealer = isDealer;
+      });
+    }
   }
 
   /// Handles search query input changes

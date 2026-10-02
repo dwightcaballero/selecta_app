@@ -47,13 +47,24 @@ class _ExpensesPageState extends State<ExpensesPage> {
 
   // Load user role and initial form values
   void prefetchData() async {
-    _isDealer = await _controller.checkIsDealer();
+    final isDealer = await _controller.checkIsDealer();
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.expense.description;
       txtAmount.text = Helperfunctions.formatDoubleAmountForField(widget.expense.expenseAmount);
-      _selectedDate = widget.expense.expenseDate.toDate();
+      final date = widget.expense.expenseDate.toDate();
+      if (mounted) {
+        setState(() {
+          _isDealer = isDealer;
+          _selectedDate = date;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isDealer = isDealer;
+        });
+      }
     }
-    if (mounted) setState(() {});
   }
 
   // Create new expense record through controller

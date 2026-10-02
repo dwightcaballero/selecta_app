@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/offline_sync_service.dart';
 
 /// Global wrapper that monitors real network connectivity and displays
 /// a non-intrusive animated banner when internet access is lost.
@@ -24,8 +24,8 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with Widget
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkConnectivity();
-    // Poll every 12 seconds for connectivity changes
-    _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) => _checkConnectivity());
+    // Poll every 6 seconds for connectivity changes
+    _pollingTimer = Timer.periodic(const Duration(seconds: 6), (_) => _checkConnectivity());
   }
 
   @override
@@ -44,8 +44,7 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with Widget
 
   Future<void> _checkConnectivity() async {
     try {
-      final result = await InternetAddress.lookup('google.com').timeout(const Duration(seconds: 4));
-      final isOnline = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+      final isOnline = await OfflineSyncService.isOnline();
 
       if (isOnline) {
         _consecutiveFailures = 0;
@@ -54,6 +53,9 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with Widget
             _isOffline = false;
             _showBackOnlineBanner = true;
           });
+          // Process any pending offline operations now that connectivity is back
+          unawaited(OfflineSyncService.instance.processQueue());
+
           // Show "Back Online" briefly for 3 seconds then dismiss
           Future.delayed(const Duration(seconds: 3), () {
             if (mounted) {
@@ -86,68 +88,59 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with Widget
     final showBanner = _isOffline || _showBackOnlineBanner;
     final isOnlineToast = _showBackOnlineBanner && !_isOffline;
 
-    return Stack(
+    return Column(
       children: [
-        widget.child,
-
-        // Animated drop-down banner below system status bar
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: SafeArea(
-            child: AnimatedSlide(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              offset: showBanner ? Offset.zero : const Offset(0, -1.2),
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 250),
-                opacity: showBanner ? 1.0 : 0.0,
-                child: Material(
-                  color: Colors.transparent,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isOnlineToast
-                          ? const Color(0xFF065F46) // Forest green
-                          : const Color(0xFFB45309), // Amber 700
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        )
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          isOnlineToast ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            isOnlineToast
-                                ? 'Back Online • Changes synced'
-                                : 'Working Offline • Operations cached locally',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.bold,
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: showBanner
+              ? Material(
+                  color: isOnlineToast
+                      ? const Color(0xFF065F46) // Forest green
+                      : const Color(0xFFB45309), // Amber 700
+                  child: SafeArea(
+                    bottom: false,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            isOnlineToast ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                            color: Colors.white,
+                            size: 15,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              isOnlineToast
+                                  ? 'Back Online • Changes synced'
+                                  : 'Working Offline • Operations cached locally',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                decoration: TextDecoration.none,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-          ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        Expanded(
+          child: showBanner
+              ? MediaQuery.removePadding(
+                  context: context,
+                  removeTop: true,
+                  child: widget.child,
+                )
+              : widget.child,
         ),
       ],
     );

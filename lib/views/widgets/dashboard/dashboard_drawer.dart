@@ -2,17 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
-import 'package:selecta_ops/views/pages/dashboard/analytics_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/buyinglist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/expansion_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/placementlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/sales_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/scanninglist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/thruput_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
@@ -31,6 +25,7 @@ import 'package:selecta_ops/views/pages/sidebar/proof_of_visit_gallery_page.dart
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:selecta_ops/services/offline_sync_service.dart';
 
 /// Navigation Drawer for Dashboard containing Operations, KPI shortcuts,
 /// Inventory/Settings, and Logout actions.
@@ -179,27 +174,33 @@ class DashboardDrawer extends StatelessWidget {
 
           const Divider(indent: 16, endIndent: 16),
 
-          // 2. KPI Section
-          _buildDrawerSectionHeader(context, 'KPI'),
-          _buildDrawerItem(context, Icons.attach_money, 'Sales', const SalesPage()),
-          _buildDrawerItem(context, Icons.shopping_cart_outlined, 'Buying Stores', const BuyinglistPage()),
-          _buildDrawerItem(context, Icons.speed_outlined, 'Throughput', ThruputPage(dashboardDTO: dashboardDTO)),
-          _buildDrawerItem(context, Icons.grid_view_outlined, 'Placement', const PlacementlistPage()),
-          _buildDrawerItem(context, Icons.qr_code_scanner_outlined, 'Scanning', const ScanninglistPage()),
-          _buildDrawerItem(context, Icons.trending_up_outlined, 'Expansion', const ExpansionPage()),
-          _buildDrawerItem(context, Icons.insights_rounded, 'Analytics & Trends', const AnalyticsPage()),
+          // 2. KPI Section (Consolidated Hub)
+          _buildDrawerSectionHeader(context, 'KPI & Analytics'),
+          _buildDrawerItem(
+            context,
+            Icons.insights_rounded,
+            'KPI & Analytics Hub',
+            KpiOverviewPage(dashboardDTO: dashboardDTO),
+          ),
 
           const Divider(indent: 16, endIndent: 16),
 
           // 3. Settings Section
           _buildDrawerSectionHeader(context, 'Settings'),
-          _buildDrawerItem(
-            context,
-            Icons.sync_rounded,
-            'Sync Data',
-            null,
-            onTap: () {
-              if (!isSyncing) onSync();
+          ValueListenableBuilder<int>(
+            valueListenable: OfflineSyncService.instance.pendingCountNotifier,
+            builder: (context, pendingCount, _) {
+              return _buildDrawerItem(
+                context,
+                Icons.sync_rounded,
+                'Sync Data',
+                null,
+                badgeCount: pendingCount,
+                badgeColor: Colors.amber.shade800,
+                onTap: () {
+                  if (!isSyncing) onSync();
+                },
+              );
             },
           ),
           _buildDrawerItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),

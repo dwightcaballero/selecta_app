@@ -42,8 +42,12 @@ class _PicklistPageState extends State<PicklistPage> {
   }
 
   Future<void> _prefetchData() async {
-    _isDealer = await _controller.checkIsDealer();
-    if (mounted) setState(() {});
+    final dealer = await _controller.checkIsDealer();
+    if (mounted) {
+      setState(() {
+        _isDealer = dealer;
+      });
+    }
   }
 
   bool get _hasProofOfDelivery => _pickedImage != null || _networkImagePath.trim().isNotEmpty;

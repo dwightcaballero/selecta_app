@@ -10,7 +10,8 @@ import 'package:intl/intl.dart';
 /// Data fetching, sorting, and completion/search filtering are handled by
 /// [PlacementController], while direct Firestore communication stays in the service layer.
 class PlacementlistPage extends StatefulWidget {
-  const PlacementlistPage({super.key});
+  final bool showAppBar;
+  const PlacementlistPage({super.key, this.showAppBar = true});
 
   @override
   State<PlacementlistPage> createState() => _PlacementlistPageState();
@@ -531,13 +532,15 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
     final overallPercent = totalPlacements == 0 ? 0 : ((_completedCount / totalPlacements) * 100).round();
 
     return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Placement List',
-        subtitle: isCompleteTab
-            ? 'Completed • $overallPercent% of stores finished'
-            : 'Pending • $_incompleteCount stores need follow-up',
-        actions: [_buildSortMenu()],
-      ),
+      appBar: widget.showAppBar
+          ? CustomAppbar(
+              title: 'Placement List',
+              subtitle: isCompleteTab
+                  ? 'Completed • $overallPercent% of stores finished'
+                  : 'Pending • $_incompleteCount stores need follow-up',
+              actions: [_buildSortMenu()],
+            )
+          : null,
       body: _errorMessage != null
           ? Center(
               child: Padding(

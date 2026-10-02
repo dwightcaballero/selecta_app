@@ -50,14 +50,25 @@ class _BadOrderPageState extends State<BadOrderPage> {
 
   // Load user role and initial form values
   void prefetchData() async {
-    _isDealer = await _controller.checkIsDealer();
+    final isDealer = await _controller.checkIsDealer();
     if (widget.recID.isNotEmpty) {
       txtDescription.text = widget.badorder.description;
       txtAmount.text = Helperfunctions.formatDoubleAmountForField(widget.badorder.badorderAmount);
-      _selectedDate = widget.badorder.badorderDate.toDate();
+      final date = widget.badorder.badorderDate.toDate();
       dropDownController.text = widget.badorder.hapistore;
+      if (mounted) {
+        setState(() {
+          _isDealer = isDealer;
+          _selectedDate = date;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _isDealer = isDealer;
+        });
+      }
     }
-    if (mounted) setState(() {});
   }
 
   // Create new bad order record through controller

@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/firebase_options.dart';
@@ -17,11 +19,16 @@ void main() async {
   // 1. Ensure Flutter framework is fully bootstrapped
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Configure GoogleFonts to permit runtime fetching with seamless system font fallback
+  GoogleFonts.config.allowRuntimeFetching = true;
+
   // 2. Initialize Firebase with platform-specific options
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // 3. Initialize Push Notification Service (FCM)
-  await PushNotificationService().initialize();
+  // 3. Initialize Push Notification Service (FCM) asynchronously without blocking startup
+  unawaited(PushNotificationService().initialize().catchError((e, s) {
+    debugPrint('PushNotificationService init error: $e');
+  }));
 
   // 3. Register global error interceptors for unhandled exceptions
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -79,35 +86,29 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: isDarkModeNotifier,
-      builder: (BuildContext context, bool isDarkMode, Widget? child) {
-        return ValueListenableBuilder<AppThemePreset>(
-          valueListenable: appThemePresetNotifier,
-          builder: (BuildContext context, AppThemePreset preset, Widget? child) {
-            return ValueListenableBuilder<double>(
-              valueListenable: appFontScaleNotifier,
-              builder: (BuildContext context, double fontScale, Widget? child) {
-                return MaterialApp(
-                  title: 'Selecta Ops',
-                  debugShowCheckedModeBanner: false,
-                  theme: AppTheme.lightThemeFor(preset),
-                  darkTheme: AppTheme.darkThemeFor(preset),
-                  themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-                  navigatorObservers: [routeObserver],
-                  builder: (context, child) => OfflineBannerWrapper(
-                    child: MediaQuery(
-                      data: MediaQuery.of(context).copyWith(
-                        textScaler: TextScaler.linear(fontScale),
-                      ),
-                      child: child ?? const SizedBox.shrink(),
-                    ),
-                  ),
-                  home: AuthPage(),
-                );
-              },
-            );
-          },
+    return ListenableBuilder(
+      listenable: Listenable.merge([isDarkModeNotifier, appThemePresetNotifier, appFontScaleNotifier]),
+      builder: (BuildContext context, Widget? child) {
+        final isDarkMode = isDarkModeNotifier.value;
+        final preset = appThemePresetNotifier.value;
+        final fontScale = appFontScaleNotifier.value;
+
+        return MaterialApp(
+          title: 'Selecta Ops',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightThemeFor(preset),
+          darkTheme: AppTheme.darkThemeFor(preset),
+          themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          navigatorObservers: [routeObserver],
+          builder: (context, child) => OfflineBannerWrapper(
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(fontScale),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            ),
+          ),
+          home: const AuthPage(),
         );
       },
     );

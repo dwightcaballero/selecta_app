@@ -7,10 +7,11 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class ThruputPage extends StatelessWidget {
-  ThruputPage({super.key, required this.dashboardDTO, this.throughputTarget});
+  ThruputPage({super.key, required this.dashboardDTO, this.throughputTarget, this.showAppBar = true});
 
   final DashboardDTO dashboardDTO;
   final double? throughputTarget;
+  final bool showAppBar;
   final ThruputController _controller = ThruputController();
 
   double get effectiveTarget => throughputTarget ?? ThruputController.targetThruput;
@@ -193,7 +194,9 @@ class ThruputPage extends StatelessWidget {
     final metrics = _controller.calculateMetrics(dashboardDTO, target: effectiveTarget);
 
     return Scaffold(
-      appBar: const CustomAppbar(title: 'KPI - Throughput', subtitle: 'Store throughput and activity'),
+      appBar: showAppBar
+          ? const CustomAppbar(title: 'KPI - Throughput', subtitle: 'Store throughput and activity')
+          : null,
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [

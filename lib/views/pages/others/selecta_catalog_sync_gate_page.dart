@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/selecta_product_controller.dart';
+import 'package:selecta_ops/services/offline_sync_service.dart';
 import 'package:selecta_ops/views/pages/others/loading_page.dart';
 
 /// Gateway widget that checks if the local dealer database needs to initialize or sync
@@ -36,7 +37,17 @@ class _SelectaCatalogSyncGatePageState extends State<SelectaCatalogSyncGatePage>
 
   Future<void> _checkAndSyncIfNeeded() async {
     try {
-      final check = await _controller.checkSyncNeeded();
+      final isOnline = await OfflineSyncService.isOnline();
+      if (!isOnline) {
+        if (!mounted) return;
+        setState(() {
+          _isChecking = false;
+          _readyToProceed = true;
+        });
+        return;
+      }
+
+      final check = await _controller.checkSyncNeeded().timeout(const Duration(seconds: 4));
       if (!mounted) return;
 
       if (!check.needsSync) {

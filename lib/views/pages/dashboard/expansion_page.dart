@@ -12,7 +12,8 @@ import 'package:intl/intl.dart';
 /// are managed by [ExpansionController], decoupling presentation from database queries.
 class ExpansionPage extends StatefulWidget {
   final int? monthlyTarget;
-  const ExpansionPage({super.key, this.monthlyTarget});
+  final bool showAppBar;
+  const ExpansionPage({super.key, this.monthlyTarget, this.showAppBar = true});
 
   @override
   State<ExpansionPage> createState() => _ExpansionPageState();
@@ -416,10 +417,12 @@ class _ExpansionPageState extends State<ExpansionPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppbar(
-        title: 'Expansion',
-        subtitle: 'New store acquisition & growth',
-      ),
+      appBar: widget.showAppBar
+          ? const CustomAppbar(
+              title: 'Expansion',
+              subtitle: 'New store acquisition & growth',
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: prefetchData,
         child: isLoading

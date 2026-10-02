@@ -273,6 +273,14 @@ class HapiStoreService {
     return _hapistoresRef.where('pjpSchedule', isEqualTo: pjpSchedule).snapshots();
   }
 
+  /// Fetches stores scheduled for a specific PJP day as a Future snapshot.
+  static Future<QuerySnapshot<Map<String, dynamic>>> getHapiStoresSnapshotByPjpSchedule(String pjpSchedule) {
+    return FirebaseFirestore.instance
+        .collection(HAPISTORE_COLLECTION_REF)
+        .where('pjpSchedule', isEqualTo: pjpSchedule)
+        .get();
+  }
+
   // Persists a new store order for a PJP day, writing sequential pjpSequence values and the day's
   // pjpSchedule (so stores newly added to the day from elsewhere get reassigned) in a single batch.
   // Stores removed from the day have their pjpSchedule/pjpSequence cleared instead.

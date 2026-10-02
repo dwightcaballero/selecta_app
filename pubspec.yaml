@@ -37,7 +37,6 @@ dependencies:
   lottie: ^3.5.1
   shared_preferences: ^2.5.5
   flutter_launcher_icons: ^0.14.4
-  firebase_database: ^12.4.6
   cloud_firestore: ^6.7.1
   firebase_core: ^4.12.1
   firebase_messaging: ^16.7.0

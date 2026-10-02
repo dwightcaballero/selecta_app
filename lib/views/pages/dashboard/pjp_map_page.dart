@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -11,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjp_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
@@ -66,10 +66,7 @@ class _PjpMapPageState extends State<PjpMapPage> {
     setState(() => _isLoading = true);
 
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('hapistores')
-          .where('pjpSchedule', isEqualTo: _selectedDay)
-          .get();
+      final snapshot = await HapiStoreService.getHapiStoresSnapshotByPjpSchedule(_selectedDay);
 
       final items = snapshot.docs.map((doc) {
         return MappedStoreItem(

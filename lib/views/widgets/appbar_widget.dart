@@ -12,6 +12,8 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
 
   static const Color borderLight = Color(0xFFE2E8F0);
 
+  final PreferredSizeWidget? bottom;
+
   const CustomAppbar({
     super.key,
     required this.title,
@@ -22,10 +24,11 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
     this.leading,
     this.backgroundColor,
     this.centerTitle,
+    this.bottom,
   });
 
   @override
-  Size get preferredSize => Size.fromHeight(subtitle != null ? 72 : 62);
+  Size get preferredSize => Size.fromHeight((subtitle != null ? 72 : 62) + (bottom?.preferredSize.height ?? 0));
 
   Widget _buildIconButton({
     required Widget icon,
@@ -86,15 +89,16 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: effectiveColor,
       centerTitle: isCentered,
       leadingWidth: 60,
-      bottom: isDark
-          ? PreferredSize(
-              preferredSize: const Size.fromHeight(1),
-              child: Container(
-                color: const Color(0xFF2E3644),
-                height: 1,
-              ),
-            )
-          : null,
+      bottom: bottom ??
+          (isDark
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(1),
+                  child: Container(
+                    color: const Color(0xFF2E3644),
+                    height: 1,
+                  ),
+                )
+              : null),
       leading: leading != null
           ? Center(child: leading)
           : (showBackButton && Navigator.canPop(context)

@@ -15,7 +15,8 @@ import 'package:intl/intl.dart';
 /// Data hydration, unassigned store resolution, search filtering,
 /// and comparator sorting are delegated to [ScanningController].
 class ScanninglistPage extends StatefulWidget {
-  const ScanninglistPage({super.key});
+  final bool showAppBar;
+  const ScanninglistPage({super.key, this.showAppBar = true});
 
   @override
   State<ScanninglistPage> createState() => _ScanninglistPageState();
@@ -644,11 +645,13 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
 
     return Scaffold(
       backgroundColor: colorScheme.surfaceContainerLowest,
-      appBar: CustomAppbar(
-        title: 'Scanning List',
-        subtitle: 'Track barcode scanning progress',
-        actions: [_buildSortMenu()],
-      ),
+      appBar: widget.showAppBar
+          ? CustomAppbar(
+              title: 'Scanning List',
+              subtitle: 'Track barcode scanning progress',
+              actions: [_buildSortMenu()],
+            )
+          : null,
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         child: Column(

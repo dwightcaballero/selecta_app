@@ -71,34 +71,39 @@ class _ScanningPageState extends State<ScanningPage> {
   }
 
   void prefetchData() async {
-    _isDealer = await _controller.checkIsDealer();
+    final isDealer = await _controller.checkIsDealer();
     final trimmedBarcode = widget.initialBarcode.trim();
     final found = await _controller.getScanningByBarcode(trimmedBarcode);
 
+    final Scanning scanning;
+    final String selectedStatus;
+
     if (found != null) {
-      _scanning = found;
+      scanning = found;
       // Rule 1: When dealer scans barcode with pending status, mark as scanned.
       // Rule 2: When salesman scans barcode (or unscanned barcode), status defaults to Pending.
-      if (_scanning.status == ScanningStatus.pending) {
-        if (_isDealer) {
-          _selectedStatus = ScanningStatus.scanned;
-        } else {
-          _selectedStatus = ScanningStatus.pending;
-        }
-      } else if (_scanning.status.isEmpty || _scanning.status == ScanningStatus.notScanned) {
-        _selectedStatus = ScanningStatus.pending;
+      if (scanning.status == ScanningStatus.pending) {
+        selectedStatus = isDealer ? ScanningStatus.scanned : ScanningStatus.pending;
+      } else if (scanning.status.isEmpty || scanning.status == ScanningStatus.notScanned) {
+        selectedStatus = ScanningStatus.pending;
       } else {
-        _selectedStatus = _scanning.status;
+        selectedStatus = scanning.status;
       }
     } else {
-      _scanning = Scanning.empty();
-      _selectedStatus = ScanningStatus.pending;
+      scanning = Scanning.empty();
+      selectedStatus = ScanningStatus.pending;
     }
 
-    _dropdownHapiStore.text = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
-    _hasCheckedDatabase = true;
+    _dropdownHapiStore.text = scanning.storeName.isNotEmpty ? scanning.storeName : (widget.initialStoreName ?? '');
 
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        _isDealer = isDealer;
+        _scanning = scanning;
+        _selectedStatus = selectedStatus;
+        _hasCheckedDatabase = true;
+      });
+    }
   }
 
   void _copyToClipboard(String text, String label) {
@@ -140,6 +145,8 @@ class _ScanningPageState extends State<ScanningPage> {
     try {
       final pickedFile = await _picker.pickImage(
         source: source,
+        maxWidth: 1200,
+        maxHeight: 1200,
         imageQuality: 80,
       );
       if (pickedFile != null && mounted) {

@@ -134,13 +134,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void prefetchData() async {
-    isDealer = await _controller.checkIsDealer();
+    final dealer = await _controller.checkIsDealer();
     await _checkBreakdownStatus();
 
     if (widget.deliveryID.isNotEmpty) {
-      networkImagePath = widget.delivery.imagePath;
+      final imgPath = widget.delivery.imagePath;
 
-      listDropdownStatus = [
+      final entries = [
         DropdownMenuEntry(label: DeliveryStatus.pending, value: DeliveryStatus.pending),
         DropdownMenuEntry(label: DeliveryStatus.delivered, value: DeliveryStatus.delivered),
         DropdownMenuEntry(label: DeliveryStatus.returned, value: DeliveryStatus.returned),
@@ -156,11 +156,22 @@ class _DeliveryPageState extends State<DeliveryPage> {
       txtReturnAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.returnAmount);
 
       computeDiscrepancy();
+
+      if (mounted) {
+        setState(() {
+          isDealer = dealer;
+          networkImagePath = imgPath;
+          listDropdownStatus = entries;
+        });
+      }
     } else {
+      if (mounted) {
+        setState(() {
+          isDealer = dealer;
+        });
+      }
       onStoreSelected();
     }
-
-    if (mounted) setState(() {});
   }
 
   void onUpdate() async {
@@ -241,14 +252,18 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void computeDiscrepancy() {
-    discrepancy = _controller.computeDiscrepancy(
+    final result = _controller.computeDiscrepancy(
       orderAmount: effectiveOrderAmount,
       cash: txtCashAmount.text,
       online: txtOnlineAmount.text,
       credit: txtCreditAmount.text,
       returnAmount: txtReturnAmount.text,
     );
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        discrepancy = result;
+      });
+    }
   }
 
   Widget hapistoreDropdown() {
@@ -275,7 +290,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
         });
       }
     } else {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {
+          placementID = '';
+          listPlacement = [];
+        });
+      }
     }
   }
 

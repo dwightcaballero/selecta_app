@@ -35,8 +35,12 @@ class _PicklistListPageState extends State<PicklistListPage> {
   }
 
   void prefetchData() async {
-    isDealer = await _controller.checkIsDealer();
-    if (mounted) setState(() {});
+    final dealer = await _controller.checkIsDealer();
+    if (mounted) {
+      setState(() {
+        isDealer = dealer;
+      });
+    }
   }
 
   void onChangeDate() async {

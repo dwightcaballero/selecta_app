@@ -4,9 +4,9 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/buyinglist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
@@ -419,8 +419,11 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-          _buildDrawerItem(Icons.shopping_cart_outlined, 'Buying Stores', const BuyinglistPage()),
-          _buildDrawerItem(Icons.grid_view_outlined, 'Placement', const PlacementlistPage()),
+          _buildDrawerItem(
+            Icons.insights_rounded,
+            'KPI & Analytics Hub',
+            KpiOverviewPage(dashboardDTO: _dashboardDTO),
+          ),
           _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),
           _buildDrawerItem(Icons.system_update_alt_rounded, 'Check for Updates', null, onTap: () {
             AppUpdateService.checkAndPromptUpdate(context, silent: false);
@@ -671,6 +674,60 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                 ),
               ),
             ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: 0,
+        height: 65,
+        elevation: 3,
+        onDestinationSelected: (index) async {
+          if (index == 0) return;
+          Widget? target;
+          switch (index) {
+            case 1:
+              target = const PjpListPage();
+              break;
+            case 2:
+              target = const DeliveryListPage();
+              break;
+            case 3:
+              target = const BookOrderPage();
+              break;
+            case 4:
+              target = const ScanninglistPage();
+              break;
+          }
+          if (target != null) {
+            await Helperfunctions.navigateThenWait(context, target);
+            if (mounted) await _syncDashboard();
+          }
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard_rounded),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map_rounded),
+            label: 'Route',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.local_shipping_outlined),
+            selectedIcon: Icon(Icons.local_shipping_rounded),
+            label: 'Deliveries',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.add_shopping_cart_outlined),
+            selectedIcon: Icon(Icons.add_shopping_cart_rounded),
+            label: 'Book Order',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.qr_code_scanner_outlined),
+            selectedIcon: Icon(Icons.qr_code_scanner_rounded),
+            label: 'Scan',
+          ),
+        ],
+      ),
     );
   }
 }

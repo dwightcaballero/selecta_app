@@ -42,8 +42,12 @@ class _PjpListPageState extends State<PjpListPage> {
   }
 
   void _prefetchData() async {
-    _isDealer = await _controller.checkIsDealer();
-    if (mounted) setState(() {});
+    final dealer = await _controller.checkIsDealer();
+    if (mounted) {
+      setState(() {
+        _isDealer = dealer;
+      });
+    }
   }
 
   void _copyToClipboard(String text, String label) {

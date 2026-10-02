@@ -93,12 +93,16 @@ class _ProductCatalogPageState extends State<ProductCatalogPage> with SingleTick
   bool _onlyInStock = false;
   String _searchQuery = '';
 
+  int _selectedBrandTabIndex = 0;
+
   @override
   void initState() {
     super.initState();
     _brandTabController = TabController(length: 3, vsync: this);
     _brandTabController.addListener(() {
-      if (mounted) setState(() {});
+      if (mounted && _selectedBrandTabIndex != _brandTabController.index) {
+        setState(() => _selectedBrandTabIndex = _brandTabController.index);
+      }
     });
     _searchController.addListener(() {
       if (mounted) setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
@@ -381,8 +385,8 @@ class _ProductCatalogPageState extends State<ProductCatalogPage> with SingleTick
 
                     // Filter by Brand Tab
                     var filtered = allItems.where((item) {
-                      if (_brandTabController.index == 1 && !item.isSelecta) return false;
-                      if (_brandTabController.index == 2 && item.isSelecta) return false;
+                      if (_selectedBrandTabIndex == 1 && !item.isSelecta) return false;
+                      if (_selectedBrandTabIndex == 2 && item.isSelecta) return false;
                       return true;
                     }).toList();
 

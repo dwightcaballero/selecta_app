@@ -34,8 +34,12 @@ class _ReturnPageState extends State<ReturnPage> {
   }
 
   void prefetchData() async {
-    _isDealer = await _controller.checkIsDealer();
-    if (mounted) setState(() {});
+    final dealer = await _controller.checkIsDealer();
+    if (mounted) {
+      setState(() {
+        _isDealer = dealer;
+      });
+    }
   }
 
   void onUpdate({DateTime? rescheduleDate}) async {

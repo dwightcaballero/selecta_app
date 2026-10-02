@@ -10,8 +10,15 @@ import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:selecta_ops/services/offline_sync_service.dart';
+import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/scanninglist_page.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
 import 'package:selecta_ops/views/pages/others/notifications_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/purchaseorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
 import 'package:selecta_ops/views/widgets/ai_chat_modal.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -74,19 +81,23 @@ class _DashboardPageState extends State<DashboardPage> {
       if (mounted) await Helperfunctions.showLoading(context: context, showLoading: true);
     } else {
       await Helperfunctions.showLoading(context: context, showLoading: false);
-      if (mounted) setState(() {});
     }
   }
 
   // Load user info and cached metrics via DashboardController
   void prefetchData() async {
-    _currentUser = await _controller.getCurrentUser();
-    isDealer = _currentUser?.role == BusinessRole.dealer;
-    lastSyncDateTime = await DashboardController.getLastSync();
-    _configuration = await ConfigurationService().getConfiguration();
+    final user = await _controller.getCurrentUser();
+    final isDealerRole = user?.role == BusinessRole.dealer;
+    final lastSync = await DashboardController.getLastSync();
+    final config = await ConfigurationService().getConfiguration();
     await _syncDashboardFromSharedPreferences();
     if (mounted) {
-      setState(() {});
+      setState(() {
+        _currentUser = user;
+        isDealer = isDealerRole;
+        lastSyncDateTime = lastSync;
+        _configuration = config;
+      });
       AppUpdateService.checkAndPromptUpdate(context, silent: true);
     }
   }
@@ -102,6 +113,9 @@ class _DashboardPageState extends State<DashboardPage> {
     });
 
     try {
+      // Process pending offline orders and updates first
+      await OfflineSyncService.instance.processQueue();
+
       dashboardDTO = await DashboardController.getLatestDashboardData();
       lastSyncDateTime = await DashboardController.getLastSync();
       // save in shared preferences
@@ -403,6 +417,100 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
         ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: 0,
+        height: 65,
+        elevation: 3,
+        onDestinationSelected: (index) {
+          if (index == 0) return;
+          if (isDealer) {
+            switch (index) {
+              case 1:
+                _navigateToPage(const PurchaseorderlistPage());
+                break;
+              case 2:
+                _navigateToPage(const InventoryPage());
+                break;
+              case 3:
+                _navigateToPage(const PjpListPage());
+                break;
+              case 4:
+                _navigateToPage(const ScanninglistPage());
+                break;
+            }
+          } else {
+            switch (index) {
+              case 1:
+                _navigateToPage(const PjpListPage());
+                break;
+              case 2:
+                _navigateToPage(const DeliveryListPage());
+                break;
+              case 3:
+                _navigateToPage(const BookOrderPage());
+                break;
+              case 4:
+                _navigateToPage(const ScanninglistPage());
+                break;
+            }
+          }
+        },
+        destinations: isDealer
+            ? const [
+                NavigationDestination(
+                  icon: Icon(Icons.dashboard_outlined),
+                  selectedIcon: Icon(Icons.dashboard_rounded),
+                  label: 'Home',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.shopping_bag_outlined),
+                  selectedIcon: Icon(Icons.shopping_bag_rounded),
+                  label: 'Orders',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.warehouse_outlined),
+                  selectedIcon: Icon(Icons.warehouse_rounded),
+                  label: 'Inventory',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map_rounded),
+                  label: 'Route',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.qr_code_scanner_outlined),
+                  selectedIcon: Icon(Icons.qr_code_scanner_rounded),
+                  label: 'Scan',
+                ),
+              ]
+            : const [
+                NavigationDestination(
+                  icon: Icon(Icons.dashboard_outlined),
+                  selectedIcon: Icon(Icons.dashboard_rounded),
+                  label: 'Home',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map_rounded),
+                  label: 'Route',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.local_shipping_outlined),
+                  selectedIcon: Icon(Icons.local_shipping_rounded),
+                  label: 'Deliveries',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.add_shopping_cart_outlined),
+                  selectedIcon: Icon(Icons.add_shopping_cart_rounded),
+                  label: 'Book Order',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.qr_code_scanner_outlined),
+                  selectedIcon: Icon(Icons.qr_code_scanner_rounded),
+                  label: 'Scan',
+                ),
+              ],
       ),
     );
   }

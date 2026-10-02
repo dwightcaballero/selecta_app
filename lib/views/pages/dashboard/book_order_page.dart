@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
@@ -7,11 +8,14 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/services/offline_sync_service.dart';
 import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
+import 'package:selecta_ops/views/widgets/book_order/sticky_order_summary_bar.dart';
+import 'package:selecta_ops/views/widgets/book_order/store_date_modal.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
-import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 import 'package:intl/intl.dart';
 
 /// Book Order Page where users select a Hapi Store and choose products.
@@ -673,6 +677,33 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
     setState(() => _isSaving = true);
     try {
+      final isOnline = await OfflineSyncService.isOnline();
+      if (!isOnline) {
+        if (_isEditing) {
+          await OfflineSyncService.instance.enqueueOrderUpdate(
+            deliveryId: widget.deliveryID,
+            storeName: storeName,
+            selectedDate: _selectedDate,
+            items: orderItems,
+            remarks: _remarksController.text,
+          );
+        } else {
+          await OfflineSyncService.instance.enqueueOrderCreation(
+            storeName: storeName,
+            selectedDate: _selectedDate,
+            items: orderItems,
+            remarks: _remarksController.text,
+          );
+        }
+        if (!mounted) return;
+        ShowMessage.warning(
+          context,
+          'Saved to Offline Queue! Order will automatically sync once connectivity is restored.',
+        );
+        Navigator.pop(context);
+        return;
+      }
+
       if (_isEditing) {
         final updated = await _deliveryController.updateBookedOrder(
           deliveryId: widget.deliveryID,
@@ -681,7 +712,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
           selectedDate: _selectedDate,
           items: orderItems,
           remarks: _remarksController.text,
-        );
+        ).timeout(const Duration(seconds: 5));
         if (!mounted) return;
         ShowMessage.success(context, 'Order updated for $storeName!');
         Navigator.pop(context, updated);
@@ -691,12 +722,50 @@ class _BookOrderPageState extends State<BookOrderPage> {
           selectedDate: _selectedDate,
           items: orderItems,
           remarks: _remarksController.text,
-        );
+        ).timeout(const Duration(seconds: 5));
         if (!mounted) return;
         ShowMessage.success(context, 'Order saved for $storeName! Marked as Pending Picklist.');
         Navigator.pop(context, createdResult.delivery);
       }
     } catch (e) {
+      final errStr = e.toString().toLowerCase();
+      final isOfflineOrTimeout = e is TimeoutException ||
+          errStr.contains('timeout') ||
+          errStr.contains('network') ||
+          errStr.contains('socket') ||
+          errStr.contains('unavailable') ||
+          errStr.contains('client is offline');
+
+      if (isOfflineOrTimeout) {
+        try {
+          if (_isEditing) {
+            await OfflineSyncService.instance.enqueueOrderUpdate(
+              deliveryId: widget.deliveryID,
+              storeName: storeName,
+              selectedDate: _selectedDate,
+              items: orderItems,
+              remarks: _remarksController.text,
+            );
+          } else {
+            await OfflineSyncService.instance.enqueueOrderCreation(
+              storeName: storeName,
+              selectedDate: _selectedDate,
+              items: orderItems,
+              remarks: _remarksController.text,
+            );
+          }
+          if (!mounted) return;
+          ShowMessage.warning(
+            context,
+            'Saved to Offline Queue! Order will automatically sync once connectivity is restored.',
+          );
+          Navigator.pop(context);
+          return;
+        } catch (_) {
+          // If local enqueuing also fails, fall through to error message
+        }
+      }
+
       if (mounted) {
         ShowMessage.error(context, 'Failed to save order: $e');
       }
@@ -843,286 +912,27 @@ class _BookOrderPageState extends State<BookOrderPage> {
     _searchFocusNode.unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
 
-    final tempStoreController = TextEditingController(text: _storeController.text);
-    final tempRemarksController = TextEditingController(text: _remarksController.text);
-    DateTime tempDate = _selectedDate;
-
-    final confirmed = await showModalBottomSheet<bool>(
+    final result = await StoreDateModal.show(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setModalState) {
-            final colorScheme = Theme.of(ctx).colorScheme;
-            final now = DateTime.now();
-            final today = DateTime(now.year, now.month, now.day);
-            final tomorrow = today.add(const Duration(days: 1));
-            final currentDay = DateTime(tempDate.year, tempDate.month, tempDate.day);
-            final isToday = currentDay == today;
-            final isTomorrow = currentDay == tomorrow;
-
-            return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(ctx).colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Drag Handle
-                        Center(
-                          child: Container(
-                            width: 44,
-                            height: 4,
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
-                          ),
-                        ),
-
-                        // Header
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-                              child: Icon(Icons.storefront_outlined, color: colorScheme.primary, size: 24),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _storeController.text.trim().isEmpty ? 'Select Store & Date' : 'Order Details',
-                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text('Choose store and delivery schedule', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
-                                ],
-                              ),
-                            ),
-                            IconButton(icon: const Icon(Icons.close), tooltip: 'Close', onPressed: () => Navigator.pop(ctx, false)),
-                          ],
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        // Store Selection
-                        Text(
-                          'Hapi Store *',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
-                        ),
-                        const SizedBox(height: 6),
-                        HapistorePickerField(
-                          controller: tempStoreController,
-                          label: 'Hapi Store',
-                          validator: (val) => (val == null || val.trim().isEmpty) ? 'Please select a Hapi Store' : null,
-                          onChanged: () {
-                            setModalState(() {});
-                          },
-                        ),
-
-                        const SizedBox(height: 18),
-
-                        // Delivery Date Selection
-                        Text(
-                          'Delivery Date *',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
-                        ),
-                        const SizedBox(height: 6),
-                        InkWell(
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: ctx,
-                              initialDate: tempDate,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime(2100),
-                            );
-                            if (picked != null) {
-                              setModalState(() {
-                                tempDate = picked;
-                              });
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: colorScheme.outlineVariant),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.calendar_today_outlined, color: colorScheme.primary, size: 22),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        DateFormat('EEEE, MMMM d, y').format(tempDate),
-                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                                      ),
-                                      Text(
-                                        isToday ? 'Today' : (isTomorrow ? 'Tomorrow' : 'Scheduled Delivery'),
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w500,
-                                          color: (isToday || isTomorrow) ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(Icons.edit_calendar_outlined, color: colorScheme.primary, size: 20),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        // Quick Date Chips
-                        Row(
-                          children: [
-                            ChoiceChip(
-                              label: Text(
-                                'Today',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: isToday ? Colors.white : colorScheme.onSurface,
-                                ),
-                              ),
-                              selected: isToday,
-                              selectedColor: colorScheme.primary,
-                              onSelected: (_) => setModalState(() => tempDate = today),
-                            ),
-                            const SizedBox(width: 8),
-                            ChoiceChip(
-                              label: Text(
-                                'Tomorrow',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: isTomorrow ? Colors.white : colorScheme.onSurface,
-                                ),
-                              ),
-                              selected: isTomorrow,
-                              selectedColor: colorScheme.primary,
-                              onSelected: (_) => setModalState(() => tempDate = tomorrow),
-                            ),
-                            const SizedBox(width: 8),
-                            ActionChip(
-                              avatar: Icon(Icons.calendar_month_outlined, size: 16, color: colorScheme.primary),
-                              label: Text(
-                                'Custom',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: colorScheme.onSurface,
-                                ),
-                              ),
-                              onPressed: () async {
-                                final picked = await showDatePicker(
-                                  context: ctx,
-                                  initialDate: tempDate,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2100),
-                                );
-                                if (picked != null) {
-                                  setModalState(() {
-                                    tempDate = picked;
-                                  });
-                                }
-                              },
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 18),
-
-                        // Remarks / Special Instructions
-                        Text(
-                          'Remarks (Optional)',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: tempRemarksController,
-                          maxLines: 2,
-                          decoration: InputDecoration(
-                            hintText: 'e.g. Deliver before 10 AM...',
-                            hintStyle: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-                            filled: true,
-                            fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: colorScheme.outlineVariant),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Confirm Button
-                        FilledButton(
-                          onPressed: () {
-                            if (tempStoreController.text.trim().isEmpty) {
-                              ShowMessage.error(ctx, 'Please select a Hapi Store first.');
-                              return;
-                            }
-                            Navigator.pop(ctx, true);
-                          },
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: const Text('Continue to Products', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+      initialStoreName: _storeController.text,
+      initialDate: _selectedDate,
+      initialRemarks: _remarksController.text,
     );
 
-    if (confirmed == true && mounted) {
-      final newStore = tempStoreController.text.trim();
+    if (result != null && mounted) {
+      final newStore = result.storeName;
       final storeChanged = _storeController.text.trim() != newStore;
-      final dateChanged = _selectedDate != tempDate;
+      final dateChanged = _selectedDate != result.selectedDate;
       setState(() {
         _storeController.text = newStore;
-        _selectedDate = tempDate;
-        _remarksController.text = tempRemarksController.text.trim();
+        _selectedDate = result.selectedDate;
+        _remarksController.text = result.remarks;
         _hasUserManuallyPickedDate = true;
       });
       if (storeChanged || dateChanged) {
         _loadPlacedProductsForStore(_storeController.text, _selectedDate);
       }
     }
-
-    tempStoreController.dispose();
-    tempRemarksController.dispose();
   }
 
   Widget _buildSelectStorePrompt(ColorScheme colorScheme) {
@@ -1336,216 +1146,13 @@ class _BookOrderPageState extends State<BookOrderPage> {
   }
 
   Widget _buildProductOrderCard(InventoryItem item, ColorScheme colorScheme) {
-    final selectedQty = _getSelectedQty(item);
-    final isSelected = selectedQty > 0;
-    final maxOrderable = _getMaxOrderableQty(item);
-    final isOutOfStock = maxOrderable <= 0;
-
-    final bool isBestSeller = ProductTag.isBestSeller(item.tag);
-    final bool isNewProduct = ProductTag.isNewProduct(item.tag);
-    final bool isPlaced = _placedProductNames.contains(item.productName.trim().toLowerCase());
-    final bool showNotPlacedMark = isBestSeller && !isPlaced;
-
-    final Color stockColor = isOutOfStock
-        ? colorScheme.error
-        : (maxOrderable <= item.lowStockThreshold ? const Color(0xFFD97706) : colorScheme.primary);
-
-    Color cardBgColor = colorScheme.surface;
-    Color cardBorderColor = colorScheme.outlineVariant.withValues(alpha: 0.45);
-    double cardBorderWidth = 1.0;
-
-    if (isSelected) {
-      cardBgColor = colorScheme.primary.withValues(alpha: 0.05);
-      cardBorderColor = colorScheme.primary;
-      cardBorderWidth = 1.5;
-    }
-
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      color: cardBgColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: cardBorderColor, width: cardBorderWidth),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: isOutOfStock ? null : () => _promptQuantityDialog(item),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          child: Row(
-            children: [
-              CachedProductImage(imageUrl: item.imageUrl, isActive: !isOutOfStock, size: 54),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isBestSeller || isNewProduct || showNotPlacedMark) ...[
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          if (isBestSeller)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEF3C7),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.star_rounded, size: 13, color: Color(0xFFD97706)),
-                                  SizedBox(width: 3),
-                                  Text(
-                                    'Best Seller',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFB45309)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (isNewProduct)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE0F2FE),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.fiber_new_rounded, size: 14, color: Color(0xFF0284C7)),
-                                  SizedBox(width: 3),
-                                  Text(
-                                    'New Product',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (showNotPlacedMark)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEE2E2),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.6)),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.warning_amber_rounded, size: 13, color: Color(0xFFDC2626)),
-                                  SizedBox(width: 3),
-                                  Text(
-                                    'Not Placed',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    Text(
-                      item.productName,
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                        color: isOutOfStock ? colorScheme.onSurfaceVariant : colorScheme.onSurface,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 7,
-                      runSpacing: 2,
-                      children: [
-                        Text(
-                          _currencyFormat.format(item.sellingPrice),
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.primary),
-                        ),
-                        if (isOutOfStock)
-                          Text(
-                            'Out of stock',
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: stockColor),
-                          )
-                        else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.local_shipping_outlined, size: 12, color: Color(0xFF0284C7)),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '${item.incomingQuantity} incoming PO',
-                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
-                                ),
-                              ],
-                            ),
-                          )
-                        else if (item.incomingQuantity > 0)
-                          Text(
-                            '+${item.incomingQuantity} incoming',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Icon-only Add button (plus icon) when qty = 0
-              if (!isSelected)
-                SizedBox(
-                  width: 46,
-                  height: 46,
-                  child: FilledButton(
-                    onPressed: isOutOfStock ? null : () => _promptQuantityDialog(item),
-                    style: FilledButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      shape: const CircleBorder(),
-                      minimumSize: const Size(46, 46),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Icon(Icons.add_rounded, size: 24),
-                  ),
-                )
-              else
-                GestureDetector(
-                  onTap: () => _promptQuantityDialog(item),
-                  child: Container(
-                    height: 46,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(23)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.edit_outlined, size: 18, color: Colors.white),
-                        const SizedBox(width: 6),
-                        Text(
-                          '$selectedQty',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+    return ProductOrderCard(
+      item: item,
+      selectedQty: _getSelectedQty(item),
+      maxOrderable: _getMaxOrderableQty(item),
+      isPlaced: _placedProductNames.contains(item.productName.trim().toLowerCase()),
+      currencyFormat: _currencyFormat,
+      onTap: () => _promptQuantityDialog(item),
     );
   }
 
@@ -1556,67 +1163,14 @@ class _BookOrderPageState extends State<BookOrderPage> {
     required int totalUnits,
     required double totalAmount,
   }) {
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: skuCount > 0 ? () => _showCartSummarySheet(allInventory) : null,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                '$skuCount SKU${skuCount == 1 ? '' : 's'} • $totalUnits unit${totalUnits == 1 ? '' : 's'}',
-                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
-                              ),
-                              if (skuCount > 0) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.keyboard_arrow_up_rounded, size: 20, color: colorScheme.primary),
-                              ],
-                            ],
-                          ),
-                          Text(
-                            _currencyFormat.format(totalAmount),
-                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: _isSaving ? null : () => _onSaveOrder(allInventory),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(148, 48),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: _isSaving
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check_circle_outline, size: 22),
-                  label: const Text('Save Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+    return StickyOrderSummaryBar(
+      skuCount: skuCount,
+      totalUnits: totalUnits,
+      totalAmount: totalAmount,
+      currencyFormat: _currencyFormat,
+      isSaving: _isSaving,
+      onTapCartSummary: () => _showCartSummarySheet(allInventory),
+      onSaveOrder: () => _onSaveOrder(allInventory),
     );
   }
 }

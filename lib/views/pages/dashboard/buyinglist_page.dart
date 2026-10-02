@@ -11,7 +11,8 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 /// sorting, aggregation, and data-fetching orchestration are handled by
 /// [BuyingListController], while backend/Firebase queries reside in the services layer.
 class BuyinglistPage extends StatefulWidget {
-  const BuyinglistPage({super.key});
+  final bool showAppBar;
+  const BuyinglistPage({super.key, this.showAppBar = true});
 
   @override
   State<BuyinglistPage> createState() => _BuyinglistPageState();
@@ -344,11 +345,13 @@ class _BuyinglistPageState extends State<BuyinglistPage> {
         final isBuying = _controller.isBuyingTab;
 
         return Scaffold(
-          appBar: CustomAppbar(
-            title: isBuying ? 'KPI - Buying' : 'KPI - Non Buying',
-            subtitle: isBuying ? 'Buying store performance' : 'Stores requiring attention',
-            actions: [_buildSortMenu(isBuying: isBuying)],
-          ),
+          appBar: widget.showAppBar
+              ? CustomAppbar(
+                  title: isBuying ? 'KPI - Buying' : 'KPI - Non Buying',
+                  subtitle: isBuying ? 'Buying store performance' : 'Stores requiring attention',
+                  actions: [_buildSortMenu(isBuying: isBuying)],
+                )
+              : null,
           body: _controller.isLoading
               ? const Center(child: CircularProgressIndicator())
               : _controller.errorMessage != null

@@ -7,7 +7,8 @@ import 'package:intl/intl.dart';
 
 class SalesPage extends StatefulWidget {
   final double? monthlyTarget;
-  const SalesPage({super.key, this.monthlyTarget});
+  final bool showAppBar;
+  const SalesPage({super.key, this.monthlyTarget, this.showAppBar = true});
 
   @override
   State<SalesPage> createState() => _SalesPageState();
@@ -338,7 +339,9 @@ class _SalesPageState extends State<SalesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppbar(title: 'Sales', subtitle: 'Monthly sales performance'),
+      appBar: widget.showAppBar
+          ? const CustomAppbar(title: 'Sales', subtitle: 'Monthly sales performance')
+          : null,
       body: RefreshIndicator(
         onRefresh: _loadPurchaseOrders,
         child: isLoading

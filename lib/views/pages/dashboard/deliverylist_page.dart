@@ -46,11 +46,16 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   void prefetchData() async {
-    isDealer = await _controller.checkIsDealer();
-    if (isDealer) {
-      returnedDeliveryCount = await _controller.getCountReturnedDeliveriesOnOtherDays();
+    final dealer = await _controller.checkIsDealer();
+    final count = dealer
+        ? await _controller.getCountReturnedDeliveriesOnOtherDays()
+        : 0;
+    if (mounted) {
+      setState(() {
+        isDealer = dealer;
+        returnedDeliveryCount = count;
+      });
     }
-    if (mounted) setState(() {});
   }
 
   void onChangeDate() async {

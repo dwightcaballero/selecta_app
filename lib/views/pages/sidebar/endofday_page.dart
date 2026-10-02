@@ -52,10 +52,14 @@ class _EndofdayPageState extends State<EndofdayPage> {
     showLoading(true);
     try {
       final snapshot = await _controller.fetchEndOfDayData(_selectedDate);
-      _isDealer = snapshot.isDealer;
-      endOfDayData = snapshot.endOfDayData;
-      breakdown = snapshot.breakdown;
-      breakdownID = snapshot.breakdownId;
+      if (mounted) {
+        setState(() {
+          _isDealer = snapshot.isDealer;
+          endOfDayData = snapshot.endOfDayData;
+          breakdown = snapshot.breakdown;
+          breakdownID = snapshot.breakdownId;
+        });
+      }
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to fetch End of Day data: $e');
     } finally {
@@ -88,7 +92,6 @@ class _EndofdayPageState extends State<EndofdayPage> {
       if (mounted) await Helperfunctions.showLoading(context: context, showLoading: true);
     } else {
       await Helperfunctions.showLoading(context: context, showLoading: false);
-      if (mounted) setState(() {});
     }
   }
 

@@ -36,7 +36,8 @@ class DailyDataPoint {
 /// Historical Performance & Analytics Page displaying multi-day trends for Sales,
 /// Deliveries, and Store Visits using fl_chart charts.
 class AnalyticsPage extends StatefulWidget {
-  const AnalyticsPage({super.key});
+  final bool showAppBar;
+  const AnalyticsPage({super.key, this.showAppBar = true});
 
   @override
   State<AnalyticsPage> createState() => _AnalyticsPageState();
@@ -155,10 +156,12 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: const CustomAppbar(
-        title: 'Historical Analytics',
-        subtitle: 'Sales, delivery trends & operational performance',
-      ),
+      appBar: widget.showAppBar
+          ? const CustomAppbar(
+              title: 'Historical Analytics',
+              subtitle: 'Sales, delivery trends & operational performance',
+            )
+          : null,
       body: RefreshIndicator(
         onRefresh: _loadAnalytics,
         child: SingleChildScrollView(
