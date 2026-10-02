@@ -121,6 +121,8 @@ class Delivery {
   bool isInventoryDeducted;
   Timestamp? picklistCompletedDate;
   String picklistCompletedBy;
+  int? picklistSequence;
+  int? deliverySequence;
 
   String createdBy;
   String lastUpdatedBy;
@@ -154,6 +156,8 @@ class Delivery {
     this.isInventoryDeducted = false,
     this.picklistCompletedDate,
     this.picklistCompletedBy = '',
+    this.picklistSequence,
+    this.deliverySequence,
   });
 
   /// Total number of units across all ordered/picked items.
@@ -188,23 +192,17 @@ class Delivery {
     isInventoryDeducted: false,
     picklistCompletedDate: null,
     picklistCompletedBy: '',
+    picklistSequence: null,
+    deliverySequence: null,
   );
 
   static List<OrderItem> _parseItems(Object? raw) {
     if (raw is List) {
-      final list = raw
-          .whereType<Map>()
-          .map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final list = raw.whereType<Map>().map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e))).toList();
       list.sort((a, b) {
         final catComp = Helperfunctions.compareCategoryHierarchy(a.category, b.category);
         if (catComp != 0) return catComp;
-        return Helperfunctions.compareBySrpAndName(
-          nameA: a.productName,
-          priceA: a.sellingPrice,
-          nameB: b.productName,
-          priceB: b.sellingPrice,
-        );
+        return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
       });
       return list;
     }
@@ -235,6 +233,8 @@ class Delivery {
         isInventoryDeducted: json['isInventoryDeducted'] as bool? ?? false,
         picklistCompletedDate: json['picklistCompletedDate'] as Timestamp?,
         picklistCompletedBy: json['picklistCompletedBy'] as String? ?? '',
+        picklistSequence: (json['picklistSequence'] as num?)?.toInt(),
+        deliverySequence: (json['deliverySequence'] as num?)?.toInt(),
       );
 
   factory Delivery.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -263,6 +263,10 @@ class Delivery {
     bool? isInventoryDeducted,
     Timestamp? picklistCompletedDate,
     String? picklistCompletedBy,
+    int? picklistSequence,
+    bool clearPicklistSequence = false,
+    int? deliverySequence,
+    bool clearDeliverySequence = false,
     String? createdBy,
     String? lastUpdatedBy,
     Timestamp? createdDate,
@@ -287,6 +291,8 @@ class Delivery {
       isInventoryDeducted: isInventoryDeducted ?? this.isInventoryDeducted,
       picklistCompletedDate: picklistCompletedDate ?? this.picklistCompletedDate,
       picklistCompletedBy: picklistCompletedBy ?? this.picklistCompletedBy,
+      picklistSequence: clearPicklistSequence ? null : (picklistSequence ?? this.picklistSequence),
+      deliverySequence: clearDeliverySequence ? null : (deliverySequence ?? this.deliverySequence),
       createdBy: createdBy ?? this.createdBy,
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
@@ -314,6 +320,8 @@ class Delivery {
       'isInventoryDeducted': isInventoryDeducted,
       'picklistCompletedDate': picklistCompletedDate,
       'picklistCompletedBy': picklistCompletedBy,
+      'picklistSequence': picklistSequence,
+      'deliverySequence': deliverySequence,
       'createdBy': createdBy,
       'lastUpdatedBy': lastUpdatedBy,
       'createdDate': createdDate,
@@ -326,6 +334,8 @@ class Delivery {
 
 class DeliveryModelString {
   static String storeName = 'storeName';
+  static String picklistSequence = 'picklistSequence';
+  static String deliverySequence = 'deliverySequence';
   static String remarks = 'remarks';
   static String transactionStatus = 'transactionStatus';
   static String imagePath = 'imagePath';

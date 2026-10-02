@@ -8,6 +8,7 @@ import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/placement.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
@@ -35,13 +36,7 @@ class DeliverySummaryCounts {
   /// Count of records that were returned.
   final int returned;
 
-  const DeliverySummaryCounts({
-    required this.all,
-    this.pendingPicklist = 0,
-    required this.delivered,
-    required this.pending,
-    required this.returned,
-  });
+  const DeliverySummaryCounts({required this.all, this.pendingPicklist = 0, required this.delivered, required this.pending, required this.returned});
 }
 
 /// Container bundling fetched placement document ID and placement items for a store.
@@ -52,10 +47,7 @@ class PlacementLoadResult {
   /// List of placement items with state populated from the database.
   final List<KPlacement> placements;
 
-  const PlacementLoadResult({
-    required this.placementId,
-    required this.placements,
-  });
+  const PlacementLoadResult({required this.placementId, required this.placements});
 }
 
 /// Controller managing business logic, computations, validations, and service orchestration
@@ -71,10 +63,10 @@ class DeliveryController {
     PlacementService? placementService,
     BreakdownService? breakdownService,
     InventoryService? inventoryService,
-  })  : _deliveryService = deliveryService ?? DeliveryService(),
-        _placementService = placementService ?? PlacementService(),
-        _breakdownService = breakdownService ?? BreakdownService(),
-        _inventoryService = inventoryService ?? InventoryService();
+  }) : _deliveryService = deliveryService ?? DeliveryService(),
+       _placementService = placementService ?? PlacementService(),
+       _breakdownService = breakdownService ?? BreakdownService(),
+       _inventoryService = inventoryService ?? InventoryService();
 
   // ==========================================
   // Shared / Role & Breakdown Queries
@@ -160,28 +152,227 @@ class DeliveryController {
       }
     }
 
-    return DeliverySummaryCounts(
-      all: docs.length,
-      pendingPicklist: pendingPicklist,
-      delivered: delivered,
-      pending: pending,
-      returned: returned,
-    );
+    return DeliverySummaryCounts(all: docs.length, pendingPicklist: pendingPicklist, delivered: delivered, pending: pending, returned: returned);
   }
 
-  /// Filters delivery document snapshots by selected status tab and search query.
+  /// Filters delivery document snapshots by selected status tab and search query,
+  /// and sorts the stores based on custom delivery sequence or who was processed in picklist first.
   List filterDeliveries({
     required List docs,
     required String selectedStatus,
     required String searchQuery,
+    bool ignoreCustomSequence = false,
   }) {
     final query = searchQuery.trim().toLowerCase();
-    return docs.where((doc) {
-      final Delivery delivery = doc.data() as Delivery;
+    final filtered = docs.where((doc) {
+      final raw = doc.data();
+      final Delivery delivery = raw is Delivery ? raw : Delivery.fromJson(raw as Map<String, Object?>);
       final matchesStatus = selectedStatus == 'All' || delivery.transactionStatus == selectedStatus;
       final matchesSearch = query.isEmpty || delivery.storeName.toLowerCase().contains(query);
       return matchesStatus && matchesSearch;
     }).toList();
+
+    final hasCustomSequence = !ignoreCustomSequence && filtered.any((d) {
+      final raw = d.data();
+      final Delivery del = raw is Delivery ? raw : Delivery.fromJson(raw as Map<String, Object?>);
+      return del.deliverySequence != null;
+    });
+
+    filtered.sort((a, b) {
+      final rawA = a.data();
+      final rawB = b.data();
+      final Delivery delA = rawA is Delivery ? rawA : Delivery.fromJson(rawA as Map<String, Object?>);
+      final Delivery delB = rawB is Delivery ? rawB : Delivery.fromJson(rawB as Map<String, Object?>);
+
+      if (hasCustomSequence) {
+        final seqA = delA.deliverySequence;
+        final seqB = delB.deliverySequence;
+        if (seqA != null && seqB != null) {
+          final cmp = seqA.compareTo(seqB);
+          if (cmp != 0) return cmp;
+        } else if (seqA != null) {
+          return -1;
+        } else if (seqB != null) {
+          return 1;
+        }
+      }
+
+      final timeA = delA.picklistCompletedDate;
+      final timeB = delB.picklistCompletedDate;
+
+      // 1. Stores processed in picklist first appear first
+      if (timeA != null && timeB != null) {
+        final cmp = timeA.compareTo(timeB);
+        if (cmp != 0) return cmp;
+      } else if (timeA != null) {
+        return -1;
+      } else if (timeB != null) {
+        return 1;
+      } else {
+        // Fallback for deliveries without picklistCompletedDate:
+        // Already processed statuses (pending, delivered, returned) come before pendingPicklist
+        final isDelAProcessed = delA.transactionStatus != DeliveryStatus.pendingPicklist;
+        final isDelBProcessed = delB.transactionStatus != DeliveryStatus.pendingPicklist;
+        if (isDelAProcessed && !isDelBProcessed) return -1;
+        if (!isDelAProcessed && isDelBProcessed) return 1;
+        if (isDelAProcessed && isDelBProcessed) {
+          final cmp = delA.lastupdatedDate.compareTo(delB.lastupdatedDate);
+          if (cmp != 0) return cmp;
+        }
+      }
+      return delA.createdDate.compareTo(delB.createdDate);
+    });
+
+    return filtered;
+  }
+
+  /// Returns the PJP weekday name for the day preceding [selectedDate].
+  /// If the previous day is Sunday but no stores have a Sunday schedule, falls back to Saturday.
+  String getPreviousPjpDayName(DateTime selectedDate, [Map<String, Hapistore>? storesByName]) {
+    final prevDate = selectedDate.subtract(const Duration(days: 1));
+    final prevDayName = PjpScheduleDays.all[prevDate.weekday - 1];
+    if (prevDate.weekday == DateTime.sunday && storesByName != null) {
+      final hasSundayStores = storesByName.values.any((s) => s.pjpSchedule?.trim().toLowerCase() == PjpScheduleDays.sunday.toLowerCase());
+      if (!hasSundayStores) {
+        return PjpScheduleDays.saturday;
+      }
+    }
+    return prevDayName;
+  }
+
+  /// Sorts pending picklist delivery documents based on PJP schedule and sequence for the previous day.
+  /// Stores belonging to the previous day's PJP schedule appear first, ordered by their PJP sequence.
+  /// Stores not part of the previous day's PJP schedule are placed at the bottom.
+  /// If the user has manually edited the order, that order (picklistSequence) is respected.
+  List<QueryDocumentSnapshot<Delivery>> sortPendingPicklists({
+    required List<QueryDocumentSnapshot<Delivery>> docs,
+    required DateTime selectedDate,
+    required Map<String, Hapistore> storesByName,
+    bool ignoreCustomSequence = false,
+  }) {
+    final sorted = [...docs];
+    final targetPjpDay = getPreviousPjpDayName(selectedDate, storesByName).toLowerCase();
+
+    final hasCustomSequence = !ignoreCustomSequence && sorted.any((d) => d.data().picklistSequence != null);
+
+    sorted.sort((a, b) {
+      final delA = a.data();
+      final delB = b.data();
+
+      if (hasCustomSequence) {
+        final seqA = delA.picklistSequence;
+        final seqB = delB.picklistSequence;
+        if (seqA != null && seqB != null) {
+          final cmp = seqA.compareTo(seqB);
+          if (cmp != 0) return cmp;
+        } else if (seqA != null) {
+          return -1;
+        } else if (seqB != null) {
+          return 1;
+        }
+      }
+
+      // Default PJP schedule & sequence logic:
+      final storeA = storesByName[delA.storeName.trim().toLowerCase()];
+      final storeB = storesByName[delB.storeName.trim().toLowerCase()];
+
+      final isPjpA = storeA?.pjpSchedule?.trim().toLowerCase() == targetPjpDay;
+      final isPjpB = storeB?.pjpSchedule?.trim().toLowerCase() == targetPjpDay;
+
+      // PJP stores of previous day come first; non-PJP stores go to the bottom
+      if (isPjpA && !isPjpB) return -1;
+      if (!isPjpA && isPjpB) return 1;
+
+      if (isPjpA && isPjpB) {
+        // Both part of previous day's PJP schedule: sort by pjpSequence
+        final pjpSeqA = storeA?.pjpSequence;
+        final pjpSeqB = storeB?.pjpSequence;
+        if (pjpSeqA != null && pjpSeqB != null) {
+          final cmp = pjpSeqA.compareTo(pjpSeqB);
+          if (cmp != 0) return cmp;
+        } else if (pjpSeqA != null) {
+          return -1;
+        } else if (pjpSeqB != null) {
+          return 1;
+        }
+        return delA.storeName.toLowerCase().compareTo(delB.storeName.toLowerCase());
+      }
+
+      // Neither is part of previous day's PJP schedule: placed at bottom, sorted alphabetically
+      return delA.storeName.toLowerCase().compareTo(delB.storeName.toLowerCase());
+    });
+
+    return sorted;
+  }
+
+  /// Persists a new store order for pending picklists and synchronizes PJP sequence for previous day's stores.
+  Future<void> savePicklistSequenceOrder({
+    required List<String> orderedDeliveryIDs,
+    required DateTime selectedDate,
+    required Map<String, QueryDocumentSnapshot<Delivery>> docsById,
+    required Map<String, Hapistore> storesByName,
+    required Map<String, String> storeDocIdsByName,
+  }) async {
+    // 1. Update picklistSequence on deliveries
+    await _deliveryService.updatePicklistSequenceOrder(orderedDeliveryIDs);
+
+    // 2. Also synchronize pjpSequence in hapistores for stores that belong to the previous day's PJP
+    final targetPjpDay = getPreviousPjpDayName(selectedDate, storesByName);
+    final targetPjpStoreDocIDs = <String>[];
+    for (final delId in orderedDeliveryIDs) {
+      final doc = docsById[delId];
+      if (doc == null) continue;
+      final storeName = doc.data().storeName.trim().toLowerCase();
+      final store = storesByName[storeName];
+      final storeDocId = storeDocIdsByName[storeName];
+      if (store != null && storeDocId != null && store.pjpSchedule?.trim().toLowerCase() == targetPjpDay.toLowerCase()) {
+        if (!targetPjpStoreDocIDs.contains(storeDocId)) {
+          targetPjpStoreDocIDs.add(storeDocId);
+        }
+      }
+    }
+    if (targetPjpStoreDocIDs.isNotEmpty) {
+      final hapiStoreService = HapiStoreService();
+      await hapiStoreService.updatePjpSequenceOrder(targetPjpDay, targetPjpStoreDocIDs);
+    }
+
+    // 3. Log transaction
+    final names = orderedDeliveryIDs.map((id) => docsById[id]?.data().storeName ?? id).join(', ');
+    await Helperfunctions.logTransaction(
+      'Picklist Resequence - $targetPjpDay (Previous Day)',
+      'New order: $names',
+      LogAction.update,
+      page: AppPages.picklist,
+    );
+  }
+
+  /// Resets custom picklistSequence on deliveries so order falls back to PJP schedule.
+  Future<void> resetPicklistSequenceOrder({required List<String> deliveryIDs}) async {
+    await _deliveryService.clearPicklistSequenceOrder(deliveryIDs);
+  }
+
+  /// Persists a new store order for deliveries.
+  Future<void> saveDeliverySequenceOrder({
+    required List<String> orderedDeliveryIDs,
+    required DateTime selectedDate,
+    required Map<String, QueryDocumentSnapshot<Delivery>> docsById,
+  }) async {
+    // 1. Update deliverySequence on deliveries
+    await _deliveryService.updateDeliverySequenceOrder(orderedDeliveryIDs);
+
+    // 2. Log transaction
+    final names = orderedDeliveryIDs.map((id) => docsById[id]?.data().storeName ?? id).join(', ');
+    await Helperfunctions.logTransaction(
+      'Delivery Resequence - ${formatDateLabel(selectedDate)}',
+      'New order: $names',
+      LogAction.update,
+      page: AppPages.delivery,
+    );
+  }
+
+  /// Resets custom deliverySequence on deliveries so order falls back to default sequence.
+  Future<void> resetDeliverySequenceOrder({required List<String> deliveryIDs}) async {
+    await _deliveryService.clearDeliverySequenceOrder(deliveryIDs);
   }
 
   // ==========================================
@@ -233,20 +424,13 @@ class DeliveryController {
     );
 
     // 1. Reserve floating inventory so other orders cannot overbook stock
-    await _inventoryService.reserveStockForOrder(
-      storeName: storeName,
-      items: cleanItems,
-    );
+    await _inventoryService.reserveStockForOrder(storeName: storeName, items: cleanItems);
 
     // 2. Persist unified transaction in `delivery` collection
     final String newId = await _deliveryService.addDelivery(newRecord);
 
     // 3. Write audit log
-    await Helperfunctions.logCreate(
-      storeName,
-      newRecord.toJson(),
-      page: AppPages.bookOrder,
-    );
+    await Helperfunctions.logCreate(storeName, newRecord.toJson(), page: AppPages.bookOrder);
 
     return (id: newId, delivery: newRecord);
   }
@@ -266,16 +450,9 @@ class DeliveryController {
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
     if (currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
-      await _inventoryService.adjustReservedStockForOrderUpdate(
-        storeName: storeName,
-        oldItems: currentDelivery.items,
-        newItems: cleanItems,
-      );
+      await _inventoryService.adjustReservedStockForOrderUpdate(storeName: storeName, oldItems: currentDelivery.items, newItems: cleanItems);
     } else if (!currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
-      await _inventoryService.reserveStockForOrder(
-        storeName: storeName,
-        items: cleanItems,
-      );
+      await _inventoryService.reserveStockForOrder(storeName: storeName, items: cleanItems);
     }
 
     final updated = currentDelivery.copyWith(
@@ -291,12 +468,7 @@ class DeliveryController {
     );
 
     await _deliveryService.updateDelivery(deliveryId, updated);
-    await Helperfunctions.logUpdate(
-      storeName,
-      currentDelivery.toJson(),
-      updated.toJson(),
-      page: AppPages.bookOrder,
-    );
+    await Helperfunctions.logUpdate(storeName, currentDelivery.toJson(), updated.toJson(), page: AppPages.bookOrder);
 
     return updated;
   }
@@ -324,21 +496,12 @@ class DeliveryController {
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
     if (currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
-      await _inventoryService.adjustReservedStockForOrderUpdate(
-        storeName: storeName,
-        oldItems: currentDelivery.items,
-        newItems: cleanItems,
-      );
+      await _inventoryService.adjustReservedStockForOrderUpdate(storeName: storeName, oldItems: currentDelivery.items, newItems: cleanItems);
     }
 
     String imageFilePath = currentDelivery.imagePath;
     if (context.mounted) {
-      imageFilePath = await Helperfunctions.updateImage(
-        context,
-        imageFile,
-        networkImagePath,
-        currentDelivery.imagePath,
-      );
+      imageFilePath = await Helperfunctions.updateImage(context, imageFile, networkImagePath, currentDelivery.imagePath);
     }
 
     final updated = currentDelivery.copyWith(
@@ -366,12 +529,7 @@ class DeliveryController {
       await _placementService.savePlacement(placement);
     }
 
-    await Helperfunctions.logUpdate(
-      storeName,
-      currentDelivery.toJson(),
-      updated.toJson(),
-      page: AppPages.picklist,
-    );
+    await Helperfunctions.logUpdate(storeName, currentDelivery.toJson(), updated.toJson(), page: AppPages.picklist);
 
     return updated;
   }
@@ -413,12 +571,7 @@ class DeliveryController {
     // 2. Upload/update receipt image if present
     String imageFilePath = currentDelivery.imagePath;
     if (context.mounted) {
-      imageFilePath = await Helperfunctions.updateImage(
-        context,
-        imageFile,
-        networkImagePath,
-        currentDelivery.imagePath,
-      );
+      imageFilePath = await Helperfunctions.updateImage(context, imageFile, networkImagePath, currentDelivery.imagePath);
     }
 
     // 3. Transition status to DeliveryStatus.pending ("For Delivery")
@@ -454,12 +607,7 @@ class DeliveryController {
     }
 
     // 5. Write audit trail
-    await Helperfunctions.logUpdate(
-      storeName,
-      currentDelivery.toJson(),
-      updated.toJson(),
-      page: AppPages.picklist,
-    );
+    await Helperfunctions.logUpdate(storeName, currentDelivery.toJson(), updated.toJson(), page: AppPages.picklist);
 
     // 6. Optional SMS notification
     if (sendText && smsMessage.isNotEmpty) {
@@ -495,12 +643,7 @@ class DeliveryController {
   }
 
   /// Calculates total collected payments across cash, online, credit, and return fields.
-  double computeTotalCollected({
-    required String cash,
-    required String online,
-    required String credit,
-    required String returnAmount,
-  }) {
+  double computeTotalCollected({required String cash, required String online, required String credit, required String returnAmount}) {
     final Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(cash);
     final Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(online);
     final Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(credit);
@@ -541,20 +684,14 @@ class DeliveryController {
   }
 
   /// Generates the standard customer confirmation SMS notification body.
-  String generateSmsMessage({
-    required String storeName,
-    required String formattedOrderAmount,
-  }) {
+  String generateSmsMessage({required String storeName, required String formattedOrderAmount}) {
     return '[SELECTA DELIVERY]\n\n'
         'Good day $storeName! This is to confirm that your order worth ($formattedOrderAmount) is now pending for delivery.\n\n'
         'Please expect your stocks to arrive in a few hours. Thank you for choosing Selecta Ice Cream. Have a sweet day!';
   }
 
   /// Sends an SMS notification to the customer store using Telephony.
-  Future<void> sendDeliverySms({
-    required String storeName,
-    required String message,
-  }) async {
+  Future<void> sendDeliverySms({required String storeName, required String message}) async {
     try {
       String storeContact = await HapiStoreService.getContactByStoreName(storeName);
       storeContact = storeContact.replaceFirst('09', '+639');
@@ -577,13 +714,17 @@ class DeliveryController {
 
     List<KPlacement> listPlacement;
     if (bestSellers.isNotEmpty) {
-      listPlacement = bestSellers.map((prod) => KPlacement(
-        itemName: prod.productName,
-        itemCode: prod.id,
-        isPlaced: false,
-        isPlacedFromDB: false,
-        itemImagePath: prod.imageUrl.isNotEmpty ? prod.imageUrl : 'assets/images/placement/watermelon.png',
-      )).toList();
+      listPlacement = bestSellers
+          .map(
+            (prod) => KPlacement(
+              itemName: prod.productName,
+              itemCode: prod.id,
+              isPlaced: false,
+              isPlacedFromDB: false,
+              itemImagePath: prod.imageUrl.isNotEmpty ? prod.imageUrl : 'assets/images/placement/watermelon.png',
+            ),
+          )
+          .toList();
     } else {
       listPlacement = KData.getListPlacement();
     }
@@ -627,10 +768,7 @@ class DeliveryController {
       }
     }
 
-    return PlacementLoadResult(
-      placementId: placementId,
-      placements: listPlacement,
-    );
+    return PlacementLoadResult(placementId: placementId, placements: listPlacement);
   }
 
   /// Creates a new delivery record directly (legacy helper).
@@ -743,12 +881,7 @@ class DeliveryController {
     }
 
     // Update image
-    final String imageFilePath = await Helperfunctions.updateImage(
-      context,
-      imageFile,
-      networkImagePath,
-      currentDelivery.imagePath,
-    );
+    final String imageFilePath = await Helperfunctions.updateImage(context, imageFile, networkImagePath, currentDelivery.imagePath);
 
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
@@ -808,12 +941,7 @@ class DeliveryController {
     }
 
     // Audit log
-    await Helperfunctions.logUpdate(
-      storeName,
-      currentDelivery.toJson(),
-      updatedDelivery.toJson(),
-      page: AppPages.delivery,
-    );
+    await Helperfunctions.logUpdate(storeName, currentDelivery.toJson(), updatedDelivery.toJson(), page: AppPages.delivery);
 
     return updatedDelivery;
   }
@@ -850,16 +978,9 @@ class DeliveryController {
 
     // 2. Fetch existing placement record for this store & month
     final deliveryDateTime = delivery.deliveryDate!.toDate();
-    final existingPlacement = await _placementService.getPlacementByStoreAndDate(
-      delivery.storeName,
-      deliveryDateTime,
-    );
+    final existingPlacement = await _placementService.getPlacementByStoreAndDate(delivery.storeName, deliveryDateTime);
 
-    final placement = existingPlacement ??
-        Placement.empty().copyWith(
-          storeName: delivery.storeName,
-          deliveryDate: delivery.deliveryDate!,
-        );
+    final placement = existingPlacement ?? Placement.empty().copyWith(storeName: delivery.storeName, deliveryDate: delivery.deliveryDate!);
 
     // 3. Union existing placed product names with newly delivered Best Sellers
     final currentPlaced = Set<String>.from(placement.placedProductNames);
@@ -897,16 +1018,9 @@ class DeliveryController {
 
   /// Deletes a delivery record, releases any floating reserved inventory if still in
   /// `Pending Picklist`, and removes its associated uploaded image from storage.
-  Future<void> deleteDelivery({
-    required BuildContext context,
-    required String deliveryId,
-    required Delivery delivery,
-  }) async {
+  Future<void> deleteDelivery({required BuildContext context, required String deliveryId, required Delivery delivery}) async {
     if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
-      await _inventoryService.releaseReservedStockForOrder(
-        storeName: delivery.storeName,
-        items: delivery.items,
-      );
+      await _inventoryService.releaseReservedStockForOrder(storeName: delivery.storeName, items: delivery.items);
     }
     if (delivery.imagePath.isNotEmpty && context.mounted) {
       await Helperfunctions.deleteImage(context, delivery.imagePath);

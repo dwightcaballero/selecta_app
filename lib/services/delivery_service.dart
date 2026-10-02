@@ -42,25 +42,18 @@ class DeliveryService {
   }
 
   Stream<QuerySnapshot<Delivery>> getPendingPicklistsStream() {
-    return _ordersRef
-        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist)
-        .snapshots();
+    return _ordersRef.where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist).snapshots();
   }
 
   Stream<int> getPendingPicklistCountStream({DateTime? date}) {
-    return _ordersRef
-        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist)
-        .snapshots()
-        .map((snap) {
-          final target = date ?? DateTime.now();
-          return snap.docs.where((doc) {
-            final delivery = doc.data();
-            final dDate = delivery.deliveryDate?.toDate() ?? delivery.createdDate.toDate();
-            return dDate.year == target.year &&
-                dDate.month == target.month &&
-                dDate.day == target.day;
-          }).length;
-        });
+    return _ordersRef.where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist).snapshots().map((snap) {
+      final target = date ?? DateTime.now();
+      return snap.docs.where((doc) {
+        final delivery = doc.data();
+        final dDate = delivery.deliveryDate?.toDate() ?? delivery.createdDate.toDate();
+        return dDate.year == target.year && dDate.month == target.month && dDate.day == target.day;
+      }).length;
+    });
   }
 
   Stream<QuerySnapshot> getListDelivery() {
@@ -199,5 +192,41 @@ class DeliveryService {
         .get();
 
     return snapshot.docs.map((doc) => Delivery.fromJson(doc.data())).toList();
+  }
+
+  /// Updates picklistSequence order on the given delivery documents in a batch.
+  Future<void> updatePicklistSequenceOrder(List<String> deliveryIDs) async {
+    final batch = _firestore.batch();
+    for (int i = 0; i < deliveryIDs.length; i++) {
+      batch.update(_ordersRef.doc(deliveryIDs[i]), {DeliveryModelString.picklistSequence: i, DeliveryModelString.lastupdatedDate: Timestamp.now()});
+    }
+    await batch.commit();
+  }
+
+  /// Clears picklistSequence on the given delivery documents to revert back to default PJP order.
+  Future<void> clearPicklistSequenceOrder(List<String> deliveryIDs) async {
+    final batch = _firestore.batch();
+    for (final id in deliveryIDs) {
+      batch.update(_ordersRef.doc(id), {DeliveryModelString.picklistSequence: null, DeliveryModelString.lastupdatedDate: Timestamp.now()});
+    }
+    await batch.commit();
+  }
+
+  /// Updates deliverySequence order on the given delivery documents in a batch.
+  Future<void> updateDeliverySequenceOrder(List<String> deliveryIDs) async {
+    final batch = _firestore.batch();
+    for (int i = 0; i < deliveryIDs.length; i++) {
+      batch.update(_ordersRef.doc(deliveryIDs[i]), {DeliveryModelString.deliverySequence: i, DeliveryModelString.lastupdatedDate: Timestamp.now()});
+    }
+    await batch.commit();
+  }
+
+  /// Clears deliverySequence on the given delivery documents to revert back to default order.
+  Future<void> clearDeliverySequenceOrder(List<String> deliveryIDs) async {
+    final batch = _firestore.batch();
+    for (final id in deliveryIDs) {
+      batch.update(_ordersRef.doc(id), {DeliveryModelString.deliverySequence: null, DeliveryModelString.lastupdatedDate: Timestamp.now()});
+    }
+    await batch.commit();
   }
 }
