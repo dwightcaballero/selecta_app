@@ -396,12 +396,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             stream: _pendingPicklistsCountStream,
             initialData: _dashboardDTO.pendingPicklistCount,
             builder: (context, snapshot) {
-              return _buildDrawerItem(
-                Icons.fact_check_outlined,
-                'Pending Picklists',
-                const PicklistListPage(),
-                badgeCount: snapshot.data ?? 0,
-              );
+              return _buildDrawerItem(Icons.fact_check_outlined, 'Pending Picklists', const PicklistListPage(), badgeCount: snapshot.data ?? 0);
             },
           ),
           _buildDrawerItem(
@@ -410,24 +405,20 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             const DeliveryListPage(),
             badgeCount: _dashboardDTO.pendingDeliveryCount,
           ),
-          _buildDrawerItem(
-            Icons.account_balance_wallet_outlined,
-            'Credit List',
-            const CreditlistPage(),
-            badgeCount: _dashboardDTO.unpaidCreditCount,
-          ),
+          _buildDrawerItem(Icons.account_balance_wallet_outlined, 'Credit List', const CreditlistPage(), badgeCount: _dashboardDTO.unpaidCreditCount),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-          _buildDrawerItem(
-            Icons.insights_rounded,
-            'KPI & Analytics Hub',
-            KpiOverviewPage(dashboardDTO: _dashboardDTO),
-          ),
+          _buildDrawerItem(Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: _dashboardDTO)),
           _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),
-          _buildDrawerItem(Icons.system_update_alt_rounded, 'Check for Updates', null, onTap: () {
-            AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true);
-          }),
+          _buildDrawerItem(
+            Icons.system_update_alt_rounded,
+            'Check for Updates',
+            null,
+            onTap: () {
+              AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true);
+            },
+          ),
 
           const Divider(indent: 16, endIndent: 16),
 
@@ -440,16 +431,14 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             child: FutureBuilder(
               future: AppUpdateService.getCurrentPackageInfo(),
               builder: (context, snapshot) {
-                final versionText = snapshot.hasData
-                    ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
-                    : '';
+                final versionText = snapshot.hasData ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}' : '';
                 return Center(
                   child: Text(
                     'Selecta Ops $versionText'.trim(),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.6),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                     ),
                   ),
                 );
@@ -577,7 +566,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
 
                     const SizedBox(height: 20),
 
-                     // 2. Primary Operations Quick Access
+                    // 2. Primary Operations Quick Access
                     _buildSectionHeader('Operations Quick Access', 'Book orders, picklists, deliveries, and daily execution'),
                     const SizedBox(height: 12),
                     Row(
@@ -725,31 +714,15 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           }
         },
         destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard_rounded),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map_rounded),
-            label: 'Route',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.local_shipping_outlined),
-            selectedIcon: Icon(Icons.local_shipping_rounded),
-            label: 'Deliveries',
-          ),
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: 'Route'),
+          NavigationDestination(icon: Icon(Icons.local_shipping_outlined), selectedIcon: Icon(Icons.local_shipping_rounded), label: 'Deliveries'),
           NavigationDestination(
             icon: Icon(Icons.add_shopping_cart_outlined),
             selectedIcon: Icon(Icons.add_shopping_cart_rounded),
             label: 'Book Order',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.qr_code_scanner_outlined),
-            selectedIcon: Icon(Icons.qr_code_scanner_rounded),
-            label: 'Scan',
-          ),
+          NavigationDestination(icon: Icon(Icons.qr_code_scanner_outlined), selectedIcon: Icon(Icons.qr_code_scanner_rounded), label: 'Scan'),
         ],
       ),
     );

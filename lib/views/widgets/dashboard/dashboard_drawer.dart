@@ -72,21 +72,11 @@ class DashboardDrawer extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 48, 20, 20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: isDark
-                    ? [
-                        const Color(0xFF1E2430),
-                        const Color(0xFF141822),
-                      ]
-                    : [
-                        colorScheme.primary,
-                        colorScheme.primary.withAlpha(210),
-                      ],
+                colors: isDark ? [const Color(0xFF1E2430), const Color(0xFF141822)] : [colorScheme.primary, colorScheme.primary.withAlpha(210)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              border: isDark
-                  ? const Border(bottom: BorderSide(color: Color(0xFF2E3644), width: 1))
-                  : null,
+              border: isDark ? const Border(bottom: BorderSide(color: Color(0xFF2E3644), width: 1)) : null,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,10 +91,7 @@ class DashboardDrawer extends StatelessWidget {
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(40),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                      decoration: BoxDecoration(color: Colors.white.withAlpha(40), borderRadius: BorderRadius.circular(10)),
                       child: Text(
                         isDealer ? 'Dealer' : 'Salesman',
                         style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
@@ -118,10 +105,7 @@ class DashboardDrawer extends StatelessWidget {
                   style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
                 ),
                 if (currentUser?.email != null && currentUser!.email.isNotEmpty)
-                  Text(
-                    currentUser!.email,
-                    style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 12),
-                  ),
+                  Text(currentUser!.email, style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 12)),
               ],
             ),
           ),
@@ -131,25 +115,13 @@ class DashboardDrawer extends StatelessWidget {
           StreamBuilder<int>(
             stream: merchBlitzCountStream,
             builder: (context, snapshot) {
-              return _buildDrawerItem(
-                context,
-                Icons.campaign_outlined,
-                'Merch Blitz',
-                const MerchBlitzListPage(),
-                badgeCount: snapshot.data ?? 0,
-              );
+              return _buildDrawerItem(context, Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzListPage(), badgeCount: snapshot.data ?? 0);
             },
           ),
           StreamBuilder<int>(
             stream: tasksCountStream,
             builder: (context, snapshot) {
-              return _buildDrawerItem(
-                context,
-                Icons.task_alt_outlined,
-                'Tasks',
-                const TaskListPage(),
-                badgeCount: snapshot.data ?? 0,
-              );
+              return _buildDrawerItem(context, Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badgeCount: snapshot.data ?? 0);
             },
           ),
           _buildDrawerItem(
@@ -178,12 +150,7 @@ class DashboardDrawer extends StatelessWidget {
 
           // 2. KPI Section (Consolidated Hub)
           _buildDrawerSectionHeader(context, 'KPI & Analytics'),
-          _buildDrawerItem(
-            context,
-            Icons.insights_rounded,
-            'KPI & Analytics Hub',
-            KpiOverviewPage(dashboardDTO: dashboardDTO),
-          ),
+          _buildDrawerItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: dashboardDTO)),
 
           const Divider(indent: 16, endIndent: 16),
 
@@ -209,13 +176,7 @@ class DashboardDrawer extends StatelessWidget {
           if (isDealer) _buildDrawerItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
           if (isDealer) _buildDrawerItem(context, Icons.inventory_2_outlined, 'Selecta Products', const SelectaProductsPage()),
           if (isDealer) _buildDrawerItem(context, Icons.inventory_2_outlined, 'Other Products', const OtherProductsPage()),
-          _buildDrawerItem(
-            context,
-            Icons.map_outlined,
-            'Journey Plan (PJP)',
-            const PjpListPage(),
-            badgeCount: dashboardDTO.pendingPjpCount,
-          ),
+          _buildDrawerItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(context, Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: onUploadErrorLogs),
           _buildDrawerItem(
@@ -241,15 +202,8 @@ class DashboardDrawer extends StatelessWidget {
             valueListenable: isDarkModeNotifier,
             builder: (context, isDark, _) {
               return ListTile(
-                leading: Icon(
-                  isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                  size: 22,
-                  color: colorScheme.primary,
-                ),
-                title: const Text(
-                  'Dark Mode',
-                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-                ),
+                leading: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded, size: 22, color: colorScheme.primary),
+                title: const Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
                 trailing: Switch.adaptive(
                   value: isDark,
                   onChanged: (val) async {
@@ -273,17 +227,11 @@ class DashboardDrawer extends StatelessWidget {
             child: FutureBuilder(
               future: AppUpdateService.getCurrentPackageInfo(),
               builder: (context, snapshot) {
-                final versionText = snapshot.hasData
-                    ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}'
-                    : '';
+                final versionText = snapshot.hasData ? 'v${snapshot.data!.version}+${snapshot.data!.buildNumber}' : '';
                 return Center(
                   child: Text(
                     'Selecta Ops $versionText'.trim(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.6),
-                    ),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
                   ),
                 );
               },
@@ -300,12 +248,7 @@ class DashboardDrawer extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Text(
         title,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: colorScheme.onSurfaceVariant,
-          letterSpacing: 0.5,
-        ),
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant, letterSpacing: 0.5),
       ),
     );
   }
@@ -324,11 +267,7 @@ class DashboardDrawer extends StatelessWidget {
       leading: Icon(icon, color: isLogout ? Colors.red : null, size: 22),
       title: Text(
         title,
-        style: TextStyle(
-          fontWeight: FontWeight.w500,
-          fontSize: 14,
-          color: isLogout ? Colors.red : null,
-        ),
+        style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: isLogout ? Colors.red : null),
       ),
       trailing: badgeCount > 0
           ? Container(
