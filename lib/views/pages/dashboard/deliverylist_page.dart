@@ -40,7 +40,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   StreamSubscription? _storesSub;
   Map<String, Hapistore> _storesByName = {};
-  Map<String, String> _storeDocIdsByName = {};
 
   bool _isEditing = false;
   bool _isSaving = false;
@@ -76,7 +75,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       }
       setState(() {
         _storesByName = map;
-        _storeDocIdsByName = docIds;
       });
     });
   }
@@ -145,19 +143,11 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   void _resetOrder() {
-    final docs = _editableDeliveryIDs
-        .map((id) => _editableDocsById[id])
-        .whereType<QueryDocumentSnapshot<Delivery>>()
-        .toList();
-    final defaultSorted = _controller.filterDeliveries(
-      docs: docs,
-      selectedStatus: 'All',
-      searchQuery: '',
-      ignoreCustomSequence: true,
-    );
+    final docs = _editableDeliveryIDs.map((id) => _editableDocsById[id]).whereType<QueryDocumentSnapshot<Delivery>>().toList();
+    final defaultSorted = _controller.filterDeliveries(docs: docs, selectedStatus: 'All', searchQuery: '', ignoreCustomSequence: true);
     setState(() {
       _editableDeliveryIDs = defaultSorted.map((d) => (d as QueryDocumentSnapshot<Delivery>).id).toList();
-      _editableDocsById = {for (final d in defaultSorted) (d as QueryDocumentSnapshot<Delivery>).id: d as QueryDocumentSnapshot<Delivery>};
+      _editableDocsById = {for (final d in defaultSorted) (d as QueryDocumentSnapshot<Delivery>).id: d};
     });
     ShowMessage.info(context, 'Reset to default delivery sequence. Tap "Save Order" to apply.');
   }
@@ -169,11 +159,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     }
     setState(() => _isSaving = true);
     try {
-      await _controller.saveDeliverySequenceOrder(
-        orderedDeliveryIDs: _editableDeliveryIDs,
-        selectedDate: _selectedDate,
-        docsById: _editableDocsById,
-      );
+      await _controller.saveDeliverySequenceOrder(orderedDeliveryIDs: _editableDeliveryIDs, selectedDate: _selectedDate, docsById: _editableDocsById);
       if (!mounted) return;
       ShowMessage.success(context, 'Delivery store order saved successfully!');
       setState(() {
@@ -454,7 +440,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
           if (_isEditing)
             TextButton(
               onPressed: _isSaving ? null : _cancelEditing,
-              child: const Text('Cancel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
             ),
         ],
       ),
@@ -665,7 +654,11 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                             const SizedBox(width: 3),
                                                             Text(
                                                               'Picked ${DateFormat('h:mm a').format(delivery.picklistCompletedDate!.toDate())}',
-                                                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green.shade800),
+                                                              style: TextStyle(
+                                                                fontSize: 12,
+                                                                fontWeight: FontWeight.w600,
+                                                                color: Colors.green.shade800,
+                                                              ),
                                                             ),
                                                           ],
                                                         ),
@@ -775,9 +768,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(
-                    color: isTodayPjp
-                        ? colorScheme.primary.withValues(alpha: 0.3)
-                        : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    color: isTodayPjp ? colorScheme.primary.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.5),
                   ),
                 ),
                 child: Padding(
@@ -824,9 +815,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: isTodayPjp
-                                          ? Colors.green.withValues(alpha: 0.12)
-                                          : Colors.amber.withValues(alpha: 0.15),
+                                      color: isTodayPjp ? Colors.green.withValues(alpha: 0.12) : Colors.amber.withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
@@ -842,11 +831,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                   ),
                                 Text(
                                   Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
+                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                                 ),
                               ],
                             ),
