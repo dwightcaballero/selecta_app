@@ -25,6 +25,9 @@ import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/product_catalog_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/proof_of_visit_gallery_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -170,6 +173,9 @@ class DashboardDrawer extends StatelessWidget {
           _buildDrawerItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(context, Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
           _buildDrawerItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
+          _buildDrawerItem(context, Icons.menu_book_outlined, 'Product Catalog & Prices', const ProductCatalogPage()),
+          _buildDrawerItem(context, Icons.photo_library_outlined, 'Visit Photos (Gallery)', const ProofOfVisitGalleryPage()),
+          _buildDrawerItem(context, Icons.file_download_outlined, 'Export Reports (Excel/CSV)', const ExportReportsPage()),
 
           const Divider(indent: 16, endIndent: 16),
 

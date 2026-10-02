@@ -5,14 +5,18 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/models/proof_of_visit.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
+import 'package:selecta_ops/services/proof_of_visit_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/credit_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/delivery_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistore_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/proof_of_visit_gallery_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Comprehensive Per-Store 360° Profile Screen.
@@ -60,7 +64,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
       }
       _fetchStoreDetails();
     }
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _checkRole();
   }
 
@@ -225,7 +229,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
               delegate: _SliverTabBarDelegate(
                 TabBar(
                   controller: _tabController,
-                  isScrollable: false,
+                  isScrollable: true,
                   labelColor: isDark ? colorScheme.primary : colorScheme.primary,
                   unselectedLabelColor: colorScheme.onSurfaceVariant,
                   indicatorColor: colorScheme.primary,
@@ -237,6 +241,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
                     Tab(text: 'Orders', icon: Icon(Icons.shopping_bag_outlined, size: 20)),
                     Tab(text: 'Credit / AR', icon: Icon(Icons.credit_card_outlined, size: 20)),
                     Tab(text: 'Assets', icon: Icon(Icons.kitchen_outlined, size: 20)),
+                    Tab(text: 'Visit Photos', icon: Icon(Icons.photo_library_outlined, size: 20)),
                   ],
                 ),
                 colorScheme.surface,
@@ -252,6 +257,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
             _buildOrdersTab(colorScheme, isDark),
             _buildCreditTab(colorScheme, isDark),
             _buildAssetsTab(colorScheme, isDark),
+            _buildPhotosTab(colorScheme, isDark),
           ],
         ),
       ),
@@ -1037,6 +1043,126 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
           ),
         ),
       ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAB 5: VISIT PHOTOS & PROOF OF VISIT GALLERY
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  Widget _buildPhotosTab(ColorScheme colorScheme, bool isDark) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection(PROOF_OF_VISIT_COLLECTION)
+          .where('storeName', isEqualTo: _store.storeName)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return _buildEmptyState(
+            'No Visit Photos',
+            'No photographic proof of visit has been captured yet for ${_store.storeName}.',
+          );
+        }
+
+        final visits = docs.map((d) => ProofOfVisit.fromJson(d.data() as Map<String, dynamic>, id: d.id)).toList();
+        visits.sort((a, b) => b.visitDate.compareTo(a.visitDate));
+
+        final dateFormat = DateFormat('MMM d, yyyy • h:mm a');
+
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${visits.length} Visit Photos Recorded',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                    label: const Text('All Stores Gallery', style: TextStyle(fontSize: 12)),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProofOfVisitGalleryPage(initialStoreFilter: _store.storeName),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 0.8,
+                ),
+                itemCount: visits.length,
+                itemBuilder: (context, index) {
+                  final visit = visits[index];
+                  return Card(
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: isDark ? const Color(0xFF28303F) : colorScheme.outlineVariant.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: CachedProductImage(
+                            imageUrl: visit.imageUrl,
+                            size: double.infinity,
+                            borderRadius: 0,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                dateFormat.format(visit.visitDate.toDate()),
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                              if (visit.takenBy.isNotEmpty)
+                                Text(
+                                  'By ${visit.takenBy}',
+                                  style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
+                                ),
+                              if (visit.notes.isNotEmpty)
+                                Text(
+                                  visit.notes,
+                                  style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

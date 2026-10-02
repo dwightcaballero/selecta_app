@@ -1,0 +1,189 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Admin role check: checks user token email or admin status in users collection
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.keys().hasAll(['email']) && 
+         request.auth.token.email in ['admin@selecta.ph', 'superadmin@selecta.ph', 'dwightseu@gmail.com']) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
+      );
+    }
+
+    // Dealer or Admin check
+    function isDealerOrAdmin() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['dealer', 'superadmin'])
+      );
+    }
+
+    // App Version info (open read for update check on splash/login, write admin only)
+    match /app_version/{versionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // System configurations
+    match /configurations/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // User management
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      // Allow user creation on signup; prevent setting role to superadmin unless caller is admin
+      allow create: if isAuthenticated() && (
+        request.resource.data.role != 'superadmin' || isAdmin()
+      );
+      // Allow user to update their own profile, but prevent modifying role or admin flags
+      allow update: if isAuthenticated() && (
+        isAdmin() || (
+          isOwner(userId) && 
+          request.resource.data.role == resource.data.role
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Product Catalogs (Selecta & Other Products)
+    match /selecta_products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /admin_selecta_products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isDealerOrAdmin();
+    }
+
+    match /other_products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /supplier_product_mappings/{mappingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Stores (HapiStores) & Dealers
+    match /hapistores/{storeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /dealers/{dealerId} {
+      allow read: if isAuthenticated();
+      allow write: if isDealerOrAdmin();
+    }
+
+    // Deliveries & Purchase Orders
+    match /delivery/{deliveryId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /purchaseorders/{poId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Proof of Visit (Photos & Field Notes)
+    match /proof_of_visit/{visitId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.storeName is string &&
+        request.resource.data.storeName.size() > 0 &&
+        request.resource.data.imageUrl is string &&
+        request.resource.data.imageUrl.size() > 0;
+      allow update: if isAuthenticated();
+      allow delete: if isDealerOrAdmin();
+    }
+
+    // PJP Order Decisions
+    match /pjp_order_decisions/{decisionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Tasks & Scanning
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /scanning/{scanId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Operational Logs & Transactions
+    match /placement/{placementId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /badorder/{badOrderId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /breakdown/{breakdownId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /transactionlogs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    match /inventory_movements/{movementId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isDealerOrAdmin();
+    }
+
+    // FCM Notification Device Tokens
+    match /fcm_tokens/{tokenId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Gemini AI Usage Quota Tracking
+    match /gemini_api_usage/{monthKey} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Error Logs (Diagnostic reporting)
+    match /error_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // Fallback rule: deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
