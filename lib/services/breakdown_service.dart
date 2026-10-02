@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/breakdown.dart';
+import 'package:selecta_ops/models/breakdown.dart';
 
 // ignore: constant_identifier_names
 const String BREAKDOWN_COLLECTION_REF = 'breakdown';

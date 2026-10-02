@@ -1,4 +1,4 @@
-import 'package:flutter_app/dto/dashboard_dto.dart';
+import 'package:selecta_ops/dto/dashboard_dto.dart';
 
 /// Computed KPI throughput metrics.
 class ThruputMetrics {

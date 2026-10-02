@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/controllers/inventory_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/controllers/inventory_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
 
 /// Dedicated Inventory Management page unifying active [SelectaProduct] and [OtherProduct] items.
@@ -269,9 +269,10 @@ class _InventoryPageState extends State<InventoryPage> {
                           return ActionChip(
                             label: Text(
                               '${mode == 'add' ? '+' : '-'}$preset',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
+                                color: colorScheme.onSurface,
                               ),
                             ),
                             visualDensity: VisualDensity.compact,
@@ -306,9 +307,11 @@ class _InventoryPageState extends State<InventoryPage> {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                              color: isSelected ? Colors.white : colorScheme.onSurface,
                             ),
                           ),
                           selected: isSelected,
+                          selectedColor: colorScheme.primary,
                           visualDensity: VisualDensity.compact,
                           onSelected: (_) => setSheetState(() => selectedReason = reason),
                         );

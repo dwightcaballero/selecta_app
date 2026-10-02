@@ -1,6 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/services/auth_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Controller handling account management operations including password resets,

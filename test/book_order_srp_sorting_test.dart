@@ -1,8 +1,8 @@
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/services/thermal_printer_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

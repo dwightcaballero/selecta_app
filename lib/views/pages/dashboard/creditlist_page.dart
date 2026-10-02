@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/credit_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/views/pages/dashboard/credit_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/credit_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/views/pages/dashboard/credit_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/store_profile_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 
 /// Presentation view displaying the list of all stores with outstanding credits.
 ///
@@ -37,6 +38,9 @@ class _CreditlistPageState extends State<CreditlistPage> {
   /// Currently selected sorting option.
   CreditSort _selectedSort = CreditSort.highestAmount;
 
+  /// Currently selected aging filter chip.
+  CreditAgingFilter _selectedAging = CreditAgingFilter.all;
+
   @override
   void initState() {
     super.initState();
@@ -66,10 +70,10 @@ class _CreditlistPageState extends State<CreditlistPage> {
   /// Builds the top card displaying total outstanding credit and account counts.
   Widget _buildSummaryCard(CreditListMetrics metrics) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isFiltered = metrics.isFiltered && _searchQuery.isNotEmpty;
+    final isFiltered = metrics.isFiltered && (_searchQuery.isNotEmpty || _selectedAging != CreditAgingFilter.all);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -118,7 +122,7 @@ class _CreditlistPageState extends State<CreditlistPage> {
             ],
           ),
 
-          // Search filter context banner
+          // Search / Aging filter context banner
           if (isFiltered) ...[
             const SizedBox(height: 10),
             Container(
@@ -221,6 +225,126 @@ class _CreditlistPageState extends State<CreditlistPage> {
     );
   }
 
+  /// Builds quick filter chips for credit aging buckets.
+  Widget _buildAgingFilterChips(CreditListMetrics metrics) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final chips = [
+      (CreditAgingFilter.all, 'All', metrics.totalAccounts, null),
+      (CreditAgingFilter.current, '0–15d', metrics.countCurrent, Colors.green),
+      (CreditAgingFilter.dueSoon, '16–30d', metrics.countDueSoon, Colors.orange),
+      (CreditAgingFilter.overdue, '31d+ Overdue', metrics.countOverdue, Colors.red),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: chips.map((item) {
+            final filter = item.$1;
+            final label = item.$2;
+            final count = item.$3;
+            final color = item.$4;
+            final isSelected = _selectedAging == filter;
+
+            return Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: FilterChip(
+                selected: isSelected,
+                showCheckmark: false,
+                label: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (color != null && !isSelected) ...[
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Colors.white.withValues(alpha: 0.25)
+                            : (color?.withValues(alpha: 0.15) ?? colorScheme.surfaceContainerHighest),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$count',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected
+                              ? colorScheme.onPrimary
+                              : (color != null ? color.shade700 : colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                selectedColor: colorScheme.primary,
+                side: BorderSide(
+                  color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                onSelected: (_) => setState(() => _selectedAging = filter),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  /// Builds a subtle, color-coded aging badge indicating days outstanding.
+  Widget _buildAgingBadge(int days) {
+    final Color bgColor;
+    final Color textColor;
+    final String text;
+
+    if (days <= 15) {
+      bgColor = Colors.green.withValues(alpha: 0.12);
+      textColor = Colors.green.shade800;
+      text = '$days d';
+    } else if (days <= 30) {
+      bgColor = Colors.amber.withValues(alpha: 0.18);
+      textColor = Colors.orange.shade900;
+      text = '$days d Due';
+    } else {
+      bgColor = Colors.red.withValues(alpha: 0.14);
+      textColor = Colors.red.shade800;
+      text = '$days d Overdue';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: textColor),
+      ),
+    );
+  }
+
   /// Builds a clickable card representing an individual store's credit details.
   Widget _buildCreditCard(CreditRecord record) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -262,21 +386,47 @@ class _CreditlistPageState extends State<CreditlistPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      delivery.storeName,
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    InkWell(
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => StoreProfilePage(storeName: delivery.storeName),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              delivery.storeName,
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.store_rounded, size: 14, color: colorScheme.primary),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 3,
                       children: [
-                        Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Text(
-                          delivery.deliveryDate != null ? Helperfunctions.formatDateForDisplay(delivery.deliveryDate!.toDate()) : 'No Date',
-                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
+                            const SizedBox(width: 4),
+                            Text(
+                              delivery.deliveryDate != null ? Helperfunctions.formatDateForDisplay(delivery.deliveryDate!.toDate()) : 'No Date',
+                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            ),
+                          ],
                         ),
+                        _buildAgingBadge(record.agingDays),
                       ],
                     ),
                     const SizedBox(height: 3),
@@ -409,7 +559,10 @@ class _CreditlistPageState extends State<CreditlistPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppbar(title: 'Credit List', subtitle: 'Unpaid Store Accounts'),
+      appBar: const CustomAppbar(
+        title: 'Credit List',
+        subtitle: 'Unpaid Store Accounts',
+      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _creditStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
@@ -426,7 +579,12 @@ class _CreditlistPageState extends State<CreditlistPage> {
           }
 
           // Delegate metric computation, filtering, and sorting to the controller
-          final metrics = _controller.computeMetrics(docs: allDocs, searchQuery: _searchQuery, sort: _selectedSort);
+          final metrics = _controller.computeMetrics(
+            docs: allDocs,
+            searchQuery: _searchQuery,
+            sort: _selectedSort,
+            agingFilter: _selectedAging,
+          );
 
           return Column(
             children: [
@@ -436,7 +594,10 @@ class _CreditlistPageState extends State<CreditlistPage> {
               // 2. Search & Sort Bar
               _buildSearchAndFilterBar(),
 
-              // 3. Filtered Credits List
+              // 3. Aging Filter Chips (0-15d, 16-30d, 31d+ Overdue)
+              _buildAgingFilterChips(metrics),
+
+              // 4. Filtered Credits List
               Expanded(
                 child: metrics.filteredRecords.isEmpty
                     ? _buildNoSearchResultsState()

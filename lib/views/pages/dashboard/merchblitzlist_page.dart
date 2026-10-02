@@ -1,11 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/merchblitz_controller.dart';
-import 'package:flutter_app/models/configuration.dart';
-import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/views/pages/sidebar/configuration_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/merchblitz_controller.dart';
+import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class MerchBlitzListPage extends StatefulWidget {

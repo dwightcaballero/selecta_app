@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/tasks.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/tasks_services.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/tasks.dart';
+import 'package:selecta_ops/services/auth_service.dart';
+import 'package:selecta_ops/services/tasks_services.dart';
 
 enum TaskFilter { all, pending, completed, overdue }
 

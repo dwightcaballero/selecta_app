@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/admin_selecta_product.dart';
-import 'package:flutter_app/models/selecta_product.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

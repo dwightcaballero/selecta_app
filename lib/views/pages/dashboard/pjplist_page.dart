@@ -1,12 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/controllers/pjp_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/views/pages/dashboard/pjp_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/pjp_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/views/pages/dashboard/pjp_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/pjp_map_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/pjphistory_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 import 'package:intl/intl.dart';
 
 /// Presentation view for the Permanent Journey Plan (PJP) weekly store schedule.
@@ -519,7 +522,7 @@ class _PjpListPageState extends State<PjpListPage> {
       builder: (context, snapshot) {
         if (snapshot.hasError) return _buildErrorState();
         if (snapshot.connectionState == ConnectionState.waiting && !_isEditing) {
-          return const Center(child: CircularProgressIndicator());
+          return const ListSkeleton(itemCount: 6);
         }
 
         final docs = _sortedDocs(snapshot.data?.docs ?? []);
@@ -560,6 +563,21 @@ class _PjpListPageState extends State<PjpListPage> {
         title: 'Permanent Journey Plan',
         subtitle: '$_selectedDay Route',
         actions: [
+          // Map Route button — always visible
+          IconButton(
+            icon: const Icon(Icons.map_outlined, color: Colors.white),
+            tooltip: 'Route Map',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay)),
+            ),
+          ),
+          // History button — always visible
+          IconButton(
+            icon: const Icon(Icons.history_rounded, color: Colors.white),
+            tooltip: 'Visit History',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PjpHistoryPage())),
+          ),
           if (!_isEditing && _isDealer)
             IconButton(
               icon: const Icon(Icons.edit_outlined, color: Colors.white),

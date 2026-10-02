@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/models/other_product.dart';
-import 'package:flutter_app/views/pages/sidebar/other_product_form_page.dart';
+import 'package:selecta_ops/models/other_product.dart';
+import 'package:selecta_ops/views/pages/sidebar/other_product_form_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

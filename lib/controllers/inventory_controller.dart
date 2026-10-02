@@ -1,5 +1,5 @@
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/services/inventory_service.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/services/inventory_service.dart';
 
 /// Aggregated metrics for the dealer's active inventory.
 class InventorySummary {

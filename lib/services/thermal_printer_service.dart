@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/delivery.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/delivery.dart';
 import 'package:intl/intl.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -384,35 +384,35 @@ class ThermalPrinterService {
       }
     }
 
-    void writeSubtotalRow(int subtotalQty, double subtotalAmount) {
-      final label = 'SUBTOTAL'.padRight(nameWidth);
+    void writeSubtotalRow(String categoryName, int subtotalQty, double subtotalAmount) {
+      final subLabel = is80 ? 'SUBTOTAL ($categoryName)' : 'SUB ($categoryName)';
       final qtyStr = subtotalQty.toString().padLeft(qtyWidth);
       final emptyPrice = ' ' * priceWidth;
       final totalStr = formatAmount(subtotalAmount, totalWidth);
 
-      buffer.writeln('$label $qtyStr $emptyPrice $totalStr');
+      buffer.writeln('${subLabel.padRight(nameWidth)} $qtyStr $emptyPrice $totalStr');
     }
 
-    void writeCategoryItems(List<OrderItem> items, int subtotalQty, double subtotalAmount) {
+    void writeCategoryItems(String sectionTitle, String categoryName, List<OrderItem> items, int subtotalQty, double subtotalAmount) {
+      buffer.writeln('[$sectionTitle]');
       for (final item in items) {
         writeProductRow(item);
       }
-      buffer.writeln('\n');
-      writeSubtotalRow(subtotalQty, subtotalAmount);
-      buffer.writeln('\n');
+      writeSubtotalRow(categoryName, subtotalQty, subtotalAmount);
+      buffer.writeln(divider);
     }
 
-    // ── Segregated Sections (Without category titles; items in order: Case, Piece, Other)
+    // ── Segregated Sections (By Case, By Piece, Other Products)
     if (cat.selectaCase.isNotEmpty) {
-      writeCategoryItems(cat.selectaCase, cat.subtotalQtyCase, cat.subtotalCase);
+      writeCategoryItems('BY CASE', 'CASE', cat.selectaCase, cat.subtotalQtyCase, cat.subtotalCase);
     }
 
     if (cat.selectaPiece.isNotEmpty) {
-      writeCategoryItems(cat.selectaPiece, cat.subtotalQtyPiece, cat.subtotalPiece);
+      writeCategoryItems('BY PIECE', 'PIECE', cat.selectaPiece, cat.subtotalQtyPiece, cat.subtotalPiece);
     }
 
     if (cat.otherProducts.isNotEmpty) {
-      writeCategoryItems(cat.otherProducts, cat.subtotalQtyOther, cat.subtotalOther);
+      writeCategoryItems('OTHER PRODUCTS', 'OTHER', cat.otherProducts, cat.subtotalQtyOther, cat.subtotalOther);
     }
 
     if (cat.selectaCase.isEmpty && cat.selectaPiece.isEmpty && cat.otherProducts.isEmpty) {

@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/purchaseorder.dart';
+import 'package:selecta_ops/models/purchaseorder.dart';
 
 // ignore: constant_identifier_names
 const String PURCHASEORDER_COLLECTION_REF = 'purchaseorders';

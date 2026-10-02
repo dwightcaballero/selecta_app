@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/thermal_printer_service.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -117,9 +117,9 @@ void main() {
       expect(cornettoPieceIndex < coneOtherIndex, isTrue);
 
       // Subtotals for each section are preserved
-      expect(receipt, contains('SUBTOTAL      2         1,300.00'));
-      expect(receipt, contains('SUBTOTAL     10           350.00'));
-      expect(receipt, contains('SUBTOTAL      1           120.00'));
+      expect(receipt, contains('SUB (CASE)    2         1,300.00'));
+      expect(receipt, contains('SUB (PIECE)  10           350.00'));
+      expect(receipt, contains('SUB (OTHER)   1           120.00'));
 
       // Footer check: Grand Total only
       expect(receipt, contains('GRAND TOTAL  13         1,770.00'));
@@ -131,7 +131,7 @@ void main() {
       expect(receipt.contains('Thank you for your business'), isFalse);
     });
 
-    test('generateTextReceipt does not show category names and only shows items and subtotals', () {
+    test('generateTextReceipt shows category names and items with subtotals', () {
       final service = ThermalPrinterService();
 
       // Only By Piece items
@@ -175,15 +175,11 @@ void main() {
         paperSize: ThermalPaperSize.mm58,
       );
 
-      // By Piece item and subtotal should be visible
+      // By Piece item, category header, and subtotal should be visible
+      expect(receipt, contains('[BY PIECE]'));
       expect(receipt, contains('CORNETTO'));
-      expect(receipt, contains('SUBTOTAL      2            70.00'));
+      expect(receipt, contains('SUB (PIECE)   2            70.00'));
       expect(receipt, contains('GRAND TOTAL   2            70.00'));
-
-      // Category names MUST NOT be shown
-      expect(receipt.contains('[ SELECTA PRODUCTS (BY CASE) ]'), isFalse);
-      expect(receipt.contains('[ SELECTA PRODUCTS (BY PIECE) ]'), isFalse);
-      expect(receipt.contains('[ OTHER PRODUCTS ]'), isFalse);
     });
 
     test('generateTextReceipt supports 80mm wider line wrapping and columns', () {

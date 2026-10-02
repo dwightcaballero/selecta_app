@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/configuration.dart';
+import 'package:selecta_ops/models/configuration.dart';
 
 // ignore: constant_identifier_names
 const String CONFIGURATIONS_COLLECTION_REF = 'configurations';

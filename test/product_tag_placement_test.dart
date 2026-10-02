@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/admin_selecta_product.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/models/placement.dart';
-import 'package:flutter_app/models/selecta_product.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/models/placement.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

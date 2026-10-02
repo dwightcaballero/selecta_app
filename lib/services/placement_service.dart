@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 import '../models/placement.dart';
 
 // ignore: constant_identifier_names

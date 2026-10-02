@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/models/supplier_product_mapping.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/models/supplier_product_mapping.dart';
 
 class SupplierMappingService {
   final CollectionReference<Map<String, dynamic>> _collection =

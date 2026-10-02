@@ -1,20 +1,20 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/configuration.dart';
-import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/configuration_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
 
-import 'package:flutter_app/data/notifiers.dart';
-import 'package:flutter_app/services/badorder_service.dart';
-import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/services/pjp_order_decision_service.dart';
-import 'package:flutter_app/services/placement_service.dart';
-import 'package:flutter_app/services/proof_of_visit_service.dart';
-import 'package:flutter_app/services/scanning_services.dart';
-import 'package:flutter_app/services/tasks_services.dart';
+import 'package:selecta_ops/data/notifiers.dart';
+import 'package:selecta_ops/services/badorder_service.dart';
+import 'package:selecta_ops/services/delivery_service.dart';
+import 'package:selecta_ops/services/pjp_order_decision_service.dart';
+import 'package:selecta_ops/services/placement_service.dart';
+import 'package:selecta_ops/services/proof_of_visit_service.dart';
+import 'package:selecta_ops/services/scanning_services.dart';
+import 'package:selecta_ops/services/tasks_services.dart';
 
 // ignore: constant_identifier_names
 const String HAPISTORE_COLLECTION_REF = 'hapistores';

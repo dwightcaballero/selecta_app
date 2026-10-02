@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/controllers/delivery_controller.dart';
-import 'package:flutter_app/controllers/inventory_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/services/placement_service.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/cached_product_image.dart';
-import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
+import 'package:selecta_ops/controllers/delivery_controller.dart';
+import 'package:selecta_ops/controllers/inventory_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/services/placement_service.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 import 'package:intl/intl.dart';
 
 /// Book Order Page where users select a Hapi Store and choose products.
@@ -413,7 +413,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     keyboardType: TextInputType.number,
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      fontSize: 26,
+                                      fontSize: 20,
                                       fontWeight: FontWeight.w800,
                                       color: currentTyped > 0 ? colorScheme.primary : colorScheme.onSurface,
                                       letterSpacing: -0.5,
@@ -424,7 +424,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                       isDense: true,
                                       contentPadding: EdgeInsets.zero,
                                       hintText: '0',
-                                      hintStyle: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: colorScheme.outlineVariant),
+                                      hintStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: colorScheme.outlineVariant),
                                       border: InputBorder.none,
                                     ),
                                     onSubmitted: (val) {
@@ -582,7 +582,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                       Expanded(
                         child: Text(
                           'Order Summary (${items.length} SKU${items.length == 1 ? '' : 's'} • $totalUnits units)',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold),
                         ),
                       ),
                       TextButton.icon(
@@ -591,7 +591,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                           Navigator.pop(ctx);
                         },
                         icon: Icon(Icons.delete_sweep_outlined, size: 22, color: colorScheme.error),
-                        label: Text('Clear', style: TextStyle(fontSize: 15, color: colorScheme.error)),
+                        label: Text('Clear', style: TextStyle(fontSize: 13.5, color: colorScheme.error)),
                       ),
                     ],
                   ),
@@ -607,14 +607,14 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(vertical: 4),
                           leading: CachedProductImage(imageUrl: item.imageUrl, size: 52),
-                          title: Text(item.productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          title: Text(item.productName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                           subtitle: Text(
                             '${isSelecta ? 'Selecta' : 'Other'} • ${_currencyFormat.format(item.sellingPrice)} × ${item.pickedQuantity}',
-                            style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+                            style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
                           ),
                           trailing: Text(
                             _currencyFormat.format(item.lineTotal),
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.primary),
                           ),
                         );
                       },
@@ -624,10 +624,10 @@ class _BookOrderPageState extends State<BookOrderPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Total Order Amount', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                      const Text('Total Order Amount', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
                       Text(
                         _currencyFormat.format(totalAmount),
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
                       ),
                     ],
                   ),
@@ -757,11 +757,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
                             autofocus: false,
                             onTapOutside: (_) => _searchFocusNode.unfocus(),
                             onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                             decoration: InputDecoration(
                               hintText: 'Search products...',
-                              hintStyle: TextStyle(fontSize: 15.5, color: colorScheme.onSurfaceVariant),
-                              prefixIcon: Icon(Icons.search, size: 24, color: colorScheme.primary),
+                              hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
+                              prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
                               suffixIcon: _searchQuery.isNotEmpty
                                   ? IconButton(
                                       icon: const Icon(Icons.clear, size: 22),
@@ -995,17 +995,44 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         // Quick Date Chips
                         Row(
                           children: [
-                            ChoiceChip(label: const Text('Today'), selected: isToday, onSelected: (_) => setModalState(() => tempDate = today)),
+                            ChoiceChip(
+                              label: Text(
+                                'Today',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isToday ? Colors.white : colorScheme.onSurface,
+                                ),
+                              ),
+                              selected: isToday,
+                              selectedColor: colorScheme.primary,
+                              onSelected: (_) => setModalState(() => tempDate = today),
+                            ),
                             const SizedBox(width: 8),
                             ChoiceChip(
-                              label: const Text('Tomorrow'),
+                              label: Text(
+                                'Tomorrow',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isTomorrow ? Colors.white : colorScheme.onSurface,
+                                ),
+                              ),
                               selected: isTomorrow,
+                              selectedColor: colorScheme.primary,
                               onSelected: (_) => setModalState(() => tempDate = tomorrow),
                             ),
                             const SizedBox(width: 8),
                             ActionChip(
-                              avatar: const Icon(Icons.calendar_month_outlined, size: 16),
-                              label: const Text('Custom'),
+                              avatar: Icon(Icons.calendar_month_outlined, size: 16, color: colorScheme.primary),
+                              label: Text(
+                                'Custom',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: colorScheme.onSurface,
+                                ),
+                              ),
                               onPressed: () async {
                                 final picked = await showDatePicker(
                                   context: ctx,
@@ -1066,7 +1093,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: const Text('Continue to Products', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          child: const Text('Continue to Products', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
@@ -1111,18 +1138,18 @@ class _BookOrderPageState extends State<BookOrderPage> {
               child: Icon(Icons.storefront_outlined, size: 52, color: colorScheme.primary),
             ),
             const SizedBox(height: 18),
-            const Text('Select a Store & Delivery Date', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+            const Text('Select a Store & Delivery Date', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text(
               'Choose a Hapi Store and delivery date to view available products and start booking an order.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: colorScheme.onSurfaceVariant),
+              style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _showStoreAndDateModal,
               icon: const Icon(Icons.storefront_outlined, size: 20),
-              label: const Text('Choose Store & Date', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold)),
+              label: const Text('Choose Store & Date', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1160,15 +1187,15 @@ class _BookOrderPageState extends State<BookOrderPage> {
           Expanded(
             child: Text(
               title,
-              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: accentColor, letterSpacing: 0.2),
+              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: accentColor, letterSpacing: 0.2),
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(color: accentColor, borderRadius: BorderRadius.circular(12)),
             child: Text(
               '$count ${count == 1 ? 'item' : 'items'}',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
             ),
           ),
         ],
@@ -1190,12 +1217,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
             children: [
               Icon(Icons.inventory_2_outlined, size: 52, color: colorScheme.outline),
               const SizedBox(height: 14),
-              const Text('No Active Products', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text('No Active Products', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Text(
                 'Activate products in the catalog to book orders.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: colorScheme.onSurfaceVariant),
+                style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -1331,14 +1358,6 @@ class _BookOrderPageState extends State<BookOrderPage> {
       cardBgColor = colorScheme.primary.withValues(alpha: 0.05);
       cardBorderColor = colorScheme.primary;
       cardBorderWidth = 1.5;
-    } else if (isBestSeller) {
-      cardBgColor = const Color(0xFFFFFBEB).withValues(alpha: 0.5);
-      cardBorderColor = const Color(0xFFFDE68A);
-      cardBorderWidth = 1.2;
-    } else if (isNewProduct) {
-      cardBgColor = const Color(0xFFF0F9FF).withValues(alpha: 0.5);
-      cardBorderColor = const Color(0xFFBAE6FD);
-      cardBorderWidth = 1.2;
     }
 
     return Card(
@@ -1436,7 +1455,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                     Text(
                       item.productName,
                       style: TextStyle(
-                        fontSize: 16.5,
+                        fontSize: 14.5,
                         fontWeight: FontWeight.w700,
                         color: isOutOfStock ? colorScheme.onSurfaceVariant : colorScheme.onSurface,
                         height: 1.25,
@@ -1450,12 +1469,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
                       children: [
                         Text(
                           _currencyFormat.format(item.sellingPrice),
-                          style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: colorScheme.primary),
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.primary),
                         ),
                         if (isOutOfStock)
                           Text(
                             'Out of stock',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: stockColor),
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: stockColor),
                           )
                         else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
                           Container(
@@ -1517,7 +1536,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         const SizedBox(width: 6),
                         Text(
                           '$selectedQty',
-                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
                         ),
                       ],
                     ),
@@ -1563,7 +1582,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                             children: [
                               Text(
                                 '$skuCount SKU${skuCount == 1 ? '' : 's'} • $totalUnits unit${totalUnits == 1 ? '' : 's'}',
-                                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                               ),
                               if (skuCount > 0) ...[
                                 const SizedBox(width: 4),
@@ -1573,7 +1592,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                           ),
                           Text(
                             _currencyFormat.format(totalAmount),
-                            style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: colorScheme.primary),
                           ),
                         ],
                       ),
@@ -1584,14 +1603,14 @@ class _BookOrderPageState extends State<BookOrderPage> {
                 FilledButton.icon(
                   onPressed: _isSaving ? null : () => _onSaveOrder(allInventory),
                   style: FilledButton.styleFrom(
-                    minimumSize: const Size(148, 50),
+                    minimumSize: const Size(148, 48),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   icon: _isSaving
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.check_circle_outline, size: 22),
-                  label: const Text('Save Order', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  label: const Text('Save Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
                 ),
               ],
             ),

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/buyinglist_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/dto/kpi_dto.dart';
-import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/buyinglist_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/dto/kpi_dto.dart';
+import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 
 /// Presentation view for the KPI Buying and Non-Buying store breakdown.
 ///

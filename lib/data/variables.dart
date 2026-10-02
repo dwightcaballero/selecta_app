@@ -2,9 +2,9 @@ import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/users.dart';
-import 'package:flutter_app/services/user_services.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/users.dart';
+import 'package:selecta_ops/services/user_services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class KVariables {

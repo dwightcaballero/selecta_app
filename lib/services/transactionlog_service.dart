@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/notifiers.dart';
-import 'package:flutter_app/models/transactionlog.dart';
+import 'package:selecta_ops/data/notifiers.dart';
+import 'package:selecta_ops/models/transactionlog.dart';
 
 // ignore: constant_identifier_names
 const String LOG_COLLECTION_REF = 'transactionlogs';

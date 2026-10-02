@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/delivery.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/delivery.dart';
 
 // ignore: constant_identifier_names
 const String DELIVERY_COLLECTION_REF = 'delivery';

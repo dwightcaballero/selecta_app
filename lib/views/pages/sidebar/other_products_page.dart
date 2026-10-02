@@ -1,13 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/other_product_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/other_product.dart';
-import 'package:flutter_app/views/pages/sidebar/inventory_page.dart';
-import 'package:flutter_app/views/pages/sidebar/other_product_form_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/controllers/other_product_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/other_product.dart';
+import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/other_product_form_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
 
 /// Other Products catalog page — list, search, add, edit, delete, toggle active.

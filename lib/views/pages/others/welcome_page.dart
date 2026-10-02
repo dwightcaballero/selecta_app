@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/views/pages/others/login_page.dart';
-import 'package:flutter_app/views/pages/others/register_page.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/views/pages/others/login_page.dart';
+import 'package:selecta_ops/views/pages/others/register_page.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});

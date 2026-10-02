@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/scanning_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/models/scanning.dart';
-import 'package:flutter_app/views/pages/dashboard/scanning_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/barcodescanner_widget.dart';
-import 'package:flutter_app/views/widgets/imageviewer_page.dart';
+import 'package:selecta_ops/controllers/scanning_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/models/scanning.dart';
+import 'package:selecta_ops/views/pages/dashboard/scanning_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
+import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:intl/intl.dart';
 
 /// Presentation view for the freezer barcode scanning list.

@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/placement.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/placement.dart';
 
 /// Represents a single ordered / picked product line item within a unified Order-Delivery record.
 class OrderItem {

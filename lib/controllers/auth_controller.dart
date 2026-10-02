@@ -1,6 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/services/auth_service.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/services/auth_service.dart';
 
 /// Controller responsible for managing user authentication state streams
 /// and determining role-based routing destinations.

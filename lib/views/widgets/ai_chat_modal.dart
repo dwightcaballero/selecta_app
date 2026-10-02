@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/dto/dashboard_dto.dart';
-import 'package:flutter_app/services/gemini_ai_service.dart';
-import 'package:flutter_app/views/pages/sidebar/configuration_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:selecta_ops/dto/dashboard_dto.dart';
+import 'package:selecta_ops/services/gemini_ai_service.dart';
+import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:intl/intl.dart';
 
 /// Interactive AI Assistant Dialog / Bottom Sheet for Selecta operations
@@ -387,7 +387,7 @@ class _AiChatModalState extends State<AiChatModal> {
           return Padding(
             padding: const EdgeInsets.only(right: 8),
             child: ActionChip(
-              label: Text(chipText, style: const TextStyle(fontSize: 12)),
+              label: Text(chipText, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface)),
               onPressed: _isLoading ? null : () => _handleSendMessage(chipText),
               backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

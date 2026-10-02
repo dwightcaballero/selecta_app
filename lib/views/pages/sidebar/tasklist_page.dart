@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/tasks_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/tasks.dart';
-import 'package:flutter_app/views/pages/sidebar/tasks_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/tasks_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/tasks.dart';
+import 'package:selecta_ops/views/pages/sidebar/tasks_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 import 'package:intl/intl.dart';
 
 /// Presentation page for viewing, filtering, searching, and managing operational tasks.
@@ -514,7 +515,7 @@ class _TasklistPageState extends State<TasklistPage> {
             return _buildErrorState();
           }
           if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const ListSkeleton(itemCount: 6);
           }
 
           final allDocs = snapshot.data?.docs ?? [];

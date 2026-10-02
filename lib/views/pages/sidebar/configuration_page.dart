@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/configuration_controller.dart';
-import 'package:flutter_app/models/configuration.dart';
-import 'package:flutter_app/services/thermal_printer_service.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/models/app_version_info.dart';
-import 'package:flutter_app/services/app_update_service.dart';
+import 'package:selecta_ops/controllers/configuration_controller.dart';
+import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/services/thermal_printer_service.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/models/app_version_info.dart';
+import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
+import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 
 /// Presentation page for configuring app-wide settings such as Merch Blitz campaign schedules.
 class ConfigurationPage extends StatefulWidget {
@@ -869,9 +869,13 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Installed Version:', style: TextStyle(fontSize: 13)),
-                      Text(
-                        'v$_localVersion (Build $_localBuildNumber)',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'v$_localVersion (Build $_localBuildNumber)',
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
                       ),
                     ],
                   ),
@@ -880,14 +884,18 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Latest Release in Cloud:', style: TextStyle(fontSize: 13)),
-                      Text(
-                        hasRemote
-                            ? 'v${_remoteVersionInfo!.latestVersionName} (Build ${_remoteVersionInfo!.latestVersionCode})'
-                            : 'Not Configured',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          color: isNewerAvailable ? colorScheme.primary : Colors.grey,
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          hasRemote
+                              ? 'v${_remoteVersionInfo!.latestVersionName} (Build ${_remoteVersionInfo!.latestVersionCode})'
+                              : 'Not Configured',
+                          textAlign: TextAlign.end,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: isNewerAvailable ? colorScheme.primary : Colors.grey,
+                          ),
                         ),
                       ),
                     ],

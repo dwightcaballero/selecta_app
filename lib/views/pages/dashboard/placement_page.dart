@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/placement_controller.dart';
-import 'package:flutter_app/data/data.dart';
-import 'package:flutter_app/models/placement.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/placement_controller.dart';
+import 'package:selecta_ops/data/data.dart';
+import 'package:selecta_ops/models/placement.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 /// Read-only presentation view for inspecting store product placement status.

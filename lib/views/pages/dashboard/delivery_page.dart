@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/controllers/delivery_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/data.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/views/pages/dashboard/picklist_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
-import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
-import 'package:flutter_app/views/widgets/imageviewer_page.dart';
+import 'package:selecta_ops/controllers/delivery_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/data.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
+import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
+import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 
 class DeliveryPage extends StatefulWidget {
   const DeliveryPage({super.key, required this.deliveryID, required this.delivery});
@@ -658,23 +658,35 @@ class _DeliveryPageState extends State<DeliveryPage> {
             spacing: 8,
             children: [
               ActionChip(
-                avatar: const Icon(Icons.payments_outlined, size: 18),
-                label: const Text('Full Cash', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                avatar: Icon(Icons.payments_outlined, size: 18, color: colorScheme.primary),
+                label: Text(
+                  'Full Cash',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+                ),
                 onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'cash'),
               ),
               ActionChip(
-                avatar: const Icon(Icons.account_balance_outlined, size: 18),
-                label: const Text('Full Online', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                avatar: Icon(Icons.account_balance_outlined, size: 18, color: colorScheme.primary),
+                label: Text(
+                  'Full Online',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+                ),
                 onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'online'),
               ),
               ActionChip(
-                avatar: const Icon(Icons.credit_card_outlined, size: 18),
-                label: const Text('Full Credit', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                avatar: Icon(Icons.credit_card_outlined, size: 18, color: colorScheme.primary),
+                label: Text(
+                  'Full Credit',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+                ),
                 onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'credit'),
               ),
               ActionChip(
-                avatar: const Icon(Icons.restart_alt, size: 18),
-                label: const Text('Clear All', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                avatar: Icon(Icons.restart_alt, size: 18, color: colorScheme.error),
+                label: Text(
+                  'Clear All',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.error),
+                ),
                 onPressed: isSalesmanLocked ? null : () => _quickFillPayment(target: 'clear'),
               ),
             ],

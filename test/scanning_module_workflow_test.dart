@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/scanning.dart';
-import 'package:flutter_app/services/scanning_services.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/scanning.dart';
+import 'package:selecta_ops/services/scanning_services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

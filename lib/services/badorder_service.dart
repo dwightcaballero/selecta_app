@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/badorder.dart';
+import 'package:selecta_ops/models/badorder.dart';
 
 // ignore: constant_identifier_names
 const String BADORDER_COLLECTION_REF = 'badorder';

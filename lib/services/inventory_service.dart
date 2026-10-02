@@ -2,14 +2,14 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_app/models/admin_selecta_product.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/models/other_product.dart';
-import 'package:flutter_app/models/selecta_product.dart';
-import 'package:flutter_app/services/other_product_service.dart';
-import 'package:flutter_app/services/purchaseorder_service.dart';
-import 'package:flutter_app/services/selecta_product_service.dart';
+import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/models/other_product.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
+import 'package:selecta_ops/services/other_product_service.dart';
+import 'package:selecta_ops/services/purchaseorder_service.dart';
+import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:intl/intl.dart';
 
 // ignore: constant_identifier_names

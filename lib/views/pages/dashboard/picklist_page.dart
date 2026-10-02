@@ -1,14 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/delivery_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/cached_product_image.dart';
-import 'package:flutter_app/views/widgets/digital_receipt_dialog.dart';
-import 'package:flutter_app/views/widgets/imageviewer_page.dart';
+import 'package:selecta_ops/controllers/delivery_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
+import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:image_picker/image_picker.dart';
 
 class PicklistPage extends StatefulWidget {
@@ -84,7 +84,7 @@ class _PicklistPageState extends State<PicklistPage> {
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Attach Proof of Delivery', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: Text('Attach Proof of Delivery', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
                 ),
               ),
               ListTile(
@@ -348,14 +348,14 @@ class _PicklistPageState extends State<PicklistPage> {
               Expanded(
                 child: Text(
                   '$pickedLines of $totalLines checked • $_totalUnits units',
-                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                 ),
               ),
               TextButton.icon(
                 onPressed: _items.isEmpty ? null : _toggleAllPicked,
                 style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
                 icon: Icon(_allItemsPicked ? Icons.remove_done_rounded : Icons.done_all_rounded, size: 17),
-                label: Text(_allItemsPicked ? 'Uncheck All' : 'Check All', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                label: Text(_allItemsPicked ? 'Uncheck All' : 'Check All', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -447,7 +447,7 @@ class _PicklistPageState extends State<PicklistPage> {
                 child: Text(
                   item.productName,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.w700,
                     height: 1.3,
                     color: isPicked ? Colors.green.shade800 : colorScheme.onSurface,
@@ -458,7 +458,7 @@ class _PicklistPageState extends State<PicklistPage> {
               ),
               const SizedBox(width: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: isPicked ? Colors.green.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
@@ -466,7 +466,7 @@ class _PicklistPageState extends State<PicklistPage> {
                 ),
                 child: Text(
                   '×${item.pickedQuantity}',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: isPicked ? Colors.green.shade700 : colorScheme.primary),
+                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: isPicked ? Colors.green.shade700 : colorScheme.primary),
                 ),
               ),
             ],
@@ -770,7 +770,7 @@ class _PicklistPageState extends State<PicklistPage> {
                       'Save Draft',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -793,7 +793,7 @@ class _PicklistPageState extends State<PicklistPage> {
                       'For Delivery',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -875,13 +875,13 @@ class _PicklistPageState extends State<PicklistPage> {
                           const SizedBox(height: 10),
                           Text(
                             'No products in this order yet.',
-                            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 15.5, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13.5, fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 10),
                           OutlinedButton.icon(
                             onPressed: _openEditOrderProducts,
                             icon: const Icon(Icons.edit_note_rounded, size: 20),
-                            label: const Text('Edit Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+                            label: const Text('Edit Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
                           ),
                         ],
                       ),

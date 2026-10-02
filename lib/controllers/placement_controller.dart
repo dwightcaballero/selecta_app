@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/data.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/placement.dart';
-import 'package:flutter_app/services/placement_service.dart';
-import 'package:flutter_app/services/selecta_product_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/data.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/placement.dart';
+import 'package:selecta_ops/services/placement_service.dart';
+import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:intl/intl.dart';
 
 /// Available sorting options for the placement checklist overview.

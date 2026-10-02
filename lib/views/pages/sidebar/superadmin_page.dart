@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/configuration_controller.dart';
-import 'package:flutter_app/controllers/dashboard_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/configuration.dart';
-import 'package:flutter_app/services/error_log_service.dart';
-import 'package:flutter_app/services/gemini_ai_service.dart';
-import 'package:flutter_app/views/dashboard_page.dart';
-import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
-import 'package:flutter_app/views/pages/sidebar/error_logs_page.dart';
-import 'package:flutter_app/views/pages/sidebar/other_products_page.dart';
-import 'package:flutter_app/views/pages/sidebar/selecta_products_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/configuration_controller.dart';
+import 'package:selecta_ops/controllers/dashboard_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:selecta_ops/services/gemini_ai_service.dart';
+import 'package:selecta_ops/views/dashboard_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/salesman_dashboard_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/error_logs_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/other_products_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/selecta_products_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 
 /// Hidden Super Admin developer control panel for managing AI settings,
 /// quota limits, API keys, and switching business roles.
@@ -28,6 +29,12 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
 
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _monthlyLimitController = TextEditingController(text: '1000');
+  final TextEditingController _newAdminPasswordController = TextEditingController();
+  final TextEditingController _confirmAdminPasswordController = TextEditingController();
+  bool _obscureNewAdminPassword = true;
+  bool _obscureConfirmAdminPassword = true;
+  bool _isSettingAdminPassword = false;
+  bool _adminPasswordIsSet = false;
 
   Configuration? _originalConfig;
   bool _configExistsInDb = false;
@@ -51,6 +58,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   void dispose() {
     _apiKeyController.dispose();
     _monthlyLimitController.dispose();
+    _newAdminPasswordController.dispose();
+    _confirmAdminPasswordController.dispose();
     super.dispose();
   }
 
@@ -72,6 +81,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
           _currentMonthUsage = usage;
           _isDealer = isDealer;
           _pendingLogsCount = pendingLogs;
+          _adminPasswordIsSet = configResult.config.superAdminPasswordHash.isNotEmpty;
           _isLoading = false;
         });
       }
@@ -112,6 +122,57 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       if (mounted) {
         setState(() => _isSwitchingRole = false);
         ShowMessage.error(context, 'Failed to switch role: $e');
+      }
+    }
+  }
+
+  Future<void> _handleSetAdminPassword() async {
+    final newPw = _newAdminPasswordController.text.trim();
+    final confirmPw = _confirmAdminPasswordController.text.trim();
+
+    if (newPw.isEmpty || confirmPw.isEmpty) {
+      ShowMessage.error(context, 'Both password fields are required.');
+      return;
+    }
+    if (newPw.length < 8) {
+      ShowMessage.error(context, 'Password must be at least 8 characters.');
+      return;
+    }
+    if (newPw != confirmPw) {
+      ShowMessage.error(context, 'Passwords do not match.');
+      return;
+    }
+
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Set Admin Password',
+      message: 'This will update the super-admin password. Make sure you remember it.',
+      confirmText: 'Set Password',
+      icon: Icons.lock_reset_rounded,
+    );
+    if (!confirmed) return;
+
+    setState(() => _isSettingAdminPassword = true);
+    try {
+      final hash = Configuration.hashPassword(newPw);
+      final updatedConfig = (_originalConfig ?? Configuration.empty()).copyWith(
+        superAdminPasswordHash: hash,
+      );
+      await ConfigurationService().saveConfiguration(updatedConfig);
+      _originalConfig = updatedConfig;
+      _newAdminPasswordController.clear();
+      _confirmAdminPasswordController.clear();
+      if (mounted) {
+        setState(() {
+          _adminPasswordIsSet = true;
+          _isSettingAdminPassword = false;
+        });
+        ShowMessage.success(context, 'Admin password updated successfully.');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSettingAdminPassword = false);
+        ShowMessage.error(context, 'Failed to set password: $e');
       }
     }
   }
@@ -245,6 +306,103 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                                 : const Icon(Icons.swap_horiz_rounded, size: 20),
                             label: Text(
                               _isSwitchingRole ? 'Switching Role...' : 'Switch to ${_isDealer ? "Salesman" : "Dealer"} View',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 1b. Admin Password Card
+                  Card(
+                    elevation: 0,
+                    color: colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.lock_rounded, size: 22, color: Colors.red),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Admin Password', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _adminPasswordIsSet ? 'Password is set ✓' : '⚠ No password configured yet',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: _adminPasswordIsSet ? Colors.green : Colors.orange,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 28),
+                          TextField(
+                            controller: _newAdminPasswordController,
+                            obscureText: _obscureNewAdminPassword,
+                            decoration: InputDecoration(
+                              labelText: 'New Password',
+                              hintText: 'Minimum 8 characters',
+                              prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              suffixIcon: IconButton(
+                                icon: Icon(_obscureNewAdminPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
+                                onPressed: () => setState(() => _obscureNewAdminPassword = !_obscureNewAdminPassword),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _confirmAdminPasswordController,
+                            obscureText: _obscureConfirmAdminPassword,
+                            decoration: InputDecoration(
+                              labelText: 'Confirm Password',
+                              hintText: 'Re-enter new password',
+                              prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              suffixIcon: IconButton(
+                                icon: Icon(_obscureConfirmAdminPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20),
+                                onPressed: () => setState(() => _obscureConfirmAdminPassword = !_obscureConfirmAdminPassword),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          FilledButton.icon(
+                            onPressed: _isSettingAdminPassword ? null : _handleSetAdminPassword,
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 48),
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: _isSettingAdminPassword
+                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                : const Icon(Icons.lock_reset_rounded, size: 20),
+                            label: Text(
+                              _isSettingAdminPassword ? 'Updating...' : (_adminPasswordIsSet ? 'Change Admin Password' : 'Set Admin Password'),
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                             ),
                           ),

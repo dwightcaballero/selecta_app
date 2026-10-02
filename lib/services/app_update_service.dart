@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/models/app_version_info.dart';
-import 'package:flutter_app/services/error_log_service.dart';
-import 'package:flutter_app/views/widgets/app_update_dialog.dart';
+import 'package:selecta_ops/models/app_version_info.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:selecta_ops/views/widgets/app_update_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class AppUpdateService {

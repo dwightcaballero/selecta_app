@@ -5,25 +5,44 @@ class KConstants {
 }
 
 class KTextStyle {
-  static const titleTextStyle = TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold);
+  static const titleTextStyle = TextStyle(fontSize: 17, fontWeight: FontWeight.w700);
 
-  static const descriptionTextStyle = TextStyle(fontSize: 16);
+  static const descriptionTextStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.w400);
 
-  static const descriptionRedTextStyle = TextStyle(fontSize: 16, color: Colors.red);
+  static const descriptionRedTextStyle = TextStyle(fontSize: 15, color: Color(0xFFEF4444), fontWeight: FontWeight.w500);
 
-  static const descriptionGreenTextStyle = TextStyle(fontSize: 16, color: Colors.green);
+  static const descriptionGreenTextStyle = TextStyle(fontSize: 15, color: Color(0xFF10B981), fontWeight: FontWeight.w500);
 
-  static const descriptionOrangeTextStyle = TextStyle(fontSize: 16, color: Colors.orange);
-
-  static const descriptionTextStyleWithColor = TextStyle(fontSize: 16, color: Colors.orange);
+  static const descriptionOrangeTextStyle = TextStyle(fontSize: 15, color: Color(0xFFF59E0B), fontWeight: FontWeight.w500);
 }
 
 class KButtonStyle {
-  static final save = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0), backgroundColor: Colors.green[300]);
-  static final delete = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0), backgroundColor: Colors.red[300]);
-  static final normal = FilledButton.styleFrom(minimumSize: Size(double.infinity, 50.0));
-  static final alertYes = FilledButton.styleFrom(backgroundColor: Colors.green[300]);
-  static final alertNo = FilledButton.styleFrom(backgroundColor: Colors.red[300]);
+  static final save = FilledButton.styleFrom(
+    minimumSize: const Size(double.infinity, 50.0),
+    backgroundColor: const Color(0xFF10B981),
+    foregroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
+  static final delete = FilledButton.styleFrom(
+    minimumSize: const Size(double.infinity, 50.0),
+    backgroundColor: const Color(0xFFEF4444),
+    foregroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
+  static final normal = FilledButton.styleFrom(
+    minimumSize: const Size(double.infinity, 50.0),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
+  static final alertYes = FilledButton.styleFrom(
+    backgroundColor: const Color(0xFF10B981),
+    foregroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+  );
+  static final alertNo = FilledButton.styleFrom(
+    backgroundColor: const Color(0xFFEF4444),
+    foregroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+  );
 }
 
 class DeliveryStatus {
@@ -49,7 +68,7 @@ class ScanningStatus {
 class ConfirmMessage {
   static const save = "Do you really want to save this record?";
   static const update = "Do you really want to update this record?";
-  static const delete = "Do you really want to save this record?";
+  static const delete = "Do you really want to delete this record?";
 }
 
 class ConfirmTitle {

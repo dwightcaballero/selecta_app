@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/tasks.dart';
+import 'package:selecta_ops/models/tasks.dart';
 
 // ignore: constant_identifier_names
 const String TASKS_COLLECTION_REF = 'tasks';

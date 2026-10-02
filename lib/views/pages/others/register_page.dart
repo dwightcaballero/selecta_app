@@ -1,11 +1,11 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/register_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/views/pages/others/login_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/snackbar_widget.dart';
+import 'package:selecta_ops/controllers/register_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/views/pages/others/login_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});

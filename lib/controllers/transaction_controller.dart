@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/transactionlog.dart';
-import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/services/transactionlog_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/transactionlog.dart';
+import 'package:selecta_ops/services/delivery_service.dart';
+import 'package:selecta_ops/services/transactionlog_service.dart';
 
 /// Metrics count for audit transaction logs
 class LogCounts {

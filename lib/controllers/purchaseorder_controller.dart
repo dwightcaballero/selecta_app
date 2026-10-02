@@ -1,14 +1,14 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/purchaseorder.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/gemini_ai_service.dart';
-import 'package:flutter_app/services/inventory_service.dart';
-import 'package:flutter_app/services/purchaseorder_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/purchaseorder.dart';
+import 'package:selecta_ops/services/auth_service.dart';
+import 'package:selecta_ops/services/gemini_ai_service.dart';
+import 'package:selecta_ops/services/inventory_service.dart';
+import 'package:selecta_ops/services/purchaseorder_service.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 
 /// Class to hold summary count statistics for purchase orders.

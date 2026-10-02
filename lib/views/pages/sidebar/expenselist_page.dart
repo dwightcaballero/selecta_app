@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/expenses_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/expenses.dart';
-import 'package:flutter_app/views/pages/sidebar/expenses_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/expenses_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/expenses.dart';
+import 'package:selecta_ops/views/pages/sidebar/expenses_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class ExpenselistPage extends StatefulWidget {

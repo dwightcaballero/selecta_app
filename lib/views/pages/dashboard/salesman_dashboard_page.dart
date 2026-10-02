@@ -1,28 +1,29 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/dashboard_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/dto/dashboard_dto.dart';
-import 'package:flutter_app/models/users.dart';
-import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
-import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/merchblitzlist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/picklist_list_page.dart';
-import 'package:flutter_app/views/pages/dashboard/pjplist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/placementlist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/scanninglist_page.dart';
-import 'package:flutter_app/views/pages/others/auth_page.dart';
-import 'package:flutter_app/views/pages/sidebar/badorderlist_page.dart';
-import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
-import 'package:flutter_app/views/pages/sidebar/expenselist_page.dart';
-import 'package:flutter_app/views/pages/sidebar/tasklist_page.dart';
-import 'package:flutter_app/views/pages/sidebar/transactionlist_page.dart';
-import 'package:flutter_app/services/error_log_service.dart';
-import 'package:flutter_app/views/pages/sidebar/superadmin_page.dart';
-import 'package:flutter_app/views/widgets/ai_chat_modal.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/services/app_update_service.dart';
+import 'package:selecta_ops/controllers/dashboard_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/dto/dashboard_dto.dart';
+import 'package:selecta_ops/models/users.dart';
+import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/buyinglist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/placementlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/scanninglist_page.dart';
+import 'package:selecta_ops/views/pages/others/auth_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
+import 'package:selecta_ops/views/widgets/ai_chat_modal.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/services/app_update_service.dart';
 
 class SalesmanDashboardPage extends StatefulWidget {
   const SalesmanDashboardPage({super.key});
@@ -408,6 +409,12 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             'Orders & Deliveries',
             const DeliveryListPage(),
             badgeCount: _dashboardDTO.pendingDeliveryCount,
+          ),
+          _buildDrawerItem(
+            Icons.account_balance_wallet_outlined,
+            'Credit List',
+            const CreditlistPage(),
+            badgeCount: _dashboardDTO.unpaidCreditCount,
           ),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),

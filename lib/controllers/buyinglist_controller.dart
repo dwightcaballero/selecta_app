@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_app/controllers/kpi_controller.dart';
-import 'package:flutter_app/dto/kpi_dto.dart';
+import 'package:selecta_ops/controllers/kpi_controller.dart';
+import 'package:selecta_ops/dto/kpi_dto.dart';
 
 /// Available sorting criteria for buying and non-buying store lists.
 enum StoreSort {

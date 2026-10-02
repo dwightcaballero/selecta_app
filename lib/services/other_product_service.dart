@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/other_product.dart';
+import 'package:selecta_ops/models/other_product.dart';
 
 // ignore: constant_identifier_names
 const String OTHER_PRODUCTS_COLLECTION_REF = 'other_products';

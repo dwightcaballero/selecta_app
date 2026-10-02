@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/other_product.dart';
-import 'package:flutter_app/services/other_product_service.dart';
+import 'package:selecta_ops/models/other_product.dart';
+import 'package:selecta_ops/services/other_product_service.dart';
 
 /// Controller for "Other Products" catalog management.
 /// Mediates between OtherProductService (Firestore) and the UI pages.

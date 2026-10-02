@@ -1,5 +1,5 @@
-import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 
 /// Aggregated metrics and sorted store lists for the expansion tracking dashboard.
 class ExpansionData {

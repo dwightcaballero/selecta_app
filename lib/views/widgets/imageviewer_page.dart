@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/forms.dart';
+import 'package:selecta_ops/data/forms.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 

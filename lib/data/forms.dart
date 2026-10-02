@@ -3,10 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/views/widgets/imageviewer_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -18,8 +18,8 @@ class KForms {
     return Text(title, style: KTextStyle.titleTextStyle);
   }
 
-  static Text textDescriptionString(String title, {Color color = Colors.black}) {
-    return Text(title, style: TextStyle(fontSize: 18, color: color));
+  static Text textDescriptionString(String title, {Color? color}) {
+    return Text(title, style: TextStyle(fontSize: 16, color: color));
   }
 
   static Text textDescriptionAmount(double amount) {
@@ -43,7 +43,7 @@ class KForms {
       controller: controller,
       enabled: isenabled,
       decoration: InputDecoration(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         labelText: label,
       ),
       autovalidateMode: AutovalidateMode.onUnfocus,
@@ -70,7 +70,7 @@ class KForms {
         FilteringTextInputFormatter.digitsOnly, // Limits input strictly to 0-9
       ],
       decoration: InputDecoration(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         labelText: label,
       ),
       autovalidateMode: AutovalidateMode.onUnfocus,
@@ -91,7 +91,7 @@ class KForms {
         FilteringTextInputFormatter.digitsOnly, // Limits input strictly to 0-9
       ],
       decoration: InputDecoration(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         labelText: label,
       ),
       onTap: onEditingComplete,
@@ -121,7 +121,7 @@ class KForms {
         controller: controller,
         textAlign: TextAlign.end,
         decoration: InputDecoration(
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           labelText: label,
           prefixIcon: prefixIcon,
           prefixText: prefixText,
@@ -154,7 +154,7 @@ class KForms {
       minLines: 3,
       maxLines: null,
       decoration: InputDecoration(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         alignLabelWithHint: true,
         labelText: label,
         prefixIcon: prefixIcon,
@@ -174,7 +174,7 @@ class KForms {
       minLines: 5,
       maxLines: null,
       decoration: InputDecoration(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         alignLabelWithHint: true,
         labelText: label,
       ),
@@ -191,7 +191,7 @@ class KForms {
       controller: controller,
       keyboardType: TextInputType.emailAddress,
       decoration: InputDecoration(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         labelText: label,
       ),
       autovalidateMode: AutovalidateMode.onUnfocus,
@@ -214,7 +214,7 @@ class KForms {
       controller: controller,
       obscureText: isObscured,
       decoration: InputDecoration(
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         labelText: label,
         suffixIcon: IconButton(icon: Icon(isObscured ? Icons.visibility_off : Icons.visibility), onPressed: onEyePressed),
       ),
@@ -256,7 +256,7 @@ class KForms {
     return InputDecorator(
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(5)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       child: Row(
         children: [

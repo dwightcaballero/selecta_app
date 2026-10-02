@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/configuration.dart';
-import 'package:flutter_app/services/configuration_service.dart';
-import 'package:flutter_app/services/gemini_ai_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/services/gemini_ai_service.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Data class representing the loaded configuration state.
@@ -62,6 +62,7 @@ class ConfigurationController {
     double? placementTargetPercentage,
     double? scanningTargetPercentage,
     int? expansionTarget,
+    String? superAdminPasswordHash,
   }) async {
     if (endDate.isBefore(startDate)) {
       throw ArgumentError('Merch Blitz End Date must be after or equal to the Start Date.');
@@ -75,6 +76,7 @@ class ConfigurationController {
     final finalPlacementPct = placementTargetPercentage ?? originalConfig?.placementTargetPercentage ?? 80.0;
     final finalScanningPct = scanningTargetPercentage ?? originalConfig?.scanningTargetPercentage ?? 100.0;
     final finalExpansionTarget = expansionTarget ?? originalConfig?.expansionTarget ?? 10;
+    final finalSuperAdminHash = superAdminPasswordHash ?? originalConfig?.superAdminPasswordHash ?? '';
 
     final config = Configuration(
       merchBlitzStartDate: newStartDateTs,
@@ -82,6 +84,7 @@ class ConfigurationController {
       aiEnabled: aiEnabled,
       geminiApiKey: geminiApiKey.trim(),
       aiMonthlyRequestLimit: aiMonthlyRequestLimit,
+      superAdminPasswordHash: finalSuperAdminHash,
       salesTarget: finalSalesTarget,
       buyingTargetPercentage: finalBuyingPct,
       throughputTarget: finalThroughputTarget,

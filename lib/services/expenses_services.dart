@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/expenses.dart';
+import 'package:selecta_ops/models/expenses.dart';
 
 // ignore: constant_identifier_names
 const String EXPENSES_COLLECTION_REF = 'expenses';

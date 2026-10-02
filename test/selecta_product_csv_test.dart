@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:flutter_app/models/admin_selecta_product.dart';
-import 'package:flutter_app/services/selecta_product_service.dart';
+import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

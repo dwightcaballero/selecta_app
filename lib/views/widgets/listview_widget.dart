@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/purchaseorder_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/purchaseorder.dart';
-import 'package:flutter_app/views/pages/sidebar/purchaseorder_page.dart';
+import 'package:selecta_ops/controllers/purchaseorder_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/purchaseorder.dart';
+import 'package:selecta_ops/views/pages/sidebar/purchaseorder_page.dart';
 
 /// Demo listview widget demonstrating Purchase Order streaming via PurchaseOrderController.
 class ListviewWidget extends StatelessWidget {

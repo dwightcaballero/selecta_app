@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter_app/services/error_log_service.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 

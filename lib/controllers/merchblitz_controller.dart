@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/configuration.dart';
-import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/configuration_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 
 /// Available sorting options for Merch Blitz store listings.
 enum StoreSortOption {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/services/gemini_ai_service.dart';
-import 'package:flutter_app/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/services/gemini_ai_service.dart';
+import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
 
 /// Modal bottom sheet that prompts the admin to resolve ambiguous or truncated

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/admin_selecta_product.dart';
-import 'package:flutter_app/models/selecta_product.dart';
-import 'package:flutter_app/views/pages/sidebar/selecta_product_form_page.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
+import 'package:selecta_ops/views/pages/sidebar/selecta_product_form_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

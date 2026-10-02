@@ -1,9 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/account_settings_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/views/pages/others/auth_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/controllers/account_settings_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/views/pages/others/auth_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 
 /// Presentation page allowing users to update their display username and role.
 class ChangeusernameRolePage extends StatefulWidget {

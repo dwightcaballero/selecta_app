@@ -27,12 +27,25 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Size get preferredSize => Size.fromHeight(subtitle != null ? 72 : 62);
 
-  Widget _buildIconButton({required Widget icon, required VoidCallback onTap, String? tooltip, bool isLightSurface = false}) {
+  Widget _buildIconButton({
+    required Widget icon,
+    required VoidCallback onTap,
+    String? tooltip,
+    bool isLightSurface = false,
+    bool isDark = false,
+  }) {
+    final bgColor = isLightSurface
+        ? Colors.white
+        : (isDark ? const Color(0xFF28303F) : Colors.white.withValues(alpha: 0.18));
+    final borderColor = isLightSurface
+        ? borderLight
+        : (isDark ? const Color(0xFF384152) : Colors.white.withValues(alpha: 0.3));
+
     return Container(
       decoration: BoxDecoration(
-        color: isLightSurface ? Colors.white : Colors.white.withValues(alpha: 0.18),
+        color: bgColor,
         shape: BoxShape.circle,
-        border: Border.all(color: isLightSurface ? borderLight : Colors.white.withValues(alpha: 0.3), width: 1),
+        border: Border.all(color: borderColor, width: 1),
         boxShadow: isLightSurface
             ? [BoxShadow(color: const Color(0xFF0F172A).withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))]
             : null,
@@ -50,12 +63,20 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = backgroundColor ?? Theme.of(context).colorScheme.primary;
-    final isWhiteOrTransparent = backgroundColor == Colors.transparent || backgroundColor == Colors.white;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final defaultAppbarBg = isDark
+        ? (theme.appBarTheme.backgroundColor ?? const Color(0xFF1E2430))
+        : theme.colorScheme.primary;
 
-    final titleColor = isWhiteOrTransparent ? const Color(0xFF0F172A) : Colors.white;
-    final subtitleColor = isWhiteOrTransparent ? const Color(0xFF64748B) : Colors.white.withValues(alpha: 0.85);
-    final iconColor = isWhiteOrTransparent ? const Color(0xFF0F172A) : Colors.white;
+    final effectiveColor = backgroundColor ?? defaultAppbarBg;
+    final isLightSurface = effectiveColor.computeLuminance() > 0.45;
+
+    final titleColor = isLightSurface ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final subtitleColor = isLightSurface
+        ? const Color(0xFF64748B)
+        : (isDark ? const Color(0xFFCBD5E1) : Colors.white.withValues(alpha: 0.88));
+    final iconColor = isLightSurface ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
 
     final isCentered = centerTitle ?? true;
 
@@ -65,6 +86,15 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: effectiveColor,
       centerTitle: isCentered,
       leadingWidth: 60,
+      bottom: isDark
+          ? PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(
+                color: const Color(0xFF2E3644),
+                height: 1,
+              ),
+            )
+          : null,
       leading: leading != null
           ? Center(child: leading)
           : (showBackButton && Navigator.canPop(context)
@@ -73,7 +103,8 @@ class CustomAppbar extends StatelessWidget implements PreferredSizeWidget {
                       icon: Icon(Icons.arrow_back_ios_new, size: 16, color: iconColor),
                       onTap: onBackPressed ?? () => Navigator.maybePop(context),
                       tooltip: 'Back',
-                      isLightSurface: isWhiteOrTransparent,
+                      isLightSurface: isLightSurface,
+                      isDark: isDark,
                     ),
                   )
                 : null),

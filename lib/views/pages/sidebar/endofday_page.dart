@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/endofday_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/dto/endofday_dto.dart';
-import 'package:flutter_app/models/breakdown.dart';
-import 'package:flutter_app/views/pages/sidebar/breakdown_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/endofday_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/dto/endofday_dto.dart';
+import 'package:selecta_ops/models/breakdown.dart';
+import 'package:selecta_ops/views/pages/sidebar/breakdown_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class EndofdayPage extends StatefulWidget {

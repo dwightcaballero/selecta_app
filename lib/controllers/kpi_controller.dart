@@ -1,6 +1,6 @@
-import 'package:flutter_app/dto/kpi_dto.dart';
-import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:selecta_ops/dto/kpi_dto.dart';
+import 'package:selecta_ops/services/delivery_service.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 
 class KPIController {
   static Future<(List<KPIBuying>, List<KPIBuying>)> getListOfBuyingAndNonBuyingStores() async {

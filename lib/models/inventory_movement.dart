@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/other_product.dart';
-import 'package:flutter_app/models/selecta_product.dart';
+import 'package:selecta_ops/models/other_product.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
 
 /// Identifies which catalog collection a product belongs to.
 enum InventoryProductSource {

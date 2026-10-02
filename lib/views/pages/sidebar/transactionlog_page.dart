@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/transaction_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/transactionlog.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/transaction_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/transactionlog.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class TransactionLogPage extends StatefulWidget {
@@ -180,9 +180,11 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          color: isSelected ? Colors.white : theme.colorScheme.onSurface,
         ),
       ),
       selected: isSelected,
+      selectedColor: theme.colorScheme.primary,
       onSelected: (_) => setState(() => _selectedActionFilter = actionKey),
     );
   }

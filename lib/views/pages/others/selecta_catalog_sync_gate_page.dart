@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/selecta_product_controller.dart';
-import 'package:flutter_app/views/pages/others/loading_page.dart';
+import 'package:selecta_ops/controllers/selecta_product_controller.dart';
+import 'package:selecta_ops/views/pages/others/loading_page.dart';
 
 /// Gateway widget that checks if the local dealer database needs to initialize or sync
 /// its `selecta_products` catalog with the master [AdminSelectaProduct] API

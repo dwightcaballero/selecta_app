@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/views/widgets/snackbar_widget.dart';
+import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 class ShowMessage {
   static void listError(BuildContext context, List<String> listError) {

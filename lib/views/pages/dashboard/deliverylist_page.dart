@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/delivery_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
-import 'package:flutter_app/views/pages/dashboard/delivery_page.dart';
-import 'package:flutter_app/views/pages/dashboard/picklist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/returnlist_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/delivery_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/delivery_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 import 'package:intl/intl.dart';
 
 /// Presentation view displaying the list of deliveries for a selected date.
@@ -335,7 +336,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
             return const Center(child: Text('Unable to load deliveries. Please try again.'));
           }
           if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const ListSkeleton(itemCount: 6);
           }
 
           final List allDocs = snapshot.data?.docs ?? [];

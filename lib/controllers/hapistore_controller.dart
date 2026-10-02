@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/services/hapistore_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// Controller responsible for HapiStore business logic, filtering,

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/thruput_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/dto/dashboard_dto.dart';
-import 'package:flutter_app/views/pages/dashboard/buyinglist_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/thruput_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/dto/dashboard_dto.dart';
+import 'package:selecta_ops/views/pages/dashboard/buyinglist_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 class ThruputPage extends StatelessWidget {

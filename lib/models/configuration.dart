@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 
 class Configuration {
   Timestamp merchBlitzStartDate;
@@ -6,6 +8,8 @@ class Configuration {
   bool aiEnabled;
   String geminiApiKey;
   int aiMonthlyRequestLimit;
+  /// SHA-256 hash of the super-admin password. Never store the plain-text password here.
+  String superAdminPasswordHash;
 
   // KPI Monthly Targets
   double salesTarget;
@@ -21,6 +25,7 @@ class Configuration {
     this.aiEnabled = true,
     this.geminiApiKey = '',
     this.aiMonthlyRequestLimit = 3000,
+    this.superAdminPasswordHash = '',
     this.salesTarget = 1000000.0,
     this.buyingTargetPercentage = 80.0,
     this.throughputTarget = 8000.0,
@@ -28,6 +33,18 @@ class Configuration {
     this.scanningTargetPercentage = 100.0,
     this.expansionTarget = 10,
   });
+
+  /// Returns true if [plainTextPassword] matches the stored SHA-256 hash.
+  bool verifyAdminPassword(String plainTextPassword) {
+    if (superAdminPasswordHash.isEmpty) return false;
+    final hash = sha256.convert(utf8.encode(plainTextPassword.trim())).toString();
+    return hash == superAdminPasswordHash;
+  }
+
+  /// Converts a plain-text password into a SHA-256 hash string for storage.
+  static String hashPassword(String plainTextPassword) {
+    return sha256.convert(utf8.encode(plainTextPassword.trim())).toString();
+  }
 
   // Alternate casing accessor for flexibility
   // ignore: non_constant_identifier_names
@@ -41,6 +58,7 @@ class Configuration {
         aiEnabled: true,
         geminiApiKey: '',
         aiMonthlyRequestLimit: 3000,
+        superAdminPasswordHash: '',
         salesTarget: 1000000.0,
         buyingTargetPercentage: 80.0,
         throughputTarget: 8000.0,
@@ -64,6 +82,7 @@ class Configuration {
           aiEnabled: json['aiEnabled'] as bool? ?? true,
           geminiApiKey: json['geminiApiKey'] as String? ?? '',
           aiMonthlyRequestLimit: (json['aiMonthlyRequestLimit'] as num?)?.toInt() ?? 3000,
+          superAdminPasswordHash: json['superAdminPasswordHash'] as String? ?? '',
           salesTarget: (json['salesTarget'] as num?)?.toDouble() ?? 1000000.0,
           buyingTargetPercentage: (json['buyingTargetPercentage'] as num?)?.toDouble() ?? 80.0,
           throughputTarget: (json['throughputTarget'] as num?)?.toDouble() ?? 8000.0,
@@ -78,6 +97,7 @@ class Configuration {
     bool? aiEnabled,
     String? geminiApiKey,
     int? aiMonthlyRequestLimit,
+    String? superAdminPasswordHash,
     double? salesTarget,
     double? buyingTargetPercentage,
     double? throughputTarget,
@@ -91,6 +111,7 @@ class Configuration {
       aiEnabled: aiEnabled ?? this.aiEnabled,
       geminiApiKey: geminiApiKey ?? this.geminiApiKey,
       aiMonthlyRequestLimit: aiMonthlyRequestLimit ?? this.aiMonthlyRequestLimit,
+      superAdminPasswordHash: superAdminPasswordHash ?? this.superAdminPasswordHash,
       salesTarget: salesTarget ?? this.salesTarget,
       buyingTargetPercentage: buyingTargetPercentage ?? this.buyingTargetPercentage,
       throughputTarget: throughputTarget ?? this.throughputTarget,
@@ -108,6 +129,7 @@ class Configuration {
       'aiEnabled': aiEnabled,
       'geminiApiKey': geminiApiKey,
       'aiMonthlyRequestLimit': aiMonthlyRequestLimit,
+      'superAdminPasswordHash': superAdminPasswordHash,
       'salesTarget': salesTarget,
       'buyingTargetPercentage': buyingTargetPercentage,
       'throughputTarget': throughputTarget,

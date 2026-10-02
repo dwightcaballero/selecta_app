@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/admin_selecta_product.dart';
-import 'package:flutter_app/services/selecta_product_service.dart';
+import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/services/selecta_product_service.dart';
 
 /// Controller for both:
 /// - Dealer Selecta Products (`SelectaProduct`): read, sync from Admin catalog, and toggle `isActive` status.

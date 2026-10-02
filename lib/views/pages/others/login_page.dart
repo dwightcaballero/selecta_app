@@ -1,13 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/login_controller.dart';
-import 'package:flutter_app/views/dashboard_page.dart';
-import 'package:flutter_app/views/pages/dashboard/salesman_dashboard_page.dart';
-import 'package:flutter_app/views/pages/others/register_page.dart';
-import 'package:flutter_app/views/pages/others/selecta_catalog_sync_gate_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/snackbar_widget.dart';
+import 'package:selecta_ops/controllers/login_controller.dart';
+import 'package:selecta_ops/views/dashboard_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/salesman_dashboard_page.dart';
+import 'package:selecta_ops/views/pages/others/register_page.dart';
+import 'package:selecta_ops/views/pages/others/selecta_catalog_sync_gate_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 /// User login presentation page with form inputs, password visibility toggling,
 /// and dialog-driven password recovery.

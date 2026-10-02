@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/notifiers.dart';
-import 'package:flutter_app/views/pages/sidebar/endofday_page.dart';
-import 'package:flutter_app/views/pages/sidebar/hapistorelist_page.dart';
-import 'package:flutter_app/views/pages/dashboard/deliverylist_page.dart';
-import 'package:flutter_app/views/widgets/navbar_widget.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/notifiers.dart';
+import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/hapistorelist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
+import 'package:selecta_ops/views/widgets/navbar_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 List<Widget> pages = [DeliveryListPage(), HapiStoreListPage()];
@@ -16,7 +16,6 @@ class WidgetTree extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.blue,
         actions: [
           IconButton(
             onPressed: () async {

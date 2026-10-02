@@ -1,11 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/delivery_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/views/pages/dashboard/book_order_page.dart';
-import 'package:flutter_app/views/pages/dashboard/picklist_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/delivery_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
 class PicklistListPage extends StatefulWidget {
   const PicklistListPage({super.key});
@@ -96,7 +97,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                     Flexible(
                       child: Text(
                         _dateLabel(),
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -117,7 +118,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
               child: ActionChip(
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                label: const Text('Today', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                label: const Text('Today', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 onPressed: () => setState(() => _selectedDate = DateTime.now()),
               ),
             ),
@@ -135,8 +136,8 @@ class _PicklistListPageState extends State<PicklistListPage> {
       appBar: const CustomAppbar(title: 'Pending Picklists'),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Helperfunctions.navigateTo(context, BookOrderPage(initialDate: _selectedDate)),
-        icon: const Icon(Icons.add_shopping_cart_rounded, size: 24),
-        label: const Text('Book Order', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        icon: const Icon(Icons.add_shopping_cart_rounded, size: 22),
+        label: const Text('Book Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
       ),
       body: Column(
         children: [
@@ -144,18 +145,18 @@ class _PicklistListPageState extends State<PicklistListPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
             child: SizedBox(
-              height: 50,
+              height: 48,
               child: TextField(
                 controller: _searchController,
                 onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
                   hintText: 'Search Hapi Store...',
-                  hintStyle: TextStyle(fontSize: 15.5, color: colorScheme.onSurfaceVariant),
-                  prefixIcon: Icon(Icons.search, size: 24, color: colorScheme.primary),
+                  hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
+                  prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear, size: 22),
+                          icon: const Icon(Icons.clear, size: 20),
                           onPressed: () {
                             _searchController.clear();
                             setState(() => _searchQuery = '');
@@ -188,13 +189,13 @@ class _PicklistListPageState extends State<PicklistListPage> {
                       child: Text(
                         'Unable to load pending picklists: ${snapshot.error}',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 16.5),
+                        style: const TextStyle(fontSize: 14),
                       ),
                     ),
                   );
                 }
                 if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const ListSkeleton(itemCount: 6);
                 }
 
                 final allDocs = snapshot.data?.docs ?? [];
@@ -253,17 +254,17 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: Icon(Icons.fact_check_outlined, size: 52, color: colorScheme.onSurfaceVariant),
+                                      child: Icon(Icons.fact_check_outlined, size: 48, color: colorScheme.onSurfaceVariant),
                                     ),
                                     const SizedBox(height: 16),
-                                    const Text('No Pending Picklists', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                    const Text('No Pending Picklists', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                                     const SizedBox(height: 8),
                                     Text(
                                       _searchQuery.isNotEmpty
                                           ? 'No orders matching "$_searchQuery"'
                                           : 'All booked orders for ${_dateLabel()} have been picked and moved to Delivery.',
                                       textAlign: TextAlign.center,
-                                      style: TextStyle(fontSize: 15.5, height: 1.35, color: colorScheme.onSurfaceVariant),
+                                      style: TextStyle(fontSize: 13.5, height: 1.35, color: colorScheme.onSurfaceVariant),
                                     ),
                                   ],
                                 ),
@@ -312,14 +313,14 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                               children: [
                                                 Text(
                                                   delivery.storeName,
-                                                  style: const TextStyle(fontSize: 17.5, fontWeight: FontWeight.bold, height: 1.25),
+                                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, height: 1.25),
                                                   maxLines: 2,
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
-                                                const SizedBox(height: 4),
+                                                const SizedBox(height: 3),
                                                 Text(
                                                   Helperfunctions.formatDateForDisplay(deliveryDate),
-                                                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
                                                   maxLines: 1,
                                                   overflow: TextOverflow.ellipsis,
                                                 ),
@@ -332,11 +333,11 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                             children: [
                                               Text(
                                                 Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                                                style: TextStyle(fontSize: 17.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
                                               ),
-                                              const SizedBox(height: 5),
+                                              const SizedBox(height: 4),
                                               Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                                 decoration: BoxDecoration(
                                                   color: isComplete
                                                       ? Colors.green.withValues(alpha: 0.12)
@@ -346,7 +347,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                                 child: Text(
                                                   '$pickedCount/$totalLines checked',
                                                   style: TextStyle(
-                                                    fontSize: 13,
+                                                    fontSize: 11.5,
                                                     fontWeight: FontWeight.w700,
                                                     color: isComplete ? Colors.green.shade700 : colorScheme.onSurfaceVariant,
                                                   ),
@@ -378,12 +379,12 @@ class _PicklistListPageState extends State<PicklistListPage> {
       children: [
         Text(
           value,
-          style: TextStyle(fontSize: 18.5, fontWeight: FontWeight.bold, color: color),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
         ),
         const SizedBox(height: 2),
         Text(
           label,
-          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
     );

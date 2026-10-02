@@ -2,11 +2,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/models/inventory_movement.dart';
-import 'package:flutter_app/models/supplier_product_mapping.dart';
-import 'package:flutter_app/services/configuration_service.dart';
-import 'package:flutter_app/services/image_slicing_service.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/models/supplier_product_mapping.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/services/image_slicing_service.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:intl/intl.dart';
 

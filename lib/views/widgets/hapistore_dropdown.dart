@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/hapistore_controller.dart';
-import 'package:flutter_app/models/hapistore.dart';
+import 'package:selecta_ops/controllers/hapistore_controller.dart';
+import 'package:selecta_ops/models/hapistore.dart';
 
 /// Reusable store selector field with form validation and instant virtualized picker.
 class HapistorePickerField extends StatefulWidget {

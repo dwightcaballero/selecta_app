@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/services/error_log_service.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
 /// Developer-facing Error Logs Viewer allowing inspection, search,
@@ -330,8 +330,16 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                               final page = pageList[index];
                               final isSelected = _selectedPageFilter == page;
                               return ChoiceChip(
-                                label: Text(page, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                                label: Text(
+                                  page,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                    color: isSelected ? Colors.white : colorScheme.onSurface,
+                                  ),
+                                ),
                                 selected: isSelected,
+                                selectedColor: colorScheme.primary,
                                 onSelected: (val) {
                                   if (val) setState(() => _selectedPageFilter = page);
                                 },

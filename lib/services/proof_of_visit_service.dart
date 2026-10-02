@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/proof_of_visit.dart';
+import 'package:selecta_ops/models/proof_of_visit.dart';
 
 // ignore: constant_identifier_names
 const String PROOF_OF_VISIT_COLLECTION = 'proof_of_visit';

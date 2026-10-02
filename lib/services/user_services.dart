@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/users.dart';
+import 'package:selecta_ops/models/users.dart';
 
 // ignore: constant_identifier_names
 const String USERS_COLLECTION_REF = 'users';

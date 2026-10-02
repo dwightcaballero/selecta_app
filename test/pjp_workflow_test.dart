@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/controllers/pjp_controller.dart';
-import 'package:flutter_app/models/proof_of_visit.dart';
-import 'package:flutter_app/services/pjp_order_decision_service.dart';
+import 'package:selecta_ops/controllers/pjp_controller.dart';
+import 'package:selecta_ops/models/proof_of_visit.dart';
+import 'package:selecta_ops/services/pjp_order_decision_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

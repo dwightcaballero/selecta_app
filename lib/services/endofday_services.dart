@@ -1,12 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/breakdown.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/dto/endofday_dto.dart';
-import 'package:flutter_app/services/badorder_service.dart';
-import 'package:flutter_app/services/breakdown_service.dart';
-import 'package:flutter_app/services/delivery_service.dart';
-import 'package:flutter_app/services/expenses_services.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/breakdown.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/dto/endofday_dto.dart';
+import 'package:selecta_ops/services/badorder_service.dart';
+import 'package:selecta_ops/services/breakdown_service.dart';
+import 'package:selecta_ops/services/delivery_service.dart';
+import 'package:selecta_ops/services/expenses_services.dart';
 
 class EndofdayServices {
   Future<EndOfDayDTO> getListDeliveryForEndOfDay(DateTime deliveryDate) async {

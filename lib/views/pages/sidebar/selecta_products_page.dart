@@ -1,16 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/controllers/selecta_product_controller.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/models/admin_selecta_product.dart';
-import 'package:flutter_app/models/selecta_product.dart';
-import 'package:flutter_app/services/selecta_product_service.dart';
-import 'package:flutter_app/views/pages/sidebar/inventory_page.dart';
-import 'package:flutter_app/views/pages/sidebar/selecta_product_form_page.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/controllers/selecta_product_controller.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
+import 'package:selecta_ops/services/selecta_product_service.dart';
+import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/selecta_product_form_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 
@@ -250,8 +250,9 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                               child: Row(
                                 children: [
                                   ChoiceChip(
-                                    label: const Text('Auto-Detect', style: TextStyle(fontSize: 11)),
+                                    label: Text('Auto-Detect', style: TextStyle(fontSize: 11, color: selectedFormat == 'Auto-Detect' ? Colors.white : colorScheme.onSurface)),
                                     selected: selectedFormat == 'Auto-Detect',
+                                    selectedColor: colorScheme.primary,
                                     onSelected: (s) {
                                       if (s) setDialogState(() => selectedFormat = 'Auto-Detect');
                                     },
@@ -259,8 +260,9 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                                   ),
                                   const SizedBox(width: 6),
                                   ChoiceChip(
-                                    label: const Text('CSV', style: TextStyle(fontSize: 11)),
+                                    label: Text('CSV', style: TextStyle(fontSize: 11, color: selectedFormat == 'CSV' ? Colors.white : colorScheme.onSurface)),
                                     selected: selectedFormat == 'CSV',
+                                    selectedColor: colorScheme.primary,
                                     onSelected: (s) {
                                       if (s) setDialogState(() => selectedFormat = 'CSV');
                                     },
@@ -268,8 +270,9 @@ class _SelectaProductsPageState extends State<SelectaProductsPage> {
                                   ),
                                   const SizedBox(width: 6),
                                   ChoiceChip(
-                                    label: const Text('JSON', style: TextStyle(fontSize: 11)),
+                                    label: Text('JSON', style: TextStyle(fontSize: 11, color: selectedFormat == 'JSON' ? Colors.white : colorScheme.onSurface)),
                                     selected: selectedFormat == 'JSON',
+                                    selectedColor: colorScheme.primary,
                                     onSelected: (s) {
                                       if (s) setDialogState(() => selectedFormat = 'JSON');
                                     },

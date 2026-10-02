@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/tasks_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/tasks.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
-import 'package:flutter_app/views/widgets/hapistore_dropdown.dart';
-import 'package:flutter_app/views/widgets/audithistory_widget.dart';
+import 'package:selecta_ops/controllers/tasks_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/tasks.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
+import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 import 'package:intl/intl.dart';
 
 class TasksPage extends StatefulWidget {
@@ -264,6 +264,7 @@ class _TasksPageState extends State<TasksPage> {
   }
 
   Widget _buildDeadlinePresets() {
+    final colorScheme = Theme.of(context).colorScheme;
     final now = DateTime.now();
 
     return Padding(
@@ -273,16 +274,16 @@ class _TasksPageState extends State<TasksPage> {
         child: Row(
           children: [
             ActionChip(
-              avatar: const Icon(Icons.flash_on_rounded, size: 16),
-              label: const Text('+4 hours', style: TextStyle(fontSize: 12)),
+              avatar: Icon(Icons.flash_on_rounded, size: 16, color: colorScheme.primary),
+              label: Text('+4 hours', style: TextStyle(fontSize: 12, color: colorScheme.onSurface)),
               onPressed: () {
                 setState(() => _selectedDeadline = DateTime.now().add(const Duration(hours: 4)));
               },
             ),
             const SizedBox(width: 8),
             ActionChip(
-              avatar: const Icon(Icons.wb_twilight_rounded, size: 16),
-              label: const Text('End of Day (5PM)', style: TextStyle(fontSize: 12)),
+              avatar: Icon(Icons.wb_twilight_rounded, size: 16, color: colorScheme.primary),
+              label: Text('End of Day (5PM)', style: TextStyle(fontSize: 12, color: colorScheme.onSurface)),
               onPressed: () {
                 final today = DateTime.now();
                 setState(() => _selectedDeadline = DateTime(today.year, today.month, today.day, 17, 0));
@@ -290,8 +291,8 @@ class _TasksPageState extends State<TasksPage> {
             ),
             const SizedBox(width: 8),
             ActionChip(
-              avatar: const Icon(Icons.wb_sunny_outlined, size: 16),
-              label: const Text('Tomorrow(5PM)', style: TextStyle(fontSize: 12)),
+              avatar: Icon(Icons.wb_sunny_outlined, size: 16, color: colorScheme.primary),
+              label: Text('Tomorrow(5PM)', style: TextStyle(fontSize: 12, color: colorScheme.onSurface)),
               onPressed: () {
                 final tomorrow = now.add(const Duration(days: 1));
                 setState(() => _selectedDeadline = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 17, 0));
@@ -299,8 +300,8 @@ class _TasksPageState extends State<TasksPage> {
             ),
             const SizedBox(width: 8),
             ActionChip(
-              avatar: const Icon(Icons.calendar_view_week_rounded, size: 16),
-              label: const Text('This week', style: TextStyle(fontSize: 12)),
+              avatar: Icon(Icons.calendar_view_week_rounded, size: 16, color: colorScheme.primary),
+              label: Text('This week', style: TextStyle(fontSize: 12, color: colorScheme.onSurface)),
               onPressed: () {
                 final daysUntilSunday = DateTime.sunday - now.weekday;
                 final targetSunday = (daysUntilSunday == 0 && now.hour >= 17)
@@ -311,8 +312,8 @@ class _TasksPageState extends State<TasksPage> {
             ),
             const SizedBox(width: 8),
             ActionChip(
-              avatar: const Icon(Icons.calendar_month_rounded, size: 16),
-              label: const Text('This month', style: TextStyle(fontSize: 12)),
+              avatar: Icon(Icons.calendar_month_rounded, size: 16, color: colorScheme.primary),
+              label: Text('This month', style: TextStyle(fontSize: 12, color: colorScheme.onSurface)),
               onPressed: () {
                 final lastDayOfMonth = DateTime(now.year, now.month + 1, 0, 17, 0);
                 final targetMonthEnd = now.isAfter(lastDayOfMonth)

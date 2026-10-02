@@ -1,5 +1,5 @@
-import 'package:flutter_app/models/admin_selecta_product.dart';
-import 'package:flutter_app/models/selecta_product.dart';
+import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

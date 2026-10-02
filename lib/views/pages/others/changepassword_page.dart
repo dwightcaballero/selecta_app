@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/controllers/account_settings_controller.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/controllers/account_settings_controller.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 
 /// Presentation page allowing an authenticated user to change their password.
 class ChangePasswordPage extends StatefulWidget {

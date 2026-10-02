@@ -1,11 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/data/helperfunctions.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/auth_service.dart';
-import 'package:flutter_app/services/delivery_service.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/services/auth_service.dart';
+import 'package:selecta_ops/services/delivery_service.dart';
 
 /// Aggregated return metrics bundle for [ReturnlistPage].
 class ReturnListMetrics {

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_app/data/variables.dart';
-import 'package:flutter_app/models/delivery.dart';
-import 'package:flutter_app/services/thermal_printer_service.dart';
-import 'package:flutter_app/views/widgets/alert_widget.dart';
+import 'package:flutter/services.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/services/thermal_printer_service.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
@@ -57,6 +58,13 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
   String? _printerName;
   final TransformationController _transController = TransformationController();
   double _fontScale = 1.0;
+
+  void _copyReceiptToClipboard() {
+    Clipboard.setData(ClipboardData(text: _receiptText));
+    if (mounted) {
+      ShowMessage.success(context, 'Receipt text copied to clipboard!');
+    }
+  }
 
   @override
   void initState() {
@@ -216,8 +224,8 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.receipt_long_rounded, color: Color(0xFF0284C7), size: 22),
+                    decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                    child: Icon(Icons.receipt_long_rounded, color: colorScheme.primary, size: 22),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -230,6 +238,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                       ],
                     ),
                   ),
+                  IconButton(icon: const Icon(Icons.copy_all_rounded), tooltip: 'Copy receipt text', onPressed: _copyReceiptToClipboard),
                   IconButton(
                     icon: const Icon(Icons.bluetooth_searching_rounded),
                     tooltip: 'Select Thermal Printer',
@@ -247,78 +256,74 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
               ),
             ),
 
-            // ── Paper Width & Font Zoom Bar ─────────────────────────────
+            // ── Paper Width & Font Zoom Bar ───────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                child: Row(
-                  children: [
-                    // Paper size toggle
-                    SegmentedButton<ThermalPaperSize>(
-                      segments: const [
-                        ButtonSegment<ThermalPaperSize>(
-                          value: ThermalPaperSize.mm58,
-                          label: Text('58mm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  // Paper size toggle
+                  SegmentedButton<ThermalPaperSize>(
+                    segments: const [
+                      ButtonSegment<ThermalPaperSize>(
+                        value: ThermalPaperSize.mm58,
+                        label: Text('58mm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                      ButtonSegment<ThermalPaperSize>(
+                        value: ThermalPaperSize.mm80,
+                        label: Text('80mm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                    selected: {_paperSize},
+                    onSelectionChanged: (val) => _changePaperSize(val.first),
+                    style: SegmentedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const Spacer(),
+
+                  // Font Zoom Controls (A- / A+)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: 'Decrease font size',
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
+                          icon: const Icon(Icons.remove_rounded, size: 16),
+                          onPressed: _fontScale > 0.85 ? () => setState(() => _fontScale = (_fontScale - 0.15).clamp(0.85, 2.2)) : null,
                         ),
-                        ButtonSegment<ThermalPaperSize>(
-                          value: ThermalPaperSize.mm80,
-                          label: Text('80mm', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        InkWell(
+                          onTap: () => setState(() => _fontScale = 1.0),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                            child: Text('${(_fontScale * 100).round()}%', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Increase font size',
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
+                          icon: const Icon(Icons.add_rounded, size: 16),
+                          onPressed: _fontScale < 2.1 ? () => setState(() => _fontScale = (_fontScale + 0.15).clamp(0.85, 2.2)) : null,
                         ),
                       ],
-                      selected: {_paperSize},
-                      onSelectionChanged: (val) => _changePaperSize(val.first),
-                      style: SegmentedButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
                     ),
-                    const SizedBox(width: 10),
-
-                    // Font Zoom Controls (A- / A+)
-                    Container(
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'Decrease font size',
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
-                            icon: const Icon(Icons.remove_rounded, size: 16),
-                            onPressed: _fontScale > 0.85 ? () => setState(() => _fontScale = (_fontScale - 0.15).clamp(0.85, 2.2)) : null,
-                          ),
-                          InkWell(
-                            onTap: () => setState(() => _fontScale = 1.0),
-                            borderRadius: BorderRadius.circular(4),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-                              child: Text('${(_fontScale * 100).round()}%', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Increase font size',
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            constraints: const BoxConstraints(minWidth: 30, minHeight: 32),
-                            icon: const Icon(Icons.add_rounded, size: 16),
-                            onPressed: _fontScale < 2.1 ? () => setState(() => _fontScale = (_fontScale + 0.15).clamp(0.85, 2.2)) : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
 
-            // ── Scrollable Monospace Thermal Paper Preview with Pinch-to-Zoom ──
+            // ── Scrollable Thermal Paper Preview with Pinch-to-Zoom ──
             Flexible(
               child: _isLoading
                   ? const Center(
@@ -327,10 +332,10 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                   : Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFAF9F6), // Warm paper white
+                        color: const Color(0xFFF1F5F9), // Subtle paper backing background
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade300),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
+                        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 6, offset: const Offset(0, 2))],
                       ),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
@@ -340,27 +345,44 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                               if (_transController.value != Matrix4.identity()) {
                                 _transController.value = Matrix4.identity();
                               } else {
-                                _transController.value = Matrix4.diagonal3Values(2.0, 2.0, 1.0);
+                                _transController.value = Matrix4.diagonal3Values(1.8, 1.8, 1.0);
                               }
                             });
                           },
                           child: InteractiveViewer(
                             transformationController: _transController,
-                            minScale: 1.0,
+                            minScale: 0.85,
                             maxScale: 3.5,
                             boundaryMargin: const EdgeInsets.all(40),
                             child: SingleChildScrollView(
-                              padding: const EdgeInsets.all(14),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: SelectableText(
-                                  _receiptText,
-                                  style: TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontSize: (_paperSize == ThermalPaperSize.mm80 ? 11.0 : 12.5) * _fontScale,
-                                    height: 1.35,
-                                    color: const Color(0xFF1E293B),
-                                    letterSpacing: 0.2,
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                              child: Center(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFFFFF),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.grey.shade300),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.06),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: SelectableText(
+                                      _receiptText,
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: (_paperSize == ThermalPaperSize.mm80 ? 11.0 : 12.5) * _fontScale,
+                                        height: 1.35,
+                                        color: const Color(0xFF1E293B),
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -383,7 +405,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                         child: FilledButton.icon(
                           onPressed: _isPrinting ? null : _handlePrint,
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF0284C7),
+                            backgroundColor: colorScheme.primary,
                             minimumSize: const Size(0, 48),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
@@ -590,7 +612,7 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
             const SizedBox(height: 16),
             Row(
               children: [
-                const Icon(Icons.bluetooth_rounded, color: Color(0xFF0284C7)),
+                Icon(Icons.bluetooth_rounded, color: colorScheme.primary),
                 const SizedBox(width: 10),
                 const Text('Select Thermal Printer', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const Spacer(),

@@ -1,5 +1,5 @@
-import 'package:flutter_app/models/purchaseorder.dart';
-import 'package:flutter_app/services/purchaseorder_service.dart';
+import 'package:selecta_ops/models/purchaseorder.dart';
+import 'package:selecta_ops/services/purchaseorder_service.dart';
 
 /// Data class holding aggregated sales summary for the current month.
 class SalesSummary {

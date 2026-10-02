@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/dealer.dart';
+import 'package:selecta_ops/models/dealer.dart';
 
 // ignore: constant_identifier_names
 const String DEALER_COLLECTION_REF = 'dealers';

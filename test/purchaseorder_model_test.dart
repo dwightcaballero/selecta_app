@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_app/models/purchaseorder.dart';
+import 'package:selecta_ops/models/purchaseorder.dart';
 
 void main() {
   test('purchase order stores and serializes invoice image path', () {

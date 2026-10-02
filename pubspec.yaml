@@ -1,5 +1,5 @@
-name: flutter_app
-description: "A new Flutter project."
+name: selecta_ops
+description: "Selecta field sales operations app for Salesmen and Dealers."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+22
+version: 1.0.0+23
 
 environment:
   sdk: ^3.12.1
@@ -40,6 +40,7 @@ dependencies:
   firebase_database: ^12.4.6
   cloud_firestore: ^6.7.1
   firebase_core: ^4.12.1
+  firebase_messaging: ^16.7.0
   intl: ^0.20.3
   firebase_auth: ^6.5.6
   image_picker: ^1.2.3
@@ -57,14 +58,17 @@ dependencies:
   http: ^1.6.0
   mobile_scanner: ^7.4.2
   barcode_widget: ^2.0.4
+  url_launcher: ^6.3.1
   geolocator: ^14.0.3
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
   google_generative_ai: ^0.4.7
-  flutter_markdown: ^0.7.7+1
+  flutter_markdown_plus: ^1.0.7
   print_bluetooth_thermal: ^1.2.5
   esc_pos_utils_plus: ^2.0.4
   package_info_plus: ^10.2.1
+  crypto: ^3.0.6
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
@@ -91,7 +95,6 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/
-    - assets/images/placement/
     - assets/lotties/
 
   # An image asset can refer to one or more resolution-specific "variants", see

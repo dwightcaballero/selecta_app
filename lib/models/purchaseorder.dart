@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_app/models/delivery.dart';
+import 'package:selecta_ops/models/delivery.dart';
 
 class Purchaseorder {
   Purchaseorder({

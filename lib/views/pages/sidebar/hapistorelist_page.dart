@@ -1,11 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_app/controllers/hapistore_controller.dart';
-import 'package:flutter_app/data/constants.dart';
-import 'package:flutter_app/models/hapistore.dart';
-import 'package:flutter_app/views/pages/sidebar/hapistore_page.dart';
-import 'package:flutter_app/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/hapistore_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/views/pages/sidebar/hapistore_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/store_profile_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 
 /// Presentation page for displaying, filtering, and navigating Hapi Stores.
 class HapiStoreListPage extends StatefulWidget {
@@ -295,16 +296,14 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: _isDealer
-            ? () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => HapiStorePage(hapiStoreID: hapistoreID, hapistore: hapistore),
-                  ),
-                );
-              }
-            : null,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => StoreProfilePage(hapiStoreID: hapistoreID, hapistore: hapistore),
+            ),
+          );
+        },
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
