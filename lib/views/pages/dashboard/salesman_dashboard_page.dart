@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/dashboard_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
@@ -87,12 +88,12 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
   }
 
   // Fetch fresh metrics and recalculate dashboard totals
-  Future<void> _syncDashboard() async {
+  Future<void> _syncDashboard({bool force = true}) async {
     if (_isSyncing) return;
     setState(() => _isSyncing = true);
 
     try {
-      final latestDto = await DashboardController.getLatestDashboardData();
+      final latestDto = await DashboardController.getLatestDashboardData(force: force);
       final lastSync = await DashboardController.getLastSync();
 
       if (mounted) {
@@ -100,11 +101,13 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _dashboardDTO = latestDto;
           _lastSyncDateTime = lastSync;
         });
-        ShowMessage.success(context, 'Salesman dashboard synced successfully.');
+        if (force) {
+          ShowMessage.success(context, 'Salesman dashboard synced successfully.');
+        }
       }
     } catch (e, s) {
       ErrorLogService.logError(page: 'SalesmanDashboardPage', action: 'Sync Salesman Dashboard', error: e, stackTrace: s);
-      if (mounted) {
+      if (mounted && force) {
         ShowMessage.error(context, 'Sync failed. Please try again.');
       }
     } finally {
@@ -218,7 +221,10 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
         );
         await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SuperAdminPage()));
         if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
-          await _syncDashboard();
+          if (dashboardNeedsRefreshNotifier.value) {
+            dashboardNeedsRefreshNotifier.value = false;
+            await _syncDashboard(force: false);
+          }
         }
       }
       return;
@@ -234,7 +240,10 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     if (mounted) {
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SuperAdminPage()));
       if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
-        await _syncDashboard();
+        if (dashboardNeedsRefreshNotifier.value) {
+          dashboardNeedsRefreshNotifier.value = false;
+          await _syncDashboard(force: false);
+        }
       }
     }
   }
@@ -540,7 +549,10 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _onLogout();
         } else if (nextPage != null) {
           await Helperfunctions.navigateThenWait(context, nextPage);
-          if (mounted) await _syncDashboard();
+          if (mounted && dashboardNeedsRefreshNotifier.value) {
+            dashboardNeedsRefreshNotifier.value = false;
+            await _syncDashboard(force: false);
+          }
         }
       },
     );
@@ -579,7 +591,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
             icon: _isSyncing
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.sync_rounded, color: Colors.white),
-            onPressed: _isSyncing ? null : _syncDashboard,
+            onPressed: _isSyncing ? null : () => _syncDashboard(force: true),
             tooltip: 'Sync Dashboard',
           ),
         ],
@@ -597,7 +609,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              onRefresh: _syncDashboard,
+              onRefresh: () => _syncDashboard(force: true),
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),

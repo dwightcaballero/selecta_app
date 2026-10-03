@@ -80,8 +80,16 @@ class DashboardController {
   /// Checks if the current logged-in user is a Dealer.
   Future<bool> isCurrentUserDealer() => KVariables.getIsDealer();
 
+  static Future<DashboardDTO>? _activeSyncFuture;
+
+  /// Cooldown window during which automatic/background sync requests are skipped.
+  static const Duration syncCooldown = Duration(minutes: 5);
+
   /// Retrieves cached [DashboardDTO] from SharedPreferences if available.
-  Future<DashboardDTO?> getCachedDashboardData() async {
+  Future<DashboardDTO?> getCachedDashboardData() => getCachedDashboardDataStatic();
+
+  /// Static helper to retrieve cached [DashboardDTO] from SharedPreferences if available.
+  static Future<DashboardDTO?> getCachedDashboardDataStatic() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString('dashboard_DTO');
     if (jsonString == null || jsonString.isEmpty) return null;
@@ -91,6 +99,14 @@ class DashboardController {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Retrieves the raw [DateTime] of the last successful sync from SharedPreferences.
+  static Future<DateTime?> getLastSyncDateTime() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? dateString = prefs.getString('last_sync_time');
+    if (dateString == null) return null;
+    return DateTime.tryParse(dateString);
   }
 
   /// Switches the business role between Dealer and Salesman, updating Firestore and local cache.
@@ -140,7 +156,39 @@ class DashboardController {
   }
 
   /// Computes and caches fresh dashboard statistics across all operational domains.
-  static Future<DashboardDTO> getLatestDashboardData() async {
+  ///
+  /// - When [force] is `false` (default for automatic/navigation triggers), the sync is
+  ///   skipped if the last sync was within [syncCooldown] (5 minutes) and cached data exists.
+  /// - Only one sync runs at a time: concurrent callers reuse the in-flight sync Future.
+  static Future<DashboardDTO> getLatestDashboardData({bool force = false}) async {
+    // 1. Reuse running in-flight sync if one is currently active
+    if (_activeSyncFuture != null) {
+      return _activeSyncFuture!;
+    }
+
+    // 2. Enforce 5-minute cooldown for automatic syncs
+    if (!force) {
+      final lastSync = await getLastSyncDateTime();
+      if (lastSync != null && DateTime.now().difference(lastSync) < syncCooldown) {
+        final cached = await getCachedDashboardDataStatic();
+        if (cached != null) {
+          return cached;
+        }
+      }
+    }
+
+    // 3. Initiate and track execution
+    final syncFuture = _fetchLatestDashboardDataFromNetwork();
+    _activeSyncFuture = syncFuture;
+
+    try {
+      return await syncFuture;
+    } finally {
+      _activeSyncFuture = null;
+    }
+  }
+
+  static Future<DashboardDTO> _fetchLatestDashboardDataFromNetwork() async {
     // Initialize Components
     var dashboardDTO = DashboardDTO.empty();
 

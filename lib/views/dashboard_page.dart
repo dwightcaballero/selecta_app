@@ -81,13 +81,6 @@ class _DashboardPageState extends State<DashboardPage> {
     super.dispose();
   }
 
-  Future<void> showLoading(bool showLoading) async {
-    if (showLoading) {
-      if (mounted) await Helperfunctions.showLoading(context: context, showLoading: true);
-    } else {
-      await Helperfunctions.showLoading(context: context, showLoading: false);
-    }
-  }
 
   // Load user info and cached metrics via DashboardController
   void prefetchData() async {
@@ -108,23 +101,28 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   // Compute fresh dashboard totals and refresh view
-  Future<void> syncDashboard() async {
+  Future<void> syncDashboard({bool force = true}) async {
+    if (isSyncing) return;
     if (!mounted) return;
 
-    showLoading(true);
     setState(() {
       isSyncing = true;
-      dashboardDTO = DashboardDTO.empty();
     });
 
     try {
       // Process pending offline orders and updates first
       await OfflineSyncService.instance.processQueue();
 
-      dashboardDTO = await DashboardController.getLatestDashboardData();
-      lastSyncDateTime = await DashboardController.getLastSync();
+      final newDto = await DashboardController.getLatestDashboardData(force: force);
+      final newSync = await DashboardController.getLastSync();
+      if (mounted) {
+        setState(() {
+          dashboardDTO = newDto;
+          lastSyncDateTime = newSync;
+        });
+      }
       // save in shared preferences
-      await _controller.saveDashboardData(dashboardDTO, lastSyncDateTime);
+      await _controller.saveDashboardData(newDto, newSync);
     } catch (e, s) {
       debugPrint('Error syncing dashboard: $e');
       ErrorLogService.logError(page: 'DashboardPage', action: 'Sync Dashboard Data', error: e, stackTrace: s);
@@ -134,31 +132,29 @@ class _DashboardPageState extends State<DashboardPage> {
           isSyncing = false;
         });
       }
-      await showLoading(false);
     }
   }
 
   Future<void> _refreshDashboardIfNeeded() async {
     if (!dashboardNeedsRefreshNotifier.value) {
-      await _syncDashboardFromSharedPreferences();
       return;
     }
 
     dashboardNeedsRefreshNotifier.value = false;
-    await syncDashboard();
+    await syncDashboard(force: false);
   }
 
   // Synchronize dashboard state from local cache via controller
   Future<void> _syncDashboardFromSharedPreferences() async {
     final isToday = await DashboardController.isLastSyncToday();
     if (!isToday) {
-      await syncDashboard();
+      await syncDashboard(force: false);
       return;
     }
 
     final cachedDashboard = await _controller.getCachedDashboardData();
     if (cachedDashboard == null || !mounted) {
-      await syncDashboard();
+      await syncDashboard(force: false);
       return;
     }
 
@@ -279,7 +275,10 @@ class _DashboardPageState extends State<DashboardPage> {
         );
         await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SuperAdminPage()));
         if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
-          await syncDashboard();
+          if (dashboardNeedsRefreshNotifier.value) {
+            dashboardNeedsRefreshNotifier.value = false;
+            await syncDashboard(force: false);
+          }
         }
       }
       return;
@@ -295,7 +294,10 @@ class _DashboardPageState extends State<DashboardPage> {
     if (mounted) {
       await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SuperAdminPage()));
       if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
-        await syncDashboard();
+        if (dashboardNeedsRefreshNotifier.value) {
+          dashboardNeedsRefreshNotifier.value = false;
+          await syncDashboard(force: false);
+        }
       }
     }
   }
@@ -323,7 +325,7 @@ class _DashboardPageState extends State<DashboardPage> {
     dashboardDTO: dashboardDTO,
     merchBlitzCountStream: _merchBlitzCountStream,
     tasksCountStream: _tasksCountStream,
-    onSync: syncDashboard,
+    onSync: () => syncDashboard(force: true),
     onLogout: onLogout,
     onNavigate: _navigateToPage,
   );
@@ -332,7 +334,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildDashboardBody() {
     final padding = ScreenSize.pagePadding(context);
     return RefreshIndicator(
-      onRefresh: syncDashboard,
+      onRefresh: () => syncDashboard(force: true),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: Center(
@@ -533,7 +535,7 @@ class _DashboardPageState extends State<DashboardPage> {
         dashboardDTO: dashboardDTO,
         merchBlitzCountStream: _merchBlitzCountStream,
         tasksCountStream: _tasksCountStream,
-        onSync: syncDashboard,
+        onSync: () => syncDashboard(force: true),
         onLogout: onLogout,
         onNavigate: _navigateToPage,
       ),
@@ -566,7 +568,7 @@ class _DashboardPageState extends State<DashboardPage> {
         icon: isSyncing
             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.sync_rounded, color: Colors.white),
-        onPressed: isSyncing ? null : syncDashboard,
+        onPressed: isSyncing ? null : () => syncDashboard(force: true),
         tooltip: 'Sync Dashboard',
       ),
     ];
