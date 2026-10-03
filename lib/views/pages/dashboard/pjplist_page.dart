@@ -628,6 +628,7 @@ class _PjpListPageState extends State<PjpListPage> {
       ),
       floatingActionButton: _isEditing
           ? FloatingActionButton.extended(
+              heroTag: null,
               onPressed: _isSaving ? null : _saveOrder,
               icon: _isSaving
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))

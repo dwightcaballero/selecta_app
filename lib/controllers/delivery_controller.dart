@@ -167,6 +167,9 @@ class DeliveryController {
     final filtered = docs.where((doc) {
       final raw = doc.data();
       final Delivery delivery = raw is Delivery ? raw : Delivery.fromJson(raw as Map<String, Object?>);
+      if (delivery.transactionStatus == DeliveryStatus.pendingPicklist) {
+        return false;
+      }
       final matchesStatus = selectedStatus == 'All' || delivery.transactionStatus == selectedStatus;
       final matchesSearch = query.isEmpty || delivery.storeName.toLowerCase().contains(query);
       return matchesStatus && matchesSearch;
@@ -832,6 +835,10 @@ class DeliveryController {
     return newRecord;
   }
 
+  Future<Delivery?> getDeliveryById(String deliveryId) async {
+    return _deliveryService.getDeliveryById(deliveryId);
+  }
+
   /// Updates an existing delivery record with new amounts, status, and remarks.
   ///
   /// Uploads/updates receipt images, persists changes through [DeliveryService],
@@ -850,6 +857,7 @@ class DeliveryController {
     required String returnAmountText,
     required File? imageFile,
     required String networkImagePath,
+    DateTime? selectedDate,
     List<KPlacement>? placements,
     String? placementId,
   }) async {
@@ -895,7 +903,7 @@ class DeliveryController {
       creditAmount: creditAmount,
       cashAmount: cashAmount,
       onlineAmount: onlineAmount,
-      deliveryDate: currentDelivery.deliveryDate,
+      deliveryDate: selectedDate != null ? Timestamp.fromDate(selectedDate) : currentDelivery.deliveryDate,
       createdBy: currentDelivery.createdBy,
       lastUpdatedBy: currentUserName,
       createdDate: currentDelivery.createdDate,

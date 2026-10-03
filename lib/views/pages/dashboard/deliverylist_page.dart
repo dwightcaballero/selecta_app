@@ -10,7 +10,6 @@ import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/delivery_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
@@ -45,7 +44,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   bool _isSaving = false;
   List<String> _editableDeliveryIDs = [];
   Map<String, QueryDocumentSnapshot<Delivery>> _editableDocsById = {};
-  List<QueryDocumentSnapshot<Delivery>> _currentSortedDocs = [];
 
   @override
   void initState() {
@@ -119,11 +117,15 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   String _dateLabel() => _controller.formatDateLabel(_selectedDate);
 
-  void _startEditing(List<QueryDocumentSnapshot<Delivery>> sortedDocs) {
+  void _startEditing(List<QueryDocumentSnapshot<Delivery>> docs) {
+    final sorted = _controller.filterDeliveries(docs: docs, selectedStatus: 'All', searchQuery: '');
     setState(() {
       _isEditing = true;
-      _editableDeliveryIDs = sortedDocs.map((doc) => doc.id).toList();
-      _editableDocsById = {for (final doc in sortedDocs) doc.id: doc};
+      _searchQuery = '';
+      _searchController.clear();
+      _selectedStatusFilter = 'All';
+      _editableDeliveryIDs = sorted.map((doc) => (doc as QueryDocumentSnapshot<Delivery>).id).toList();
+      _editableDocsById = {for (final doc in sorted) (doc as QueryDocumentSnapshot<Delivery>).id: doc};
     });
   }
 
@@ -293,7 +295,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       child: Row(
         children: [
           Expanded(child: _summaryItem('All', summary.all, Theme.of(context).colorScheme.primary, 'All')),
-          Expanded(child: _summaryItem('Picklist', summary.pendingPicklist, const Color(0xFF7C3AED), DeliveryStatus.pendingPicklist)),
           Expanded(child: _summaryItem('For Delivery', summary.pending, Colors.orange.shade800, DeliveryStatus.pending)),
           Expanded(child: _summaryItem('Delivered', summary.delivered, Colors.green.shade700, DeliveryStatus.delivered)),
           Expanded(child: _summaryItem('Returned', summary.returned, Colors.red.shade700, DeliveryStatus.returned)),
@@ -409,6 +410,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   Widget floatingActionAddButton() {
     return FloatingActionButton.extended(
+      heroTag: null,
       onPressed: () {
         Navigator.push(context, MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)));
       },
@@ -425,92 +427,69 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: _isEditing ? 'Rearrange Deliveries' : 'Orders & Deliveries',
-        subtitle: _isEditing ? 'Drag to reorder • ${_dateLabel()}' : 'Order → Picklist → Delivery',
-        showBackButton: true,
-        actions: [
-          if (!_isEditing && _currentSortedDocs.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.swap_vert_rounded, color: Colors.white),
-              tooltip: 'Rearrange store order',
-              onPressed: () => _startEditing(_currentSortedDocs),
-            ),
-          if (_isEditing)
-            TextButton(
-              onPressed: _isSaving ? null : _cancelEditing,
-              child: const Text(
-                'Cancel',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-        ],
-      ),
-      floatingActionButton: _isEditing
-          ? FloatingActionButton.extended(
-              onPressed: _isSaving ? null : _saveOrder,
-              icon: _isSaving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.check, color: Colors.white, size: 22),
-              label: Text(
-                _isSaving ? 'Saving...' : 'Save Order',
-                style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: theme.colorScheme.primary,
-            )
-          : floatingActionAddButton(),
-      body: _isEditing
-          ? _buildEditingList()
-          : StreamBuilder(
-              stream: _controller.getDeliveriesStream(_selectedDate),
-              builder: (BuildContext context, AsyncSnapshot snapshot) {
-                if (snapshot.hasError) {
-                  return const Center(child: Text('Unable to load deliveries. Please try again.'));
-                }
-                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                  return const ListSkeleton(itemCount: 6);
-                }
+    return StreamBuilder(
+      stream: _controller.getDeliveriesStream(_selectedDate),
+      builder: (BuildContext context, AsyncSnapshot snapshot) {
+        final List allDocs = (snapshot.data?.docs ?? []).where((doc) {
+          final raw = doc.data();
+          final Delivery delivery = raw is Delivery ? raw : Delivery.fromJson(raw as Map<String, Object?>);
+          return delivery.transactionStatus != DeliveryStatus.pendingPicklist;
+        }).toList();
 
-                final List allDocs = snapshot.data?.docs ?? [];
+        final List<QueryDocumentSnapshot<Delivery>> allDeliveryDocs = allDocs.cast<QueryDocumentSnapshot<Delivery>>();
 
-                // Filter by status tab & search query via controller
-                final filteredDocs = _controller.filterDeliveries(docs: allDocs, selectedStatus: _selectedStatusFilter, searchQuery: _searchQuery);
-                _currentSortedDocs = filteredDocs.cast<QueryDocumentSnapshot<Delivery>>();
+        // Filter by status tab & search query via controller
+        final filteredDocs = _controller.filterDeliveries(docs: allDocs, selectedStatus: _selectedStatusFilter, searchQuery: _searchQuery);
 
-                return Padding(
+        return Scaffold(
+          appBar: CustomAppbar(
+            title: _isEditing ? 'Rearrange Deliveries' : 'Orders & Deliveries',
+            subtitle: _isEditing ? 'Drag to reorder • ${_dateLabel()}' : 'Order → Picklist → Delivery',
+            showBackButton: true,
+            actions: [
+              if (!_isEditing && allDeliveryDocs.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.swap_vert_rounded, color: Colors.white),
+                  tooltip: 'Rearrange store order',
+                  onPressed: () => _startEditing(allDeliveryDocs),
+                ),
+              if (_isEditing)
+                TextButton(
+                  onPressed: _isSaving ? null : _cancelEditing,
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
+            ],
+          ),
+          floatingActionButton: _isEditing
+              ? FloatingActionButton.extended(
+                  heroTag: null,
+                  onPressed: _isSaving ? null : _saveOrder,
+                  icon: _isSaving
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.check, color: Colors.white, size: 22),
+                  label: Text(
+                    _isSaving ? 'Saving...' : 'Save Order',
+                    style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.bold),
+                  ),
+                  backgroundColor: theme.colorScheme.primary,
+                )
+              : floatingActionAddButton(),
+          body: _isEditing
+              ? _buildEditingList()
+              : snapshot.hasError
+              ? const Center(child: Text('Unable to load deliveries. Please try again.'))
+              : (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData)
+              ? const ListSkeleton(itemCount: 6)
+              : Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                   child: Column(
                     children: [
                       _buildDateNavigator(theme),
                       _buildReturnedAlertBanner(),
                       if (allDocs.isNotEmpty) ...[_buildInteractiveSummary(allDocs), _buildSearchBar(theme), const SizedBox(height: 8)],
-                      if (filteredDocs.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(0, 2, 0, 4),
-                          child: Row(
-                            children: [
-                              Icon(Icons.route_outlined, size: 16, color: theme.colorScheme.primary),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  'Arranged by delivery sequence',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              TextButton.icon(
-                                style: TextButton.styleFrom(
-                                  visualDensity: VisualDensity.compact,
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                ),
-                                onPressed: () => _startEditing(_currentSortedDocs),
-                                icon: const Icon(Icons.swap_vert_rounded, size: 16),
-                                label: const Text('Edit Order', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ),
-                        ),
                       Expanded(
                         child: allDocs.isEmpty
                             ? Center(
@@ -554,26 +533,18 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                 itemBuilder: (context, index) {
                                   final Delivery delivery = filteredDocs[index].data();
                                   final String deliveryID = filteredDocs[index].id;
-                                  final bool isPendingPicklist = delivery.transactionStatus == DeliveryStatus.pendingPicklist;
-
                                   return Material(
                                     color: theme.colorScheme.surface,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      side: BorderSide(
-                                        color: isPendingPicklist
-                                            ? const Color(0xFF7C3AED).withValues(alpha: 0.4)
-                                            : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-                                      ),
+                                      side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
                                     ),
                                     child: InkWell(
                                       onTap: () {
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
-                                            builder: (context) => isPendingPicklist
-                                                ? PicklistPage(deliveryID: deliveryID, delivery: delivery)
-                                                : DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+                                            builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
                                           ),
                                         );
                                       },
@@ -585,16 +556,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                             Container(
                                               padding: const EdgeInsets.all(10),
                                               decoration: BoxDecoration(
-                                                color: isPendingPicklist
-                                                    ? const Color(0xFF7C3AED).withValues(alpha: 0.12)
-                                                    : theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
                                                 borderRadius: BorderRadius.circular(10),
                                               ),
-                                              child: Icon(
-                                                isPendingPicklist ? Icons.fact_check_outlined : Icons.storefront_outlined,
-                                                color: isPendingPicklist ? const Color(0xFF7C3AED) : theme.colorScheme.primary,
-                                                size: 24,
-                                              ),
+                                              child: Icon(Icons.storefront_outlined, color: theme.colorScheme.primary, size: 24),
                                             ),
                                             const SizedBox(width: 12),
                                             Expanded(
@@ -607,9 +572,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                         margin: const EdgeInsets.only(right: 6),
                                                         decoration: BoxDecoration(
-                                                          color: isPendingPicklist
-                                                              ? const Color(0xFF7C3AED).withValues(alpha: 0.12)
-                                                              : theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
+                                                          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
                                                           borderRadius: BorderRadius.circular(6),
                                                         ),
                                                         child: Text(
@@ -617,7 +580,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                           style: TextStyle(
                                                             fontSize: 12,
                                                             fontWeight: FontWeight.bold,
-                                                            color: isPendingPicklist ? const Color(0xFF7C3AED) : theme.colorScheme.onPrimaryContainer,
+                                                            color: theme.colorScheme.onPrimaryContainer,
                                                           ),
                                                         ),
                                                       ),
@@ -645,24 +608,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                           color: theme.colorScheme.onSurfaceVariant,
                                                         ),
                                                       ),
-                                                      if (delivery.picklistCompletedDate != null) ...[
-                                                        Text('•', style: TextStyle(color: theme.colorScheme.outlineVariant)),
-                                                        Row(
-                                                          mainAxisSize: MainAxisSize.min,
-                                                          children: [
-                                                            Icon(Icons.schedule, size: 13, color: Colors.green.shade700),
-                                                            const SizedBox(width: 3),
-                                                            Text(
-                                                              'Picked ${DateFormat('h:mm a').format(delivery.picklistCompletedDate!.toDate())}',
-                                                              style: TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight: FontWeight.w600,
-                                                                color: Colors.green.shade800,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ],
                                                     ],
                                                   ),
                                                 ],
@@ -687,9 +632,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                       ),
                     ],
                   ),
-                );
-              },
-            ),
+                ),
+        );
+      },
     );
   }
 

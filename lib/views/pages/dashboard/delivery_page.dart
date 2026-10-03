@@ -28,9 +28,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
   bool get isSalesmanLocked => !isDealer && hasBreakdownForDay;
 
   double discrepancy = 0;
-  double get effectiveOrderAmount => txtOrderAmount.text.isNotEmpty
-      ? Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text)
-      : widget.delivery.orderAmount;
+  double get effectiveOrderAmount =>
+      txtOrderAmount.text.isNotEmpty ? Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text) : widget.delivery.orderAmount;
   TextEditingController dropdownHapiStore = TextEditingController();
   TextEditingController dropdownStatus = TextEditingController();
   bool isDealer = true;
@@ -69,6 +68,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.deliveryID.isNotEmpty) {
+      _selectedDate = widget.delivery.deliveryDate?.toDate() ?? DateTime.now();
+      networkImagePath = widget.delivery.imagePath;
+      dropdownHapiStore.text = widget.delivery.storeName;
+      dropdownStatus.text = widget.delivery.transactionStatus;
+      txtRemarks.text = widget.delivery.remarks;
+      txtOrderAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.orderAmount);
+      txtCashAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.cashAmount);
+      txtOnlineAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.onlineAmount);
+      txtCreditAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.creditAmount);
+      txtReturnAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.returnAmount);
+      computeDiscrepancy();
+    }
     prefetchData();
   }
 
@@ -122,10 +134,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   Future<void> _checkBreakdownStatus() async {
-    DateTime dateToCheck = widget.deliveryID.isNotEmpty && widget.delivery.deliveryDate != null
-        ? widget.delivery.deliveryDate!.toDate()
-        : _selectedDate;
-    final bool hasBreakdown = await _controller.checkBreakdownStatus(dateToCheck);
+    final bool hasBreakdown = await _controller.checkBreakdownStatus(_selectedDate);
     if (mounted) {
       setState(() {
         hasBreakdownForDay = hasBreakdown;
@@ -135,10 +144,21 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   void prefetchData() async {
     final dealer = await _controller.checkIsDealer();
-    await _checkBreakdownStatus();
 
     if (widget.deliveryID.isNotEmpty) {
-      final imgPath = widget.delivery.imagePath;
+      String imgPath = widget.delivery.imagePath;
+
+      final latest = await _controller.getDeliveryById(widget.deliveryID);
+      if (latest != null) {
+        if (latest.imagePath.isNotEmpty) {
+          imgPath = latest.imagePath;
+        }
+        if (latest.deliveryDate != null && mounted) {
+          _selectedDate = latest.deliveryDate!.toDate();
+        }
+      }
+
+      await _checkBreakdownStatus();
 
       final entries = [
         DropdownMenuEntry(label: DeliveryStatus.pending, value: DeliveryStatus.pending),
@@ -165,6 +185,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         });
       }
     } else {
+      await _checkBreakdownStatus();
       if (mounted) {
         setState(() {
           isDealer = dealer;
@@ -204,6 +225,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           returnAmountText: txtReturnAmount.text,
           imageFile: null,
           networkImagePath: networkImagePath,
+          selectedDate: _selectedDate,
         );
 
         if (mounted) {
@@ -341,18 +363,41 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   Widget _buildProofOfDeliveryCard() {
     final imagePath = networkImagePath.trim();
-    if (imagePath.isEmpty) return const SizedBox.shrink();
-
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (imagePath.isEmpty) {
+      return _buildSectionCard(
+        title: 'Proof of Delivery',
+        icon: Icons.image_outlined,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.no_photography_outlined, size: 22, color: colorScheme.onSurfaceVariant),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'No Proof of Delivery photo attached.',
+                  style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return _buildSectionCard(
       title: 'Proof of Delivery',
       icon: Icons.image_outlined,
       trailing: OutlinedButton.icon(
-        onPressed: () => Helperfunctions.navigateTo(
-          context,
-          ImageViewerPage(image: null, networkImagePath: imagePath),
-        ),
+        onPressed: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: null, networkImagePath: imagePath)),
         style: OutlinedButton.styleFrom(
           visualDensity: VisualDensity.compact,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -364,10 +409,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
-        onTap: () => Helperfunctions.navigateTo(
-          context,
-          ImageViewerPage(image: null, networkImagePath: imagePath),
-        ),
+        onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: null, networkImagePath: imagePath)),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: Stack(
@@ -397,10 +439,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     children: [
                       Icon(Icons.broken_image_outlined, size: 36, color: colorScheme.onSurfaceVariant),
                       const SizedBox(height: 6),
-                      Text(
-                        'Unable to load Proof of Delivery image',
-                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                      ),
+                      Text('Unable to load Proof of Delivery image', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     ],
                   ),
                 ),
@@ -450,10 +489,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
             iconColor: Colors.blue,
             isEnabled: isDealer && !isSalesmanLocked,
           ),
-          if (widget.deliveryID.isEmpty)
-            _buildDatePickerField(label: 'Delivery Date', selectedDate: _selectedDate, onTap: isSalesmanLocked ? () {} : onChangeDate)
-          else
-            _buildDeliveryStatusSelector(),
+          _buildDatePickerField(
+            label: 'Delivery Date',
+            selectedDate: _selectedDate,
+            isEnabled: isDealer && !isSalesmanLocked,
+            onTap: isDealer && !isSalesmanLocked ? onChangeDate : null,
+          ),
+          if (widget.deliveryID.isNotEmpty) _buildDeliveryStatusSelector(),
         ],
       ),
     );
@@ -484,12 +526,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             segments: [
               ButtonSegment<String>(
                 value: DeliveryStatus.pending,
-                label: const Text(
-                  'For Delivery',
-                  maxLines: 1,
-                  softWrap: false,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
+                label: const Text('For Delivery', maxLines: 1, softWrap: false, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 icon: Icon(
                   Icons.local_shipping_outlined,
                   size: 18,
@@ -512,12 +549,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ),
               ButtonSegment<String>(
                 value: DeliveryStatus.returned,
-                label: const Text(
-                  DeliveryStatus.returned,
-                  maxLines: 1,
-                  softWrap: false,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
+                label: const Text(DeliveryStatus.returned, maxLines: 1, softWrap: false, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 icon: Icon(
                   Icons.assignment_return_outlined,
                   size: 18,
@@ -626,30 +658,42 @@ class _DeliveryPageState extends State<DeliveryPage> {
     );
   }
 
-  Widget _buildDatePickerField({required String label, required DateTime selectedDate, required VoidCallback onTap}) {
+  Widget _buildDatePickerField({required String label, required DateTime selectedDate, required VoidCallback? onTap, bool isEnabled = true}) {
     final colorScheme = Theme.of(context).colorScheme;
+    final bool canTap = isEnabled && onTap != null;
     return InkWell(
-      onTap: onTap,
+      onTap: canTap ? onTap : (isEnabled ? null : () => ShowMessage.info(context, 'Only dealers can change the delivery date.')),
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: colorScheme.outlineVariant),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: canTap ? 1.0 : 0.5)),
+          color: canTap ? null : colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
         ),
         child: Row(
           children: [
-            Icon(Icons.calendar_month_outlined, size: 22, color: colorScheme.primary),
+            Icon(Icons.calendar_month_outlined, size: 22, color: canTap ? colorScheme.primary : colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
             const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
-                Text(Helperfunctions.formatDateForDisplay(selectedDate), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(
+                  Helperfunctions.formatDateForDisplay(selectedDate),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: canTap ? colorScheme.onSurface : colorScheme.onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
               ],
             ),
             const Spacer(),
-            Icon(Icons.edit_calendar_outlined, size: 20, color: colorScheme.primary),
+            if (canTap)
+              Icon(Icons.edit_calendar_outlined, size: 20, color: colorScheme.primary)
+            else
+              Icon(Icons.lock_outline, size: 18, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
           ],
         ),
       ),
@@ -968,12 +1012,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         icon: const Icon(Icons.delete_outline, size: 20),
                         label: const FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: Text(
-                            'Delete',
-                            maxLines: 1,
-                            softWrap: false,
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
+                          child: Text('Delete', maxLines: 1, softWrap: false, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
                       ),
                     ),
@@ -1166,12 +1205,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             IconButton(
               icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
               tooltip: 'Digital Receipt & Thermal Print',
-              onPressed: () => DigitalReceiptDialog.show(
-                context,
-                delivery: widget.delivery,
-                deliveryId: widget.deliveryID,
-                proceedLabel: 'Close',
-              ),
+              onPressed: () => DigitalReceiptDialog.show(context, delivery: widget.delivery, deliveryId: widget.deliveryID, proceedLabel: 'Close'),
             ),
         ],
       ),
@@ -1223,20 +1257,14 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         const Icon(Icons.fact_check_outlined, color: Color(0xFF7C3AED), size: 24),
                         const SizedBox(width: 10),
                         const Expanded(
-                          child: Text(
-                            'This order is still Pending Picklist.',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                          ),
+                          child: Text('This order is still Pending Picklist.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                         ),
                         FilledButton.tonal(
                           onPressed: () {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => PicklistPage(
-                                  deliveryID: widget.deliveryID,
-                                  delivery: widget.delivery,
-                                ),
+                                builder: (_) => PicklistPage(deliveryID: widget.deliveryID, delivery: widget.delivery),
                               ),
                             );
                           },
@@ -1249,8 +1277,8 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 // 1. Order & Store Info Card
                 _buildOrderAndStoreCard(),
 
-                // 2. Proof of Delivery Card for reviewing uploaded photo
-                if (networkImagePath.trim().isNotEmpty) _buildProofOfDeliveryCard(),
+                // 2. Proof of Delivery Card for reviewing uploaded photo (accessible to all users)
+                if (widget.deliveryID.isNotEmpty) _buildProofOfDeliveryCard(),
 
                 // 3. Payment Breakdown Card (Animated for Delivered status)
                 if (widget.deliveryID.isNotEmpty)

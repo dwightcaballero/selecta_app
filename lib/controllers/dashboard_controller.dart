@@ -41,6 +41,10 @@ class DashboardController {
   Stream<int> getPendingPicklistsCountStream({DateTime? date}) =>
       _deliveryService.getPendingPicklistCountStream(date: date);
 
+  /// Live count stream for deliveries pending completion for [date] (defaults to current day).
+  Stream<int> getPendingDeliveriesCountStream({DateTime? date}) =>
+      _deliveryService.getPendingDeliveriesCountStream(date: date);
+
   /// Fetches the currently logged in user profile from storage.
   Future<Users?> getCurrentUser() => KVariables.getUser();
 

@@ -4,7 +4,6 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
@@ -20,7 +19,6 @@ import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
-import 'package:selecta_ops/views/widgets/ai_chat_modal.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
@@ -39,11 +37,13 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
   late final Stream<int> _tasksCountStream;
   late final Stream<int> _merchBlitzCountStream;
   late final Stream<int> _pendingPicklistsCountStream;
+  late final Stream<int> _pendingDeliveriesCountStream;
   Users? _currentUser;
   DashboardDTO _dashboardDTO = DashboardDTO.empty();
   bool _isLoading = true;
   bool _isSyncing = false;
   String _lastSyncDateTime = '';
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
@@ -51,6 +51,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     _tasksCountStream = _controller.getTasksPendingAndOverdueCountStream();
     _merchBlitzCountStream = _controller.getMerchBlitzCountStream();
     _pendingPicklistsCountStream = _controller.getPendingPicklistsCountStream();
+    _pendingDeliveriesCountStream = _controller.getPendingDeliveriesCountStream();
     _loadInitialData();
   }
 
@@ -307,7 +308,14 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     );
   }
 
-  Widget _buildQuickAccessCard({required String label, required IconData icon, required Widget nextPage, int count = 0, Color? iconColor}) {
+  Widget _buildQuickAccessCard({
+    required String label,
+    required IconData icon,
+    Widget? nextPage,
+    VoidCallback? onTap,
+    int count = 0,
+    Color? iconColor,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final effectiveColor = iconColor ?? colorScheme.primary;
 
@@ -321,13 +329,17 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () async {
-          await Helperfunctions.navigateThenWait(context, nextPage);
-          if (mounted) {
-            final cached = await _controller.getCachedDashboardData();
-            if (cached != null) {
-              setState(() {
-                _dashboardDTO = cached;
-              });
+          if (onTap != null) {
+            onTap();
+          } else if (nextPage != null) {
+            await Helperfunctions.navigateThenWait(context, nextPage);
+            if (mounted) {
+              final cached = await _controller.getCachedDashboardData();
+              if (cached != null) {
+                setState(() {
+                  _dashboardDTO = cached;
+                });
+              }
             }
           }
         },
@@ -391,21 +403,6 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           ),
 
           // Drawer Navigation Items (Field Activities & Reports)
-          _buildDrawerItem(Icons.add_shopping_cart_rounded, 'Book Order', const BookOrderPage()),
-          StreamBuilder<int>(
-            stream: _pendingPicklistsCountStream,
-            initialData: _dashboardDTO.pendingPicklistCount,
-            builder: (context, snapshot) {
-              return _buildDrawerItem(Icons.fact_check_outlined, 'Pending Picklists', const PicklistListPage(), badgeCount: snapshot.data ?? 0);
-            },
-          ),
-          _buildDrawerItem(
-            Icons.local_shipping_outlined,
-            'Orders & Deliveries',
-            const DeliveryListPage(),
-            badgeCount: _dashboardDTO.pendingDeliveryCount,
-          ),
-          _buildDrawerItem(Icons.account_balance_wallet_outlined, 'Credit List', const CreditlistPage(), badgeCount: _dashboardDTO.unpaidCreditCount),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
@@ -511,8 +508,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildHomeDashboard() {
     return Scaffold(
       drawer: _buildDrawer(),
       appBar: CustomAppbar(
@@ -543,13 +539,14 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null,
         onPressed: () {
-          AiChatModal.show(context, dashboardDTO: _dashboardDTO, userRole: 'Salesman');
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const BookOrderPage()));
         },
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.auto_awesome, size: 20),
-        label: const Text('Ask Sedy', style: TextStyle(fontWeight: FontWeight.bold)),
+        icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
+        label: const Text('Book Order', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -590,19 +587,25 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                                 icon: Icons.fact_check_outlined,
                                 count: snapshot.data ?? 0,
                                 iconColor: const Color(0xFF7C3AED),
-                                nextPage: const PicklistListPage(),
+                                onTap: () => setState(() => _currentTabIndex = 2),
                               );
                             },
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Deliveries',
-                            icon: Icons.local_shipping_outlined,
-                            count: _dashboardDTO.pendingDeliveryCount,
-                            iconColor: const Color(0xFF2563EB),
-                            nextPage: const DeliveryListPage(),
+                          child: StreamBuilder<int>(
+                            stream: _pendingDeliveriesCountStream,
+                            initialData: _dashboardDTO.pendingDeliveryCount,
+                            builder: (context, snapshot) {
+                              return _buildQuickAccessCard(
+                                label: 'Deliveries',
+                                icon: Icons.local_shipping_outlined,
+                                count: snapshot.data ?? _dashboardDTO.pendingDeliveryCount,
+                                iconColor: const Color(0xFF2563EB),
+                                onTap: () => setState(() => _currentTabIndex = 3),
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -616,7 +619,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                             icon: Icons.qr_code_scanner_outlined,
                             count: _dashboardDTO.totalNotScannedCount + _dashboardDTO.totalUnassignedCount,
                             iconColor: const Color(0xFFD97706),
-                            nextPage: const ScanninglistPage(),
+                            onTap: () => setState(() => _currentTabIndex = 4),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -626,7 +629,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                             icon: Icons.map_outlined,
                             count: _dashboardDTO.pendingPjpCount,
                             iconColor: const Color(0xFF0F766E),
-                            nextPage: const PjpListPage(),
+                            onTap: () => setState(() => _currentTabIndex = 1),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -687,42 +690,90 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildBadge({
+    required Stream<int> stream,
+    required int initialCount,
+    required IconData icon,
+  }) {
+    return StreamBuilder<int>(
+      stream: stream,
+      initialData: initialCount,
+      builder: (context, snapshot) {
+        final count = snapshot.data ?? 0;
+        if (count <= 0) return Icon(icon);
+        return Badge.count(
+          count: count,
+          child: Icon(icon),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentTabIndex,
+        children: [
+          _buildHomeDashboard(),
+          const PjpListPage(),
+          const PicklistListPage(),
+          const DeliveryListPage(),
+          const ScanninglistPage(),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
+        selectedIndex: _currentTabIndex,
         height: 65,
         elevation: 3,
-        onDestinationSelected: (index) async {
-          if (index == 0) return;
-          Widget? target;
-          switch (index) {
-            case 1:
-              target = const PjpListPage();
-              break;
-            case 2:
-              target = const DeliveryListPage();
-              break;
-            case 3:
-              target = const BookOrderPage();
-              break;
-            case 4:
-              target = const ScanninglistPage();
-              break;
-          }
-          if (target != null) {
-            await Helperfunctions.navigateThenWait(context, target);
-            if (mounted) await _syncDashboard();
-          }
+        onDestinationSelected: (index) {
+          setState(() => _currentTabIndex = index);
         },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: 'Route'),
-          NavigationDestination(icon: Icon(Icons.local_shipping_outlined), selectedIcon: Icon(Icons.local_shipping_rounded), label: 'Deliveries'),
-          NavigationDestination(
-            icon: Icon(Icons.add_shopping_cart_outlined),
-            selectedIcon: Icon(Icons.add_shopping_cart_rounded),
-            label: 'Book Order',
+        destinations: [
+          const NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard_rounded),
+            label: 'Home',
           ),
-          NavigationDestination(icon: Icon(Icons.qr_code_scanner_outlined), selectedIcon: Icon(Icons.qr_code_scanner_rounded), label: 'Scan'),
+          const NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map_rounded),
+            label: 'Route',
+          ),
+          NavigationDestination(
+            icon: _buildBadge(
+              stream: _pendingPicklistsCountStream,
+              initialCount: _dashboardDTO.pendingPicklistCount,
+              icon: Icons.fact_check_outlined,
+            ),
+            selectedIcon: _buildBadge(
+              stream: _pendingPicklistsCountStream,
+              initialCount: _dashboardDTO.pendingPicklistCount,
+              icon: Icons.fact_check_rounded,
+            ),
+            label: 'PickLists',
+          ),
+          NavigationDestination(
+            icon: _buildBadge(
+              stream: _pendingDeliveriesCountStream,
+              initialCount: _dashboardDTO.pendingDeliveryCount,
+              icon: Icons.local_shipping_outlined,
+            ),
+            selectedIcon: _buildBadge(
+              stream: _pendingDeliveriesCountStream,
+              initialCount: _dashboardDTO.pendingDeliveryCount,
+              icon: Icons.local_shipping_rounded,
+            ),
+            label: 'Deliveries',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.qr_code_scanner_outlined),
+            selectedIcon: Icon(Icons.qr_code_scanner_rounded),
+            label: 'Scan',
+          ),
         ],
       ),
     );

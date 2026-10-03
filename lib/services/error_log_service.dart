@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:intl/intl.dart';
@@ -117,6 +118,8 @@ class ErrorLogService {
     return _cachedAppVersion!;
   }
 
+  static final List<ErrorLogItem> _webMemoryLogs = [];
+
   /// Helper to get the private application documents file for error queueing.
   static Future<File> _getLocalLogFile() async {
     final directory = await getApplicationDocumentsDirectory();
@@ -125,6 +128,9 @@ class ErrorLogService {
 
   /// Reads all cached log items from the internal sandboxed file.
   static Future<List<ErrorLogItem>> _readLocalLogs() async {
+    if (kIsWeb) {
+      return List<ErrorLogItem>.from(_webMemoryLogs);
+    }
     try {
       final file = await _getLocalLogFile();
       if (!await file.exists()) {
@@ -148,6 +154,11 @@ class ErrorLogService {
 
   /// Writes the given list of error log items to the internal sandboxed file.
   static Future<void> _writeLocalLogs(List<ErrorLogItem> items) async {
+    if (kIsWeb) {
+      _webMemoryLogs.clear();
+      _webMemoryLogs.addAll(items);
+      return;
+    }
     try {
       final file = await _getLocalLogFile();
       final jsonList = items.map((e) => e.toJson()).toList();
@@ -197,7 +208,7 @@ class ErrorLogService {
       stackTrace: stackTrace?.toString(),
       userEmail: userEmail,
       userRole: userRole,
-      platform: Platform.operatingSystem,
+      platform: kIsWeb ? 'web' : Platform.operatingSystem,
       appVersion: currentVersion,
       extraData: extraData,
       isUploaded: false,
@@ -408,6 +419,10 @@ class ErrorLogService {
 
   /// Clears all local log records.
   static Future<void> clearLocalLogs() async {
+    if (kIsWeb) {
+      _webMemoryLogs.clear();
+      return;
+    }
     try {
       final file = await _getLocalLogFile();
       if (await file.exists()) {

@@ -269,6 +269,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
       ),
       floatingActionButton: _isEditing
           ? FloatingActionButton.extended(
+              heroTag: null,
               onPressed: _isSaving ? null : _saveOrder,
               icon: _isSaving
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -280,6 +281,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
               backgroundColor: colorScheme.primary,
             )
           : FloatingActionButton.extended(
+              heroTag: null,
               onPressed: () => Helperfunctions.navigateTo(context, BookOrderPage(initialDate: _selectedDate)),
               icon: const Icon(Icons.add_shopping_cart_rounded, size: 22),
               label: const Text('Book Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
