@@ -110,6 +110,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
   String _dateLabel() => _controller.formatDateLabel(_selectedDate);
 
   void _startEditing(List<QueryDocumentSnapshot<Delivery>> sortedDocs) {
+    if (sortedDocs.length <= 1) return ShowMessage.info(context, 'Nothing to rearrange');
     setState(() {
       _isEditing = true;
       _editableDeliveryIDs = sortedDocs.map((doc) => doc.id).toList();
@@ -251,7 +252,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
         title: _isEditing ? 'Rearrange Picklist' : 'Pending Picklists',
         subtitle: _isEditing ? 'Drag to reorder • ${_dateLabel()}' : null,
         actions: [
-          if (!_isEditing && _currentSortedDocs.isNotEmpty)
+          if (!_isEditing)
             IconButton(
               icon: const Icon(Icons.swap_vert_rounded, color: Colors.white),
               tooltip: 'Rearrange store order',
@@ -269,6 +270,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
       ),
       floatingActionButton: _isEditing
           ? FloatingActionButton.extended(
+              heroTag: null,
               onPressed: _isSaving ? null : _saveOrder,
               icon: _isSaving
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -280,6 +282,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
               backgroundColor: colorScheme.primary,
             )
           : FloatingActionButton.extended(
+              heroTag: null,
               onPressed: () => Helperfunctions.navigateTo(context, BookOrderPage(initialDate: _selectedDate)),
               icon: const Icon(Icons.add_shopping_cart_rounded, size: 22),
               label: const Text('Book Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
@@ -391,32 +394,6 @@ class _PicklistListPageState extends State<PicklistListPage> {
                               ],
                             ),
                           ),
-                          if (sorted.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.route_outlined, size: 16, color: colorScheme.primary),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      'Arranged by $targetPjpDay PJP (Prev Day) • Non-PJP at bottom',
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  TextButton.icon(
-                                    style: TextButton.styleFrom(
-                                      visualDensity: VisualDensity.compact,
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    ),
-                                    onPressed: () => _startEditing(sorted),
-                                    icon: const Icon(Icons.swap_vert_rounded, size: 16),
-                                    label: const Text('Edit Order', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                            ),
                           const SizedBox(height: 2),
                           Expanded(
                             child: sorted.isEmpty

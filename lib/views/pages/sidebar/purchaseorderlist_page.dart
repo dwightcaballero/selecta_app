@@ -543,6 +543,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     return Scaffold(
       appBar: const CustomAppbar(title: 'Purchase Orders', subtitle: 'Invoices & Monthly Tracking'),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null,
         onPressed: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty())),
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(

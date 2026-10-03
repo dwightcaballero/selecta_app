@@ -24,6 +24,7 @@ class DashboardController {
   final PurchaseOrderService _purchaseOrderService = PurchaseOrderService();
   final DeliveryService _deliveryService = DeliveryService();
   final UserService _userService = UserService();
+  final ScanningServices _scanningService = ScanningServices();
 
   /// Live count stream for pending and overdue tasks.
   Stream<int> getTasksPendingAndOverdueCountStream() => _tasksService.getPendingAndOverdueCountStream();
@@ -36,6 +37,42 @@ class DashboardController {
 
   /// Live count stream for orders currently awaiting picklist completion for [date] (defaults to current day).
   Stream<int> getPendingPicklistsCountStream({DateTime? date}) => _deliveryService.getPendingPicklistCountStream(date: date);
+
+  /// Live count stream for deliveries pending completion for [date] (defaults to current day).
+  Stream<int> getPendingDeliveriesCountStream({DateTime? date}) => _deliveryService.getPendingDeliveriesCountStream(date: date);
+
+  /// Live count stream for stores in PJP of current day that are not yet visited.
+  Stream<int> getPendingPjpCountStream({DateTime? date}) => _hapiStoreService.getPendingPjpCountStream(date);
+
+  /// Live count stream for pending scannings (not scanned + unassigned).
+  Stream<int> getPendingScanningCountStream() {
+    return _scanningService.getScanningsStream().asyncMap((scannings) async {
+      final listStores = await HapiStoreService.getListHapiStores();
+      final filteredScannings = scannings.where((s) => s.status != ScanningStatus.pullout).toList();
+      final notScannedCount = filteredScannings
+          .where((s) => s.status == ScanningStatus.notScanned || s.status == ScanningStatus.pending)
+          .length;
+
+      final assignedStoreNames = <String>{};
+      for (final s in filteredScannings) {
+        if (s.barcode.trim().isNotEmpty && s.storeName.trim().isNotEmpty) {
+          assignedStoreNames.add(s.storeName.trim().toLowerCase());
+        }
+      }
+
+      int unassignedCount = 0;
+      for (final store in listStores) {
+        final name = store.storeName.trim();
+        if (name.isEmpty) continue;
+        if (!assignedStoreNames.contains(name.toLowerCase())) {
+          unassignedCount++;
+        }
+      }
+      unassignedCount += filteredScannings.where((s) => s.status == ScanningStatus.unassigned).length;
+
+      return notScannedCount + unassignedCount;
+    });
+  }
 
   /// Fetches the currently logged in user profile from storage.
   Future<Users?> getCurrentUser() => KVariables.getUser();

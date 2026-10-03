@@ -314,6 +314,19 @@ class HapiStoreService {
     return countPendingPjpVisitsForToday(stores);
   }
 
+  /// Live count stream for stores in PJP of current day that are not yet visited.
+  Stream<int> getPendingPjpCountStream([DateTime? date]) {
+    return getListHapiStoresAsStream().map((snapshot) {
+      final now = date ?? DateTime.now();
+      final stores = snapshot.docs.map((doc) {
+        final data = doc.data();
+        if (data is Hapistore) return data;
+        return Hapistore.fromJson(data as Map<String, Object?>);
+      }).toList();
+      return countPendingPjpVisitsForToday(stores, now);
+    });
+  }
+
   Stream<int> getUnsurveyedMerchBlitzCountStream({bool forDealer = false}) {
     final controller = StreamController<int>.broadcast();
     Configuration? currentConfig;

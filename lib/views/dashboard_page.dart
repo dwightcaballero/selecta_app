@@ -12,10 +12,8 @@ import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/services/offline_sync_service.dart';
-import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/scanninglist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
 import 'package:selecta_ops/views/pages/others/notifications_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
@@ -45,6 +43,7 @@ class _DashboardPageState extends State<DashboardPage> {
   late final Stream<int> _merchBlitzCountStream;
   late final Stream<int> _purchaseOrdersAwaitingCountStream;
   late final Stream<int> _pendingPicklistsCountStream;
+  late final Stream<int> _pendingDeliveriesCountStream;
   DashboardDTO dashboardDTO = DashboardDTO.empty();
   Users? _currentUser;
   Configuration? _configuration;
@@ -52,6 +51,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool isDealer = false;
   bool isSyncing = false;
   String lastSyncDateTime = '';
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
@@ -60,6 +60,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _merchBlitzCountStream = _controller.getMerchBlitzCountStream(forDealer: true);
     _purchaseOrdersAwaitingCountStream = _controller.getPurchaseOrdersAwaitingCountStream();
     _pendingPicklistsCountStream = _controller.getPendingPicklistsCountStream();
+    _pendingDeliveriesCountStream = _controller.getPendingDeliveriesCountStream();
     _configSubscription = ConfigurationService().getConfigurationStream().listen((config) {
       if (mounted && config != null) {
         setState(() {
@@ -194,6 +195,22 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _navigateToPage(Widget page) async {
+    if (page is PurchaseorderlistPage) {
+      setState(() => _currentTabIndex = 1);
+      return;
+    }
+    if (page is InventoryPage) {
+      setState(() => _currentTabIndex = 2);
+      return;
+    }
+    if (page is PicklistListPage) {
+      setState(() => _currentTabIndex = 3);
+      return;
+    }
+    if (page is DeliveryListPage) {
+      setState(() => _currentTabIndex = 4);
+      return;
+    }
     await Helperfunctions.navigateThenWait(context, page);
     if (mounted) await _refreshDashboardIfNeeded();
   }
@@ -386,210 +403,132 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  /// Bottom NavigationBar destinations — reused for both roles.
-  List<NavigationDestination> _navDestinations() => isDealer
-      ? const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.shopping_bag_outlined), selectedIcon: Icon(Icons.shopping_bag_rounded), label: 'Orders'),
-          NavigationDestination(icon: Icon(Icons.warehouse_outlined), selectedIcon: Icon(Icons.warehouse_rounded), label: 'Inventory'),
-          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: 'Route'),
-          NavigationDestination(icon: Icon(Icons.qr_code_scanner_outlined), selectedIcon: Icon(Icons.qr_code_scanner_rounded), label: 'Scan'),
-        ]
-      : const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: 'Route'),
-          NavigationDestination(icon: Icon(Icons.local_shipping_outlined), selectedIcon: Icon(Icons.local_shipping_rounded), label: 'Deliveries'),
-          NavigationDestination(
-            icon: Icon(Icons.add_shopping_cart_outlined),
-            selectedIcon: Icon(Icons.add_shopping_cart_rounded),
-            label: 'Book Order',
-          ),
-          NavigationDestination(icon: Icon(Icons.qr_code_scanner_outlined), selectedIcon: Icon(Icons.qr_code_scanner_rounded), label: 'Scan'),
-        ];
-
-  void _onNavSelected(int index) {
-    if (index == 0) return;
-    if (isDealer) {
-      switch (index) {
-        case 1:
-          _navigateToPage(const PurchaseorderlistPage());
-          break;
-        case 2:
-          _navigateToPage(const InventoryPage());
-          break;
-        case 3:
-          _navigateToPage(const PjpListPage());
-          break;
-        case 4:
-          _navigateToPage(const ScanninglistPage());
-          break;
-      }
-    } else {
-      switch (index) {
-        case 1:
-          _navigateToPage(const PjpListPage());
-          break;
-        case 2:
-          _navigateToPage(const DeliveryListPage());
-          break;
-        case 3:
-          _navigateToPage(const BookOrderPage());
-          break;
-        case 4:
-          _navigateToPage(const ScanninglistPage());
-          break;
-      }
-    }
+  Widget _buildBadge({
+    required Stream<int> stream,
+    required int initialCount,
+    required IconData icon,
+  }) {
+    return StreamBuilder<int>(
+      stream: stream,
+      initialData: initialCount,
+      builder: (context, snapshot) {
+        final count = snapshot.data ?? 0;
+        if (count <= 0) return Icon(icon);
+        return Badge.count(
+          count: count,
+          child: Icon(icon),
+        );
+      },
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDesktop = ScreenSize.isDesktop(context);
-    final isTablet = ScreenSize.isTablet(context);
-    final colorScheme = Theme.of(context).colorScheme;
-
-    // ── AppBar actions (shared) ────────────────────────────────────────────
-    final appBarActions = [
-      IconButton(
-        icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage())),
-        tooltip: 'Notifications',
+  /// Bottom NavigationBar destinations — 5 tabs with live count badges
+  List<NavigationDestination> _navDestinations() => [
+    const NavigationDestination(
+      icon: Icon(Icons.dashboard_outlined),
+      selectedIcon: Icon(Icons.dashboard_rounded),
+      label: 'Home',
+    ),
+    NavigationDestination(
+      icon: _buildBadge(
+        stream: _purchaseOrdersAwaitingCountStream,
+        initialCount: 0,
+        icon: Icons.shopping_bag_outlined,
       ),
-      IconButton(
-        icon: isSyncing
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-            : const Icon(Icons.sync_rounded, color: Colors.white),
-        onPressed: isSyncing ? null : syncDashboard,
-        tooltip: 'Sync Dashboard',
+      selectedIcon: _buildBadge(
+        stream: _purchaseOrdersAwaitingCountStream,
+        initialCount: 0,
+        icon: Icons.shopping_bag_rounded,
       ),
-    ];
+      label: 'Orders',
+    ),
+    const NavigationDestination(
+      icon: Icon(Icons.warehouse_outlined),
+      selectedIcon: Icon(Icons.warehouse_rounded),
+      label: 'Inventory',
+    ),
+    NavigationDestination(
+      icon: _buildBadge(
+        stream: _pendingPicklistsCountStream,
+        initialCount: dashboardDTO.pendingPicklistCount,
+        icon: Icons.fact_check_outlined,
+      ),
+      selectedIcon: _buildBadge(
+        stream: _pendingPicklistsCountStream,
+        initialCount: dashboardDTO.pendingPicklistCount,
+        icon: Icons.fact_check_rounded,
+      ),
+      label: 'PickLists',
+    ),
+    NavigationDestination(
+      icon: _buildBadge(
+        stream: _pendingDeliveriesCountStream,
+        initialCount: dashboardDTO.pendingDeliveryCount,
+        icon: Icons.local_shipping_outlined,
+      ),
+      selectedIcon: _buildBadge(
+        stream: _pendingDeliveriesCountStream,
+        initialCount: dashboardDTO.pendingDeliveryCount,
+        icon: Icons.local_shipping_rounded,
+      ),
+      label: 'Deliveries',
+    ),
+  ];
 
-    // ── DESKTOP layout: permanent sidebar + content ────────────────────────
-    if (isDesktop) {
-      return Scaffold(
-        appBar: CustomAppbar(
-          title: 'Dashboard',
-          subtitle: 'Selecta Operations',
-          showBackButton: false,
-          leading: IconButton(
-            icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
-            tooltip: 'Ask Sedy AI',
-            onPressed: () => AiChatModal.show(context, dashboardDTO: dashboardDTO, userRole: isDealer ? 'Dealer' : 'Salesman'),
-          ),
-          actions: appBarActions,
-        ),
-        body: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Permanent sidebar
-            _buildSidebar(),
-            // Main content
-            Expanded(child: _buildDashboardBody()),
-          ],
-        ),
-      );
-    }
+  /// NavigationRail destinations for tablet
+  List<NavigationRailDestination> _navRailDestinations() => [
+    const NavigationRailDestination(
+      icon: Icon(Icons.dashboard_outlined),
+      selectedIcon: Icon(Icons.dashboard_rounded),
+      label: Text('Home'),
+    ),
+    NavigationRailDestination(
+      icon: _buildBadge(
+        stream: _purchaseOrdersAwaitingCountStream,
+        initialCount: 0,
+        icon: Icons.shopping_bag_outlined,
+      ),
+      selectedIcon: _buildBadge(
+        stream: _purchaseOrdersAwaitingCountStream,
+        initialCount: 0,
+        icon: Icons.shopping_bag_rounded,
+      ),
+      label: const Text('Orders'),
+    ),
+    const NavigationRailDestination(
+      icon: Icon(Icons.warehouse_outlined),
+      selectedIcon: Icon(Icons.warehouse_rounded),
+      label: Text('Inventory'),
+    ),
+    NavigationRailDestination(
+      icon: _buildBadge(
+        stream: _pendingPicklistsCountStream,
+        initialCount: dashboardDTO.pendingPicklistCount,
+        icon: Icons.fact_check_outlined,
+      ),
+      selectedIcon: _buildBadge(
+        stream: _pendingPicklistsCountStream,
+        initialCount: dashboardDTO.pendingPicklistCount,
+        icon: Icons.fact_check_rounded,
+      ),
+      label: const Text('PickLists'),
+    ),
+    NavigationRailDestination(
+      icon: _buildBadge(
+        stream: _pendingDeliveriesCountStream,
+        initialCount: dashboardDTO.pendingDeliveryCount,
+        icon: Icons.local_shipping_outlined,
+      ),
+      selectedIcon: _buildBadge(
+        stream: _pendingDeliveriesCountStream,
+        initialCount: dashboardDTO.pendingDeliveryCount,
+        icon: Icons.local_shipping_rounded,
+      ),
+      label: const Text('Deliveries'),
+    ),
+  ];
 
-    // ── TABLET layout: NavigationRail + content, no bottom nav ─────────────
-    if (isTablet) {
-      return Scaffold(
-        appBar: CustomAppbar(
-          title: 'Dashboard',
-          subtitle: 'Selecta Operations',
-          showBackButton: false,
-          leading: Builder(
-            builder: (ctx) => IconButton(
-              icon: const Icon(Icons.menu_rounded, color: Colors.white),
-              onPressed: () => Scaffold.of(ctx).openDrawer(),
-              tooltip: 'Open Menu',
-            ),
-          ),
-          actions: appBarActions,
-        ),
-        drawer: DashboardDrawer(
-          currentUser: _currentUser,
-          isDealer: isDealer,
-          isSyncing: isSyncing,
-          dashboardDTO: dashboardDTO,
-          merchBlitzCountStream: _merchBlitzCountStream,
-          tasksCountStream: _tasksCountStream,
-          onSync: syncDashboard,
-          onUploadErrorLogs: _handleUploadErrorLogs,
-          onLogout: onLogout,
-          onCheckForUpdates: () => AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true),
-          onNavigate: _navigateToPage,
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => AiChatModal.show(context, dashboardDTO: dashboardDTO, userRole: isDealer ? 'Dealer' : 'Salesman'),
-          backgroundColor: colorScheme.primary,
-          foregroundColor: Colors.white,
-          tooltip: 'Ask Sedy',
-          child: const Icon(Icons.auto_awesome, size: 22),
-        ),
-        body: Row(
-          children: [
-            // Compact NavigationRail on tablet
-            NavigationRail(
-              selectedIndex: 0,
-              onDestinationSelected: _onNavSelected,
-              labelType: NavigationRailLabelType.selected,
-              minWidth: 56,
-              destinations: isDealer
-                  ? const [
-                      NavigationRailDestination(
-                        icon: Icon(Icons.dashboard_outlined),
-                        selectedIcon: Icon(Icons.dashboard_rounded),
-                        label: Text('Home'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.shopping_bag_outlined),
-                        selectedIcon: Icon(Icons.shopping_bag_rounded),
-                        label: Text('Orders'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.warehouse_outlined),
-                        selectedIcon: Icon(Icons.warehouse_rounded),
-                        label: Text('Inventory'),
-                      ),
-                      NavigationRailDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: Text('Route')),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.qr_code_scanner_outlined),
-                        selectedIcon: Icon(Icons.qr_code_scanner_rounded),
-                        label: Text('Scan'),
-                      ),
-                    ]
-                  : const [
-                      NavigationRailDestination(
-                        icon: Icon(Icons.dashboard_outlined),
-                        selectedIcon: Icon(Icons.dashboard_rounded),
-                        label: Text('Home'),
-                      ),
-                      NavigationRailDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map_rounded), label: Text('Route')),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.local_shipping_outlined),
-                        selectedIcon: Icon(Icons.local_shipping_rounded),
-                        label: Text('Deliveries'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.add_shopping_cart_outlined),
-                        selectedIcon: Icon(Icons.add_shopping_cart_rounded),
-                        label: Text('Orders'),
-                      ),
-                      NavigationRailDestination(
-                        icon: Icon(Icons.qr_code_scanner_outlined),
-                        selectedIcon: Icon(Icons.qr_code_scanner_rounded),
-                        label: Text('Scan'),
-                      ),
-                    ],
-            ),
-            const VerticalDivider(width: 1, thickness: 1),
-            Expanded(child: _buildDashboardBody()),
-          ],
-        ),
-      );
-    }
-
-    // ── PHONE layout: original bottom nav + hamburger drawer ───────────────
+  Widget _buildHomeDashboard(List<Widget> appBarActions, ColorScheme colorScheme) {
     return Scaffold(
       appBar: CustomAppbar(
         title: 'Dashboard',
@@ -618,6 +557,7 @@ class _DashboardPageState extends State<DashboardPage> {
         onNavigate: _navigateToPage,
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null,
         onPressed: () => AiChatModal.show(context, dashboardDTO: dashboardDTO, userRole: isDealer ? 'Dealer' : 'Salesman'),
         backgroundColor: colorScheme.primary,
         foregroundColor: Colors.white,
@@ -625,11 +565,97 @@ class _DashboardPageState extends State<DashboardPage> {
         label: const Text('Ask Sedy', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: _buildDashboardBody(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDesktop = ScreenSize.isDesktop(context);
+    final isTablet = ScreenSize.isTablet(context);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    // ── AppBar actions (shared) ────────────────────────────────────────────
+    final appBarActions = [
+      IconButton(
+        icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage())),
+        tooltip: 'Notifications',
+      ),
+      IconButton(
+        icon: isSyncing
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : const Icon(Icons.sync_rounded, color: Colors.white),
+        onPressed: isSyncing ? null : syncDashboard,
+        tooltip: 'Sync Dashboard',
+      ),
+    ];
+
+    final tabPages = [
+      _buildHomeDashboard(appBarActions, colorScheme),
+      const PurchaseorderlistPage(),
+      const InventoryPage(),
+      const PicklistListPage(),
+      const DeliveryListPage(),
+    ];
+
+    // ── DESKTOP layout: permanent sidebar + tab content ────────────────────────
+    if (isDesktop) {
+      return Scaffold(
+        body: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSidebar(),
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(
+              child: IndexedStack(
+                index: _currentTabIndex,
+                children: tabPages,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── TABLET layout: NavigationRail + tab content ─────────────────────
+    if (isTablet) {
+      return Scaffold(
+        body: Row(
+          children: [
+            NavigationRail(
+              selectedIndex: _currentTabIndex,
+              onDestinationSelected: (index) {
+                setState(() => _currentTabIndex = index);
+              },
+              labelType: NavigationRailLabelType.selected,
+              minWidth: 56,
+              destinations: _navRailDestinations(),
+            ),
+            const VerticalDivider(width: 1, thickness: 1),
+            Expanded(
+              child: IndexedStack(
+                index: _currentTabIndex,
+                children: tabPages,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ── PHONE layout: persistent bottom nav + IndexedStack ───────────────
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentTabIndex,
+        children: tabPages,
+      ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: 0,
+        selectedIndex: _currentTabIndex,
         height: 65,
         elevation: 3,
-        onDestinationSelected: _onNavSelected,
+        onDestinationSelected: (index) {
+          setState(() => _currentTabIndex = index);
+        },
         destinations: _navDestinations(),
       ),
     );

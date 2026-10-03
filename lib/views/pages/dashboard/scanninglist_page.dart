@@ -624,7 +624,15 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 10),
+            _buildStatusFilterBar(
+              notScannedCount: notScannedCount,
+              pendingCount: pendingCount,
+              scannedCount: scannedCount,
+              pulloutCount: pulloutCount,
+              unassignedCount: unassignedCount,
+            ),
+            const SizedBox(height: 8),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: prefetchData,
@@ -643,96 +651,90 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: null,
         onPressed: _scanBarcode,
         icon: const Icon(Icons.qr_code_scanner_rounded),
         label: const Text('Scan barcode'),
       ),
-      bottomNavigationBar: NavigationBar(
-        elevation: 0,
-        backgroundColor: colorScheme.surface,
-        indicatorColor: colorScheme.primary.withValues(alpha: 0.14),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (int index) {
-          setState(() => _currentIndex = index);
-        },
-        destinations: [
-          NavigationDestination(
-            icon: Badge.count(
-              count: notScannedCount,
-              isLabelVisible: notScannedCount > 0,
-              backgroundColor: colorScheme.tertiary,
-              child: const Icon(Icons.radio_button_unchecked),
+    );
+  }
+
+  Widget _buildStatusFilterBar({
+    required int notScannedCount,
+    required int pendingCount,
+    required int scannedCount,
+    required int pulloutCount,
+    required int unassignedCount,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final tabs = [
+      (label: 'Not Scanned', icon: Icons.radio_button_unchecked, count: notScannedCount, color: colorScheme.tertiary),
+      (label: 'Pending', icon: Icons.hourglass_top_rounded, count: pendingCount, color: Colors.amber.shade800),
+      (label: 'Scanned', icon: Icons.check_circle_outline, count: scannedCount, color: Colors.green),
+      (label: 'Pullout', icon: Icons.outbox_outlined, count: pulloutCount, color: colorScheme.error),
+      (label: 'Unassigned', icon: Icons.link_off_outlined, count: unassignedCount, color: Colors.orange.shade800),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: List.generate(tabs.length, (index) {
+          final tab = tabs[index];
+          final isSelected = _currentIndex == index;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              selected: isSelected,
+              showCheckmark: false,
+              avatar: Icon(
+                tab.icon,
+                size: 16,
+                color: isSelected ? Colors.white : tab.color,
+              ),
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    tab.label,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected ? Colors.white : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  if (tab.count > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.white.withValues(alpha: 0.25) : tab.color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${tab.count}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? Colors.white : tab.color,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+              selectedColor: tab.color,
+              side: BorderSide(
+                color: isSelected ? tab.color : colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              onSelected: (_) => setState(() => _currentIndex = index),
             ),
-            selectedIcon: Badge.count(
-              count: notScannedCount,
-              isLabelVisible: notScannedCount > 0,
-              backgroundColor: colorScheme.tertiary,
-              child: const Icon(Icons.pending_outlined),
-            ),
-            label: 'Not Scanned',
-          ),
-          NavigationDestination(
-            icon: Badge.count(
-              count: pendingCount,
-              isLabelVisible: pendingCount > 0,
-              backgroundColor: Colors.amber.shade800,
-              child: const Icon(Icons.hourglass_top_outlined),
-            ),
-            selectedIcon: Badge.count(
-              count: pendingCount,
-              isLabelVisible: pendingCount > 0,
-              backgroundColor: Colors.amber.shade800,
-              child: const Icon(Icons.hourglass_top_rounded),
-            ),
-            label: 'Pending',
-          ),
-          NavigationDestination(
-            icon: Badge.count(
-              count: scannedCount,
-              isLabelVisible: scannedCount > 0,
-              backgroundColor: Colors.green,
-              child: const Icon(Icons.check_circle_outline),
-            ),
-            selectedIcon: Badge.count(
-              count: scannedCount,
-              isLabelVisible: scannedCount > 0,
-              backgroundColor: Colors.green,
-              child: const Icon(Icons.check_circle),
-            ),
-            label: 'Scanned',
-          ),
-          NavigationDestination(
-            icon: Badge.count(
-              count: pulloutCount,
-              isLabelVisible: pulloutCount > 0,
-              backgroundColor: colorScheme.error,
-              child: const Icon(Icons.outbox_outlined),
-            ),
-            selectedIcon: Badge.count(
-              count: pulloutCount,
-              isLabelVisible: pulloutCount > 0,
-              backgroundColor: colorScheme.error,
-              child: const Icon(Icons.outbox),
-            ),
-            label: 'Pullout',
-          ),
-          NavigationDestination(
-            icon: Badge.count(
-              count: unassignedCount,
-              isLabelVisible: unassignedCount > 0,
-              backgroundColor: Colors.orange.shade800,
-              child: const Icon(Icons.link_off_outlined),
-            ),
-            selectedIcon: Badge.count(
-              count: unassignedCount,
-              isLabelVisible: unassignedCount > 0,
-              backgroundColor: Colors.orange.shade800,
-              child: const Icon(Icons.link_off_rounded),
-            ),
-            label: 'Unassigned',
-          ),
-        ],
+          );
+        }),
       ),
     );
   }

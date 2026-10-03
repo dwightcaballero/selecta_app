@@ -56,6 +56,17 @@ class DeliveryService {
     });
   }
 
+  Stream<int> getPendingDeliveriesCountStream({DateTime? date}) {
+    return _ordersRef.where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pending).snapshots().map((snap) {
+      final target = date ?? DateTime.now();
+      return snap.docs.where((doc) {
+        final delivery = doc.data();
+        final dDate = delivery.deliveryDate?.toDate() ?? delivery.createdDate.toDate();
+        return dDate.year == target.year && dDate.month == target.month && dDate.day == target.day;
+      }).length;
+    });
+  }
+
   Stream<QuerySnapshot> getListDelivery() {
     return _ordersRef.orderBy(DeliveryModelString.createdDate).snapshots();
   }
