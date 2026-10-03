@@ -2,10 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/purchaseorderlist_page.dart';
 
 /// Operational 2x3 quick action cards grid for core workflow entry points:
 /// Book Order, Picklists, Deliveries, Purchase Orders, Credit, and Returns.

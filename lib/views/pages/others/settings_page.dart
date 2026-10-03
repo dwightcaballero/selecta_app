@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/notifiers.dart';
+import 'package:selecta_ops/services/app_update_service.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/theme/app_theme.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/pages/others/changepassword_page.dart';
 import 'package:selecta_ops/views/pages/others/changeusernamerole_page.dart';
 import 'package:selecta_ops/views/pages/others/deleteaccount_page.dart';
@@ -17,11 +21,53 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   String _appVersion = '1.0.0';
+  int _pendingLogCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadAppInfo();
+    _loadPendingLogCount();
+  }
+
+  Future<void> _loadPendingLogCount() async {
+    try {
+      final count = await ErrorLogService.getPendingLogCount();
+      if (mounted) setState(() => _pendingLogCount = count);
+    } catch (_) {}
+  }
+
+  Future<void> _handleUploadErrorLogs() async {
+    final pendingCount = await ErrorLogService.getPendingLogCount();
+    if (!mounted) return;
+
+    if (pendingCount == 0) {
+      setState(() => _pendingLogCount = 0);
+      await ShowMessage.alert(
+        context,
+        title: 'Error Logs',
+        message: 'All error logs are already synced or no errors recorded.',
+        icon: Icons.check_circle_outline,
+      );
+      return;
+    }
+
+    await Helperfunctions.showLoading(context: context, showLoading: true);
+    try {
+      final count = await ErrorLogService.uploadPendingLogs();
+      if (!mounted) return;
+      await Helperfunctions.showLoading(context: context, showLoading: false);
+      if (mounted) {
+        ShowMessage.success(context, 'Successfully uploaded $count error log${count == 1 ? "" : "s"} to Firebase');
+      }
+    } catch (e) {
+      if (mounted) await Helperfunctions.showLoading(context: context, showLoading: false);
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to upload error logs: $e');
+      }
+    } finally {
+      await _loadPendingLogCount();
+    }
   }
 
   Future<void> _loadAppInfo() async {
@@ -355,6 +401,81 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
 
+            const SizedBox(height: 20),
+
+            // ── Section 3: App & Support ───────────────────────────────────
+            _buildSectionHeader('App & Support', Icons.support_agent_rounded),
+            const SizedBox(height: 8),
+            Card(
+              child: Column(
+                children: [
+                  ValueListenableBuilder<UpdateDownloadState>(
+                    valueListenable: AppUpdateService.downloadStateNotifier,
+                    builder: (context, downloadState, _) {
+                      final isReady = downloadState.isReadyToInstall;
+                      Widget trailing = const Icon(Icons.chevron_right_rounded);
+                      String subtitle = 'Current version $_appVersion';
+                      if (isReady) {
+                        subtitle = 'Update downloaded — tap to install';
+                        trailing = _buildPill('Ready', Colors.green.shade600);
+                      } else if (downloadState.isDownloading) {
+                        subtitle = 'Downloading update...';
+                        trailing = SizedBox(
+                          width: 56,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${(downloadState.progress * 100).toInt()}%',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      final iconColor = isReady ? Colors.green : colorScheme.primary;
+                      return ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: iconColor.withAlpha(25), shape: BoxShape.circle),
+                          child: Icon(
+                            isReady ? Icons.check_circle_rounded : Icons.system_update_alt_rounded,
+                            color: iconColor,
+                            size: 20,
+                          ),
+                        ),
+                        title: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                        subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                        trailing: trailing,
+                        onTap: () => AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: colorScheme.primary.withAlpha(25), shape: BoxShape.circle),
+                      child: Icon(Icons.cloud_upload_outlined, color: colorScheme.primary, size: 20),
+                    ),
+                    title: const Text('Upload Error Logs', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                    subtitle: Text(
+                      _pendingLogCount > 0
+                          ? '$_pendingLogCount pending log${_pendingLogCount == 1 ? '' : 's'} to send'
+                          : 'Send diagnostic logs to support',
+                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                    ),
+                    trailing: _pendingLogCount > 0
+                        ? _buildPill('$_pendingLogCount', Colors.amber.shade800)
+                        : const Icon(Icons.chevron_right_rounded),
+                    onTap: _handleUploadErrorLogs,
+                  ),
+                ],
+              ),
+            ),
+
             const SizedBox(height: 28),
 
             // ── App Version Footer ─────────────────────────────────────────
@@ -383,6 +504,17 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 20),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPill(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
       ),
     );
   }

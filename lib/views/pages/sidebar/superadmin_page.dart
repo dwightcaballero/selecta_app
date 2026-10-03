@@ -154,9 +154,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     setState(() => _isSettingAdminPassword = true);
     try {
       final hash = Configuration.hashPassword(newPw);
-      final updatedConfig = (_originalConfig ?? Configuration.empty()).copyWith(
-        superAdminPasswordHash: hash,
-      );
+      final updatedConfig = (_originalConfig ?? Configuration.empty()).copyWith(superAdminPasswordHash: hash);
       await ConfigurationService().saveConfiguration(updatedConfig);
       _originalConfig = updatedConfig;
       _newAdminPasswordController.clear();
@@ -332,10 +330,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
+                                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                                 child: const Icon(Icons.lock_rounded, size: 22, color: Colors.red),
                               ),
                               const SizedBox(width: 12),
@@ -454,11 +449,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                           const Divider(height: 28),
                           FilledButton.icon(
                             onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const ProductsPage(userRole: 'Admin', initialIndex: 0),
-                                ),
-                              );
+                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProductsPage(userRole: 'Admin', initialIndex: 0)));
                             },
                             style: FilledButton.styleFrom(
                               minimumSize: const Size(double.infinity, 48),
@@ -467,29 +458,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                             icon: const Icon(Icons.admin_panel_settings_outlined, size: 20),
-                            label: const Text(
-                              'Manage Selecta Products (Admin)',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const ProductsPage(userRole: 'Admin', initialIndex: 1),
-                                ),
-                              );
-                            },
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(double.infinity, 48),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            icon: const Icon(Icons.inventory_2_outlined, size: 20),
-                            label: const Text(
-                              'Manage Other Products (Admin)',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
+                            label: const Text('Manage Selecta Products (Admin)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                           ),
                         ],
                       ),

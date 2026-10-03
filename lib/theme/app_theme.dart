@@ -236,6 +236,22 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
+      // M3 derives the off-state thumb/border from `outline` (lightBorder),
+      // which is nearly invisible on light surfaces — use slate tones instead.
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return Colors.white;
+          return lightTextSecondary;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return primaryColor;
+          return const Color(0xFFCBD5E1);
+        }),
+        trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return Colors.transparent;
+          return lightTextSecondary;
+        }),
+      ),
     );
   }
 

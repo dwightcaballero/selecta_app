@@ -38,9 +38,7 @@ class DashboardSidebar extends StatelessWidget {
   final Stream<int> merchBlitzCountStream;
   final Stream<int> tasksCountStream;
   final VoidCallback onSync;
-  final VoidCallback onUploadErrorLogs;
   final VoidCallback onLogout;
-  final VoidCallback? onCheckForUpdates;
   final Future<void> Function(Widget page) onNavigate;
 
   static const double kWidth = 260.0;
@@ -54,9 +52,7 @@ class DashboardSidebar extends StatelessWidget {
     required this.merchBlitzCountStream,
     required this.tasksCountStream,
     required this.onSync,
-    required this.onUploadErrorLogs,
     required this.onLogout,
-    this.onCheckForUpdates,
     required this.onNavigate,
   });
 
@@ -131,10 +127,10 @@ class DashboardSidebar extends StatelessWidget {
                   if (isDealer) _buildItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
                   _buildItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badge: dashboardDTO.pendingPjpCount),
                   _buildItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
-                  _buildItem(context, Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: onUploadErrorLogs),
+                  // Settings hosts Check for Updates & Upload Error Logs; surface update status here.
                   ValueListenableBuilder<UpdateDownloadState>(
                     valueListenable: AppUpdateService.downloadStateNotifier,
-                    builder: (context, downloadState, _) {
+                    builder: (ctx, downloadState, _) {
                       Widget? trailing;
                       if (downloadState.isReadyToInstall) {
                         trailing = Container(
@@ -144,7 +140,7 @@ class DashboardSidebar extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Text(
-                            'Ready',
+                            'Update Ready',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 10,
@@ -158,27 +154,9 @@ class DashboardSidebar extends StatelessWidget {
                           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                         );
                       }
-
-                      return ListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                        leading: Icon(
-                          downloadState.isReadyToInstall
-                              ? Icons.check_circle_rounded
-                              : Icons.system_update_alt_rounded,
-                          color: downloadState.isReadyToInstall ? Colors.green : null,
-                          size: 20,
-                        ),
-                        title: const Text('Check for Updates',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                        trailing: trailing,
-                        onTap: () => (onCheckForUpdates ??
-                            () => AppUpdateService.checkAndPromptUpdate(context,
-                                silent: false, forceRefresh: true))(),
-                      );
+                      return _buildItem(ctx, Icons.tune_rounded, 'Settings', const SettingsPage(), trailing: trailing);
                     },
                   ),
-                  _buildItem(context, Icons.tune_rounded, 'Settings', const SettingsPage()),
                   _buildItem(context, Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
 
                   const _SidebarDivider(),
@@ -326,6 +304,7 @@ class DashboardSidebar extends StatelessWidget {
     int badge = 0,
     Color? badgeColor,
     VoidCallback? onTap,
+    Widget? trailing,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return ListTile(
@@ -333,19 +312,20 @@ class DashboardSidebar extends StatelessWidget {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       leading: Icon(icon, size: 20, color: colorScheme.onSurfaceVariant),
       title: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-      trailing: badge > 0
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(
-                color: badgeColor ?? Colors.red,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                '$badge',
-                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-              ),
-            )
-          : null,
+      trailing: trailing ??
+          (badge > 0
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: badgeColor ?? Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$badge',
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                )
+              : null),
       onTap: () async {
         if (onTap != null) {
           onTap();

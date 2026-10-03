@@ -298,36 +298,6 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  Future<void> _handleUploadErrorLogs() async {
-    final pendingCount = await ErrorLogService.getPendingLogCount();
-    if (!mounted) return;
-
-    if (pendingCount == 0) {
-      await ShowMessage.alert(
-        context,
-        title: 'Error Logs',
-        message: 'All error logs are already synced or no errors recorded.',
-        icon: Icons.check_circle_outline,
-      );
-      return;
-    }
-
-    await showLoading(true);
-    try {
-      final count = await ErrorLogService.uploadPendingLogs();
-      if (!mounted) return;
-      await showLoading(false);
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully uploaded $count error log${count == 1 ? "" : "s"} to Firebase');
-      }
-    } catch (e) {
-      await showLoading(false);
-      if (mounted) {
-        ShowMessage.error(context, 'Failed to upload error logs: $e');
-      }
-    }
-  }
-
   Widget _buildSectionHeader(String title, String subtitle) {
     final colorScheme = Theme.of(context).colorScheme;
     return Column(
@@ -352,9 +322,7 @@ class _DashboardPageState extends State<DashboardPage> {
     merchBlitzCountStream: _merchBlitzCountStream,
     tasksCountStream: _tasksCountStream,
     onSync: syncDashboard,
-    onUploadErrorLogs: _handleUploadErrorLogs,
     onLogout: onLogout,
-    onCheckForUpdates: () => AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true),
     onNavigate: _navigateToPage,
   );
 
@@ -551,9 +519,7 @@ class _DashboardPageState extends State<DashboardPage> {
         merchBlitzCountStream: _merchBlitzCountStream,
         tasksCountStream: _tasksCountStream,
         onSync: syncDashboard,
-        onUploadErrorLogs: _handleUploadErrorLogs,
         onLogout: onLogout,
-        onCheckForUpdates: () => AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true),
         onNavigate: _navigateToPage,
       ),
       floatingActionButton: FloatingActionButton.extended(

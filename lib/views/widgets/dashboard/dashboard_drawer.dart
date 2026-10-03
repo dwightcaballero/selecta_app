@@ -22,7 +22,6 @@ import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:selecta_ops/services/offline_sync_service.dart';
 
 /// Navigation Drawer for Dashboard containing Operations, KPI shortcuts,
 /// Inventory/Settings, and Logout actions.
@@ -34,9 +33,7 @@ class DashboardDrawer extends StatelessWidget {
   final Stream<int> merchBlitzCountStream;
   final Stream<int> tasksCountStream;
   final VoidCallback onSync;
-  final VoidCallback onUploadErrorLogs;
   final VoidCallback onLogout;
-  final VoidCallback? onCheckForUpdates;
   final Future<void> Function(Widget page) onNavigate;
 
   const DashboardDrawer({
@@ -48,9 +45,7 @@ class DashboardDrawer extends StatelessWidget {
     required this.merchBlitzCountStream,
     required this.tasksCountStream,
     required this.onSync,
-    required this.onUploadErrorLogs,
     required this.onLogout,
-    this.onCheckForUpdates,
     required this.onNavigate,
   });
 
@@ -139,40 +134,24 @@ class DashboardDrawer extends StatelessWidget {
           _buildDrawerItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(context, Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
           _buildDrawerItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-          _buildDrawerItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: isDealer ? 'Dealer' : (currentUser?.role ?? 'Salesman'))),
           _buildDrawerItem(context, Icons.file_download_outlined, 'Export Reports (Excel/CSV)', const ExportReportsPage()),
-
-          const Divider(indent: 16, endIndent: 16),
-
-          // 2. KPI Section (Consolidated Hub)
-          _buildDrawerSectionHeader(context, 'KPI & Analytics'),
           _buildDrawerItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: dashboardDTO)),
 
           const Divider(indent: 16, endIndent: 16),
 
-          // 3. Settings Section
-          _buildDrawerSectionHeader(context, 'Settings'),
-          ValueListenableBuilder<int>(
-            valueListenable: OfflineSyncService.instance.pendingCountNotifier,
-            builder: (context, pendingCount, _) {
-              return _buildDrawerItem(
-                context,
-                Icons.sync_rounded,
-                'Sync Data',
-                null,
-                badgeCount: pendingCount,
-                badgeColor: Colors.amber.shade800,
-                onTap: () {
-                  if (!isSyncing) onSync();
-                },
-              );
-            },
-          ),
+          // 2. Applications
+          _buildDrawerSectionHeader(context, 'Applications'),
+          _buildDrawerItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: 'Dealer')),
           _buildDrawerItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
-          if (isDealer) _buildDrawerItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
+          _buildDrawerItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
           _buildDrawerItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
+
+          const Divider(indent: 16, endIndent: 16),
+
+          // 3. App Settings
+          _buildDrawerSectionHeader(context, 'App Settings'),
           _buildDrawerItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
-          _buildDrawerItem(context, Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: onUploadErrorLogs),
+          // Settings hosts Check for Updates & Upload Error Logs; surface update status here.
           ValueListenableBuilder<UpdateDownloadState>(
             valueListenable: AppUpdateService.downloadStateNotifier,
             builder: (context, downloadState, _) {
@@ -180,17 +159,10 @@ class DashboardDrawer extends StatelessWidget {
               if (downloadState.isReadyToInstall) {
                 trailing = Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade600,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  decoration: BoxDecoration(color: Colors.green.shade600, borderRadius: BorderRadius.circular(10)),
                   child: const Text(
-                    'Ready',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    'Update Ready',
+                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                   ),
                 );
               } else if (downloadState.isDownloading) {
@@ -199,47 +171,17 @@ class DashboardDrawer extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
+                      const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
                       const SizedBox(width: 6),
-                      Text(
-                        '${(downloadState.progress * 100).toInt()}%',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                      ),
+                      Text('${(downloadState.progress * 100).toInt()}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 );
               }
-
-              return ListTile(
-                leading: Icon(
-                  downloadState.isReadyToInstall
-                      ? Icons.check_circle_rounded
-                      : Icons.system_update_alt_rounded,
-                  color: downloadState.isReadyToInstall ? Colors.green : null,
-                  size: 22,
-                ),
-                title: const Text('Check for Updates',
-                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
-                trailing: trailing,
-                onTap: () {
-                  if (onCheckForUpdates != null) {
-                    onCheckForUpdates!();
-                  } else {
-                    AppUpdateService.checkAndPromptUpdate(context,
-                        silent: false, forceRefresh: true);
-                  }
-                },
-              );
+              return _buildDrawerItem(context, Icons.tune_rounded, 'Settings', const SettingsPage(), trailing: trailing);
             },
           ),
-          _buildDrawerItem(context, Icons.tune_rounded, 'Settings & Appearance', const SettingsPage()),
           _buildDrawerItem(context, Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
-
-          const Divider(indent: 16, endIndent: 16),
 
           // 4. Quick Dark Mode Toggle
           ValueListenableBuilder<bool>(
@@ -259,6 +201,7 @@ class DashboardDrawer extends StatelessWidget {
               );
             },
           ),
+          const Divider(indent: 16, endIndent: 16),
 
           // 5. Logout
           _buildDrawerItem(context, Icons.logout_rounded, 'Logout', null, isLogout: true, onTap: onLogout),
@@ -306,6 +249,7 @@ class DashboardDrawer extends StatelessWidget {
     int badgeCount = 0,
     Color? badgeColor,
     VoidCallback? onTap,
+    Widget? trailing,
   }) {
     return ListTile(
       leading: Icon(icon, color: isLogout ? Colors.red : null, size: 22),
@@ -313,16 +257,18 @@ class DashboardDrawer extends StatelessWidget {
         title,
         style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: isLogout ? Colors.red : null),
       ),
-      trailing: badgeCount > 0
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
-              child: Text(
-                '$badgeCount',
-                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-              ),
-            )
-          : null,
+      trailing:
+          trailing ??
+          (badgeCount > 0
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
+                  child: Text(
+                    '$badgeCount',
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                )
+              : null),
       onTap: () async {
         Navigator.pop(context);
         if (onTap != null) {
