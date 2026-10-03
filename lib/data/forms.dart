@@ -10,7 +10,6 @@ import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:lottie/lottie.dart';
 import 'package:toggle_switch/toggle_switch.dart';
 
 class KForms {
@@ -242,9 +241,22 @@ class KForms {
     );
   }
 
-  static Center loadingScreen() {
+  static Center loadingScreen({String? message}) {
     return Center(
-      child: Padding(padding: const EdgeInsets.only(right: 30.0), child: Lottie.asset('assets/lotties/delivery.json')),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator.adaptive(),
+          if (message != null && message.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: KTextStyle.descriptionTextStyle,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
     );
   }
 

@@ -6,6 +6,14 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 
+/// True when running on a desktop platform (Linux, Windows, macOS).
+/// firebase_messaging does not support desktop targets.
+bool get _isDesktop =>
+    defaultTargetPlatform == TargetPlatform.linux ||
+    defaultTargetPlatform == TargetPlatform.windows ||
+    defaultTargetPlatform == TargetPlatform.macOS;
+
+
 /// Top-level background handler for FCM messages when the application is terminated or in the background.
 /// Must be annotated with `@pragma('vm:entry-point')` so the Flutter engine can invoke it.
 @pragma('vm:entry-point')
@@ -40,6 +48,14 @@ class PushNotificationService {
   /// requests user permissions, and sets up message streams.
   Future<void> initialize() async {
     if (_isInitialized) return;
+
+    // firebase_messaging does not support desktop platforms.
+    // Skip silently so the rest of the app continues normally.
+    if (_isDesktop || kIsWeb) {
+      debugPrint('PushNotificationService: Skipped — not supported on ${defaultTargetPlatform.name}.');
+      _isInitialized = true;
+      return;
+    }
 
     try {
       // Set background handler

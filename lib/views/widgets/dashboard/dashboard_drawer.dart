@@ -179,17 +179,67 @@ class DashboardDrawer extends StatelessWidget {
           _buildDrawerItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(context, Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: onUploadErrorLogs),
-          _buildDrawerItem(
-            context,
-            Icons.system_update_alt_rounded,
-            'Check for Updates',
-            null,
-            onTap: () {
-              if (onCheckForUpdates != null) {
-                onCheckForUpdates!();
-              } else {
-                AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true);
+          ValueListenableBuilder<UpdateDownloadState>(
+            valueListenable: AppUpdateService.downloadStateNotifier,
+            builder: (context, downloadState, _) {
+              Widget? trailing;
+              if (downloadState.isReadyToInstall) {
+                trailing = Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade600,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'Ready',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              } else if (downloadState.isDownloading) {
+                trailing = SizedBox(
+                  width: 52,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${(downloadState.progress * 100).toInt()}%',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                );
               }
+
+              return ListTile(
+                leading: Icon(
+                  downloadState.isReadyToInstall
+                      ? Icons.check_circle_rounded
+                      : Icons.system_update_alt_rounded,
+                  color: downloadState.isReadyToInstall ? Colors.green : null,
+                  size: 22,
+                ),
+                title: const Text('Check for Updates',
+                    style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                trailing: trailing,
+                onTap: () {
+                  if (onCheckForUpdates != null) {
+                    onCheckForUpdates!();
+                  } else {
+                    AppUpdateService.checkAndPromptUpdate(context,
+                        silent: false, forceRefresh: true);
+                  }
+                },
+              );
             },
           ),
           _buildDrawerItem(context, Icons.tune_rounded, 'Settings & Appearance', const SettingsPage()),

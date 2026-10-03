@@ -2,6 +2,20 @@
   "firestore": {
     "rules": "firestore.rules"
   },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
   "flutter": {
     "platforms": {
       "android": {
@@ -15,7 +29,8 @@
         "lib/firebase_options.dart": {
           "projectId": "selectaapp",
           "configurations": {
-            "android": "1:731338785867:android:81cc63e865752ca73b79ce"
+            "android": "1:731338785867:android:81cc63e865752ca73b79ce",
+            "web": "1:731338785867:web:9d0db626b42135cc3b79ce"
           }
         }
       }

@@ -12,7 +12,6 @@ import 'package:selecta_ops/services/transactionlog_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
-import 'package:lottie/lottie.dart';
 
 class Helperfunctions {
   static String formatStringAmountForDisplay(String stringAmount) {
@@ -266,13 +265,35 @@ class Helperfunctions {
               }
             });
           }
+          final theme = Theme.of(dialogContext);
           return PopScope(
             canPop: false, // Prevents closing via the physical back button (Flutter 3.12+)
-            child: AlertDialog(
-              backgroundColor: Colors.transparent, // Makes the card invisible
-              elevation: 0, // Removes the shadow drop
-              surfaceTintColor: Colors.transparent, // Removes the Material 3 tint overlay
-              content: Lottie.asset('assets/lotties/loading.json', width: 150, height: 150),
+            child: Center(
+              child: Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 20,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator.adaptive(
+                      strokeWidth: 3,
+                      valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                    ),
+                  ),
+                ),
+              ),
             ),
           );
         },

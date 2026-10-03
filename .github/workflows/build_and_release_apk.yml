@@ -76,3 +76,20 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate to Google Cloud (Optional Firebase Storage)
+        if: ${{ env.FIREBASE_KEY != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
+        env:
+          FIREBASE_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
+
+      - name: Upload Release APK to Firebase Storage
+        if: ${{ env.FIREBASE_KEY != '' }}
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          destination: selectaapp.firebasestorage.app/releases/
+        env:
+          FIREBASE_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}

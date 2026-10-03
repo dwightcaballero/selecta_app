@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -35,16 +32,12 @@ class DefaultFirebaseOptions {
           'DefaultFirebaseOptions have not been configured for macos - '
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
+      // Desktop platforms reuse the same Firebase project as Android.
+      // firebase_core, firebase_auth, cloud_firestore, and firebase_storage
+      // all support Linux and Windows desktop natively.
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
       case TargetPlatform.linux:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return desktop;
       default:
         throw UnsupportedError(
           'DefaultFirebaseOptions are not supported for this platform.',
@@ -53,6 +46,26 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyBANsl70LvRJ4jTemR-O9nUK1yBM7HIoSg',
+    appId: '1:731338785867:android:81cc63e865752ca73b79ce',
+    messagingSenderId: '731338785867',
+    projectId: 'selectaapp',
+    storageBucket: 'selectaapp.firebasestorage.app',
+  );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyBANsl70LvRJ4jTemR-O9nUK1yBM7HIoSg',
+    appId: '1:731338785867:web:9d0db626b42135cc3b79ce',
+    messagingSenderId: '731338785867',
+    projectId: 'selectaapp',
+    authDomain: 'selectaapp.firebaseapp.com',
+    storageBucket: 'selectaapp.firebasestorage.app',
+  );
+
+  /// Desktop (Linux / Windows) — same Firebase project as Android.
+  /// Push notifications (firebase_messaging) are not available on desktop
+  /// and are guarded in the app code with platform checks.
+  static const FirebaseOptions desktop = FirebaseOptions(
     apiKey: 'AIzaSyBANsl70LvRJ4jTemR-O9nUK1yBM7HIoSg',
     appId: '1:731338785867:android:81cc63e865752ca73b79ce',
     messagingSenderId: '731338785867',

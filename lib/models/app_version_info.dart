@@ -8,6 +8,7 @@ class AppVersionInfo {
   final bool forceUpdate;
   final int minSupportedVersionCode;
   final DateTime? publishedAt;
+  final int fileSize;
 
   AppVersionInfo({
     required this.latestVersionCode,
@@ -17,6 +18,7 @@ class AppVersionInfo {
     this.forceUpdate = false,
     this.minSupportedVersionCode = 1,
     this.publishedAt,
+    this.fileSize = 0,
   });
 
   static AppVersionInfo empty() => AppVersionInfo(
@@ -27,6 +29,7 @@ class AppVersionInfo {
         forceUpdate: false,
         minSupportedVersionCode: 0,
         publishedAt: null,
+        fileSize: 0,
       );
 
   factory AppVersionInfo.fromJson(Map<String, dynamic> json) {
@@ -55,6 +58,9 @@ class AppVersionInfo {
       minSupportedVersionCode:
           (json['minSupportedVersionCode'] as num?)?.toInt() ?? 1,
       publishedAt: publishedDate,
+      fileSize: (json['fileSize'] as num?)?.toInt() ??
+          (json['size'] as num?)?.toInt() ??
+          0,
     );
   }
 
@@ -79,6 +85,7 @@ class AppVersionInfo {
     }
 
     String apkUrl = '';
+    int detectedSize = 0;
     final assets = json['assets'] as List<dynamic>? ?? [];
     for (final asset in assets) {
       if (asset is Map<String, dynamic>) {
@@ -87,9 +94,11 @@ class AppVersionInfo {
           // Prioritize arm64-v8a (modern Android phones) for lightweight ~28MB download size
           if (assetName.contains('arm64-v8a')) {
             apkUrl = asset['browser_download_url'] as String? ?? '';
+            detectedSize = (asset['size'] as num?)?.toInt() ?? 0;
             break;
           } else if (apkUrl.isEmpty || assetName == 'app-release.apk') {
             apkUrl = asset['browser_download_url'] as String? ?? '';
+            detectedSize = (asset['size'] as num?)?.toInt() ?? 0;
           }
         }
       }
@@ -117,6 +126,7 @@ class AppVersionInfo {
       forceUpdate: isForce,
       minSupportedVersionCode: minVersion,
       publishedAt: publishedDate,
+      fileSize: detectedSize,
     );
   }
 
@@ -128,6 +138,7 @@ class AppVersionInfo {
       'releaseNotes': releaseNotes,
       'forceUpdate': forceUpdate,
       'minSupportedVersionCode': minSupportedVersionCode,
+      'fileSize': fileSize,
       'publishedAt': publishedAt != null ? Timestamp.fromDate(publishedAt!) : FieldValue.serverTimestamp(),
     };
   }

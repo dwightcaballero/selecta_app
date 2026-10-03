@@ -772,11 +772,11 @@ class SelectaProductService {
         ..write(p.tag.trim())
         ..write(';');
     }
-    var hash = 0xcbf29ce484222325;
+    var hash = 0x811c9dc5;
     final str = buffer.toString();
     for (var i = 0; i < str.length; i++) {
       hash ^= str.codeUnitAt(i);
-      hash = (hash * 0x100000001b3) & 0x7fffffffffffffff;
+      hash = (hash * 0x01000193) & 0xffffffff;
     }
     return '${sorted.length}_${hash.toRadixString(16)}';
   }

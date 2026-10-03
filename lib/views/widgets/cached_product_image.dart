@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -68,11 +69,11 @@ class CachedProductImage extends StatefulWidget {
   }
 
   static String _cacheKey(String url) {
-    // Deterministic 64-bit FNV-1a hash of the full URL (including Firebase token)
-    var hash = 0xcbf29ce484222325;
+    // Deterministic 32-bit FNV-1a hash of the full URL (Web/JS and Native safe)
+    var hash = 0x811c9dc5;
     for (var i = 0; i < url.length; i++) {
       hash ^= url.codeUnitAt(i);
-      hash = (hash * 0x100000001b3) & 0x7fffffffffffffff;
+      hash = (hash * 0x01000193) & 0xffffffff;
     }
     return 'img_${hash.toRadixString(16)}.bin';
   }
@@ -153,6 +154,12 @@ class _CachedProductImageState extends State<CachedProductImage> {
       return;
     }
 
+    if (kIsWeb) {
+      _isLoading = false;
+      _hasError = false;
+      return;
+    }
+
     final key = CachedProductImage._cacheKey(url);
     final syncFile = CachedProductImage._memoryFileCache[key];
     if (syncFile != null && syncFile.existsSync()) {
@@ -197,6 +204,24 @@ class _CachedProductImageState extends State<CachedProductImage> {
   Widget _buildInnerContent(ColorScheme colorScheme) {
     if (widget.imageUrl.trim().isEmpty || _hasError) {
       return _buildPlaceholder(colorScheme);
+    }
+
+    if (kIsWeb) {
+      final imageWidget = Image.network(
+        widget.imageUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildPlaceholder(colorScheme),
+      );
+      if (widget.isActive) return imageWidget;
+      return ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0, 0, 0, 1, 0,
+        ]),
+        child: imageWidget,
+      );
     }
 
     if (_isLoading || _localFile == null) {
