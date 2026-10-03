@@ -133,10 +133,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
   }
 
   void _resetToPjpOrder() {
-    final docs = _editableDeliveryIDs
-        .map((id) => _editableDocsById[id])
-        .whereType<QueryDocumentSnapshot<Delivery>>()
-        .toList();
+    final docs = _editableDeliveryIDs.map((id) => _editableDocsById[id]).whereType<QueryDocumentSnapshot<Delivery>>().toList();
     final pjpSorted = _controller.sortPendingPicklists(
       docs: docs,
       selectedDate: _selectedDate,
@@ -263,13 +260,15 @@ class _PicklistListPageState extends State<PicklistListPage> {
           if (_isEditing)
             TextButton(
               onPressed: _isSaving ? null : _cancelEditing,
-              child: const Text('Cancel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
             ),
         ],
       ),
       floatingActionButton: _isEditing
           ? FloatingActionButton.extended(
-              heroTag: null,
               onPressed: _isSaving ? null : _saveOrder,
               icon: _isSaving
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -281,7 +280,6 @@ class _PicklistListPageState extends State<PicklistListPage> {
               backgroundColor: colorScheme.primary,
             )
           : FloatingActionButton.extended(
-              heroTag: null,
               onPressed: () => Helperfunctions.navigateTo(context, BookOrderPage(initialDate: _selectedDate)),
               icon: const Icon(Icons.add_shopping_cart_rounded, size: 22),
               label: const Text('Book Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
@@ -360,11 +358,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
 
                       // Sort based on PJP schedule and order of the current day.
                       // Stores not part of today's PJP schedule are placed at the bottom.
-                      final sorted = _controller.sortPendingPicklists(
-                        docs: filtered,
-                        selectedDate: _selectedDate,
-                        storesByName: _storesByName,
-                      );
+                      final sorted = _controller.sortPendingPicklists(docs: filtered, selectedDate: _selectedDate, storesByName: _storesByName);
                       _currentSortedDocs = sorted;
 
                       final totalOrders = sorted.length;
@@ -534,8 +528,8 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                                               isTodayPjp
                                                                   ? 'PJP Stop #${store?.pjpSequence != null ? (store!.pjpSequence! + 1) : (index + 1)}'
                                                                   : (store?.pjpSchedule != null && store!.pjpSchedule!.isNotEmpty
-                                                                      ? 'PJP: ${store.pjpSchedule}'
-                                                                      : 'Not in $targetPjpDay PJP'),
+                                                                        ? 'PJP: ${store.pjpSchedule}'
+                                                                        : 'Not in $targetPjpDay PJP'),
                                                               style: TextStyle(
                                                                 fontSize: 11,
                                                                 fontWeight: FontWeight.bold,
@@ -547,7 +541,11 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                                           Expanded(
                                                             child: Text(
                                                               Helperfunctions.formatDateForDisplay(deliveryDate),
-                                                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                                                              style: TextStyle(
+                                                                fontSize: 12,
+                                                                fontWeight: FontWeight.w500,
+                                                                color: colorScheme.onSurfaceVariant,
+                                                              ),
                                                               maxLines: 1,
                                                               overflow: TextOverflow.ellipsis,
                                                             ),
@@ -678,9 +676,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(
-                    color: isTodayPjp
-                        ? colorScheme.primary.withValues(alpha: 0.3)
-                        : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    color: isTodayPjp ? colorScheme.primary.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.5),
                   ),
                 ),
                 child: Padding(
@@ -725,17 +721,15 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: isTodayPjp
-                                        ? Colors.green.withValues(alpha: 0.12)
-                                        : Colors.amber.withValues(alpha: 0.15),
+                                    color: isTodayPjp ? Colors.green.withValues(alpha: 0.12) : Colors.amber.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
                                     isTodayPjp
                                         ? 'PJP $targetPjpDay • Stop #${store?.pjpSequence != null ? (store!.pjpSequence! + 1) : '—'}'
                                         : (store?.pjpSchedule != null && store!.pjpSchedule!.isNotEmpty
-                                            ? 'PJP: ${store.pjpSchedule}'
-                                            : 'Not in $targetPjpDay PJP'),
+                                              ? 'PJP: ${store.pjpSchedule}'
+                                              : 'Not in $targetPjpDay PJP'),
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.bold,
@@ -745,11 +739,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                 ),
                                 Text(
                                   Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
+                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                                 ),
                               ],
                             ),

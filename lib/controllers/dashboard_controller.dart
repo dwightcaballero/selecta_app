@@ -26,24 +26,16 @@ class DashboardController {
   final UserService _userService = UserService();
 
   /// Live count stream for pending and overdue tasks.
-  Stream<int> getTasksPendingAndOverdueCountStream() =>
-      _tasksService.getPendingAndOverdueCountStream();
+  Stream<int> getTasksPendingAndOverdueCountStream() => _tasksService.getPendingAndOverdueCountStream();
 
   /// Live count stream for unsurveyed merch blitz stores.
-  Stream<int> getMerchBlitzCountStream({bool forDealer = false}) =>
-      _hapiStoreService.getUnsurveyedMerchBlitzCountStream(forDealer: forDealer);
+  Stream<int> getMerchBlitzCountStream({bool forDealer = false}) => _hapiStoreService.getUnsurveyedMerchBlitzCountStream(forDealer: forDealer);
 
   /// Live count stream for purchase orders awaiting invoice upload.
-  Stream<int> getPurchaseOrdersAwaitingCountStream() =>
-      _purchaseOrderService.getAwaitingInvoiceCountStream();
+  Stream<int> getPurchaseOrdersAwaitingCountStream() => _purchaseOrderService.getAwaitingInvoiceCountStream();
 
   /// Live count stream for orders currently awaiting picklist completion for [date] (defaults to current day).
-  Stream<int> getPendingPicklistsCountStream({DateTime? date}) =>
-      _deliveryService.getPendingPicklistCountStream(date: date);
-
-  /// Live count stream for deliveries pending completion for [date] (defaults to current day).
-  Stream<int> getPendingDeliveriesCountStream({DateTime? date}) =>
-      _deliveryService.getPendingDeliveriesCountStream(date: date);
+  Stream<int> getPendingPicklistsCountStream({DateTime? date}) => _deliveryService.getPendingPicklistCountStream(date: date);
 
   /// Fetches the currently logged in user profile from storage.
   Future<Users?> getCurrentUser() => KVariables.getUser();
@@ -93,8 +85,7 @@ class DashboardController {
   }
 
   /// Saves [DashboardDTO] and sync timestamp to SharedPreferences.
-  Future<void> saveDashboardData(DashboardDTO dashboardDTO, [String? lastSyncDateTime]) =>
-      saveDashboardDataStatic(dashboardDTO, lastSyncDateTime);
+  Future<void> saveDashboardData(DashboardDTO dashboardDTO, [String? lastSyncDateTime]) => saveDashboardDataStatic(dashboardDTO, lastSyncDateTime);
 
   /// Static helper to save [DashboardDTO] and sync timestamp to SharedPreferences.
   static Future<void> saveDashboardDataStatic(DashboardDTO dashboardDTO, [String? lastSyncDateTime]) async {
@@ -149,9 +140,7 @@ class DashboardController {
     dashboardDTO.totalHapiStores = listStores.length;
 
     // DASHBOARD: thruput of buying stores
-    dashboardDTO.buyingThruput = dashboardDTO.buyingCount == 0
-        ? 0.0
-        : dashboardDTO.totalBuyingSales / dashboardDTO.buyingCount;
+    dashboardDTO.buyingThruput = dashboardDTO.buyingCount == 0 ? 0.0 : dashboardDTO.totalBuyingSales / dashboardDTO.buyingCount;
 
     // DASHBOARD: total invoice amount for the current month
     dashboardDTO.totalInvoiceAmount = await PurchaseOrderService.getTotalInvoiceAmountForCurrentMonth();

@@ -194,10 +194,7 @@ class _PjpListPageState extends State<PjpListPage> {
                     Container(
                       width: 6,
                       height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isSelected ? colorScheme.onPrimary : colorScheme.primary,
-                      ),
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: isSelected ? colorScheme.onPrimary : colorScheme.primary),
                     ),
                   ],
                 ],
@@ -206,9 +203,7 @@ class _PjpListPageState extends State<PjpListPage> {
               backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                ),
+                side: BorderSide(color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5)),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
               onSelected: _isEditing ? null : (_) => _onDayChanged(day),
@@ -260,9 +255,7 @@ class _PjpListPageState extends State<PjpListPage> {
                 value: progress,
                 minHeight: 6,
                 backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  progress == 1.0 ? Colors.green : colorScheme.primary,
-                ),
+                valueColor: AlwaysStoppedAnimation<Color>(progress == 1.0 ? Colors.green : colorScheme.primary),
               ),
             ),
           ],
@@ -340,10 +333,7 @@ class _PjpListPageState extends State<PjpListPage> {
                           const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
+                            decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -572,10 +562,7 @@ class _PjpListPageState extends State<PjpListPage> {
             IconButton(
               icon: const Icon(Icons.map_outlined, color: Colors.white),
               tooltip: 'Route Map',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay)),
-              ),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay))),
             ),
             // More options overflow menu
             PopupMenuButton<String>(
@@ -598,23 +585,11 @@ class _PjpListPageState extends State<PjpListPage> {
                 if (_isDealer)
                   const PopupMenuItem(
                     value: 'rearrange',
-                    child: Row(
-                      children: [
-                        Icon(Icons.swap_vert_rounded, size: 20),
-                        SizedBox(width: 10),
-                        Text('Rearrange stores'),
-                      ],
-                    ),
+                    child: Row(children: [Icon(Icons.swap_vert_rounded, size: 20), SizedBox(width: 10), Text('Rearrange stores')]),
                   ),
                 const PopupMenuItem(
                   value: 'history',
-                  child: Row(
-                    children: [
-                      Icon(Icons.history_rounded, size: 20),
-                      SizedBox(width: 10),
-                      Text('Visit History'),
-                    ],
-                  ),
+                  child: Row(children: [Icon(Icons.history_rounded, size: 20), SizedBox(width: 10), Text('Visit History')]),
                 ),
               ],
             ),
@@ -628,7 +603,6 @@ class _PjpListPageState extends State<PjpListPage> {
       ),
       floatingActionButton: _isEditing
           ? FloatingActionButton.extended(
-              heroTag: null,
               onPressed: _isSaving ? null : _saveOrder,
               icon: _isSaving
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))

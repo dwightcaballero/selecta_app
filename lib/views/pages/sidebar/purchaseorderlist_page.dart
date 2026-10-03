@@ -163,19 +163,11 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      _isAllMonths ? Icons.all_inclusive_rounded : Icons.calendar_month_outlined,
-                      size: 16,
-                      color: colorScheme.primary,
-                    ),
+                    Icon(_isAllMonths ? Icons.all_inclusive_rounded : Icons.calendar_month_outlined, size: 16, color: colorScheme.primary),
                     const SizedBox(width: 6),
                     Text(
                       displayText,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                     ),
                     const SizedBox(width: 4),
                     Icon(Icons.arrow_drop_down, size: 18, color: colorScheme.onSurfaceVariant),
@@ -446,11 +438,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                           isInvoiced
                               ? (invoiceNumber.isNotEmpty ? 'Invoice #$invoiceNumber' : 'PO #${poNumber.isNotEmpty ? poNumber : order.invoiceNumber}')
                               : (poNumber.isNotEmpty ? 'PO #$poNumber' : 'Pending PO'),
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
-                          ),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -555,7 +543,6 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     return Scaffold(
       appBar: const CustomAppbar(title: 'Purchase Orders', subtitle: 'Invoices & Monthly Tracking'),
       floatingActionButton: FloatingActionButton.extended(
-        heroTag: null,
         onPressed: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty())),
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(
@@ -577,11 +564,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
           final allDocs = snapshot.data?.docs ?? [];
 
           // 1. Filter documents by selected month via controller
-          final monthDocs = _controller.filterByMonth(
-            docs: allDocs,
-            selectedMonth: _selectedMonth,
-            isAllMonths: _isAllMonths,
-          );
+          final monthDocs = _controller.filterByMonth(docs: allDocs, selectedMonth: _selectedMonth, isAllMonths: _isAllMonths);
 
           // 2. Compute metrics via controller
           final counts = _controller.calculateCounts(monthDocs);

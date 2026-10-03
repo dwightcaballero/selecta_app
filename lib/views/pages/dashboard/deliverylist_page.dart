@@ -410,7 +410,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   Widget floatingActionAddButton() {
     return FloatingActionButton.extended(
-      heroTag: null,
       onPressed: () {
         Navigator.push(context, MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)));
       },
@@ -465,7 +464,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
           ),
           floatingActionButton: _isEditing
               ? FloatingActionButton.extended(
-                  heroTag: null,
                   onPressed: _isSaving ? null : _saveOrder,
                   icon: _isSaving
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
