@@ -411,6 +411,15 @@ class AppUpdateService {
         final json = jsonDecode(response.body) as Map<String, dynamic>;
         return AppVersionInfo.fromGitHubRelease(json);
       }
+      // Typically 403 when the unauthenticated rate limit (60 req/hr per IP)
+      // is exhausted. Log it so silent update-check failures are diagnosable.
+      ErrorLogService.logError(
+        action: 'AppUpdateService.fetchFromGitHub',
+        error: 'GitHub API returned HTTP ${response.statusCode} '
+            '(rate-limit remaining: '
+            '${response.headers['x-ratelimit-remaining'] ?? 'unknown'})',
+        page: 'AppUpdateService',
+      );
       return null;
     } catch (e, stack) {
       ErrorLogService.logError(
@@ -505,12 +514,20 @@ class AppUpdateService {
       if (ref == null || metadata == null) return null;
 
       final downloadUrl = await ref.getDownloadURL();
-      final custom = metadata.customMetadata ?? {};
+      // GCS may store custom metadata keys lowercased, so look them up
+      // case-insensitively.
+      final custom = <String, String>{
+        for (final e in (metadata.customMetadata ?? {}).entries)
+          e.key.toLowerCase(): e.value,
+      };
 
-      final versionCode = int.tryParse(custom['versionCode'] ?? custom['buildNumber'] ?? '') ?? 0;
-      final versionName = custom['versionName'] ?? custom['version'] ?? '1.0.0';
-      final releaseNotes = custom['releaseNotes'] ?? '';
-      final forceUpdate = custom['forceUpdate'] == 'true';
+      final versionCode = int.tryParse(
+            (custom['versioncode'] ?? custom['buildnumber'] ?? '').trim(),
+          ) ??
+          0;
+      final versionName = custom['versionname'] ?? custom['version'] ?? '1.0.0';
+      final releaseNotes = custom['releasenotes'] ?? '';
+      final forceUpdate = custom['forceupdate']?.toLowerCase() == 'true';
 
       return AppVersionInfo(
         latestVersionCode: versionCode,

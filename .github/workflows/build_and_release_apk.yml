@@ -50,8 +50,15 @@ jobs:
           else
             TAG="v$VERSION"
           fi
+          VERSION_NAME="${VERSION%%+*}"
+          BUILD_NUMBER="${VERSION##*+}"
+          if [ "$BUILD_NUMBER" = "$VERSION" ]; then
+            BUILD_NUMBER=0
+          fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "build=$BUILD_NUMBER" >> $GITHUB_OUTPUT
           COMMIT_MSG=$(git log -1 --pretty=%B)
           BODY=""
           if echo "$COMMIT_MSG" | grep -qi "\[force-update\]"; then
@@ -60,6 +67,11 @@ jobs:
             BODY="[mandatory] This update is required to continue using Selecta Ops."
           fi
           echo "body=$BODY" >> $GITHUB_OUTPUT
+          if [ -n "$BODY" ]; then
+            echo "force=true" >> $GITHUB_OUTPUT
+          else
+            echo "force=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build Android Release APK (Split ABI for lightweight ~28MB APKs)
         run: flutter build apk --release --split-per-abi
@@ -91,5 +103,48 @@ jobs:
         with:
           path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           destination: selectaapp.firebasestorage.app/releases/
+          # Custom metadata read by AppUpdateService._fetchFromFirebaseStorage.
+          # Without it the app sees build 0 and cannot detect the update.
+          headers: |-
+            cache-control: no-cache, max-age=0
+            x-goog-meta-versionCode: ${{ steps.version_step.outputs.build }}
+            x-goog-meta-versionName: ${{ steps.version_step.outputs.name }}
+            x-goog-meta-forceUpdate: ${{ steps.version_step.outputs.force }}
         env:
           FIREBASE_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
+
+      - name: Sync Firestore configurations/app_version
+        if: ${{ env.FIREBASE_KEY != '' }}
+        continue-on-error: true
+        env:
+          FIREBASE_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
+          PROJECT_ID: selectaapp
+          VERSION_NAME: ${{ steps.version_step.outputs.name }}
+          BUILD_NUMBER: ${{ steps.version_step.outputs.build }}
+          FORCE_UPDATE: ${{ steps.version_step.outputs.force }}
+          TAG: ${{ steps.version_step.outputs.tag }}
+        run: |
+          TOKEN=$(gcloud auth print-access-token)
+          TAG_ENC=$(printf '%s' "$TAG" | sed 's/+/%2B/g')
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/${TAG_ENC}/app-arm64-v8a-release.apk"
+          FILE_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-arm64-v8a-release.apk)
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          BODY=$(cat <<EOF
+          {
+            "fields": {
+              "latestVersionCode": {"integerValue": "${BUILD_NUMBER}"},
+              "latestVersionName": {"stringValue": "${VERSION_NAME}"},
+              "apkUrl": {"stringValue": "${APK_URL}"},
+              "forceUpdate": {"booleanValue": ${FORCE_UPDATE}},
+              "fileSize": {"integerValue": "${FILE_SIZE}"},
+              "publishedAt": {"timestampValue": "${NOW}"}
+            }
+          }
+          EOF
+          )
+          MASK="updateMask.fieldPaths=latestVersionCode&updateMask.fieldPaths=latestVersionName&updateMask.fieldPaths=apkUrl&updateMask.fieldPaths=forceUpdate&updateMask.fieldPaths=fileSize&updateMask.fieldPaths=publishedAt"
+          curl -sS --fail-with-body -X PATCH \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/configurations/app_version?${MASK}" \
+            -d "$BODY"
