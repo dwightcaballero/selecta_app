@@ -284,8 +284,8 @@ class _PicklistListPageState extends State<PicklistListPage> {
           : FloatingActionButton.extended(
               heroTag: null,
               onPressed: () => Helperfunctions.navigateTo(context, BookOrderPage(initialDate: _selectedDate)),
-              icon: const Icon(Icons.add_shopping_cart_rounded, size: 22),
-              label: const Text('Book Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+              icon: const Icon(Icons.storefront_outlined, size: 22),
+              label: const Text('Store Order', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
             ),
       body: _isEditing
           ? _buildEditingList()

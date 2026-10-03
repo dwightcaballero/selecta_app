@@ -29,7 +29,10 @@ enum PjpHistoryFilter {
 /// - Sleek skeleton loading animations
 /// - Detailed visit bottom sheet with copy & fullscreen photo options
 class PjpHistoryPage extends StatefulWidget {
-  const PjpHistoryPage({super.key});
+  /// Optional search text to prefill (e.g. a store name) when opening the page.
+  final String? initialSearchQuery;
+
+  const PjpHistoryPage({super.key, this.initialSearchQuery});
 
   @override
   State<PjpHistoryPage> createState() => _PjpHistoryPageState();
@@ -60,6 +63,12 @@ class _PjpHistoryPageState extends State<PjpHistoryPage> with SingleTickerProvid
     _pulseAnimation = Tween<double>(begin: 0.35, end: 0.85).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    final initialQuery = widget.initialSearchQuery?.trim() ?? '';
+    if (initialQuery.isNotEmpty) {
+      _searchController.text = initialQuery;
+      _searchQuery = initialQuery.toLowerCase();
+    }
 
     _searchController.addListener(_onSearchChanged);
     _subscribeToHistory();

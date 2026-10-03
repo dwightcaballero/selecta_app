@@ -793,8 +793,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
         return Scaffold(
           appBar: CustomAppbar(
-            title: _isEditing ? 'Edit Order' : 'Book Order',
-            subtitle: hasSelectedStore ? '$selectedStoreName • ${_formatAppBarDate(_selectedDate)}' : 'Select Store & Date',
+            title: _isEditing ? 'Edit Order' : 'Store Order',
+            subtitle: hasSelectedStore ? '$selectedStoreName • ${_formatAppBarDate(_selectedDate)}' : 'Order for a Hapi Store',
             centerTitle: false,
             actions: [_buildToggleStoreDateAction()],
           ),

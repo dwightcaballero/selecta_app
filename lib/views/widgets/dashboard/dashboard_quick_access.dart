@@ -33,42 +33,11 @@ class DashboardQuickAccessGrid extends StatelessWidget {
           children: [
             _buildCard(
               context,
-              label: 'Book Order',
-              icon: Icons.add_shopping_cart_rounded,
+              label: 'Store Order',
+              subtitle: 'Sell to store',
+              icon: Icons.storefront_outlined,
               color: primaryColor,
               nextPage: const BookOrderPage(),
-            ),
-            const SizedBox(width: 10),
-            _buildCard(
-              context,
-              label: 'Picklists',
-              icon: Icons.fact_check_outlined,
-              count: dashboardDTO.pendingPicklistCount,
-              stream: pendingPicklistsCountStream,
-              color: primaryColor,
-              nextPage: const PicklistListPage(),
-            ),
-            const SizedBox(width: 10),
-            _buildCard(
-              context,
-              label: 'Deliveries',
-              icon: Icons.local_shipping_outlined,
-              count: dashboardDTO.pendingDeliveryCount,
-              color: primaryColor,
-              nextPage: const DeliveryListPage(),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            _buildCard(
-              context,
-              label: 'Purchase Orders',
-              icon: Icons.assignment_outlined,
-              stream: purchaseOrdersAwaitingCountStream,
-              color: primaryColor,
-              nextPage: const PurchaseorderlistPage(),
             ),
             const SizedBox(width: 10),
             _buildCard(
@@ -97,6 +66,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
   Widget _buildCard(
     BuildContext context, {
     required String label,
+    String? subtitle,
     required IconData icon,
     int count = 0,
     Stream<int>? stream,
@@ -115,10 +85,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
         color: theme.cardTheme.color ?? Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(
-            color: isDark ? const Color(0xFF384152) : colorScheme.outlineVariant.withAlpha(90),
-            width: isDark ? 1.2 : 1.1,
-          ),
+          side: BorderSide(color: isDark ? const Color(0xFF384152) : colorScheme.outlineVariant.withAlpha(90), width: isDark ? 1.2 : 1.1),
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
@@ -130,17 +97,11 @@ class DashboardQuickAccessGrid extends StatelessWidget {
               children: [
                 Badge(
                   isLabelVisible: badgeCount > 0,
-                  label: Text(
-                    '$badgeCount',
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800),
-                  ),
+                  label: Text('$badgeCount', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
                   backgroundColor: Colors.red,
                   child: Container(
                     padding: const EdgeInsets.all(11),
-                    decoration: BoxDecoration(
-                      color: color.withAlpha(isDark ? 40 : 25),
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: BoxDecoration(color: color.withAlpha(isDark ? 40 : 25), shape: BoxShape.circle),
                     child: Icon(icon, size: 26, color: color),
                   ),
                 ),
@@ -148,16 +109,28 @@ class DashboardQuickAccessGrid extends StatelessWidget {
                 SizedBox(
                   height: 34,
                   child: Center(
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        height: 1.2,
-                      ),
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          label,
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: subtitle != null ? 12.5 : 13, height: 1.15),
+                          textAlign: TextAlign.center,
+                          maxLines: subtitle != null ? 1 : 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (subtitle != null) ...[
+                          const SizedBox(height: 1.5),
+                          Text(
+                            subtitle,
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant, height: 1.1),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -170,11 +143,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
 
     return Expanded(
       child: stream != null
-          ? StreamBuilder<int>(
-              stream: stream,
-              initialData: count,
-              builder: (context, snapshot) => cardContent(snapshot.data ?? 0),
-            )
+          ? StreamBuilder<int>(stream: stream, initialData: count, builder: (context, snapshot) => cardContent(snapshot.data ?? 0))
           : cardContent(count),
     );
   }

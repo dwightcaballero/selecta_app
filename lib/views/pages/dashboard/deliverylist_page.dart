@@ -415,9 +415,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
         Navigator.push(context, MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)));
       },
       backgroundColor: Theme.of(context).colorScheme.primary,
-      icon: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 22),
+      icon: const Icon(Icons.storefront_outlined, color: Colors.white, size: 22),
       label: const Text(
-        'Book Order',
+        'Store Order',
         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15.5),
       ),
     );
@@ -506,8 +506,8 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                     OutlinedButton.icon(
                                       onPressed: () =>
                                           Navigator.push(context, MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate))),
-                                      icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
-                                      label: const Text('Book Order', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                                      icon: const Icon(Icons.storefront_outlined, size: 20),
+                                      label: const Text('Store Order', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                                     ),
                                   ],
                                 ),

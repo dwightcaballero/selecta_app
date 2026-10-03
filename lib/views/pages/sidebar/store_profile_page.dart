@@ -13,7 +13,7 @@ import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/credit_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/delivery_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistore_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/proof_of_visit_gallery_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/pjphistory_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
@@ -1087,12 +1087,12 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
                   ),
                   TextButton.icon(
                     icon: const Icon(Icons.open_in_new_rounded, size: 14),
-                    label: const Text('All Stores Gallery', style: TextStyle(fontSize: 12)),
+                    label: const Text('Full Visit History', style: TextStyle(fontSize: 12)),
                     onPressed: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => ProofOfVisitGalleryPage(initialStoreFilter: _store.storeName),
+                          builder: (_) => PjpHistoryPage(initialSearchQuery: _store.storeName),
                         ),
                       );
                     },

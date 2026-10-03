@@ -433,14 +433,14 @@ class _DashboardPageState extends State<DashboardPage> {
       icon: _buildBadge(
         stream: _purchaseOrdersAwaitingCountStream,
         initialCount: 0,
-        icon: Icons.shopping_bag_outlined,
+        icon: Icons.inventory_2_outlined,
       ),
       selectedIcon: _buildBadge(
         stream: _purchaseOrdersAwaitingCountStream,
         initialCount: 0,
-        icon: Icons.shopping_bag_rounded,
+        icon: Icons.inventory_2_rounded,
       ),
-      label: 'Orders',
+      label: 'Restock',
     ),
     const NavigationDestination(
       icon: Icon(Icons.warehouse_outlined),
@@ -486,14 +486,14 @@ class _DashboardPageState extends State<DashboardPage> {
       icon: _buildBadge(
         stream: _purchaseOrdersAwaitingCountStream,
         initialCount: 0,
-        icon: Icons.shopping_bag_outlined,
+        icon: Icons.inventory_2_outlined,
       ),
       selectedIcon: _buildBadge(
         stream: _purchaseOrdersAwaitingCountStream,
         initialCount: 0,
-        icon: Icons.shopping_bag_rounded,
+        icon: Icons.inventory_2_rounded,
       ),
-      label: const Text('Orders'),
+      label: const Text('Restock'),
     ),
     const NavigationRailDestination(
       icon: Icon(Icons.warehouse_outlined),

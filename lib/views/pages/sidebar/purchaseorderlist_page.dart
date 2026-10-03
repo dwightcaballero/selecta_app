@@ -541,7 +541,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppbar(title: 'Purchase Orders', subtitle: 'Invoices & Monthly Tracking'),
+      appBar: const CustomAppbar(title: 'Restock (PO)', subtitle: 'Restock from Selecta • Invoices & Tracking'),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: null,
         onPressed: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty())),
