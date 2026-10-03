@@ -27,6 +27,7 @@ import 'package:selecta_ops/views/widgets/dashboard/dashboard_kpi_section.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_quick_access.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_sidebar.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_welcome_banner.dart';
+import 'package:selecta_ops/views/widgets/exit_guard.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -36,6 +37,7 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  final GlobalKey<ScaffoldState> _homeScaffoldKey = GlobalKey<ScaffoldState>();
   // Controller handling dashboard sync, data caching, live count streams, and role switching
   final DashboardController _controller = DashboardController();
 
@@ -496,8 +498,21 @@ class _DashboardPageState extends State<DashboardPage> {
     ),
   ];
 
+  bool _handleBackPress() {
+    if (_homeScaffoldKey.currentState?.isDrawerOpen == true) {
+      _homeScaffoldKey.currentState?.closeDrawer();
+      return true;
+    }
+    if (_currentTabIndex != 0) {
+      setState(() => _currentTabIndex = 0);
+      return true;
+    }
+    return false;
+  }
+
   Widget _buildHomeDashboard(List<Widget> appBarActions, ColorScheme colorScheme) {
     return Scaffold(
+      key: _homeScaffoldKey,
       appBar: CustomAppbar(
         title: 'Dashboard',
         subtitle: 'Selecta Operations',
@@ -564,9 +579,11 @@ class _DashboardPageState extends State<DashboardPage> {
       const DeliveryListPage(),
     ];
 
+    final Widget content;
+
     // ── DESKTOP layout: permanent sidebar + tab content ────────────────────────
     if (isDesktop) {
-      return Scaffold(
+      content = Scaffold(
         body: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -581,11 +598,9 @@ class _DashboardPageState extends State<DashboardPage> {
           ],
         ),
       );
-    }
-
-    // ── TABLET layout: NavigationRail + tab content ─────────────────────
-    if (isTablet) {
-      return Scaffold(
+    } else if (isTablet) {
+      // ── TABLET layout: NavigationRail + tab content ─────────────────────
+      content = Scaffold(
         body: Row(
           children: [
             NavigationRail(
@@ -607,23 +622,28 @@ class _DashboardPageState extends State<DashboardPage> {
           ],
         ),
       );
+    } else {
+      // ── PHONE layout: persistent bottom nav + IndexedStack ───────────────
+      content = Scaffold(
+        body: IndexedStack(
+          index: _currentTabIndex,
+          children: tabPages,
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _currentTabIndex,
+          height: 65,
+          elevation: 3,
+          onDestinationSelected: (index) {
+            setState(() => _currentTabIndex = index);
+          },
+          destinations: _navDestinations(),
+        ),
+      );
     }
 
-    // ── PHONE layout: persistent bottom nav + IndexedStack ───────────────
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentTabIndex,
-        children: tabPages,
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentTabIndex,
-        height: 65,
-        elevation: 3,
-        onDestinationSelected: (index) {
-          setState(() => _currentTabIndex = index);
-        },
-        destinations: _navDestinations(),
-      ),
+    return ExitGuard(
+      onBackIntercept: _handleBackPress,
+      child: content,
     );
   }
 }

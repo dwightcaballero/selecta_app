@@ -24,6 +24,7 @@ import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
+import 'package:selecta_ops/views/widgets/exit_guard.dart';
 
 class SalesmanDashboardPage extends StatefulWidget {
   const SalesmanDashboardPage({super.key});
@@ -33,6 +34,7 @@ class SalesmanDashboardPage extends StatefulWidget {
 }
 
 class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
+  final GlobalKey<ScaffoldState> _homeScaffoldKey = GlobalKey<ScaffoldState>();
   // Controller managing data syncing, live count streams, role switching, and user state
   final DashboardController _controller = DashboardController();
 
@@ -544,8 +546,21 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     );
   }
 
+  bool _handleBackPress() {
+    if (_homeScaffoldKey.currentState?.isDrawerOpen == true) {
+      _homeScaffoldKey.currentState?.closeDrawer();
+      return true;
+    }
+    if (_currentTabIndex != 0) {
+      setState(() => _currentTabIndex = 0);
+      return true;
+    }
+    return false;
+  }
+
   Widget _buildHomeDashboard() {
     return Scaffold(
+      key: _homeScaffoldKey,
       drawer: _buildDrawer(),
       appBar: CustomAppbar(
         title: 'Salesman Dashboard',
@@ -660,65 +675,68 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentTabIndex,
-        children: [_buildHomeDashboard(), const PjpListPage(), const PicklistListPage(), const DeliveryListPage(), const ScanninglistPage()],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentTabIndex,
-        height: 65,
-        elevation: 3,
-        onDestinationSelected: (index) {
-          setState(() => _currentTabIndex = index);
-        },
-        destinations: [
-          const NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
-          NavigationDestination(
-            icon: _buildBadge(stream: _pendingPjpCountStream, initialCount: _dashboardDTO.pendingPjpCount, icon: Icons.map_outlined),
-            selectedIcon: _buildBadge(stream: _pendingPjpCountStream, initialCount: _dashboardDTO.pendingPjpCount, icon: Icons.map_rounded),
-            label: 'Route',
-          ),
-          NavigationDestination(
-            icon: _buildBadge(
-              stream: _pendingPicklistsCountStream,
-              initialCount: _dashboardDTO.pendingPicklistCount,
-              icon: Icons.fact_check_outlined,
+    return ExitGuard(
+      onBackIntercept: _handleBackPress,
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentTabIndex,
+          children: [_buildHomeDashboard(), const PjpListPage(), const PicklistListPage(), const DeliveryListPage(), const ScanninglistPage()],
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _currentTabIndex,
+          height: 65,
+          elevation: 3,
+          onDestinationSelected: (index) {
+            setState(() => _currentTabIndex = index);
+          },
+          destinations: [
+            const NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
+            NavigationDestination(
+              icon: _buildBadge(stream: _pendingPjpCountStream, initialCount: _dashboardDTO.pendingPjpCount, icon: Icons.map_outlined),
+              selectedIcon: _buildBadge(stream: _pendingPjpCountStream, initialCount: _dashboardDTO.pendingPjpCount, icon: Icons.map_rounded),
+              label: 'Route',
             ),
-            selectedIcon: _buildBadge(
-              stream: _pendingPicklistsCountStream,
-              initialCount: _dashboardDTO.pendingPicklistCount,
-              icon: Icons.fact_check_rounded,
+            NavigationDestination(
+              icon: _buildBadge(
+                stream: _pendingPicklistsCountStream,
+                initialCount: _dashboardDTO.pendingPicklistCount,
+                icon: Icons.fact_check_outlined,
+              ),
+              selectedIcon: _buildBadge(
+                stream: _pendingPicklistsCountStream,
+                initialCount: _dashboardDTO.pendingPicklistCount,
+                icon: Icons.fact_check_rounded,
+              ),
+              label: 'PickLists',
             ),
-            label: 'PickLists',
-          ),
-          NavigationDestination(
-            icon: _buildBadge(
-              stream: _pendingDeliveriesCountStream,
-              initialCount: _dashboardDTO.pendingDeliveryCount,
-              icon: Icons.local_shipping_outlined,
+            NavigationDestination(
+              icon: _buildBadge(
+                stream: _pendingDeliveriesCountStream,
+                initialCount: _dashboardDTO.pendingDeliveryCount,
+                icon: Icons.local_shipping_outlined,
+              ),
+              selectedIcon: _buildBadge(
+                stream: _pendingDeliveriesCountStream,
+                initialCount: _dashboardDTO.pendingDeliveryCount,
+                icon: Icons.local_shipping_rounded,
+              ),
+              label: 'Deliveries',
             ),
-            selectedIcon: _buildBadge(
-              stream: _pendingDeliveriesCountStream,
-              initialCount: _dashboardDTO.pendingDeliveryCount,
-              icon: Icons.local_shipping_rounded,
+            NavigationDestination(
+              icon: _buildBadge(
+                stream: _pendingScanningCountStream,
+                initialCount: _dashboardDTO.pendingScanningCount,
+                icon: Icons.qr_code_scanner_outlined,
+              ),
+              selectedIcon: _buildBadge(
+                stream: _pendingScanningCountStream,
+                initialCount: _dashboardDTO.pendingScanningCount,
+                icon: Icons.qr_code_scanner_rounded,
+              ),
+              label: 'Scan',
             ),
-            label: 'Deliveries',
-          ),
-          NavigationDestination(
-            icon: _buildBadge(
-              stream: _pendingScanningCountStream,
-              initialCount: _dashboardDTO.pendingScanningCount,
-              icon: Icons.qr_code_scanner_outlined,
-            ),
-            selectedIcon: _buildBadge(
-              stream: _pendingScanningCountStream,
-              initialCount: _dashboardDTO.pendingScanningCount,
-              icon: Icons.qr_code_scanner_rounded,
-            ),
-            label: 'Scan',
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
