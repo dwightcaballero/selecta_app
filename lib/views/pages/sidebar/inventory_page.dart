@@ -47,6 +47,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
   List<InventoryItem> _applyFilters(List<InventoryItem> items) {
     return items.where((item) {
+      if (!item.isActive) return false;
       final matchesSearch = _searchQuery.isEmpty ||
           item.productName.toLowerCase().contains(_searchQuery);
       if (!matchesSearch) return false;
@@ -132,7 +133,7 @@ class _InventoryPageState extends State<InventoryPage> {
             );
           }
 
-          final allItems = snapshot.data ?? [];
+          final allItems = (snapshot.data ?? []).where((item) => item.isActive).toList();
           final summary = _controller.computeSummary(allItems);
           final filteredItems = _applyFilters(allItems);
           final isFiltered = _searchQuery.isNotEmpty || _selectedFilter != 'All';

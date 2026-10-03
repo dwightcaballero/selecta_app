@@ -48,7 +48,9 @@ class InventoryController {
     int lowStock = 0;
     int outOfStock = 0;
 
-    for (final item in items) {
+    final activeItems = items.where((item) => item.isActive).toList();
+
+    for (final item in activeItems) {
       totalUnits += item.stockQuantity;
       totalIncoming += item.incomingQuantity;
       totalReserved += item.reservedQuantity;
@@ -63,7 +65,7 @@ class InventoryController {
     }
 
     return InventorySummary(
-      totalProducts: items.length,
+      totalProducts: activeItems.length,
       totalUnits: totalUnits,
       totalIncomingUnits: totalIncoming,
       totalReservedUnits: totalReserved,

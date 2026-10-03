@@ -38,6 +38,8 @@ class InventoryService {
     List<AdminSelectaProduct> adminProducts = [];
     Map<String, int> pendingIncomingById = {};
     Map<String, int> pendingIncomingByName = {};
+    Set<String> allLocalSelectaIds = {};
+    Set<String> allLocalSelectaNames = {};
     bool selectaLoaded = false;
     bool otherLoaded = false;
     bool poLoaded = false;
@@ -46,13 +48,8 @@ class InventoryService {
       if (!selectaLoaded || !otherLoaded || !poLoaded) return;
       if (controller.isClosed) return;
 
-      final existingSelectaIds = <String>{};
-      final existingSelectaNames = <String>{};
-
       final resolvedSelecta = selectaItems.map((item) {
-        existingSelectaIds.add(item.id);
         final nameKey = item.productName.trim().toLowerCase();
-        if (nameKey.isNotEmpty) existingSelectaNames.add(nameKey);
 
         final liveIncoming = pendingIncomingById[item.id] ?? pendingIncomingByName[nameKey] ?? 0;
         final effectiveIncoming = liveIncoming > 0 ? liveIncoming : item.incomingQuantity;
@@ -70,8 +67,8 @@ class InventoryService {
       for (final adminProd in adminProducts) {
         final nameKey = adminProd.productName.trim().toLowerCase();
         if (adminProd.productName.isNotEmpty &&
-            !existingSelectaIds.contains(adminProd.id) &&
-            !existingSelectaNames.contains(nameKey)) {
+            !allLocalSelectaIds.contains(adminProd.id) &&
+            !allLocalSelectaNames.contains(nameKey)) {
           final liveIncoming = pendingIncomingById[adminProd.id] ?? pendingIncomingByName[nameKey] ?? 0;
           resolvedSelecta.add(
             InventoryItem(
@@ -97,7 +94,8 @@ class InventoryService {
       final combined = <InventoryItem>[
         ...resolvedSelecta,
         ...otherItems,
-      ]..sort((a, b) => a.productName.toLowerCase().compareTo(b.productName.toLowerCase()));
+      ].where((item) => item.isActive).toList()
+        ..sort((a, b) => a.productName.toLowerCase().compareTo(b.productName.toLowerCase()));
       controller.add(combined);
     }
 
@@ -108,6 +106,12 @@ class InventoryService {
             .snapshots()
             .listen(
           (snap) {
+            allLocalSelectaIds = snap.docs.map((d) => d.id).toSet();
+            allLocalSelectaNames = snap.docs
+                .map((d) => (d.data()['productName'] as String? ?? '').trim().toLowerCase())
+                .where((name) => name.isNotEmpty)
+                .toSet();
+
             selectaItems = snap.docs
                 .map((doc) => SelectaProduct.fromSnapshot(doc))
                 .where((p) => p.isActive && p.productName.isNotEmpty)

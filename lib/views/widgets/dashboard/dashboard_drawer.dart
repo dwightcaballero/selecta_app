@@ -13,14 +13,12 @@ import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistorelist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/other_products_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/selecta_products_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/product_catalog_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/proof_of_visit_gallery_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
@@ -142,7 +140,7 @@ class DashboardDrawer extends StatelessWidget {
           _buildDrawerItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(context, Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
           _buildDrawerItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-          _buildDrawerItem(context, Icons.menu_book_outlined, 'Product Catalog & Prices', const ProductCatalogPage()),
+          _buildDrawerItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: isDealer ? 'Dealer' : (currentUser?.role ?? 'Salesman'))),
           _buildDrawerItem(context, Icons.photo_library_outlined, 'Visit Photos (Gallery)', const ProofOfVisitGalleryPage()),
           _buildDrawerItem(context, Icons.file_download_outlined, 'Export Reports (Excel/CSV)', const ExportReportsPage()),
 
@@ -174,8 +172,6 @@ class DashboardDrawer extends StatelessWidget {
           ),
           _buildDrawerItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
           if (isDealer) _buildDrawerItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
-          if (isDealer) _buildDrawerItem(context, Icons.inventory_2_outlined, 'Selecta Products', const SelectaProductsPage()),
-          if (isDealer) _buildDrawerItem(context, Icons.inventory_2_outlined, 'Other Products', const OtherProductsPage()),
           _buildDrawerItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),
           _buildDrawerItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           _buildDrawerItem(context, Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: onUploadErrorLogs),

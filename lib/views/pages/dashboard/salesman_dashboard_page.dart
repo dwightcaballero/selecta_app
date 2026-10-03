@@ -11,11 +11,14 @@ import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/scanninglist_page.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
+import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -193,7 +196,33 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
 
     if (confirmed != true) return;
 
-    if (passwordController.text.trim() != '123') {
+    final enteredPassword = passwordController.text.trim();
+    if (enteredPassword.isEmpty) {
+      if (mounted) ShowMessage.error(context, 'Password cannot be empty.');
+      return;
+    }
+
+    // Fetch the stored hash from Firestore config
+    final config = await ConfigurationService().getConfiguration();
+
+    if (config.superAdminPasswordHash.isEmpty) {
+      // No hash set yet — allow entry with a warning so admin can set one immediately
+      if (mounted) {
+        ShowMessage.alert(
+          context,
+          title: 'No Admin Password Set',
+          message: 'No super-admin password has been configured yet. Please set one from the Super Admin page immediately.',
+          icon: Icons.warning_amber_rounded,
+        );
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SuperAdminPage()));
+        if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
+          await _syncDashboard();
+        }
+      }
+      return;
+    }
+
+    if (!config.verifyAdminPassword(enteredPassword)) {
       if (mounted) {
         ShowMessage.error(context, 'Incorrect admin password.');
       }
@@ -409,7 +438,11 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
+          _buildDrawerItem(Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: 'Salesman')),
           _buildDrawerItem(Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: _dashboardDTO)),
+
+          const Divider(indent: 16, endIndent: 16),
+
           _buildDrawerItem(Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: _handleUploadErrorLogs),
           _buildDrawerItem(
             Icons.system_update_alt_rounded,
@@ -419,7 +452,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
               AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true);
             },
           ),
-
+          _buildDrawerItem(Icons.tune_rounded, 'Settings & Appearance', const SettingsPage()),
           const Divider(indent: 16, endIndent: 16),
 
           _buildDrawerItem(Icons.logout_rounded, 'Sign Out', null, isLogout: true),

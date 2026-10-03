@@ -16,12 +16,10 @@ import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistorelist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/other_products_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/selecta_products_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/product_catalog_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/proof_of_visit_gallery_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
@@ -107,7 +105,7 @@ class DashboardSidebar extends StatelessWidget {
                   _buildItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
                   _buildItem(context, Icons.today_outlined, 'End of Day', const EndofdayPage()),
                   _buildItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-                  _buildItem(context, Icons.menu_book_outlined, 'Product Catalog', const ProductCatalogPage()),
+                  _buildItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: isDealer ? 'Dealer' : (currentUser?.role ?? 'Salesman'))),
                   _buildItem(context, Icons.photo_library_outlined, 'Visit Gallery', const ProofOfVisitGalleryPage()),
                   _buildItem(context, Icons.file_download_outlined, 'Export Reports', const ExportReportsPage()),
 
@@ -133,8 +131,6 @@ class DashboardSidebar extends StatelessWidget {
                   ),
                   _buildItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
                   if (isDealer) _buildItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
-                  if (isDealer) _buildItem(context, Icons.inventory_2_outlined, 'Selecta Products', const SelectaProductsPage()),
-                  if (isDealer) _buildItem(context, Icons.inventory_2_outlined, 'Other Products', const OtherProductsPage()),
                   _buildItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badge: dashboardDTO.pendingPjpCount),
                   _buildItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
                   _buildItem(context, Icons.cloud_upload_outlined, 'Upload Error Logs', null, onTap: onUploadErrorLogs),

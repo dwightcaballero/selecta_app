@@ -785,7 +785,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     return StreamBuilder<List<InventoryItem>>(
       stream: _inventoryController.getActiveInventoryStream(),
       builder: (context, snapshot) {
-        final allInventory = snapshot.data ?? [];
+        final allInventory = (snapshot.data ?? []).where((item) => item.isActive).toList();
 
         final orderItems = _buildOrderItemsList(allInventory);
         final totalAmount = _deliveryController.computeItemsOrderAmount(orderItems);
@@ -1041,6 +1041,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     }
 
     final filtered = allInventory.where((item) {
+      if (!item.isActive) return false;
       if (_showSelectedOnly && _getSelectedQty(item) <= 0) return false;
       if (_searchQuery.isNotEmpty && !item.productName.toLowerCase().contains(_searchQuery)) {
         return false;

@@ -9,8 +9,7 @@ import 'package:selecta_ops/services/gemini_ai_service.dart';
 import 'package:selecta_ops/views/dashboard_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/error_logs_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/other_products_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/selecta_products_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 
@@ -457,7 +456,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             onPressed: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const SelectaProductsPage(userRole: 'Admin'),
+                                  builder: (_) => const ProductsPage(userRole: 'Admin', initialIndex: 0),
                                 ),
                               );
                             },
@@ -478,7 +477,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             onPressed: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (_) => const OtherProductsPage(userRole: 'Admin'),
+                                  builder: (_) => const ProductsPage(userRole: 'Admin', initialIndex: 1),
                                 ),
                               );
                             },
