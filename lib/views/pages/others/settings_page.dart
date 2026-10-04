@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/notifiers.dart';
+import 'package:selecta_ops/models/app_version_info.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/theme/app_theme.dart';
@@ -73,9 +74,11 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadAppInfo() async {
     try {
       final info = await PackageInfo.fromPlatform();
+      final rawBuild = int.tryParse(info.buildNumber) ?? 0;
+      final displayBuild = AppVersionInfo.normalizeBuildNumber(rawBuild);
       if (mounted) {
         setState(() {
-          _appVersion = '${info.version} (Build ${info.buildNumber})';
+          _appVersion = '${info.version} (Build $displayBuild)';
         });
       }
     } catch (_) {}

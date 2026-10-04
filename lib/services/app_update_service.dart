@@ -550,15 +550,18 @@ class AppUpdateService {
     final isAFastCdn = a.apkUrl.contains('firebasestorage') || a.apkUrl.contains('storage.googleapis.com');
     final isBFastCdn = b.apkUrl.contains('firebasestorage') || b.apkUrl.contains('storage.googleapis.com');
 
+    final aCode = AppVersionInfo.normalizeBuildNumber(a.latestVersionCode);
+    final bCode = AppVersionInfo.normalizeBuildNumber(b.latestVersionCode);
+
     // If version codes differ significantly
-    if (a.latestVersionCode > b.latestVersionCode) {
+    if (aCode > bCode) {
       // If version code of a is higher, but b is the same semver and hosted on fast Firebase CDN
       if (a.latestVersionName == b.latestVersionName && isBFastCdn && !isAFastCdn) {
         return b;
       }
       return a;
     }
-    if (b.latestVersionCode > a.latestVersionCode) {
+    if (bCode > aCode) {
       return b;
     }
 

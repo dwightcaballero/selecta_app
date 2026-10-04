@@ -143,19 +143,35 @@ class AppVersionInfo {
     };
   }
 
+  /// Normalizes an Android versionCode that may have an ABI offset
+  /// applied by Flutter's `--split-per-abi` flag.
+  /// arm64-v8a adds 2000 (e.g., 2028 -> 28)
+  /// armeabi-v7a adds 1000 (e.g., 1028 -> 28)
+  /// x86_64 adds 3000 (e.g., 3028 -> 28)
+  static int normalizeBuildNumber(int code) {
+    if (code >= 1000 && code < 10000) {
+      return code % 1000;
+    }
+    return code;
+  }
+
   /// Determines if this version is an update over [currentBuildNumber] and [currentVersionName].
   bool isUpdateAvailable(int currentBuildNumber, {String currentVersionName = ''}) {
     if (apkUrl.trim().isEmpty) return false;
 
-    // Check build numbers first if both are available and positive
-    if (latestVersionCode > 0 && currentBuildNumber > 0) {
-      if (latestVersionCode > currentBuildNumber) return true;
-      if (latestVersionCode < currentBuildNumber) return false;
+    // Check semantic version first if different
+    if (currentVersionName.isNotEmpty && latestVersionName.isNotEmpty) {
+      if (isVersionHigher(latestVersionName, currentVersionName)) return true;
+      if (isVersionHigher(currentVersionName, latestVersionName)) return false;
     }
 
-    // If build numbers are tied or missing, compare semantic versions
-    if (currentVersionName.isNotEmpty && latestVersionName.isNotEmpty) {
-      return isVersionHigher(latestVersionName, currentVersionName);
+    final normLatestCode = normalizeBuildNumber(latestVersionCode);
+    final normCurrentCode = normalizeBuildNumber(currentBuildNumber);
+
+    // Check normalized build numbers if both are available and positive
+    if (normLatestCode > 0 && normCurrentCode > 0) {
+      if (normLatestCode > normCurrentCode) return true;
+      if (normLatestCode < normCurrentCode) return false;
     }
 
     return false;
@@ -183,6 +199,8 @@ class AppVersionInfo {
   }
 
   bool isMandatory(int currentBuildNumber) {
-    return forceUpdate || currentBuildNumber < minSupportedVersionCode;
+    final normCurrent = normalizeBuildNumber(currentBuildNumber);
+    final normMin = normalizeBuildNumber(minSupportedVersionCode);
+    return forceUpdate || normCurrent < normMin;
   }
 }

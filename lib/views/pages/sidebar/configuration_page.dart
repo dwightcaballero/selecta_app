@@ -819,7 +819,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   Widget _buildAppVersionCard(ColorScheme colorScheme) {
     final hasRemote = _remoteVersionInfo != null && _remoteVersionInfo!.latestVersionCode > 0;
-    final isNewerAvailable = hasRemote && _remoteVersionInfo!.latestVersionCode > _localBuildNumber;
+    final isNewerAvailable = hasRemote && _remoteVersionInfo!.isUpdateAvailable(_localBuildNumber, currentVersionName: _localVersion);
 
     return Card(
       elevation: 0,
@@ -872,7 +872,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          'v$_localVersion (Build $_localBuildNumber)',
+                          'v$_localVersion (Build ${AppVersionInfo.normalizeBuildNumber(_localBuildNumber)})',
                           textAlign: TextAlign.end,
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                         ),
@@ -888,7 +888,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                       Flexible(
                         child: Text(
                           hasRemote
-                              ? 'v${_remoteVersionInfo!.latestVersionName} (Build ${_remoteVersionInfo!.latestVersionCode})'
+                              ? 'v${_remoteVersionInfo!.latestVersionName} (Build ${AppVersionInfo.normalizeBuildNumber(_remoteVersionInfo!.latestVersionCode)})'
                               : 'Not Configured',
                           textAlign: TextAlign.end,
                           style: TextStyle(
@@ -937,11 +937,12 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   void _openPublishUpdateModal() {
     final versionNameCtrl = TextEditingController(text: _remoteVersionInfo?.latestVersionName ?? '1.0.1');
-    final versionCodeCtrl = TextEditingController(
-      text: (_remoteVersionInfo != null && _remoteVersionInfo!.latestVersionCode > 0)
-          ? (_remoteVersionInfo!.latestVersionCode + 1).toString()
-          : (_localBuildNumber + 1).toString(),
-    );
+    final normRemote = (_remoteVersionInfo != null && _remoteVersionInfo!.latestVersionCode > 0)
+        ? AppVersionInfo.normalizeBuildNumber(_remoteVersionInfo!.latestVersionCode)
+        : 0;
+    final normLocal = AppVersionInfo.normalizeBuildNumber(_localBuildNumber);
+    final nextBuild = (normRemote > 0 ? normRemote : normLocal) + 1;
+    final versionCodeCtrl = TextEditingController(text: nextBuild.toString());
     final apkUrlCtrl = TextEditingController(text: _remoteVersionInfo?.apkUrl ?? '');
     final notesCtrl = TextEditingController(text: _remoteVersionInfo?.releaseNotes ?? '');
     bool isForce = _remoteVersionInfo?.forceUpdate ?? false;

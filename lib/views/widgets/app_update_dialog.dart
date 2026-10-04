@@ -77,7 +77,7 @@ class AppUpdateDialog extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'v${versionInfo.latestVersionName} (Build ${versionInfo.latestVersionCode})',
+                        'v${versionInfo.latestVersionName} (Build ${AppVersionInfo.normalizeBuildNumber(versionInfo.latestVersionCode)})',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: isReady ? Colors.green.shade600 : colorScheme.primary,
                           fontWeight: FontWeight.w600,
@@ -106,14 +106,14 @@ class AppUpdateDialog extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Current: v$currentVersion+$currentBuildNumber',
+                          'Current: v$currentVersion+${AppVersionInfo.normalizeBuildNumber(currentBuildNumber)}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.textTheme.bodySmall?.color?.withAlpha(180),
                           ),
                         ),
                         const Icon(Icons.arrow_forward_rounded, size: 14),
                         Text(
-                          'New: v${versionInfo.latestVersionName}+${versionInfo.latestVersionCode}',
+                          'New: v${versionInfo.latestVersionName}+${AppVersionInfo.normalizeBuildNumber(versionInfo.latestVersionCode)}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: colorScheme.primary,

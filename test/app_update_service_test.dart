@@ -107,5 +107,60 @@ void main() {
       expect(AppVersionInfo.isVersionHigher('1.0.0', '1.0.0'), isFalse);
       expect(AppVersionInfo.isVersionHigher('1.0.0', '1.0.1'), isFalse);
     });
+
+    test('normalizeBuildNumber correctly normalizes Flutter split-per-abi version codes', () {
+      expect(AppVersionInfo.normalizeBuildNumber(2028), equals(28)); // arm64-v8a
+      expect(AppVersionInfo.normalizeBuildNumber(1028), equals(28)); // armeabi-v7a
+      expect(AppVersionInfo.normalizeBuildNumber(3028), equals(28)); // x86_64
+      expect(AppVersionInfo.normalizeBuildNumber(28), equals(28));   // standard
+      expect(AppVersionInfo.normalizeBuildNumber(0), equals(0));
+    });
+
+    test('isUpdateAvailable correctly detects update when phone has ABI-split build code (e.g. 2028 vs 29 or 2029)', () {
+      // Remote has standard build number 29 (e.g. from GitHub tag or pubspec)
+      final infoFromGithub = AppVersionInfo(
+        latestVersionCode: 29,
+        latestVersionName: '1.0.0',
+        apkUrl: 'https://example.com/app.apk',
+        releaseNotes: 'Update notes',
+      );
+
+      // Phone running arm64-v8a v28 (reported as 2028) vs remote 29 -> update detected!
+      expect(infoFromGithub.isUpdateAvailable(2028, currentVersionName: '1.0.0'), isTrue);
+
+      // Phone running arm64-v8a v29 (reported as 2029) vs remote 29 -> up to date!
+      expect(infoFromGithub.isUpdateAvailable(2029, currentVersionName: '1.0.0'), isFalse);
+
+      // Remote has arm64 offset build number 2029 (e.g. from Firestore or Storage)
+      final infoFromStorage = AppVersionInfo(
+        latestVersionCode: 2029,
+        latestVersionName: '1.0.0',
+        apkUrl: 'https://example.com/app.apk',
+        releaseNotes: 'Update notes',
+      );
+
+      // Phone running arm64-v8a v28 (2028) vs remote 2029 -> update detected!
+      expect(infoFromStorage.isUpdateAvailable(2028, currentVersionName: '1.0.0'), isTrue);
+
+      // Phone running standard v28 (28) vs remote 2029 -> update detected!
+      expect(infoFromStorage.isUpdateAvailable(28, currentVersionName: '1.0.0'), isTrue);
+    });
+
+    test('isMandatory correctly handles ABI-split build numbers', () {
+      final mandatoryInfo = AppVersionInfo(
+        latestVersionCode: 29,
+        latestVersionName: '1.0.0',
+        apkUrl: 'https://example.com/app.apk',
+        releaseNotes: 'Security patch',
+        forceUpdate: false,
+        minSupportedVersionCode: 29,
+      );
+
+      // Phone has 2028 (normalized to 28) which is < minSupported 29 -> mandatory!
+      expect(mandatoryInfo.isMandatory(2028), isTrue);
+
+      // Phone has 2029 (normalized to 29) which is >= minSupported 29 -> not mandatory
+      expect(mandatoryInfo.isMandatory(2029), isFalse);
+    });
   });
 }

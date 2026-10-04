@@ -55,10 +55,18 @@ jobs:
           if [ "$BUILD_NUMBER" = "$VERSION" ]; then
             BUILD_NUMBER=0
           fi
+          # Flutter's split-per-abi adds 2000 to versionCode for arm64-v8a APKs.
+          # Use ARM64_BUILD so existing installed devices running 2000+ build codes detect the update.
+          if [ "$BUILD_NUMBER" -gt 0 ]; then
+            ARM64_BUILD=$((2000 + BUILD_NUMBER))
+          else
+            ARM64_BUILD=0
+          fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "build=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "arm64_build=$ARM64_BUILD" >> $GITHUB_OUTPUT
           COMMIT_MSG=$(git log -1 --pretty=%B)
           BODY=""
           if echo "$COMMIT_MSG" | grep -qi "\[force-update\]"; then
@@ -107,7 +115,7 @@ jobs:
           # Without it the app sees build 0 and cannot detect the update.
           headers: |-
             cache-control: no-cache, max-age=0
-            x-goog-meta-versionCode: ${{ steps.version_step.outputs.build }}
+            x-goog-meta-versionCode: ${{ steps.version_step.outputs.arm64_build }}
             x-goog-meta-versionName: ${{ steps.version_step.outputs.name }}
             x-goog-meta-forceUpdate: ${{ steps.version_step.outputs.force }}
         env:
@@ -120,7 +128,7 @@ jobs:
           FIREBASE_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
           PROJECT_ID: selectaapp
           VERSION_NAME: ${{ steps.version_step.outputs.name }}
-          BUILD_NUMBER: ${{ steps.version_step.outputs.build }}
+          BUILD_NUMBER: ${{ steps.version_step.outputs.arm64_build }}
           FORCE_UPDATE: ${{ steps.version_step.outputs.force }}
           TAG: ${{ steps.version_step.outputs.tag }}
         run: |
