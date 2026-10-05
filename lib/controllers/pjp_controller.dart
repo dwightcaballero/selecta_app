@@ -1,20 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/placement.dart';
 import 'package:selecta_ops/models/proof_of_visit.dart';
 import 'package:selecta_ops/models/scanning.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/models/tasks.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
+import 'package:selecta_ops/services/inventory_service.dart';
 import 'package:selecta_ops/services/pjp_order_decision_service.dart';
 import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/services/proof_of_visit_service.dart';
 import 'package:selecta_ops/services/scanning_services.dart';
+import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:selecta_ops/services/tasks_services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -79,19 +84,60 @@ class BookOrderCheckResult {
   });
 }
 
+/// Represents a recommended Selecta product for store ordering.
+class StoreRecommendationItem {
+  final String productName;
+  final String? imageUrl;
+  final String category;
+  final double sellingPrice;
+  final int availableStock;
+  final bool isOutOfStock;
+  final bool isBestSeller;
+  final String? itemImagePath;
+
+  const StoreRecommendationItem({
+    required this.productName,
+    this.imageUrl,
+    this.category = 'Selecta',
+    this.sellingPrice = 0.0,
+    this.availableStock = 0,
+    required this.isOutOfStock,
+    this.isBestSeller = true,
+    this.itemImagePath,
+  });
+}
+
+/// Consolidated store ordering recommendations and stock alert result.
+class StoreRecommendationsResult {
+  final List<StoreRecommendationItem> unplacedRecommendations;
+  final List<InventoryItem> outOfStockProducts;
+
+  const StoreRecommendationsResult({
+    required this.unplacedRecommendations,
+    required this.outOfStockProducts,
+  });
+
+  int get unplacedCount => unplacedRecommendations.length;
+  int get outOfStockCount => outOfStockProducts.length;
+}
+
 /// Compliance and task status indicators for a store on the route.
 class StoreComplianceStatus {
   final bool isScanned;
   final bool isBooked;
   final bool isNoOrder;
+  final int totalBarcodes;
+  final int scannedBarcodes;
 
   const StoreComplianceStatus({
     this.isScanned = false,
     this.isBooked = false,
     this.isNoOrder = false,
+    this.totalBarcodes = 0,
+    this.scannedBarcodes = 0,
   });
 
-  bool get hasAnyStatus => isScanned || isBooked || isNoOrder;
+  bool get hasAnyStatus => isScanned || isBooked || isNoOrder || (totalBarcodes > 0 && scannedBarcodes > 0);
 }
 
 /// Result container for Proof of Visit photographic checklist check.
@@ -141,6 +187,9 @@ class PjpController {
   final DeliveryService _deliveryService;
   final ProofOfVisitService _proofOfVisitService;
   final PjpOrderDecisionService _orderDecisionService;
+  final PlacementService _placementService;
+  final SelectaProductService _selectaProductService;
+  final InventoryService _inventoryService;
 
   PjpController({
     HapiStoreService? hapiStoreService,
@@ -150,13 +199,19 @@ class PjpController {
     DeliveryService? deliveryService,
     ProofOfVisitService? proofOfVisitService,
     PjpOrderDecisionService? orderDecisionService,
+    PlacementService? placementService,
+    SelectaProductService? selectaProductService,
+    InventoryService? inventoryService,
   })  : _hapiStoreService = hapiStoreService ?? HapiStoreService(),
         _scanningService = scanningService ?? ScanningServices(),
         _tasksService = tasksService ?? TasksService(),
         _configurationService = configurationService ?? ConfigurationService(),
         _deliveryService = deliveryService ?? DeliveryService(),
         _proofOfVisitService = proofOfVisitService ?? ProofOfVisitService(),
-        _orderDecisionService = orderDecisionService ?? PjpOrderDecisionService();
+        _orderDecisionService = orderDecisionService ?? PjpOrderDecisionService(),
+        _placementService = placementService ?? PlacementService(),
+        _selectaProductService = selectaProductService ?? SelectaProductService(),
+        _inventoryService = inventoryService ?? InventoryService();
 
   DeliveryService get deliveryService => _deliveryService;
 
@@ -459,46 +514,62 @@ class PjpController {
       }
 
       final now = DateTime.now();
-      Scanning? scannedThisMonth;
-      Scanning? pendingThisMonth;
+      final activeBarcodes = scannings.where((s) => s.status != ScanningStatus.pullout).toList();
 
-      for (final s in scannings) {
-        if (s.status == ScanningStatus.scanned) {
-          if (s.scannedDate != null) {
-            final date = s.scannedDate!.toDate();
-            if (date.year == now.year && date.month == now.month) {
-              scannedThisMonth = s;
-              break;
-            }
-          } else {
-            scannedThisMonth = s;
-            break;
-          }
-        } else if (s.status == ScanningStatus.pending) {
-          pendingThisMonth ??= s;
+      if (activeBarcodes.isEmpty) {
+        return ScanningCheckResult(
+          passed: false,
+          status: 'All assigned freezers are marked as pullout.',
+          storeScannings: scannings,
+        );
+      }
+
+      final List<Scanning> completedBarcodes = [];
+      final List<Scanning> uncompletedBarcodes = [];
+
+      for (final s in activeBarcodes) {
+        final isScannedThisMonth = s.status == ScanningStatus.scanned &&
+            (s.scannedDate == null ||
+                (s.scannedDate!.toDate().year == now.year && s.scannedDate!.toDate().month == now.month));
+        final isPending = s.status == ScanningStatus.pending;
+
+        if (isScannedThisMonth || isPending) {
+          completedBarcodes.add(s);
+        } else {
+          uncompletedBarcodes.add(s);
         }
       }
 
-      if (scannedThisMonth != null) {
-        return ScanningCheckResult(
-          passed: true,
-          status: 'Barcode (${scannedThisMonth.barcode}) scanned for ${DateFormat('MMMM yyyy').format(now)}.',
-          storeScannings: scannings,
-        );
-      } else if (pendingThisMonth != null) {
-        return ScanningCheckResult(
-          passed: true,
-          status: 'Barcode (${pendingThisMonth.barcode}) pending dealer verification.',
-          storeScannings: scannings,
-        );
+      final bool allPassed = activeBarcodes.isNotEmpty && completedBarcodes.length == activeBarcodes.length;
+
+      final String statusMessage;
+      if (allPassed) {
+        final pendingCount = completedBarcodes.where((s) => s.status == ScanningStatus.pending).length;
+        if (activeBarcodes.length == 1) {
+          final s = activeBarcodes.first;
+          statusMessage = s.status == ScanningStatus.pending
+              ? 'Barcode (${s.barcode}) pending dealer verification.'
+              : 'Barcode (${s.barcode}) scanned for ${DateFormat('MMMM yyyy').format(now)}.';
+        } else {
+          statusMessage = pendingCount > 0
+              ? 'All ${activeBarcodes.length} freezer barcodes scanned ($pendingCount pending review).'
+              : 'All ${activeBarcodes.length} freezer barcodes scanned for ${DateFormat('MMMM yyyy').format(now)}.';
+        }
       } else {
-        final barcodeList = scannings.map((s) => s.barcode).join(', ');
-        return ScanningCheckResult(
-          passed: false,
-          status: 'Barcode(s) [$barcodeList] not yet scanned this month.',
-          storeScannings: scannings,
-        );
+        final notScannedList = uncompletedBarcodes.map((s) => s.barcode).join(', ');
+        if (activeBarcodes.length == 1) {
+          statusMessage = 'Barcode (${activeBarcodes.first.barcode}) not yet scanned this month.';
+        } else {
+          statusMessage =
+              '${completedBarcodes.length} of ${activeBarcodes.length} freezers scanned. Remaining: [$notScannedList]';
+        }
       }
+
+      return ScanningCheckResult(
+        passed: allPassed,
+        status: statusMessage,
+        storeScannings: scannings,
+      );
     } catch (e) {
       return const ScanningCheckResult(
         passed: false,
@@ -802,12 +873,14 @@ class PjpController {
     final Set<String> scannedStores = {};
     final Set<String> bookedStores = {};
     final Set<String> noOrderStores = {};
+    final Map<String, ({int scanned, int total})> storeBarcodeStats = {};
 
     // Process stores in chunks of 30 due to Firestore 'whereIn' limitation
     for (var i = 0; i < storeNames.length; i += 30) {
       final chunk = storeNames.sublist(i, (i + 30 > storeNames.length) ? storeNames.length : i + 30);
 
-      // 1. Check Scanning (scanned or pending verification this month)
+      // 1. Check Scanning (all active barcodes for each store must be scanned or pending)
+      final Map<String, List<Map<String, dynamic>>> storeBarcodesMap = {};
       try {
         final scanSnap = await FirebaseFirestore.instance
             .collection(SCANNING_COLLECTION_REF)
@@ -816,24 +889,44 @@ class PjpController {
 
         for (final doc in scanSnap.docs) {
           final data = doc.data();
-          final status = (data['status'] as String? ?? '').trim();
-          final scannedDate = data['scannedDate'] as Timestamp?;
-          final storeName = (data['storeName'] as String? ?? '').trim();
+          final storeName = (data['storeName'] as String? ?? '').trim().toLowerCase();
+          if (storeName.isNotEmpty) {
+            storeBarcodesMap.putIfAbsent(storeName, () => []).add(data);
+          }
+        }
+      } catch (_) {}
 
+
+
+      for (final sName in chunk) {
+        final lower = sName.toLowerCase();
+        final barcodes = storeBarcodesMap[lower] ?? [];
+        final active = barcodes.where((b) => (b['status'] as String? ?? '').trim() != ScanningStatus.pullout).toList();
+
+        int scannedOrPendingCount = 0;
+        for (final b in active) {
+          final status = (b['status'] as String? ?? '').trim();
+          final scannedDate = b['scannedDate'] as Timestamp?;
           if (status == ScanningStatus.scanned) {
             if (scannedDate != null) {
               final d = scannedDate.toDate();
               if (d.year == now.year && d.month == now.month) {
-                scannedStores.add(storeName.toLowerCase());
+                scannedOrPendingCount++;
               }
             } else {
-              scannedStores.add(storeName.toLowerCase());
+              scannedOrPendingCount++;
             }
           } else if (status == ScanningStatus.pending) {
-            scannedStores.add(storeName.toLowerCase());
+            scannedOrPendingCount++;
           }
         }
-      } catch (_) {}
+
+        final bool isFullyScanned = active.isNotEmpty && scannedOrPendingCount == active.length;
+        if (isFullyScanned) {
+          scannedStores.add(lower);
+        }
+        storeBarcodeStats[lower] = (scanned: scannedOrPendingCount, total: active.length);
+      }
 
       // 2. Check Booked Orders for today in delivery collection
       try {
@@ -905,13 +998,184 @@ class PjpController {
 
     for (final name in storeNames) {
       final key = name.toLowerCase();
+      final stats = storeBarcodeStats[key];
       result[name] = StoreComplianceStatus(
         isScanned: scannedStores.contains(key),
         isBooked: bookedStores.contains(key),
         isNoOrder: noOrderStores.contains(key),
+        totalBarcodes: stats?.total ?? 0,
+        scannedBarcodes: stats?.scanned ?? 0,
       );
     }
 
     return result;
+  }
+
+  /// Fetches unplaced recommended Selecta products for the store for this month
+  /// and all active products currently out of stock today at the depot.
+  Future<StoreRecommendationsResult> getStoreRecommendations(String storeName) async {
+    try {
+      final now = DateTime.now();
+
+      // 1. Placement record for the store in the current month
+      final placement = await _placementService.getPlacementByStoreAndDate(storeName, now);
+      final placedLowerNames = placement?.placedProductNames
+              .map((n) => n.trim().toLowerCase())
+              .toSet() ??
+          <String>{};
+
+      // Backward compatibility: If placedProductNames is empty, read legacy cotc flags
+      if (placedLowerNames.isEmpty && placement != null) {
+        final legacyNames = [
+          "Watermelon Slice",
+          "Chocky Stick",
+          "Avocado Choco",
+          "Boom Boom Choco",
+          "Cornetto Choco",
+          "Cornetto Cookies & Dream",
+          "Bday 3in1 C-K-U",
+          "Bday 3in1 U-M-A",
+          "Bday 3+1 C-K-U-M",
+          "Sup Double Dutch",
+          "Sup Rocky Road",
+          "Sup Cookies & Cream",
+        ];
+        final flags = [
+          placement.cotc1,
+          placement.cotc2,
+          placement.cotc3,
+          placement.cotc4,
+          placement.cotc5,
+          placement.cotc6,
+          placement.cotc7,
+          placement.cotc8,
+          placement.cotc9,
+          placement.cotc10,
+          placement.cotc11,
+          placement.cotc12,
+        ];
+        for (int i = 0; i < legacyNames.length && i < flags.length; i++) {
+          if (flags[i]) {
+            placedLowerNames.add(legacyNames[i].trim().toLowerCase());
+          }
+        }
+      }
+
+      // 2. Fetch inventory list
+      List<InventoryItem> allInventory = [];
+      try {
+        allInventory = await _inventoryService
+            .getActiveInventoryStream()
+            .first
+            .timeout(const Duration(seconds: 4));
+      } catch (_) {
+        final prodDocs = await _selectaProductService.getAllProducts();
+        allInventory = prodDocs
+            .map((doc) => SelectaProduct.fromSnapshot(doc))
+            .where((p) => p.isActive && p.productName.isNotEmpty)
+            .map(InventoryItem.fromSelectaProduct)
+            .toList();
+      }
+
+      final activeInventory = allInventory.where((i) => i.isActive).toList();
+
+      // 3. Out of stock products for today (where availableQuantity <= 0)
+      final outOfStockProducts = activeInventory
+          .where((i) => i.availableQuantity <= 0 || i.isOutOfStock)
+          .toList()
+        ..sort((a, b) => Helperfunctions.compareBySrpAndName(
+              nameA: a.productName,
+              priceA: a.sellingPrice,
+              nameB: b.productName,
+              priceB: b.sellingPrice,
+            ));
+
+      // 4. Target placement products (Best Sellers)
+      final bestSellerProducts = await _selectaProductService.getBestSellerProducts();
+      final legacyPlacementList = KData.getListPlacement();
+
+      // Map unique lowercased name -> StoreRecommendationItem
+      final Map<String, StoreRecommendationItem> targetMap = {};
+
+      if (bestSellerProducts.isNotEmpty) {
+        for (final prod in bestSellerProducts) {
+          final lowerName = prod.productName.trim().toLowerCase();
+          final matchingInv = activeInventory.where(
+            (i) => i.productName.trim().toLowerCase() == lowerName,
+          ).firstOrNull;
+
+          targetMap[lowerName] = StoreRecommendationItem(
+            productName: prod.productName,
+            imageUrl: matchingInv?.imageUrl ?? prod.imageUrl,
+            category: matchingInv?.category ?? prod.category,
+            sellingPrice: matchingInv?.sellingPrice ?? prod.sellingPrice,
+            availableStock: matchingInv?.availableQuantity ?? 0,
+            isOutOfStock: matchingInv != null ? (matchingInv.availableQuantity <= 0 || matchingInv.isOutOfStock) : true,
+            isBestSeller: true,
+          );
+        }
+      }
+
+      // Include any active InventoryItems tagged as best seller
+      for (final item in activeInventory) {
+        if (ProductTag.isBestSeller(item.tag)) {
+          final lowerName = item.productName.trim().toLowerCase();
+          if (!targetMap.containsKey(lowerName)) {
+            targetMap[lowerName] = StoreRecommendationItem(
+              productName: item.productName,
+              imageUrl: item.imageUrl,
+              category: item.category.isNotEmpty ? item.category : 'Selecta',
+              sellingPrice: item.sellingPrice,
+              availableStock: item.availableQuantity,
+              isOutOfStock: item.availableQuantity <= 0 || item.isOutOfStock,
+              isBestSeller: true,
+            );
+          }
+        }
+      }
+
+      // Fallback to legacy placement list if no best sellers found
+      if (targetMap.isEmpty) {
+        for (final legacy in legacyPlacementList) {
+          final lowerName = legacy.itemName.trim().toLowerCase();
+          final matchingInv = activeInventory.where(
+            (i) => i.productName.trim().toLowerCase() == lowerName,
+          ).firstOrNull;
+
+          targetMap[lowerName] = StoreRecommendationItem(
+            productName: legacy.itemName,
+            imageUrl: matchingInv?.imageUrl,
+            category: matchingInv?.category ?? 'Selecta',
+            sellingPrice: matchingInv?.sellingPrice ?? 0.0,
+            availableStock: matchingInv?.availableQuantity ?? 0,
+            isOutOfStock: matchingInv != null ? (matchingInv.availableQuantity <= 0 || matchingInv.isOutOfStock) : true,
+            isBestSeller: true,
+            itemImagePath: legacy.itemImagePath,
+          );
+        }
+      }
+
+      // 5. Filter for unplaced items
+      final unplacedRecommendations = targetMap.entries
+          .where((entry) => !placedLowerNames.contains(entry.key))
+          .map((entry) => entry.value)
+          .toList()
+        ..sort((a, b) => Helperfunctions.compareBySrpAndName(
+              nameA: a.productName,
+              priceA: a.sellingPrice,
+              nameB: b.productName,
+              priceB: b.sellingPrice,
+            ));
+
+      return StoreRecommendationsResult(
+        unplacedRecommendations: unplacedRecommendations,
+        outOfStockProducts: outOfStockProducts,
+      );
+    } catch (e) {
+      return const StoreRecommendationsResult(
+        unplacedRecommendations: [],
+        outOfStockProducts: [],
+      );
+    }
   }
 }

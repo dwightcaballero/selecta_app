@@ -48,7 +48,11 @@ class _ScanningPageState extends State<ScanningPage> {
   bool _isDownloadingImage = false;
   File? _imageFile;
   Scanning _scanning = Scanning.empty();
-  String _selectedStatus = ScanningStatus.pending;
+  String _selectedStatus = ScanningStatus.notScanned;
+  String _currentBarcode = '';
+  List<Scanning> _storeScannings = [];
+
+  String get _effectiveBarcode => _currentBarcode.isNotEmpty ? _currentBarcode : widget.initialBarcode;
 
   bool get _hasUnsavedChanges {
     if (!_hasCheckedDatabase) return false;
@@ -67,40 +71,43 @@ class _ScanningPageState extends State<ScanningPage> {
   @override
   void initState() {
     super.initState();
+    _currentBarcode = widget.initialBarcode.trim();
     prefetchData();
   }
 
-  void prefetchData() async {
+  void prefetchData([String? targetBarcode]) async {
+    final barcodeToLoad = (targetBarcode ?? _currentBarcode).trim();
     final isDealer = await _controller.checkIsDealer();
-    final trimmedBarcode = widget.initialBarcode.trim();
-    final found = await _controller.getScanningByBarcode(trimmedBarcode);
+    final found = await _controller.getScanningByBarcode(barcodeToLoad);
 
     final Scanning scanning;
     final String selectedStatus;
 
     if (found != null) {
       scanning = found;
-      // Rule 1: When dealer scans barcode with pending status, mark as scanned.
-      // Rule 2: When salesman scans barcode (or unscanned barcode), status defaults to Pending.
-      if (scanning.status == ScanningStatus.pending) {
-        selectedStatus = isDealer ? ScanningStatus.scanned : ScanningStatus.pending;
-      } else if (scanning.status.isEmpty || scanning.status == ScanningStatus.notScanned) {
-        selectedStatus = ScanningStatus.pending;
-      } else {
-        selectedStatus = scanning.status;
-      }
+      // Preserve actual status from database so users see the accurate current status
+      selectedStatus = scanning.status.isNotEmpty ? scanning.status : ScanningStatus.notScanned;
     } else {
       scanning = Scanning.empty();
-      selectedStatus = ScanningStatus.pending;
+      selectedStatus = ScanningStatus.notScanned;
     }
 
-    _dropdownHapiStore.text = scanning.storeName.isNotEmpty ? scanning.storeName : (widget.initialStoreName ?? '');
+    final storeName = scanning.storeName.isNotEmpty ? scanning.storeName : (widget.initialStoreName ?? '');
+    _dropdownHapiStore.text = storeName;
+
+    List<Scanning> storeScannings = [];
+    if (storeName.isNotEmpty) {
+      storeScannings = await _controller.getScanningsByStoreName(storeName);
+    }
 
     if (mounted) {
       setState(() {
+        _currentBarcode = barcodeToLoad;
         _isDealer = isDealer;
         _scanning = scanning;
+        _storeScannings = storeScannings;
         _selectedStatus = selectedStatus;
+        _imageFile = null;
         _hasCheckedDatabase = true;
       });
     }
@@ -152,6 +159,9 @@ class _ScanningPageState extends State<ScanningPage> {
       if (pickedFile != null && mounted) {
         setState(() {
           _imageFile = File(pickedFile.path);
+          if (_selectedStatus == ScanningStatus.notScanned || _selectedStatus.isEmpty) {
+            _selectedStatus = _isDealer ? ScanningStatus.scanned : ScanningStatus.pending;
+          }
         });
       }
     } catch (e) {
@@ -243,7 +253,7 @@ class _ScanningPageState extends State<ScanningPage> {
     setState(() => _isSaving = true);
 
     try {
-      final trimmedBarcode = widget.initialBarcode.trim();
+      final trimmedBarcode = _effectiveBarcode.trim();
       final duplicateCheck = await _controller.getScanningByBarcode(trimmedBarcode);
 
       // If a record exists in DB under a different document ID
@@ -442,6 +452,101 @@ class _ScanningPageState extends State<ScanningPage> {
     return const SizedBox.shrink();
   }
 
+  Widget _buildStoreFreezersBanner() {
+    if (_storeScannings.length <= 1) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.kitchen_outlined, size: 16, color: colorScheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Store Freezers (${_storeScannings.length})',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _storeScannings.asMap().entries.map((entry) {
+              final idx = entry.key + 1;
+              final item = entry.value;
+              final isCurrent = item.barcode.trim().toLowerCase() == _effectiveBarcode.trim().toLowerCase();
+              final isDone = item.status == ScanningStatus.scanned || item.status == ScanningStatus.pending;
+
+              return InkWell(
+                onTap: isCurrent
+                    ? null
+                    : () {
+                        prefetchData(item.barcode);
+                      },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isCurrent
+                        ? colorScheme.primary.withValues(alpha: 0.15)
+                        : (isDone ? Colors.green.withValues(alpha: 0.08) : colorScheme.surface),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isCurrent
+                          ? colorScheme.primary
+                          : (isDone ? Colors.green.shade400 : colorScheme.outlineVariant),
+                      width: isCurrent ? 1.5 : 1.0,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isCurrent
+                            ? Icons.check_circle
+                            : (item.status == ScanningStatus.scanned
+                                ? Icons.check_circle_outline
+                                : (item.status == ScanningStatus.pending
+                                    ? Icons.hourglass_top_rounded
+                                    : Icons.radio_button_unchecked)),
+                        size: 13,
+                        color: isCurrent
+                            ? colorScheme.primary
+                            : (item.status == ScanningStatus.scanned
+                                ? Colors.green.shade700
+                                : (item.status == ScanningStatus.pending
+                                    ? Colors.amber.shade900
+                                    : colorScheme.onSurfaceVariant)),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '#$idx ${item.barcode}',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                          color: isCurrent ? colorScheme.primary : colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBarcodeCard() {
     final colorScheme = Theme.of(context).colorScheme;
     return _buildSectionCard(
@@ -454,24 +559,24 @@ class _ScanningPageState extends State<ScanningPage> {
       ),
       child: Column(
         children: [
-          if (widget.initialBarcode.isNotEmpty)
-            BarcodeWidget(barcode: Barcode.code128(), data: widget.initialBarcode, height: 75, drawText: false, color: colorScheme.onSurface)
+          if (_effectiveBarcode.isNotEmpty)
+            BarcodeWidget(barcode: Barcode.code128(), data: _effectiveBarcode, height: 75, drawText: false, color: colorScheme.onSurface)
           else
             Text('No barcode scanned yet.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
           const SizedBox(height: 10),
           InkWell(
             borderRadius: BorderRadius.circular(6),
-            onTap: widget.initialBarcode.isNotEmpty ? () => _copyToClipboard(widget.initialBarcode, 'barcode') : null,
+            onTap: _effectiveBarcode.isNotEmpty ? () => _copyToClipboard(_effectiveBarcode, 'barcode') : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    widget.initialBarcode.isEmpty ? '—' : widget.initialBarcode,
+                    _effectiveBarcode.isEmpty ? '—' : _effectiveBarcode,
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 0.5),
                   ),
-                  if (widget.initialBarcode.isNotEmpty) ...[
+                  if (_effectiveBarcode.isNotEmpty) ...[
                     const SizedBox(width: 6),
                     Icon(Icons.copy_rounded, size: 14, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
                   ],
@@ -1027,6 +1132,7 @@ class _ScanningPageState extends State<ScanningPage> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
               _buildWorkflowBanner(),
+              _buildStoreFreezersBanner(),
               _buildBarcodeCard(),
               const SizedBox(height: 12),
               _buildStoreCard(),

@@ -15,6 +15,7 @@ import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/scanning_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
+import 'package:selecta_ops/views/widgets/book_order/store_recommendations_modal.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -64,6 +65,21 @@ class _PjpPageState extends State<PjpPage> {
   bool _hasBookedOrder = false;
   String? _noOrderReason;
   String _bookOrderStatus = '';
+  bool _isLoadingRecommendations = false;
+  int? _unplacedRecommendationsCount;
+  int? _outOfStockCount;
+
+  String get _recommendationsButtonLabel {
+    if (_isLoadingRecommendations) {
+      return 'Store Recommendations (Loading...)';
+    }
+    if (_unplacedRecommendationsCount != null && _outOfStockCount != null) {
+      final unplaced = _unplacedRecommendationsCount!;
+      final oos = _outOfStockCount!;
+      return 'Store Recommendations ($unplaced to book • $oos OOS)';
+    }
+    return 'Store Recommendations';
+  }
 
   // Step 4: Proof of Visit state
   bool _isLoadingProofOfVisit = true;
@@ -148,7 +164,15 @@ class _PjpPageState extends State<PjpPage> {
   }
 
   Future<void> _runAllChecks() async {
-    await Future.wait([_checkLocation(), _checkScanning(), _checkBookOrder(), _checkProofOfVisit(), _checkTasks(), _checkMerchBlitz()]);
+    await Future.wait([
+      _checkLocation(),
+      _checkScanning(),
+      _checkBookOrder(),
+      _checkProofOfVisit(),
+      _checkTasks(),
+      _checkMerchBlitz(),
+      _loadRecommendationsSummary(),
+    ]);
   }
 
   Future<void> _checkLocation() async {
@@ -179,11 +203,9 @@ class _PjpPageState extends State<PjpPage> {
     final result = await _controller.checkScanning(_currentHapistore.storeName);
     if (!mounted) return;
 
-    final hasPendingOrScanned = result.storeScannings.any((s) => s.status == ScanningStatus.pending || s.status == ScanningStatus.scanned);
-
     setState(() {
       _isLoadingScanning = false;
-      _scanningPassed = result.passed || hasPendingOrScanned;
+      _scanningPassed = result.passed;
       _scanningStatus = result.status;
       _storeScannings = result.storeScannings;
     });
@@ -203,6 +225,26 @@ class _PjpPageState extends State<PjpPage> {
       _hasBookedOrder = result.hasBookedOrder;
       _noOrderReason = result.noOrderReason;
     });
+
+    _loadRecommendationsSummary();
+  }
+
+  Future<void> _loadRecommendationsSummary() async {
+    if (!mounted) return;
+    setState(() => _isLoadingRecommendations = true);
+    try {
+      final res = await _controller.getStoreRecommendations(_currentHapistore.storeName);
+      if (!mounted) return;
+      setState(() {
+        _isLoadingRecommendations = false;
+        _unplacedRecommendationsCount = res.unplacedCount;
+        _outOfStockCount = res.outOfStockCount;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingRecommendations = false);
+      }
+    }
   }
 
   Future<void> _checkProofOfVisit() async {
@@ -439,29 +481,238 @@ class _PjpPageState extends State<PjpPage> {
   }
 
   Future<void> _onScanningAction() async {
-    if (_storeScannings.isNotEmpty) {
+    // Option A: Instant Camera Scan
+    final scannedBarcode = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()),
+    );
+
+    if (scannedBarcode == null || scannedBarcode.isEmpty || !mounted) return;
+
+    final trimmed = scannedBarcode.trim();
+    // Check if scanned barcode belongs to this store
+    final existingIndex = _storeScannings.indexWhere(
+      (s) => s.barcode.trim().toLowerCase() == trimmed.toLowerCase(),
+    );
+
+    if (existingIndex != -1) {
+      // Matching freezer found! Open ScanningPage for this specific barcode
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) =>
-              ScanningPage(initialBarcode: _storeScannings.first.barcode, initialStoreName: _currentHapistore.storeName, isEditing: true),
+          builder: (context) => ScanningPage(
+            initialBarcode: _storeScannings[existingIndex].barcode,
+            initialStoreName: _currentHapistore.storeName,
+            isEditing: true,
+          ),
         ),
       );
-    } else {
-      final scannedBarcode = await Navigator.push<String>(context, MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()));
+    } else if (_storeScannings.isNotEmpty) {
+      // Barcode does not match existing assigned freezers for this store
+      final registerNew = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.info_outline, color: Colors.orange),
+              SizedBox(width: 8),
+              Expanded(child: Text('Unregistered Freezer')),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Scanned barcode "$trimmed" is not in the assigned freezers for ${_currentHapistore.storeName}.',
+                style: const TextStyle(fontSize: 13.5),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Assigned freezers: ${_storeScannings.map((s) => s.barcode).join(', ')}',
+                style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 12),
+              const Text('Do you want to register this barcode as an additional freezer for this store?'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Register Freezer'),
+            ),
+          ],
+        ),
+      );
 
-      if (scannedBarcode != null && scannedBarcode.isNotEmpty && mounted) {
+      if (registerNew == true && mounted) {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ScanningPage(initialBarcode: scannedBarcode, initialStoreName: _currentHapistore.storeName),
+            builder: (context) => ScanningPage(
+              initialBarcode: trimmed,
+              initialStoreName: _currentHapistore.storeName,
+              isEditing: false,
+            ),
           ),
         );
       }
+    } else {
+      // Store has no barcodes assigned yet: register this scanned barcode
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ScanningPage(
+            initialBarcode: trimmed,
+            initialStoreName: _currentHapistore.storeName,
+            isEditing: false,
+          ),
+        ),
+      );
     }
 
     if (!mounted) return;
     await _checkScanning();
+  }
+
+  Future<void> _onViewBarcodeAction() async {
+    if (_storeScannings.isEmpty) {
+      await _onScanningAction();
+      return;
+    }
+    if (_storeScannings.length == 1) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ScanningPage(
+            initialBarcode: _storeScannings.first.barcode,
+            initialStoreName: _currentHapistore.storeName,
+            isEditing: true,
+          ),
+        ),
+      );
+      if (mounted) await _checkScanning();
+      return;
+    }
+
+    // Multiple barcodes: show bottom sheet to pick or re-scan
+    await _showFreezerSelectionSheet();
+  }
+
+  Future<void> _showFreezerSelectionSheet() async {
+    final colorScheme = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Registered Freezers (${_storeScannings.length})',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _onScanningAction();
+                    },
+                    icon: const Icon(Icons.qr_code_scanner, size: 16),
+                    label: const Text('Scan Camera'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ..._storeScannings.asMap().entries.map((entry) {
+                final idx = entry.key + 1;
+                final s = entry.value;
+                final isScanned = s.status == ScanningStatus.scanned;
+                final isPending = s.status == ScanningStatus.pending;
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  elevation: 0,
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(
+                      color: isScanned
+                          ? Colors.green.shade400
+                          : (isPending ? Colors.amber.shade400 : colorScheme.outlineVariant),
+                    ),
+                  ),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: isScanned
+                          ? Colors.green.shade100
+                          : (isPending ? Colors.amber.shade100 : colorScheme.surfaceContainerHighest),
+                      child: Icon(
+                        isScanned
+                            ? Icons.check
+                            : (isPending ? Icons.hourglass_top_rounded : Icons.kitchen_outlined),
+                        size: 16,
+                        color: isScanned
+                            ? Colors.green.shade800
+                            : (isPending ? Colors.amber.shade900 : colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                    title: Text(
+                      'Freezer #$idx: ${s.barcode}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      isScanned
+                          ? 'Scanned & Verified'
+                          : (isPending ? 'Pending Dealer Review' : 'Not Scanned'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isScanned
+                            ? Colors.green.shade700
+                            : (isPending ? Colors.amber.shade800 : colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ScanningPage(
+                            initialBarcode: s.barcode,
+                            initialStoreName: _currentHapistore.storeName,
+                            isEditing: true,
+                          ),
+                        ),
+                      );
+                      if (mounted) await _checkScanning();
+                    },
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // --- Step 3: Book Order Handlers ---
@@ -527,6 +778,18 @@ class _PjpPageState extends State<PjpPage> {
 
     if (result != null && mounted) {
       ShowMessage.success(context, 'Order saved! Step marked as passed.');
+    }
+  }
+
+  Future<void> _openStoreRecommendations() async {
+    await StoreRecommendationsModal.show(
+      context: context,
+      storeName: _currentHapistore.storeName,
+      controller: _controller,
+      onProceedToBookOrder: _onBookOrderYes,
+    );
+    if (mounted) {
+      _loadRecommendationsSummary();
     }
   }
 
@@ -1203,9 +1466,111 @@ class _PjpPageState extends State<PjpPage> {
             isPassed: _scanningPassed,
             statusMessage: _scanningStatus,
             actionLabel: _storeScannings.isEmpty ? 'Assign & Scan Barcode' : 'Scan Barcode',
-            actionLabelWhenPassed: 'View Barcode',
+            actionLabelWhenPassed:
+                _storeScannings.length > 1 ? 'View Freezers (${_storeScannings.length})' : 'View Barcode',
             showActionWhenPassed: true,
-            onAction: _onScanningAction,
+            onAction: _scanningPassed ? _onViewBarcodeAction : _onScanningAction,
+            extraContent: (_storeScannings.length > 1)
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.kitchen_outlined, size: 14, color: colorScheme.onSurfaceVariant),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Registered Freezers (${_storeScannings.length}):',
+                              style: TextStyle(
+                                  fontSize: 11.5, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: _storeScannings.asMap().entries.map((entry) {
+                            final idx = entry.key + 1;
+                            final s = entry.value;
+                            final isScanned = s.status == ScanningStatus.scanned;
+                            final isPending = s.status == ScanningStatus.pending;
+                            final isDone = isScanned || isPending;
+
+                            return InkWell(
+                              onTap: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ScanningPage(
+                                      initialBarcode: s.barcode,
+                                      initialStoreName: _currentHapistore.storeName,
+                                      isEditing: true,
+                                    ),
+                                  ),
+                                );
+                                if (mounted) await _checkScanning();
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isDone
+                                      ? (isPending
+                                          ? Colors.amber.withValues(alpha: 0.12)
+                                          : Colors.green.withValues(alpha: 0.12))
+                                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isDone
+                                        ? (isPending ? Colors.amber.shade700 : Colors.green.shade600)
+                                        : colorScheme.outlineVariant,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      isScanned
+                                          ? Icons.check_circle_rounded
+                                          : (isPending ? Icons.hourglass_top_rounded : Icons.radio_button_unchecked),
+                                      size: 13,
+                                      color: isScanned
+                                          ? Colors.green.shade700
+                                          : (isPending ? Colors.amber.shade900 : colorScheme.onSurfaceVariant),
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      '#$idx ${s.barcode}',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: isScanned
+                                            ? Colors.green.shade800
+                                            : (isPending ? Colors.amber.shade900 : colorScheme.onSurface),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      isScanned ? '• Scanned' : (isPending ? '• Pending' : '• Not Scanned'),
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: isScanned
+                                            ? Colors.green.shade700
+                                            : (isPending ? Colors.amber.shade800 : colorScheme.onSurfaceVariant),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  )
+                : null,
           ),
 
           // Step 3: Book Order (Replaces Product Placement)
@@ -1275,6 +1640,29 @@ class _PjpPageState extends State<PjpPage> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _openStoreRecommendations,
+                        icon: const Icon(Icons.auto_awesome_rounded, size: 14, color: Colors.amber),
+                        label: Text(
+                          _recommendationsButtonLabel,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                          backgroundColor: colorScheme.surface,
+                        ),
+                      ),
                     ),
                   ],
                 ),

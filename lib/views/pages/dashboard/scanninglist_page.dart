@@ -344,6 +344,14 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
         final isPending = scanning.status == ScanningStatus.pending;
         final hasPhoto = scanning.imageUrl.isNotEmpty;
         final store = _storesMap[scanning.storeName.trim().toLowerCase()];
+        final storeBarcodes = scanningList
+            .where((s) =>
+                s.storeName.trim().isNotEmpty &&
+                s.storeName.trim().toLowerCase() == scanning.storeName.trim().toLowerCase() &&
+                s.status != ScanningStatus.unassigned)
+            .toList();
+        final int freezerIndex = storeBarcodes.indexWhere((s) => s.barcode == scanning.barcode) + 1;
+        final int totalFreezers = storeBarcodes.length;
 
         return Card(
           margin: EdgeInsets.zero,
@@ -425,6 +433,25 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                                 scanning.barcode,
                                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.primary),
                               ),
+                              if (totalFreezers > 1 && freezerIndex > 0) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                                  ),
+                                  child: Text(
+                                    'Freezer $freezerIndex of $totalFreezers',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                           const SizedBox(height: 3),

@@ -406,8 +406,16 @@ class _PjpListPageState extends State<PjpListPage> {
                           if (status.isScanned)
                             _buildTagBadge(
                               icon: Icons.qr_code_scanner,
-                              label: 'Scanned',
+                              label: status.totalBarcodes > 1
+                                  ? 'Scanned (${status.scannedBarcodes}/${status.totalBarcodes})'
+                                  : 'Scanned',
                               color: Colors.indigo,
+                            )
+                          else if (status.totalBarcodes > 1 && status.scannedBarcodes > 0)
+                            _buildTagBadge(
+                              icon: Icons.qr_code_scanner,
+                              label: '${status.scannedBarcodes}/${status.totalBarcodes} Scanned',
+                              color: Colors.amber,
                             ),
                           if (status.isBooked)
                             _buildTagBadge(

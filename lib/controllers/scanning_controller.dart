@@ -153,6 +153,11 @@ class ScanningController {
     return await _scanningService.getScanningByBarcode(barcode);
   }
 
+  /// Fetches all scanning records for a specific store.
+  Future<List<Scanning>> getScanningsByStoreName(String storeName) async {
+    return await _scanningService.getScanningsByStoreName(storeName);
+  }
+
   /// Saves or updates a scanning record and creates audit logs.
   Future<Scanning> saveScanningRecord({
     required Scanning existing,
