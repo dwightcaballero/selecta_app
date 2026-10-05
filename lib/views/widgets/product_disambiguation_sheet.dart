@@ -12,7 +12,21 @@ class ProductDisambiguationSheet extends StatefulWidget {
   final Future<void> Function(AmbiguousPoItem item, InventoryItem selectedProduct, bool rememberMapping) onConfirm;
   final void Function(AmbiguousPoItem item)? onSkip;
 
-  const ProductDisambiguationSheet({super.key, required this.ambiguousItems, required this.allInventory, required this.onConfirm, this.onSkip});
+  /// Caption shown above the scanned raw text (e.g. 'PRINTED ON INVOICE', 'PRINTED ON RECEIPT').
+  final String sourceLabel;
+
+  /// When true, product cards show the selling price (SRP) instead of the buying cost.
+  final bool showSellingPrice;
+
+  const ProductDisambiguationSheet({
+    super.key,
+    required this.ambiguousItems,
+    required this.allInventory,
+    required this.onConfirm,
+    this.onSkip,
+    this.sourceLabel = 'PRINTED ON INVOICE',
+    this.showSellingPrice = false,
+  });
 
   static Future<void> show(
     BuildContext context, {
@@ -20,6 +34,8 @@ class ProductDisambiguationSheet extends StatefulWidget {
     required List<InventoryItem> allInventory,
     required Future<void> Function(AmbiguousPoItem item, InventoryItem selectedProduct, bool rememberMapping) onConfirm,
     void Function(AmbiguousPoItem item)? onSkip,
+    String sourceLabel = 'PRINTED ON INVOICE',
+    bool showSellingPrice = false,
   }) async {
     if (ambiguousItems.isEmpty) return;
     await showModalBottomSheet<void>(
@@ -29,7 +45,14 @@ class ProductDisambiguationSheet extends StatefulWidget {
       isDismissible: false,
       enableDrag: false,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => ProductDisambiguationSheet(ambiguousItems: ambiguousItems, allInventory: allInventory, onConfirm: onConfirm, onSkip: onSkip),
+      builder: (ctx) => ProductDisambiguationSheet(
+        ambiguousItems: ambiguousItems,
+        allInventory: allInventory,
+        onConfirm: onConfirm,
+        onSkip: onSkip,
+        sourceLabel: sourceLabel,
+        showSellingPrice: showSellingPrice,
+      ),
     );
   }
 
@@ -182,7 +205,7 @@ class _ProductDisambiguationSheetState extends State<ProductDisambiguationSheet>
                               Icon(Icons.receipt_long_outlined, size: 16, color: Colors.amber.shade900),
                               const SizedBox(width: 6),
                               Text(
-                                'PRINTED ON INVOICE',
+                                widget.sourceLabel,
                                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: Colors.amber.shade900),
                               ),
                             ],
@@ -368,7 +391,7 @@ class _ProductDisambiguationSheetState extends State<ProductDisambiguationSheet>
         subtitle: Row(
           children: [
             Text(
-              _currency.format(product.buyingPrice),
+              _currency.format(widget.showSellingPrice ? product.sellingPrice : product.buyingPrice),
               style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary, fontSize: 12),
             ),
             if (product.category.isNotEmpty) ...[

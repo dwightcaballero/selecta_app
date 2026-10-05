@@ -13,6 +13,7 @@ import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
+import 'package:selecta_ops/views/widgets/book_order/receipt_scan_flow.dart';
 import 'package:selecta_ops/views/widgets/book_order/sticky_order_summary_bar.dart';
 import 'package:selecta_ops/views/widgets/book_order/store_date_modal.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
@@ -63,10 +64,20 @@ class _BookOrderPageState extends State<BookOrderPage> {
   String _searchQuery = '';
   bool _showSelectedOnly = false;
   bool _isSaving = false;
+  bool _isScanning = false;
   Set<String> _placedProductNames = {};
 
   /// Keyed by `${source}:${productId}` -> selected quantity
   final Map<String, int> _selectedQuantities = {};
+
+  /// Preserves receipt top-to-bottom sequence of item keys from the most recent scan
+  final List<String> _scannedReceiptOrder = [];
+
+  /// Preserves the raw text printed on the receipt for each item key
+  final Map<String, String> _scannedRawTexts = {};
+
+  /// When true (default after scanning), orders selected items according to the scanned receipt
+  bool _sortByReceiptOrder = true;
 
   /// Snapshot of quantities already reserved by this order (when editing an existing order)
   final Map<String, int> _initialOrderQuantities = {};
@@ -177,10 +188,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     if (newQty > maxAllowed && maxAllowed >= 0) {
       final incomingInfo = item.incomingQuantity > 0 ? ' (including ${item.incomingQuantity} incoming via PO)' : '';
       final reservedInfo = item.reservedQuantity > 0 ? ' (${item.reservedQuantity} reserved in pending picklists)' : '';
-      ShowMessage.error(
-        context,
-        'Only $maxAllowed available for "${item.productName}"$incomingInfo$reservedInfo.',
-      );
+      ShowMessage.error(context, 'Only $maxAllowed available for "${item.productName}"$incomingInfo$reservedInfo.');
     }
 
     setState(() {
@@ -241,6 +249,15 @@ class _BookOrderPageState extends State<BookOrderPage> {
       }
     }
     result.sort((a, b) {
+      if (_sortByReceiptOrder && _scannedReceiptOrder.isNotEmpty) {
+        final keyA = '${a.productSource}:${a.productId}';
+        final keyB = '${b.productSource}:${b.productId}';
+        final idxA = _scannedReceiptOrder.indexOf(keyA);
+        final idxB = _scannedReceiptOrder.indexOf(keyB);
+        if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
+        if (idxA != -1) return -1;
+        if (idxB != -1) return 1;
+      }
       return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
     });
     return result;
@@ -336,10 +353,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0284C7).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                          decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                           child: Row(
                             children: [
                               const Icon(Icons.local_shipping_outlined, size: 14, color: Color(0xFF0284C7)),
@@ -608,13 +622,52 @@ class _BookOrderPageState extends State<BookOrderPage> {
                       itemBuilder: (context, index) {
                         final item = items[index];
                         final isSelecta = item.productSource == 'selecta';
+                        final itemKey = '${item.productSource}:${item.productId}';
+                        final receiptIdx = _scannedReceiptOrder.indexOf(itemKey);
+                        final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
+                        final rawReceiptText = _scannedRawTexts[itemKey];
+
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(vertical: 4),
                           leading: CachedProductImage(imageUrl: item.imageUrl, size: 52),
-                          title: Text(item.productName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                          subtitle: Text(
-                            '${isSelecta ? 'Selecta' : 'Other'} • ${_currencyFormat.format(item.sellingPrice)} × ${item.pickedQuantity}',
-                            style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                          title: Row(
+                            children: [
+                              if (receiptNum != null)
+                                Container(
+                                  margin: const EdgeInsets.only(right: 6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade100,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: Colors.amber.shade400.withValues(alpha: 0.6)),
+                                  ),
+                                  child: Text(
+                                    '#$receiptNum',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.amber.shade900),
+                                  ),
+                                ),
+                              Expanded(
+                                child: Text(item.productName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (rawReceiptText != null && rawReceiptText.trim().isNotEmpty) ...[
+                                Text(
+                                  'Receipt: "${rawReceiptText.trim()}"',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                                ),
+                                const SizedBox(height: 2),
+                              ],
+                              Text(
+                                '${isSelecta ? 'Selecta' : 'Other'} • ${_currencyFormat.format(item.sellingPrice)} × ${item.pickedQuantity}',
+                                style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                              ),
+                            ],
                           ),
                           trailing: Text(
                             _currencyFormat.format(item.lineTotal),
@@ -696,40 +749,37 @@ class _BookOrderPageState extends State<BookOrderPage> {
           );
         }
         if (!mounted) return;
-        ShowMessage.warning(
-          context,
-          'Saved to Offline Queue! Order will automatically sync once connectivity is restored.',
-        );
+        ShowMessage.warning(context, 'Saved to Offline Queue! Order will automatically sync once connectivity is restored.');
         Navigator.pop(context);
         return;
       }
 
       if (_isEditing) {
-        final updated = await _deliveryController.updateBookedOrder(
-          deliveryId: widget.deliveryID,
-          currentDelivery: widget.existingDelivery!,
-          storeName: storeName,
-          selectedDate: _selectedDate,
-          items: orderItems,
-          remarks: _remarksController.text,
-        ).timeout(const Duration(seconds: 5));
+        final updated = await _deliveryController
+            .updateBookedOrder(
+              deliveryId: widget.deliveryID,
+              currentDelivery: widget.existingDelivery!,
+              storeName: storeName,
+              selectedDate: _selectedDate,
+              items: orderItems,
+              remarks: _remarksController.text,
+            )
+            .timeout(const Duration(seconds: 5));
         if (!mounted) return;
         ShowMessage.success(context, 'Order updated for $storeName!');
         Navigator.pop(context, updated);
       } else {
-        final createdResult = await _deliveryController.createBookedOrder(
-          storeName: storeName,
-          selectedDate: _selectedDate,
-          items: orderItems,
-          remarks: _remarksController.text,
-        ).timeout(const Duration(seconds: 5));
+        final createdResult = await _deliveryController
+            .createBookedOrder(storeName: storeName, selectedDate: _selectedDate, items: orderItems, remarks: _remarksController.text)
+            .timeout(const Duration(seconds: 5));
         if (!mounted) return;
         ShowMessage.success(context, 'Order booked for $storeName!');
         Navigator.pop(context, createdResult.delivery);
       }
     } catch (e) {
       final errStr = e.toString().toLowerCase();
-      final isOfflineOrTimeout = e is TimeoutException ||
+      final isOfflineOrTimeout =
+          e is TimeoutException ||
           errStr.contains('timeout') ||
           errStr.contains('network') ||
           errStr.contains('socket') ||
@@ -755,10 +805,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
             );
           }
           if (!mounted) return;
-          ShowMessage.warning(
-            context,
-            'Saved to Offline Queue! Order will automatically sync once connectivity is restored.',
-          );
+          ShowMessage.warning(context, 'Saved to Offline Queue! Order will automatically sync once connectivity is restored.');
           Navigator.pop(context);
           return;
         } catch (_) {
@@ -774,6 +821,118 @@ class _BookOrderPageState extends State<BookOrderPage> {
         setState(() => _isSaving = false);
       }
     }
+  }
+
+  // ============================================================
+  // Scan Receipt (alternative to manual product selection)
+  // ============================================================
+
+  /// Reads a receipt from the external booking app with Sedy AI and fills the cart.
+  /// Scanned quantities are capped to available stock; the user reviews before saving.
+  Future<void> _onScanReceipt(List<InventoryItem> allInventory) async {
+    if (_isScanning || _isSaving) return;
+    _searchFocusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    if (_storeController.text.trim().isEmpty) {
+      await _showStoreAndDateModal();
+      if (!mounted || _storeController.text.trim().isEmpty) return;
+    }
+    if (allInventory.isEmpty) {
+      ShowMessage.error(context, 'Product catalog is still loading. Please try again.');
+      return;
+    }
+
+    final files = await ReceiptScanFlow.pickImages(context);
+    if (!mounted || files == null || files.isEmpty) return;
+
+    var mergeMode = ReceiptMergeMode.replace;
+    if (_selectedQuantities.isNotEmpty) {
+      final choice = await ReceiptScanFlow.askMergeMode(context, existingSkuCount: _selectedQuantities.length);
+      if (!mounted || choice == null) return;
+      mergeMode = choice;
+    }
+
+    setState(() => _isScanning = true);
+    ReceiptScanOutcome outcome;
+    try {
+      final (result, knownMappings) = await ReceiptScanFlow.extract(files: files, allInventory: allInventory);
+      if (!mounted) return;
+      setState(() => _isScanning = false);
+      outcome = await ReceiptScanFlow.resolve(context, result: result, allInventory: allInventory, knownMappings: knownMappings);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isScanning = false);
+        ShowMessage.error(context, 'AI: ${e.toString().replaceAll('Exception: ', '')}');
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    if (outcome.lines.isEmpty) {
+      ShowMessage.warning(context, 'No products were read from the receipt. Please try a clearer image.');
+      return;
+    }
+
+    // Merge duplicate rows of the same product, preserving receipt order.
+    final Map<String, ScannedReceiptLine> merged = {};
+    for (final line in outcome.lines) {
+      final key = _itemKey(line.item);
+      final prev = merged[key];
+      merged[key] = prev == null ? line : ScannedReceiptLine(item: line.item, quantity: prev.quantity + line.quantity, rawText: prev.rawText);
+    }
+
+    final Map<String, int> next = mergeMode == ReceiptMergeMode.add ? Map.of(_selectedQuantities) : {};
+    final List<ReceiptCapNote> capped = [];
+    int addedSkus = 0;
+    int addedUnits = 0;
+
+    for (final entry in merged.entries) {
+      final item = entry.value.item;
+      final existing = next[entry.key] ?? 0;
+      final desired = existing + entry.value.quantity;
+      final maxAllowed = _getMaxOrderableQty(item);
+      final applied = desired.clamp(0, maxAllowed < 0 ? 0 : maxAllowed);
+
+      if (applied < desired) {
+        capped.add(ReceiptCapNote(item: item, requested: entry.value.quantity, applied: (applied - existing).clamp(0, applied)));
+      }
+      if (applied > 0) {
+        next[entry.key] = applied;
+      } else {
+        next.remove(entry.key);
+      }
+      final gained = applied - existing;
+      if (gained > 0) {
+        addedSkus++;
+        addedUnits += gained;
+      }
+    }
+
+    final List<String> scannedKeys = [];
+    final Map<String, String> scannedTexts = {};
+    for (final entry in merged.entries) {
+      scannedKeys.add(entry.key);
+      scannedTexts[entry.key] = entry.value.rawText;
+    }
+
+    setState(() {
+      _selectedQuantities
+        ..clear()
+        ..addAll(next);
+      _scannedReceiptOrder
+        ..clear()
+        ..addAll(scannedKeys);
+      _scannedRawTexts
+        ..clear()
+        ..addAll(scannedTexts);
+      _sortByReceiptOrder = true;
+      _searchController.clear();
+      _searchQuery = '';
+      _showSelectedOnly = _selectedQuantities.isNotEmpty;
+    });
+
+    await ReceiptScanFlow.showSummary(context, skuCount: addedSkus, unitCount: addedUnits, capped: capped, skipped: outcome.skipped);
   }
 
   @override
@@ -796,7 +955,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
             title: _isEditing ? 'Edit Order' : 'Store Order',
             subtitle: hasSelectedStore ? '$selectedStoreName • ${_formatAppBarDate(_selectedDate)}' : 'Order for a Hapi Store',
             centerTitle: false,
-            actions: [_buildToggleStoreDateAction()],
+            actions: [_buildScanReceiptAction(allInventory), const SizedBox(width: 8), _buildToggleStoreDateAction()],
           ),
           bottomNavigationBar: hasSelectedStore
               ? _buildStickyOrderSummaryBar(
@@ -807,86 +966,173 @@ class _BookOrderPageState extends State<BookOrderPage> {
                   totalAmount: totalAmount,
                 )
               : null,
-          body: Column(
+          body: Stack(
             children: [
-              if (!hasSelectedStore)
-                Expanded(child: _buildSelectStorePrompt(colorScheme))
-              else ...[
-                // ── Search & Selected Filter Bar ────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 50,
-                          child: TextField(
-                            controller: _searchController,
-                            focusNode: _searchFocusNode,
-                            autofocus: false,
-                            onTapOutside: (_) => _searchFocusNode.unfocus(),
-                            onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                            decoration: InputDecoration(
-                              hintText: 'Search products...',
-                              hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
-                              prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
-                              suffixIcon: _searchQuery.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear, size: 22),
-                                      onPressed: () {
-                                        _searchController.clear();
-                                        _searchFocusNode.unfocus();
-                                        setState(() => _searchQuery = '');
-                                      },
-                                    )
-                                  : null,
-                              filled: true,
-                              fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: colorScheme.outlineVariant),
+              Column(
+                children: [
+                  if (!hasSelectedStore)
+                    Expanded(child: _buildSelectStorePrompt(colorScheme, allInventory))
+                  else ...[
+                    // ── Search & Selected Filter Bar ────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SizedBox(
+                                  height: 48,
+                                  child: TextField(
+                                    controller: _searchController,
+                                    focusNode: _searchFocusNode,
+                                    autofocus: false,
+                                    onTapOutside: (_) => _searchFocusNode.unfocus(),
+                                    onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                    decoration: InputDecoration(
+                                      hintText: 'Search products...',
+                                      hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
+                                      prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
+                                      suffixIcon: _searchQuery.isNotEmpty
+                                          ? IconButton(
+                                              icon: const Icon(Icons.clear, size: 20),
+                                              onPressed: () {
+                                                _searchController.clear();
+                                                _searchFocusNode.unfocus();
+                                                setState(() => _searchQuery = '');
+                                              },
+                                            )
+                                          : null,
+                                      filled: true,
+                                      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: BorderSide(color: colorScheme.outlineVariant),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                        borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                FilterChip(
+                                  selected: _showSelectedOnly,
+                                  label: Text(
+                                    'Selected (${orderItems.length})',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _showSelectedOnly ? colorScheme.onPrimary : colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  selectedColor: colorScheme.primary,
+                                  showCheckmark: false,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  onSelected: (val) => setState(() => _showSelectedOnly = val),
+                                ),
+                                if (_scannedReceiptOrder.isNotEmpty) ...[
+                                  const SizedBox(width: 8),
+                                  FilterChip(
+                                    key: const Key('receipt_order_toggle_chip'),
+                                    selected: _sortByReceiptOrder,
+                                    avatar: Icon(
+                                      _sortByReceiptOrder ? Icons.receipt_long_outlined : Icons.category_outlined,
+                                      size: 15,
+                                      color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurfaceVariant,
+                                    ),
+                                    label: Text(
+                                      _sortByReceiptOrder ? 'Receipt Sequence (#1–#${_scannedReceiptOrder.length})' : 'Catalog Grouping',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: Colors.amber.shade100,
+                                    side: BorderSide(
+                                      color: _sortByReceiptOrder ? Colors.amber.shade400 : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                                    ),
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (val) => setState(() => _sortByReceiptOrder = val),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      FilterChip(
-                        selected: _showSelectedOnly,
-                        label: Text(
-                          'Selected (${orderItems.length})',
-                          style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.bold,
-                            color: _showSelectedOnly ? colorScheme.onPrimary : colorScheme.onSurface,
-                          ),
-                        ),
-                        selectedColor: colorScheme.primary,
-                        showCheckmark: false,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        onSelected: (val) => setState(() => _showSelectedOnly = val),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
 
-                // ── Unified Product List (Selecta first, Other Products at bottom) ──
-                Expanded(
-                  child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
-                      ? const Center(child: CircularProgressIndicator())
-                      : _buildUnifiedProductList(allInventory: allInventory, colorScheme: colorScheme),
-                ),
-              ],
+                    // ── Unified Product List (Selecta first, Other Products at bottom) ──
+                    Expanded(
+                      child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
+                          ? const Center(child: CircularProgressIndicator())
+                          : _buildUnifiedProductList(allInventory: allInventory, colorScheme: colorScheme),
+                    ),
+                  ],
+                ],
+              ),
+              if (_isScanning) Positioned.fill(child: _buildScanningOverlay(colorScheme)),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildScanningOverlay(ColorScheme colorScheme) {
+    return AbsorbPointer(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.45),
+        alignment: Alignment.center,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+          decoration: BoxDecoration(color: colorScheme.surface, borderRadius: BorderRadius.circular(18)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(width: 36, height: 36, child: CircularProgressIndicator(strokeWidth: 3)),
+              const SizedBox(height: 14),
+              const Text('Sedy AI is reading the receipt…', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text('Matching products to your catalog', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScanReceiptAction(List<InventoryItem> allInventory) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+      ),
+      child: IconButton(
+        key: const Key('book_order_scan_receipt_action'),
+        icon: const Icon(Icons.document_scanner_outlined, size: 20, color: Colors.white),
+        onPressed: _isScanning ? null : () => _onScanReceipt(allInventory),
+        tooltip: 'Scan Receipt',
+        splashRadius: 20,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+        padding: EdgeInsets.zero,
+      ),
     );
   }
 
@@ -935,7 +1181,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     }
   }
 
-  Widget _buildSelectStorePrompt(ColorScheme colorScheme) {
+  Widget _buildSelectStorePrompt(ColorScheme colorScheme, List<InventoryItem> allInventory) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -961,6 +1207,17 @@ class _BookOrderPageState extends State<BookOrderPage> {
               icon: const Icon(Icons.storefront_outlined, size: 20),
               label: const Text('Choose Store & Date', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              key: const Key('book_order_scan_receipt_prompt_button'),
+              onPressed: _isScanning ? null : () => _onScanReceipt(allInventory),
+              icon: const Icon(Icons.document_scanner_outlined, size: 20),
+              label: const Text('Scan Receipt Instead', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -1068,59 +1325,98 @@ class _BookOrderPageState extends State<BookOrderPage> {
       );
     }
 
-    final selectaFiltered = filtered.where((i) => i.source == InventoryProductSource.selecta).toList();
-    final otherFiltered = filtered.where((i) => i.source != InventoryProductSource.selecta).toList()..sort(_compareProducts);
-
-    final bestSellerProducts = selectaFiltered.where((i) => ProductTag.isBestSeller(i.tag)).toList()..sort(_compareProducts);
-    final nonBestSellerSelecta = selectaFiltered.where((i) => !ProductTag.isBestSeller(i.tag)).toList();
-
-    final caseProducts = nonBestSellerSelecta.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
-    final pieceProducts = nonBestSellerSelecta.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
-
     final entries = <_BookOrderListEntry>[];
 
-    // 1. Best Sellers at the top
-    if (bestSellerProducts.isNotEmpty) {
-      entries.add(
-        _BookOrderHeaderEntry(title: 'Best Sellers', count: bestSellerProducts.length, icon: Icons.star_rounded, accentColor: const Color(0xFFD97706)),
-      );
-      for (final p in bestSellerProducts) {
-        entries.add(_BookOrderCardEntry(p));
-      }
-    }
+    if (_sortByReceiptOrder && _scannedReceiptOrder.isNotEmpty) {
+      final receiptItems = filtered.where((i) => _scannedReceiptOrder.contains(_itemKey(i))).toList()
+        ..sort((a, b) => _scannedReceiptOrder.indexOf(_itemKey(a)).compareTo(_scannedReceiptOrder.indexOf(_itemKey(b))));
+      final otherItems = filtered.where((i) => !_scannedReceiptOrder.contains(_itemKey(i))).toList()..sort(_compareProducts);
 
-    // 2. Selecta: By Case
-    if (caseProducts.isNotEmpty) {
-      entries.add(
-        _BookOrderHeaderEntry(title: 'By Case', count: caseProducts.length, icon: Icons.all_inbox_rounded, accentColor: const Color(0xFFEA580C)),
-      );
-      for (final p in caseProducts) {
-        entries.add(_BookOrderCardEntry(p));
+      if (receiptItems.isNotEmpty) {
+        entries.add(
+          _BookOrderHeaderEntry(
+            title: 'Scanned Receipt Sequence',
+            count: receiptItems.length,
+            icon: Icons.receipt_long_outlined,
+            accentColor: Colors.amber.shade900,
+          ),
+        );
+        for (final p in receiptItems) {
+          entries.add(_BookOrderCardEntry(p));
+        }
       }
-    }
 
-    // 3. Selecta: By Piece
-    if (pieceProducts.isNotEmpty) {
-      entries.add(
-        _BookOrderHeaderEntry(title: 'By Piece', count: pieceProducts.length, icon: Icons.icecream_outlined, accentColor: colorScheme.primary),
-      );
-      for (final p in pieceProducts) {
-        entries.add(_BookOrderCardEntry(p));
+      if (otherItems.isNotEmpty) {
+        entries.add(
+          _BookOrderHeaderEntry(
+            title: 'Additional Products',
+            count: otherItems.length,
+            icon: Icons.playlist_add_rounded,
+            accentColor: const Color(0xFF475569),
+          ),
+        );
+        for (final p in otherItems) {
+          entries.add(_BookOrderCardEntry(p));
+        }
       }
-    }
+    } else {
+      final selectaFiltered = filtered.where((i) => i.source == InventoryProductSource.selecta).toList();
+      final otherFiltered = filtered.where((i) => i.source != InventoryProductSource.selecta).toList()..sort(_compareProducts);
 
-    // 5. Other Products at the very bottom
-    if (otherFiltered.isNotEmpty) {
-      entries.add(
-        _BookOrderHeaderEntry(
-          title: 'Other Products',
-          count: otherFiltered.length,
-          icon: Icons.inventory_2_outlined,
-          accentColor: const Color(0xFF475569),
-        ),
-      );
-      for (final p in otherFiltered) {
-        entries.add(_BookOrderCardEntry(p));
+      final bestSellerProducts = selectaFiltered.where((i) => ProductTag.isBestSeller(i.tag)).toList()..sort(_compareProducts);
+      final nonBestSellerSelecta = selectaFiltered.where((i) => !ProductTag.isBestSeller(i.tag)).toList();
+
+      final caseProducts = nonBestSellerSelecta.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
+      final pieceProducts = nonBestSellerSelecta.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
+
+      // 1. Best Sellers at the top
+      if (bestSellerProducts.isNotEmpty) {
+        entries.add(
+          _BookOrderHeaderEntry(
+            title: 'Best Sellers',
+            count: bestSellerProducts.length,
+            icon: Icons.star_rounded,
+            accentColor: const Color(0xFFD97706),
+          ),
+        );
+        for (final p in bestSellerProducts) {
+          entries.add(_BookOrderCardEntry(p));
+        }
+      }
+
+      // 2. Selecta: By Case
+      if (caseProducts.isNotEmpty) {
+        entries.add(
+          _BookOrderHeaderEntry(title: 'By Case', count: caseProducts.length, icon: Icons.all_inbox_rounded, accentColor: const Color(0xFFEA580C)),
+        );
+        for (final p in caseProducts) {
+          entries.add(_BookOrderCardEntry(p));
+        }
+      }
+
+      // 3. Selecta: By Piece
+      if (pieceProducts.isNotEmpty) {
+        entries.add(
+          _BookOrderHeaderEntry(title: 'By Piece', count: pieceProducts.length, icon: Icons.icecream_outlined, accentColor: colorScheme.primary),
+        );
+        for (final p in pieceProducts) {
+          entries.add(_BookOrderCardEntry(p));
+        }
+      }
+
+      // 4. Other Products at the very bottom
+      if (otherFiltered.isNotEmpty) {
+        entries.add(
+          _BookOrderHeaderEntry(
+            title: 'Other Products',
+            count: otherFiltered.length,
+            icon: Icons.inventory_2_outlined,
+            accentColor: const Color(0xFF475569),
+          ),
+        );
+        for (final p in otherFiltered) {
+          entries.add(_BookOrderCardEntry(p));
+        }
       }
     }
 
@@ -1147,12 +1443,19 @@ class _BookOrderPageState extends State<BookOrderPage> {
   }
 
   Widget _buildProductOrderCard(InventoryItem item, ColorScheme colorScheme) {
+    final key = _itemKey(item);
+    final receiptIdx = _scannedReceiptOrder.indexOf(key);
+    final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
+    final rawText = _scannedRawTexts[key];
+
     return ProductOrderCard(
       item: item,
       selectedQty: _getSelectedQty(item),
       maxOrderable: _getMaxOrderableQty(item),
       isPlaced: _placedProductNames.contains(item.productName.trim().toLowerCase()),
       currencyFormat: _currencyFormat,
+      receiptIndex: receiptNum,
+      rawReceiptText: rawText,
       onTap: () => _promptQuantityDialog(item),
     );
   }
@@ -1169,7 +1472,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       totalUnits: totalUnits,
       totalAmount: totalAmount,
       currencyFormat: _currencyFormat,
-      isSaving: _isSaving,
+      isSaving: _isSaving || _isScanning,
       onTapCartSummary: () => _showCartSummarySheet(allInventory),
       onSaveOrder: () => _onSaveOrder(allInventory),
     );

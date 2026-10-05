@@ -13,6 +13,8 @@ class ProductOrderCard extends StatelessWidget {
   final bool isPlaced;
   final NumberFormat currencyFormat;
   final VoidCallback onTap;
+  final int? receiptIndex;
+  final String? rawReceiptText;
 
   const ProductOrderCard({
     super.key,
@@ -22,6 +24,8 @@ class ProductOrderCard extends StatelessWidget {
     required this.isPlaced,
     required this.currencyFormat,
     required this.onTap,
+    this.receiptIndex,
+    this.rawReceiptText,
   });
 
   @override
@@ -70,12 +74,32 @@ class ProductOrderCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isBestSeller || isNewProduct || showNotPlacedMark) ...[
+                    if (receiptIndex != null || isBestSeller || isNewProduct || showNotPlacedMark) ...[
                       Wrap(
                         spacing: 6,
                         runSpacing: 4,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
+                          if (receiptIndex != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.amber.shade400.withValues(alpha: 0.6)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.receipt_long_outlined, size: 12, color: Colors.amber.shade900),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '#$receiptIndex on Receipt',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.amber.shade900),
+                                  ),
+                                ],
+                              ),
+                            ),
                           if (isBestSeller)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -149,6 +173,15 @@ class ProductOrderCard extends StatelessWidget {
                         height: 1.25,
                       ),
                     ),
+                    if (rawReceiptText != null && rawReceiptText!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'From receipt: "${rawReceiptText!.trim()}"',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                      ),
+                    ],
                     const SizedBox(height: 5),
                     Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -167,10 +200,7 @@ class ProductOrderCard extends StatelessWidget {
                         else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
+                            decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -215,10 +245,7 @@ class ProductOrderCard extends StatelessWidget {
                   child: Container(
                     height: 46,
                     padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary,
-                      borderRadius: BorderRadius.circular(23),
-                    ),
+                    decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(23)),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

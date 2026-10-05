@@ -3,8 +3,16 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/supplier_product_mapping.dart';
 
 class SupplierMappingService {
-  final CollectionReference<Map<String, dynamic>> _collection =
-      FirebaseFirestore.instance.collection('supplier_product_mappings');
+  SupplierMappingService({String collectionPath = supplierCollection})
+      : _collection = FirebaseFirestore.instance.collection(collectionPath);
+
+  /// Learned aliases from supplier invoices / purchase orders.
+  static const String supplierCollection = 'supplier_product_mappings';
+
+  /// Learned aliases from store-order receipts of the external booking app.
+  static const String bookingReceiptCollection = 'booking_receipt_mappings';
+
+  final CollectionReference<Map<String, dynamic>> _collection;
 
   List<SupplierProductMapping>? _cachedMappings;
   DateTime? _lastCacheTime;

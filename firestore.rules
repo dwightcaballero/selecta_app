@@ -80,6 +80,11 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
+    match /booking_receipt_mappings/{mappingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
     // Stores (HapiStores) & Dealers
     match /hapistores/{storeId} {
       allow read: if isAuthenticated();
