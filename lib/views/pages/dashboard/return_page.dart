@@ -5,6 +5,7 @@ import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
+import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:intl/intl.dart';
 
@@ -450,7 +451,7 @@ class _ReturnPageState extends State<ReturnPage> {
         child: Row(
           children: [
             Expanded(
-              flex: 1,
+              flex: 2,
               child: OutlinedButton.icon(
                 onPressed: (_isProcessing || widget.delivery.isInventorySettled)
                     ? null
@@ -466,6 +467,7 @@ class _ReturnPageState extends State<ReturnPage> {
                         if (confirmed) onDelete();
                       },
                 style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   minimumSize: const Size(0, 50.0),
                   foregroundColor: Colors.red.shade700,
                   side: BorderSide(
@@ -475,29 +477,40 @@ class _ReturnPageState extends State<ReturnPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: const Icon(Icons.delete_outline, size: 20),
-                label: Text(
-                  widget.delivery.isInventorySettled ? 'Settled' : 'Delete',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    widget.delivery.isInventorySettled ? 'Settled' : 'Delete',
+                    maxLines: 1,
+                    softWrap: false,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
-              flex: 2,
+              flex: 3,
               child: FilledButton.icon(
                 onPressed: (_isProcessing || widget.delivery.isRescheduled) ? null : _showRedeliverDialog,
                 style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   minimumSize: const Size(0, 50.0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: _isProcessing
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : Icon(widget.delivery.isRescheduled ? Icons.check_circle_outline : Icons.local_shipping_outlined, size: 20),
-                label: Text(
-                  _isProcessing
-                      ? 'Processing...'
-                      : (widget.delivery.isRescheduled ? 'Already Rescheduled' : 'Redeliver Order'),
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    _isProcessing
+                        ? 'Processing...'
+                        : (widget.delivery.isRescheduled ? 'Already Rescheduled' : 'Redeliver Order'),
+                    maxLines: 1,
+                    softWrap: false,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
             ),
@@ -510,7 +523,23 @@ class _ReturnPageState extends State<ReturnPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppbar(title: 'Return Details', subtitle: widget.delivery.storeName),
+      appBar: CustomAppbar(
+        title: 'Return Details',
+        subtitle: widget.delivery.storeName,
+        actions: [
+          if (widget.delivery.items.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
+              tooltip: 'Digital Receipt & Thermal Print',
+              onPressed: () => DigitalReceiptDialog.show(
+                context,
+                delivery: widget.delivery,
+                deliveryId: widget.recID,
+                proceedLabel: 'Close',
+              ),
+            ),
+        ],
+      ),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

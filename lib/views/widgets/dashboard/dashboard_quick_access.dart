@@ -28,14 +28,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
       children: [
         Row(
           children: [
-            _buildCard(
-              context,
-              label: 'Store Order',
-              subtitle: 'Sell to store',
-              icon: Icons.storefront_outlined,
-              color: primaryColor,
-              nextPage: const BookOrderPage(),
-            ),
+            _buildCard(context, label: 'Store Order', icon: Icons.storefront_outlined, color: primaryColor, nextPage: const BookOrderPage()),
             const SizedBox(width: 10),
             _buildCard(
               context,

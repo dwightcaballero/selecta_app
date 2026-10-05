@@ -716,9 +716,10 @@ class _PjpMapPageState extends State<PjpMapPage> {
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF15803D), // Forest green navigation color
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                     ),
                     icon: const Icon(Icons.navigation_rounded, size: 18),
-                    label: const Text('Navigate'),
+                    label: const Text('Navigate', maxLines: 1, softWrap: false),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -738,14 +739,17 @@ class _PjpMapPageState extends State<PjpMapPage> {
                         ),
                       ).then((_) => _loadStoresForDay());
                     },
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
                     icon: const Icon(Icons.storefront_rounded, size: 18),
-                    label: const Text('Store Details'),
+                    label: const Text('Details', maxLines: 1, softWrap: false),
                   ),
                 ),
-                const SizedBox(width: 8),
 
                 // Call Phone button
-                if (store.storeContact.isNotEmpty)
+                if (store.storeContact.isNotEmpty) ...[
+                  const SizedBox(width: 8),
                   IconButton.filledTonal(
                     onPressed: () async {
                       final telUri = Uri.parse('tel:${store.storeContact.replaceAll(' ', '')}');
@@ -766,6 +770,7 @@ class _PjpMapPageState extends State<PjpMapPage> {
                     icon: const Icon(Icons.phone_outlined, size: 18),
                     tooltip: 'Call Store',
                   ),
+                ],
               ],
             ),
           ],

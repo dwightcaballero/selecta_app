@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:selecta_ops/controllers/pjp_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
@@ -45,6 +46,9 @@ class _PjpPageState extends State<PjpPage> {
   bool _isLoadingLocation = true;
   bool _isUpdatingLocation = false;
   bool _locationPassed = false;
+  bool _isLocationOutOfRange = false;
+  double? _locationDistanceMeters;
+  double? _locationAccuracyMeters;
   String _locationStatus = '';
   String? _locationError;
 
@@ -154,15 +158,17 @@ class _PjpPageState extends State<PjpPage> {
       _locationError = null;
     });
 
-    final hasExistingLocation = _currentHapistore.latitude != null && _currentHapistore.longitude != null;
     final result = await _controller.checkLocation(_currentHapistore);
     if (!mounted) return;
 
     setState(() {
       _isLoadingLocation = false;
-      _locationPassed = hasExistingLocation || result.passed;
+      _locationPassed = result.passed;
+      _isLocationOutOfRange = result.isOutOfRange;
+      _locationDistanceMeters = result.distanceMeters;
+      _locationAccuracyMeters = result.accuracyMeters;
       _locationStatus = result.status;
-      _locationError = hasExistingLocation ? null : result.error;
+      _locationError = result.error;
     });
   }
 
@@ -173,9 +179,7 @@ class _PjpPageState extends State<PjpPage> {
     final result = await _controller.checkScanning(_currentHapistore.storeName);
     if (!mounted) return;
 
-    final hasPendingOrScanned = result.storeScannings.any(
-      (s) => s.status == ScanningStatus.pending || s.status == ScanningStatus.scanned,
-    );
+    final hasPendingOrScanned = result.storeScannings.any((s) => s.status == ScanningStatus.pending || s.status == ScanningStatus.scanned);
 
     setState(() {
       _isLoadingScanning = false;
@@ -245,8 +249,156 @@ class _PjpPageState extends State<PjpPage> {
     });
   }
 
+  String _formatDistance(double? meters) {
+    if (meters == null) return '';
+    if (meters >= 1000) {
+      return '${(meters / 1000).toStringAsFixed(1)} km';
+    }
+    return '${meters.round()} m';
+  }
+
+  Future<void> _openDirections() async {
+    final hasGps = _currentHapistore.latitude != null && _currentHapistore.longitude != null;
+    final hasAddress = _currentHapistore.storeAddress.trim().isNotEmpty;
+
+    if (!hasGps && !hasAddress) {
+      ShowMessage.alert(
+        context,
+        title: 'Location Unavailable',
+        message: 'This store has no registered GPS coordinates or street address to navigate to.',
+        icon: Icons.location_off_outlined,
+      );
+      return;
+    }
+
+    try {
+      if (hasGps) {
+        final lat = _currentHapistore.latitude!;
+        final lng = _currentHapistore.longitude!;
+        final nameEncoded = Uri.encodeComponent(_currentHapistore.storeName);
+
+        final googleNavUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+        final universalMapsUri = Uri.parse(
+          'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&destination_place_id=$nameEncoded&travelmode=driving',
+        );
+        final geoUri = Uri.parse('geo:$lat,$lng?q=$lat,$lng($nameEncoded)');
+
+        if (await canLaunchUrl(googleNavUri)) {
+          await launchUrl(googleNavUri, mode: LaunchMode.externalApplication);
+        } else if (await canLaunchUrl(geoUri)) {
+          await launchUrl(geoUri, mode: LaunchMode.externalApplication);
+        } else if (await canLaunchUrl(universalMapsUri)) {
+          await launchUrl(universalMapsUri, mode: LaunchMode.externalApplication);
+        } else {
+          if (mounted) ShowMessage.error(context, 'Could not open map navigation application.');
+        }
+      } else {
+        final query = Uri.encodeComponent('${_currentHapistore.storeName}, ${_currentHapistore.storeAddress}');
+        final searchUri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+        if (await canLaunchUrl(searchUri)) {
+          await launchUrl(searchUri, mode: LaunchMode.externalApplication);
+        } else {
+          if (mounted) ShowMessage.error(context, 'Could not open Google Maps.');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to launch navigation: $e');
+      }
+    }
+  }
+
+  Future<void> _makePhoneCall() async {
+    final contact = _currentHapistore.storeContact.trim();
+    if (contact.isEmpty) {
+      ShowMessage.alert(
+        context,
+        title: 'No Contact Number',
+        message: 'This store does not have a contact number registered.',
+        icon: Icons.phone_disabled_outlined,
+      );
+      return;
+    }
+
+    final cleaned = contact.replaceAll(RegExp(r'[^\d+]'), '');
+    final uri = Uri.parse('tel:$cleaned');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        if (mounted) ShowMessage.error(context, 'Could not place phone call to $contact.');
+      }
+    } catch (e) {
+      if (mounted) ShowMessage.error(context, 'Failed to launch phone dialer: $e');
+    }
+  }
+
+  Future<void> _sendSms() async {
+    final contact = _currentHapistore.storeContact.trim();
+    if (contact.isEmpty) {
+      ShowMessage.alert(
+        context,
+        title: 'No Contact Number',
+        message: 'This store does not have a contact number registered.',
+        icon: Icons.sms_failed_outlined,
+      );
+      return;
+    }
+
+    final cleaned = contact.replaceAll(RegExp(r'[^\d+]'), '');
+    final uri = Uri.parse('sms:$cleaned');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        if (mounted) ShowMessage.error(context, 'Could not open messaging for $contact.');
+      }
+    } catch (e) {
+      if (mounted) ShowMessage.error(context, 'Failed to open SMS: $e');
+    }
+  }
+
   Future<void> _onLocationAction() async {
     if (_isUpdatingLocation) return;
+
+    if (_currentHapistore.latitude != null && _currentHapistore.longitude != null) {
+      final shouldUpdate = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.edit_location_alt_rounded, color: Theme.of(ctx).colorScheme.primary),
+              const SizedBox(width: 8),
+              const Text('Update Store GPS?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Are you physically at ${_currentHapistore.storeName} right now?', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Text(
+                'This will update the store\'s registered GPS location to your current position${_isLocationOutOfRange && _locationDistanceMeters != null ? ' (currently ${_formatDistance(_locationDistanceMeters)} away)' : ''}.',
+                style: TextStyle(fontSize: 13, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, true),
+              icon: const Icon(Icons.check_rounded, size: 18),
+              label: const Text('Update to Current GPS'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldUpdate != true) return;
+    }
+
     setState(() {
       _isUpdatingLocation = true;
       _locationError = null;
@@ -829,12 +981,13 @@ class _PjpPageState extends State<PjpPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: CustomAppbar(
         title: _currentHapistore.storeName,
         subtitle: 'PJP • ${widget.selectedDay}',
-        actions: [IconButton(icon: const Icon(Icons.refresh_rounded), tooltip: 'Refresh checks', onPressed: _runAllChecks)],
+        actions: [IconButton(icon: const Icon(Icons.refresh_rounded), color: Colors.white, tooltip: 'Refresh checks', onPressed: _runAllChecks)],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -932,6 +1085,83 @@ class _PjpPageState extends State<PjpPage> {
                       ),
                     ),
                   ],
+
+                  const SizedBox(height: 12),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+
+                  // Driver Assistance Actions: Directions, Call, Message
+                  Row(
+                    children: [
+                      // Directions / Navigation Button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _openDirections,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                            foregroundColor: const Color(0xFF15803D), // Forest green
+                            side: const BorderSide(color: Color(0xFF15803D), width: 1.2),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.navigation_rounded, size: 16),
+                          label: const Text(
+                            'Directions',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Call Button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _currentHapistore.storeContact.trim().isNotEmpty ? _makePhoneCall : null,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                            foregroundColor: colorScheme.primary,
+                            side: BorderSide(
+                              color: _currentHapistore.storeContact.trim().isNotEmpty ? colorScheme.primary : colorScheme.outlineVariant,
+                              width: 1.2,
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.call_rounded, size: 16),
+                          label: const Text(
+                            'Call',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Message Button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _currentHapistore.storeContact.trim().isNotEmpty ? _sendSms : null,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                            foregroundColor: Colors.indigo.shade700,
+                            side: BorderSide(
+                              color: _currentHapistore.storeContact.trim().isNotEmpty ? Colors.indigo.shade600 : colorScheme.outlineVariant,
+                              width: 1.2,
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.sms_rounded, size: 16),
+                          label: const Text(
+                            'Message',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -949,15 +1179,20 @@ class _PjpPageState extends State<PjpPage> {
             icon: Icons.location_on_outlined,
             isLoading: _isLoadingLocation || _isUpdatingLocation,
             isPassed: _locationPassed,
-            statusMessage: _isUpdatingLocation ? 'Acquiring GPS and updating store location...' : _locationStatus,
-            errorMessage: _locationError,
+            statusMessage: _isUpdatingLocation
+                ? 'Acquiring GPS and updating store location...'
+                : (_isLocationOutOfRange
+                      ? 'Out of range: ~${_formatDistance(_locationDistanceMeters)} from registered pin (200m geofence).'
+                      : (_locationPassed && _locationDistanceMeters != null
+                            ? 'In range: ~${_formatDistance(_locationDistanceMeters)} from store${_locationAccuracyMeters != null && _locationAccuracyMeters! > 0 ? " (±${_locationAccuracyMeters!.round()}m accuracy)" : ""}.'
+                            : _locationStatus)),
             actionLabel: _isUpdatingLocation ? 'Updating...' : (_currentHapistore.latitude == null ? 'Get Location' : 'Update Location'),
             actionIcon: Icons.my_location_rounded,
             loadingLabel: _isUpdatingLocation ? 'Updating...' : null,
             showActionWhenPassed: true,
             actionLabelWhenPassed: 'Update Location',
             onAction: _onLocationAction,
-            onRetry: _locationError != null ? _checkLocation : null,
+            onRetry: _locationError != null || _isLocationOutOfRange || !_locationPassed ? _checkLocation : null,
           ),
 
           // Step 2: Scanning

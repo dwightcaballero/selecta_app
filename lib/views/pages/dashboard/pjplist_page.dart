@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/pjp_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/hapistore.dart';
@@ -33,6 +32,8 @@ class _PjpListPageState extends State<PjpListPage> {
   bool _isSaving = false;
   Set<String> _originalStoreIDs = {};
   late String _selectedDay;
+  Map<String, StoreComplianceStatus> _storeComplianceMap = {};
+  String? _lastLoadedKey;
 
   @override
   void initState() {
@@ -50,23 +51,19 @@ class _PjpListPageState extends State<PjpListPage> {
     }
   }
 
-  void _copyToClipboard(String text, String label) {
-    Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Text('Copied $label to clipboard'),
-          ],
-        ),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  void _checkAndLoadCompliance(List<String> storeNames) {
+    if (storeNames.isEmpty) return;
+    final key = '$_selectedDay|${storeNames.join(',')}';
+    if (_lastLoadedKey == key) return;
+    _lastLoadedKey = key;
+
+    _controller.getStoreComplianceStatuses(storeNames).then((statuses) {
+      if (mounted) {
+        setState(() {
+          _storeComplianceMap = statuses;
+        });
+      }
+    });
   }
 
   // Stores without a pjpSequence yet are appended alphabetically after the sequenced ones.
@@ -81,6 +78,8 @@ class _PjpListPageState extends State<PjpListPage> {
       _isEditing = false;
       _editableStoreIDs = [];
       _editableStoresById = {};
+      _storeComplianceMap = {};
+      _lastLoadedKey = null;
     });
   }
 
@@ -264,6 +263,36 @@ class _PjpListPageState extends State<PjpListPage> {
     );
   }
 
+  Widget _buildTagBadge({
+    required IconData icon,
+    required String label,
+    required MaterialColor color,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.22 : 0.12),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: isDark ? color.shade300 : color.shade700),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: isDark ? color.shade200 : color.shade900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStoreTile({required int index, required String hapiStoreID, required Hapistore hapistore}) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool isCompletedToday;
@@ -285,6 +314,12 @@ class _PjpListPageState extends State<PjpListPage> {
         : BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6));
 
     final cardColor = isDone ? Colors.green.withValues(alpha: 0.04) : colorScheme.surface;
+
+    final status = _storeComplianceMap[hapistore.storeName] ??
+        _storeComplianceMap[hapistore.storeName.toLowerCase()] ??
+        const StoreComplianceStatus();
+    final bool hasGps = hapistore.latitude != null && hapistore.longitude != null;
+    final bool hasTags = hasGps || status.hasAnyStatus;
 
     return Card(
       key: ValueKey(hapiStoreID),
@@ -319,6 +354,7 @@ class _PjpListPageState extends State<PjpListPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Row 1: Store Name & Done Badge
                     Row(
                       children: [
                         Expanded(
@@ -329,24 +365,6 @@ class _PjpListPageState extends State<PjpListPage> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (hapistore.latitude != null && hapistore.longitude != null) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.location_on, size: 10, color: Colors.green.shade700),
-                                const SizedBox(width: 2),
-                                Text(
-                                  'GPS',
-                                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green.shade800),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
                         if (isDone) ...[
                           const SizedBox(width: 6),
                           Container(
@@ -360,26 +378,8 @@ class _PjpListPageState extends State<PjpListPage> {
                         ],
                       ],
                     ),
-                    if (hapistore.storeContact.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(4),
-                        onTap: () => _copyToClipboard(hapistore.storeContact, 'contact number'),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.phone_outlined, size: 12, color: colorScheme.primary),
-                            const SizedBox(width: 4),
-                            Text(
-                              hapistore.storeContact,
-                              style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w500),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(Icons.copy_rounded, size: 10, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                          ],
-                        ),
-                      ),
-                    ],
+
+                    // Row 2: Store Address (full width)
                     if (hapistore.storeAddress.isNotEmpty) ...[
                       const SizedBox(height: 3),
                       Text(
@@ -389,8 +389,45 @@ class _PjpListPageState extends State<PjpListPage> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
+
+                    // Row 3: Compliance & Task Badges (GPS, Scanned, Booked / No Order)
+                    if (hasTags) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          if (hasGps)
+                            _buildTagBadge(
+                              icon: Icons.location_on,
+                              label: 'GPS',
+                              color: Colors.teal,
+                            ),
+                          if (status.isScanned)
+                            _buildTagBadge(
+                              icon: Icons.qr_code_scanner,
+                              label: 'Scanned',
+                              color: Colors.indigo,
+                            ),
+                          if (status.isBooked)
+                            _buildTagBadge(
+                              icon: Icons.check_circle_outline,
+                              label: 'Booked',
+                              color: Colors.green,
+                            )
+                          else if (status.isNoOrder)
+                            _buildTagBadge(
+                              icon: Icons.remove_circle_outline,
+                              label: 'No Order',
+                              color: Colors.orange,
+                            ),
+                        ],
+                      ),
+                    ],
+
+                    // Row 4: Last PJP Visit Timestamp
                     if (isDone && hapistore.lastPjpVisit != null) ...[
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 4),
                       Text(
                         isCompletedToday
                             ? 'Visited today at ${DateFormat('h:mm a').format(hapistore.lastPjpVisit!.toDate())}'
@@ -420,14 +457,15 @@ class _PjpListPageState extends State<PjpListPage> {
   }
 
   Future<void> _navigateToStoreVisit(String hapiStoreID, Hapistore hapistore) async {
-    final result = await Navigator.push<bool>(
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (context) => PjpPage(hapiStoreID: hapiStoreID, initialHapistore: hapistore, selectedDay: _selectedDay),
       ),
     );
 
-    if (result == true && mounted) {
+    if (mounted) {
+      _lastLoadedKey = null;
       setState(() {});
     }
   }
@@ -527,6 +565,16 @@ class _PjpListPageState extends State<PjpListPage> {
 
         if (docs.isEmpty) return _buildEmptyState();
 
+        final storeNames = docs.map((doc) {
+          final raw = doc.data();
+          final s = raw is Hapistore ? raw : Hapistore.fromJson(raw as Map<String, Object?>);
+          return s.storeName;
+        }).toList();
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _checkAndLoadCompliance(storeNames);
+        });
+
         final progress = _controller.calculatePjpProgress(docs);
 
         return Column(
@@ -558,19 +606,15 @@ class _PjpListPageState extends State<PjpListPage> {
         subtitle: '$_selectedDay Route',
         actions: [
           if (!_isEditing) ...[
-            // Route Map shortcut
-            IconButton(
-              icon: const Icon(Icons.map_outlined, color: Colors.white),
-              tooltip: 'Route Map',
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay))),
-            ),
-            // More options overflow menu
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
               tooltip: 'More options',
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               onSelected: (value) async {
                 switch (value) {
+                  case 'map':
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay)));
+                    break;
                   case 'rearrange':
                     final snapshot = await _controller.getStoresForDayStream(_selectedDay).first;
                     if (!mounted) return;
@@ -582,6 +626,10 @@ class _PjpListPageState extends State<PjpListPage> {
                 }
               },
               itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'map',
+                  child: Row(children: [Icon(Icons.map_outlined, size: 20), SizedBox(width: 10), Text('Route Map')]),
+                ),
                 if (_isDealer)
                   const PopupMenuItem(
                     value: 'rearrange',
