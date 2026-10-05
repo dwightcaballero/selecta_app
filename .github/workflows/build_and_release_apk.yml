@@ -81,6 +81,22 @@ jobs:
             echo "force=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Configure Keystore & Signing Properties
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 secret is not configured. Falling back to debug signing."
+          else
+            echo "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+            printf "storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=upload-keystore.jks\n" \
+              "$KEYSTORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
+            echo "Release keystore and key.properties configured successfully."
+          fi
+
       - name: Build Android Release APK (Split ABI for lightweight ~28MB APKs)
         run: flutter build apk --release --split-per-abi
 
