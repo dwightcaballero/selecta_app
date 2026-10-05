@@ -76,7 +76,7 @@ class AppUpdateService {
     } catch (_) {
       return PackageInfo(
         appName: 'selecta_app',
-        packageName: 'com.example.flutter_app',
+        packageName: 'com.selecta.selectaapp',
         version: '1.0.0',
         buildNumber: '21',
         buildSignature: '',
