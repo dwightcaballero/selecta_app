@@ -191,7 +191,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
   Widget _buildSearchAndSortBar() {
     final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Row(
         children: [
           Expanded(
@@ -240,7 +240,9 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
             initialValue: _sortBy,
             onSelected: (val) => setState(() => _sortBy = val),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            icon: Container(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            child: Container(
               height: 42,
               width: 42,
               decoration: BoxDecoration(
@@ -299,6 +301,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
 
     return ChoiceChip(
       showCheckmark: false,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       visualDensity: VisualDensity.compact,
       avatar: dotColor != null
           ? Container(
@@ -595,7 +598,6 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                 overpaymentCount: counts.overpayment,
                 settledCount: counts.settled,
               ),
-              const SizedBox(height: 6),
 
               // Scrollable Content
               Expanded(

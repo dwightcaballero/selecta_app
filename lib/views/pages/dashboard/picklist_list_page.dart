@@ -250,7 +250,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
     return Scaffold(
       appBar: CustomAppbar(
         title: _isEditing ? 'Rearrange Picklist' : 'Booked Orders (Picklists)',
-        subtitle: _isEditing ? 'Drag to reorder • ${_dateLabel()}' : null,
+        subtitle: _isEditing ? 'Drag to reorder • ${_dateLabel()}' : 'Warehouse Picking • ${_dateLabel()}',
         actions: [
           if (!_isEditing)
             IconButton(

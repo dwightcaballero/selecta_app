@@ -85,19 +85,13 @@ class _InventoryPageState extends State<InventoryPage> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Scaffold(
-            appBar: CustomAppbar(
-              title: 'Inventory',
-              subtitle: 'Selecta & Other Products Stock',
-            ),
+            appBar: CustomAppbar(title: 'Inventory', subtitle: 'Selecta & Other Products Stock'),
             body: Center(child: CircularProgressIndicator()),
           );
         }
         if (snapshot.hasError) {
           return Scaffold(
-            appBar: const CustomAppbar(
-              title: 'Inventory',
-              subtitle: 'Selecta & Other Products Stock',
-            ),
+            appBar: const CustomAppbar(title: 'Inventory', subtitle: 'Selecta & Other Products Stock'),
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -119,9 +113,7 @@ class _InventoryPageState extends State<InventoryPage> {
             subtitle: allItems.isEmpty
                 ? 'Selecta & Other Products Stock'
                 : '${summary.totalUnits} units • Cost: ${_currencyFormat.format(summary.totalCostValue)}',
-            actions: [
-              _buildAppbarMenu(summary, floatingCount, colorScheme),
-            ],
+            actions: [_buildAppbarMenu(summary, floatingCount, colorScheme)],
           ),
           body: Column(
             children: [
@@ -326,17 +318,10 @@ class _InventoryPageState extends State<InventoryPage> {
               if (floatingCount > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF7C3AED).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  decoration: BoxDecoration(color: const Color(0xFF7C3AED).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
                   child: Text(
                     '$floatingCount',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF7C3AED),
-                    ),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED)),
                   ),
                 ),
             ],
@@ -362,9 +347,7 @@ class _InventoryPageState extends State<InventoryPage> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
         final colorScheme = Theme.of(ctx).colorScheme;
 
@@ -379,10 +362,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   width: 40,
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+                  decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
                 ),
               ),
               Row(
@@ -392,20 +372,14 @@ class _InventoryPageState extends State<InventoryPage> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                         child: Icon(Icons.analytics_outlined, color: colorScheme.primary, size: 22),
                       ),
                       const SizedBox(width: 12),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Inventory Overview',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
+                          const Text('Inventory Overview', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                           Text(
                             '${summary.totalProducts} active product${summary.totalProducts == 1 ? '' : 's'}',
                             style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
@@ -414,10 +388,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                     ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
+                  IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
                 ],
               ),
               const SizedBox(height: 18),
@@ -482,10 +453,7 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
               const SizedBox(height: 16),
 
-              const Text(
-                'Stock Breakdown',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-              ),
+              const Text('Stock Breakdown', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(height: 10),
 
               _buildStockBreakdownTile(
@@ -555,11 +523,7 @@ class _InventoryPageState extends State<InventoryPage> {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -569,11 +533,7 @@ class _InventoryPageState extends State<InventoryPage> {
           const SizedBox(height: 6),
           Text(
             value,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: accentColor,
-            ),
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: accentColor),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -611,10 +571,7 @@ class _InventoryPageState extends State<InventoryPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
               child: Icon(icon, size: 18, color: color),
             ),
             const SizedBox(width: 12),
@@ -622,30 +579,17 @@ class _InventoryPageState extends State<InventoryPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                  ),
+                  Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 1),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
-                  ),
+                  Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
               ),
             ),
             Text(
               value,
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: color),
             ),
-            if (onTap != null) ...[
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right_rounded, size: 18, color: color),
-            ],
+            if (onTap != null) ...[const SizedBox(width: 4), Icon(Icons.chevron_right_rounded, size: 18, color: color)],
           ],
         ),
       ),
