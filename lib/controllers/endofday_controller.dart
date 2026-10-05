@@ -75,13 +75,15 @@ class EndOfDayController {
   }
 
   /// Verifies the breakdown and settles physical and floating inventory atomically.
-  /// Once verified, this action cannot be reversed.
+  /// If [isReconciliation] is true, allows settling lingering deliveries even if the breakdown
+  /// was already verified by an older app version.
   Future<void> verifyAndSettleBreakdown({
     required String breakdownId,
     required Breakdown currentRecord,
     required DateTime date,
+    bool isReconciliation = false,
   }) async {
-    if (currentRecord.isVerifiedByDealer) {
+    if (currentRecord.isVerifiedByDealer && !isReconciliation) {
       throw Exception('Breakdown for this date has already been verified.');
     }
 
@@ -89,12 +91,13 @@ class EndOfDayController {
       date: date,
       breakdownId: breakdownId,
       breakdown: currentRecord,
+      allowReconciliation: isReconciliation,
     );
 
     final updatedRecord = currentRecord.copyWith(
       isVerifiedByDealer: true,
-      verifiedBy: currentUserName,
-      verifiedDate: Timestamp.now(),
+      verifiedBy: currentRecord.verifiedBy.isNotEmpty ? currentRecord.verifiedBy : currentUserName,
+      verifiedDate: currentRecord.verifiedDate ?? Timestamp.now(),
       inventorySettledDate: Timestamp.now(),
       lastUpdatedBy: currentUserName,
       lastupdatedDate: Timestamp.now(),

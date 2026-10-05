@@ -6,8 +6,10 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/admin_selecta_product.dart';
 import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/floating_stock.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/other_product.dart';
+import 'package:selecta_ops/models/purchaseorder.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
@@ -1112,6 +1114,7 @@ class InventoryService {
     required DateTime date,
     required String breakdownId,
     required Breakdown breakdown,
+    bool allowReconciliation = false,
   }) async {
     final startOfDay = DateTime(date.year, date.month, date.day, 0, 0, 0);
     final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
@@ -1127,12 +1130,16 @@ class InventoryService {
     }).toList();
 
     final plan = computeSettlement(deliveries);
+    if (allowReconciliation && plan.settledDeliveryIds.isEmpty) {
+      return;
+    }
+
     final now = Timestamp.now();
     final actorName = _currentActorName();
 
     await _firestore.runTransaction((transaction) async {
-      // 1. Check breakdown doc to prevent double-verification
-      if (breakdownId.isNotEmpty) {
+      // 1. Check breakdown doc to prevent double-verification unless in reconciliation mode
+      if (breakdownId.isNotEmpty && !allowReconciliation) {
         final bRef = _firestore.collection(BREAKDOWN_COLLECTION_REF).doc(breakdownId);
         final bSnap = await transaction.get(bRef);
         if (bSnap.exists && (bSnap.data()?['isVerifiedByDealer'] as bool? ?? false)) {
@@ -1188,7 +1195,9 @@ class InventoryService {
           previousStock: currentStock,
           newStock: nextStock,
           delta: mov.delta,
-          reason: mov.reason,
+          reason: allowReconciliation
+              ? 'Delivery Settled (Reconciled Past Breakdown)'
+              : mov.reason,
           notes: mov.notes,
           createdBy: actorName,
           createdAt: now,
@@ -1216,7 +1225,7 @@ class InventoryService {
         transaction.update(bRef, {
           'isVerifiedByDealer': true,
           'verifiedBy': actorName,
-          'verifiedDate': now,
+          'verifiedDate': breakdown.verifiedDate ?? now,
           'inventorySettledDate': now,
           'lastupdatedDate': now,
           'lastUpdatedBy': actorName,
@@ -1225,10 +1234,330 @@ class InventoryService {
     });
   }
 
+  /// Manually settles or reconciles an individual delivery whose inventory was left floating / unsettled.
+  Future<void> settleSingleDelivery(String deliveryId) async {
+    final dRef = _firestore.collection(DELIVERY_COLLECTION_REF).doc(deliveryId);
+    final dSnap = await dRef.get();
+    if (!dSnap.exists) throw Exception('Delivery document not found.');
+
+    final data = dSnap.data()!;
+    final delivery = Delivery.fromJson(data);
+    final isSettled = data[DeliveryModelString.isInventorySettled] as bool? ?? false;
+    if (isSettled) {
+      throw Exception('This delivery is already inventory settled.');
+    }
+
+    final plan = computeSettlement([(id: deliveryId, delivery: delivery)]);
+    final now = Timestamp.now();
+    final actorName = _currentActorName();
+
+    if (plan.settledDeliveryIds.isEmpty) {
+      // If not delivered or returned (e.g., cancelled or rescheduled), release any held reserved stock
+      if (delivery.isInventoryReserved) {
+        await releaseReservedStockForOrder(
+          storeName: delivery.storeName,
+          items: delivery.items,
+        );
+      }
+      await dRef.update({
+        DeliveryModelString.isInventoryReserved: false,
+        DeliveryModelString.isInventorySettled: true,
+        DeliveryModelString.inventorySettledDate: now,
+        DeliveryModelString.inventorySettledBy: actorName,
+        DeliveryModelString.lastupdatedDate: now,
+        DeliveryModelString.lastUpdatedBy: actorName,
+      });
+      return;
+    }
+
+    await _firestore.runTransaction((transaction) async {
+      // 1. Read product docs
+      final Map<String, DocumentSnapshot<Map<String, dynamic>>> productSnaps = {};
+      for (final delta in plan.productDeltas.values) {
+        final collectionName = _collectionForSource(delta.productSource);
+        final pRef = _firestore.collection(collectionName).doc(delta.productId);
+        final pSnap = await transaction.get(pRef);
+        productSnaps['${delta.productSource}:${delta.productId}'] = pSnap;
+      }
+
+      // 2. Update products
+      for (final delta in plan.productDeltas.values) {
+        final key = '${delta.productSource}:${delta.productId}';
+        final pSnap = productSnaps[key];
+        if (pSnap == null || !pSnap.exists) continue;
+
+        final pData = pSnap.data() ?? {};
+        final currentStock = (pData['stockQuantity'] as num?)?.toInt() ?? 0;
+        final currentReserved = (pData['reservedQuantity'] as num?)?.toInt() ?? 0;
+
+        final nextStock = (currentStock + delta.stockDelta).clamp(0, 99999999);
+        final nextReserved = (currentReserved + delta.reservedDelta).clamp(0, 99999999);
+
+        final collectionName = _collectionForSource(delta.productSource);
+        final pRef = _firestore.collection(collectionName).doc(delta.productId);
+
+        transaction.update(pRef, {
+          'stockQuantity': nextStock,
+          'reservedQuantity': nextReserved,
+          'updatedAt': now,
+        });
+      }
+
+      // 3. Record movement logs
+      for (final mov in plan.movements) {
+        final key = '${mov.productSource}:${mov.productId}';
+        final pSnap = productSnaps[key];
+        final currentStock = ((pSnap?.data()?['stockQuantity'] as num?)?.toInt() ?? 0);
+        final nextStock = (currentStock + mov.delta).clamp(0, 99999999);
+
+        final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+        final movement = InventoryMovement(
+          id: movementRef.id,
+          productId: mov.productId,
+          productName: mov.productName,
+          productSource: mov.productSource,
+          previousStock: currentStock,
+          newStock: nextStock,
+          delta: mov.delta,
+          reason: 'Manual Delivery Settlement (Reconciliation)',
+          notes: 'Store: ${delivery.storeName}',
+          createdBy: actorName,
+          createdAt: now,
+        );
+        transaction.set(movementRef, movement.toJson());
+      }
+
+      // 4. Mark delivery settled
+      transaction.update(dRef, {
+        DeliveryModelString.isInventorySettled: true,
+        DeliveryModelString.isInventoryDeducted: true,
+        DeliveryModelString.isInventoryReserved: false,
+        DeliveryModelString.inventorySettledDate: now,
+        DeliveryModelString.inventorySettledBy: actorName,
+        DeliveryModelString.lastupdatedDate: now,
+        DeliveryModelString.lastUpdatedBy: actorName,
+      });
+    });
+  }
+
   /// Re-reserves floating inventory (`reservedQuantity`) for an order created when rescheduling
   /// a verified returned delivery.
   Future<void> reReserveForRescheduledOrder(List<OrderItem> items) async {
     await reserveStockForOrder(storeName: 'Rescheduled Order', items: items);
+  }
+
+  /// Realtime stream providing unified floating stock details across active Purchase Orders
+  /// (Going In) and active reserved Deliveries/Orders (Going Out).
+  Stream<FloatingStockData> getFloatingStockStream() {
+    late StreamController<FloatingStockData> controller;
+    StreamSubscription? inventorySub;
+    StreamSubscription? poSub;
+    StreamSubscription? deliverySub;
+
+    List<InventoryItem> currentInventory = [];
+    List<FloatingTransaction> currentIncoming = [];
+    List<FloatingTransaction> currentOutgoing = [];
+    bool invLoaded = false;
+    bool poLoaded = false;
+    bool delLoaded = false;
+
+    void emit() {
+      if (!invLoaded || !poLoaded || !delLoaded || controller.isClosed) return;
+
+      int totalIn = 0;
+      int totalOut = 0;
+
+      // Map product IDs/names to incoming and outgoing source references
+      final Map<String, List<FloatingSourceRef>> incomingByProduct = {};
+      final Map<String, List<FloatingSourceRef>> outgoingByProduct = {};
+
+      for (final tx in currentIncoming) {
+        for (final item in tx.items) {
+          final qty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+          if (qty <= 0) continue;
+          totalIn += qty;
+
+          final ref = FloatingSourceRef(
+            transactionId: tx.id,
+            title: tx.title,
+            subtitle: tx.subtitle,
+            status: tx.status,
+            date: tx.date,
+            quantity: qty,
+            isIncoming: true,
+          );
+
+          if (item.productId.isNotEmpty) {
+            incomingByProduct.putIfAbsent(item.productId, () => []).add(ref);
+          }
+          final nameKey = item.productName.trim().toLowerCase();
+          if (nameKey.isNotEmpty) {
+            incomingByProduct.putIfAbsent(nameKey, () => []).add(ref);
+          }
+        }
+      }
+
+      for (final tx in currentOutgoing) {
+        for (final item in tx.items) {
+          final qty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+          if (qty <= 0) continue;
+          totalOut += qty;
+
+          final ref = FloatingSourceRef(
+            transactionId: tx.id,
+            title: tx.title,
+            subtitle: tx.subtitle,
+            status: tx.status,
+            date: tx.date,
+            quantity: qty,
+            isIncoming: false,
+          );
+
+          if (item.productId.isNotEmpty) {
+            outgoingByProduct.putIfAbsent(item.productId, () => []).add(ref);
+          }
+          final nameKey = item.productName.trim().toLowerCase();
+          if (nameKey.isNotEmpty) {
+            outgoingByProduct.putIfAbsent(nameKey, () => []).add(ref);
+          }
+        }
+      }
+
+      // Build product list
+      final List<FloatingProductItem> products = [];
+      for (final item in currentInventory) {
+        final nameKey = item.productName.trim().toLowerCase();
+        final inSources = incomingByProduct[item.id] ?? incomingByProduct[nameKey] ?? [];
+        final outSources = outgoingByProduct[item.id] ?? outgoingByProduct[nameKey] ?? [];
+
+        final inQty = inSources.isNotEmpty
+            ? inSources.fold<int>(0, (acc, s) => acc + s.quantity)
+            : item.incomingQuantity;
+        final outQty = outSources.isNotEmpty
+            ? outSources.fold<int>(0, (acc, s) => acc + s.quantity)
+            : item.reservedQuantity;
+
+        if (inQty > 0 || outQty > 0 || inSources.isNotEmpty || outSources.isNotEmpty) {
+          products.add(
+            FloatingProductItem(
+              productId: item.id,
+              productName: item.productName,
+              imageUrl: item.imageUrl,
+              productSource: item.source == InventoryProductSource.selecta ? 'selecta' : 'other',
+              category: item.category,
+              buyingPrice: item.buyingPrice,
+              sellingPrice: item.sellingPrice,
+              stockQuantity: item.stockQuantity,
+              incomingQuantity: inQty,
+              reservedQuantity: outQty,
+              incomingSources: inSources,
+              outgoingSources: outSources,
+            ),
+          );
+        }
+      }
+
+      products.sort((a, b) => a.productName.toLowerCase().compareTo(b.productName.toLowerCase()));
+
+      controller.add(
+        FloatingStockData(
+          products: products,
+          incomingTransactions: currentIncoming,
+          outgoingTransactions: currentOutgoing,
+          totalIncomingUnits: totalIn,
+          totalReservedUnits: totalOut,
+        ),
+      );
+    }
+
+    controller = StreamController<FloatingStockData>.broadcast(
+      onListen: () {
+        inventorySub = getActiveInventoryStream().listen((inv) {
+          currentInventory = inv;
+          invLoaded = true;
+          emit();
+        }, onError: (e, s) {
+          if (!controller.isClosed) controller.addError(e, s);
+        });
+
+        poSub = _firestore.collection(PURCHASEORDER_COLLECTION_REF).snapshots().listen((snap) {
+          final List<FloatingTransaction> incoming = [];
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            final isReplenished = data['isInventoryReplenished'] as bool? ?? false;
+            final status = (data['status'] as String? ?? 'pending').toLowerCase();
+            if (!isReplenished && status != 'cancelled') {
+              final po = Purchaseorder.fromSnapshot(doc);
+              final totalUnits = po.items.fold<int>(
+                0,
+                (acc, i) => acc + (i.pickedQuantity > 0 ? i.pickedQuantity : i.orderedQuantity),
+              );
+              incoming.add(
+                FloatingTransaction(
+                  id: doc.id,
+                  type: FloatingTransactionType.incoming,
+                  title: po.poNumber.isNotEmpty ? 'PO #${po.poNumber}' : 'Purchase Order',
+                  subtitle: 'Supplier: Selecta Unilever',
+                  status: po.status.isNotEmpty ? po.status : 'Pending',
+                  date: po.orderDate.toDate(),
+                  totalUnits: totalUnits,
+                  items: po.items,
+                ),
+              );
+            }
+          }
+          currentIncoming = incoming..sort((a, b) => b.date.compareTo(a.date));
+          poLoaded = true;
+          emit();
+        }, onError: (e, s) {
+          if (!controller.isClosed) controller.addError(e, s);
+        });
+
+        deliverySub = _firestore
+            .collection(DELIVERY_COLLECTION_REF)
+            .where(DeliveryModelString.isInventoryReserved, isEqualTo: true)
+            .snapshots()
+            .listen((snap) {
+          final List<FloatingTransaction> outgoing = [];
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            final isSettled = data[DeliveryModelString.isInventorySettled] as bool? ?? false;
+            final status = (data['transactionStatus'] as String? ?? '').toLowerCase();
+            if (!isSettled && status != 'cancelled') {
+              final del = Delivery.fromJson(data);
+              final totalUnits = del.items.fold<int>(
+                0,
+                (acc, i) => acc + (i.pickedQuantity > 0 ? i.pickedQuantity : i.orderedQuantity),
+              );
+              outgoing.add(
+                FloatingTransaction(
+                  id: doc.id,
+                  type: FloatingTransactionType.outgoing,
+                  title: del.storeName.isNotEmpty ? del.storeName : 'Store Order',
+                  subtitle: '${del.transactionStatus} • ${del.createdBy.isNotEmpty ? del.createdBy : "Dealer"}',
+                  status: del.transactionStatus.isNotEmpty ? del.transactionStatus : 'Reserved',
+                  date: del.deliveryDate?.toDate() ?? del.createdDate.toDate(),
+                  totalUnits: totalUnits,
+                  items: del.items,
+                ),
+              );
+            }
+          }
+          currentOutgoing = outgoing..sort((a, b) => b.date.compareTo(a.date));
+          delLoaded = true;
+          emit();
+        }, onError: (e, s) {
+          if (!controller.isClosed) controller.addError(e, s);
+        });
+      },
+      onCancel: () {
+        inventorySub?.cancel();
+        poSub?.cancel();
+        deliverySub?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 }
 

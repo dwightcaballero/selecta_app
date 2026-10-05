@@ -26,6 +26,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
   BreakdownTotal breakdownTotal = BreakdownTotal();
   bool isDealer = false;
   bool _isLoadingPreview = false;
+  int _unsettledDeliveriesCount = 0;
   final TextEditingController txt1 = TextEditingController();
   final TextEditingController txt10 = TextEditingController();
   final TextEditingController txt100 = TextEditingController();
@@ -81,6 +82,25 @@ class _BreakdownPageState extends State<BreakdownPage> {
       }
 
       recompute();
+
+      if (widget.breakdown.isVerifiedByDealer) {
+        _checkUnsettledDeliveries();
+      }
+    }
+  }
+
+  Future<void> _checkUnsettledDeliveries() async {
+    if (widget.breakdownID.isEmpty) return;
+    try {
+      final date = widget.breakdown.breakdownDate.toDate();
+      final plan = await _controller.previewSettlement(date);
+      if (mounted) {
+        setState(() {
+          _unsettledDeliveriesCount = plan.totalDeliveriesToSettle;
+        });
+      }
+    } catch (_) {
+      // Ignored if network or permissions fail in background
     }
   }
 
@@ -96,7 +116,8 @@ class _BreakdownPageState extends State<BreakdownPage> {
   void onVerify() async {
     if (!isDealer || widget.breakdownID.isEmpty || _isLoadingPreview) return;
 
-    if (widget.breakdown.isVerifiedByDealer) {
+    final bool isReconciling = widget.breakdown.isVerifiedByDealer;
+    if (isReconciling && _unsettledDeliveriesCount <= 0) {
       ShowMessage.info(context, 'This breakdown has already been verified and its inventory settled. Unverifying is not permitted.');
       return;
     }
@@ -122,16 +143,28 @@ class _BreakdownPageState extends State<BreakdownPage> {
     }
     if (!mounted) return;
 
+    if (isReconciling && plan.totalDeliveriesToSettle <= 0) {
+      setState(() {
+        _unsettledDeliveriesCount = 0;
+      });
+      ShowMessage.info(context, 'All deliveries for this date are already inventory settled.');
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          icon: Icon(Icons.shield_outlined, color: Colors.red.shade700, size: 36),
-          title: const Text(
-            'Verify & Settle Inventory',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          icon: Icon(
+            isReconciling ? Icons.sync_problem_rounded : Icons.shield_outlined,
+            color: isReconciling ? Colors.amber.shade800 : Colors.red.shade700,
+            size: 36,
+          ),
+          title: Text(
+            isReconciling ? 'Reconcile Floating Inventory' : 'Verify & Settle Inventory',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
           content: SizedBox(
@@ -144,19 +177,30 @@ class _BreakdownPageState extends State<BreakdownPage> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.red.shade50,
+                      color: isReconciling ? Colors.amber.shade50 : Colors.red.shade50,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.red.shade200),
+                      border: Border.all(color: isReconciling ? Colors.amber.shade300 : Colors.red.shade200),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.warning_amber_rounded, color: Colors.red.shade800, size: 22),
+                        Icon(
+                          isReconciling ? Icons.info_outline_rounded : Icons.warning_amber_rounded,
+                          color: isReconciling ? Colors.amber.shade900 : Colors.red.shade800,
+                          size: 22,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'IRREVERSIBLE ACTION:\nOnce verified, physical inventory will be permanently deducted for delivered items and returned stock will be restored. Records for this date will be locked for editing. You cannot unverify later.',
-                            style: TextStyle(fontSize: 12.5, color: Colors.red.shade900, fontWeight: FontWeight.w600, height: 1.3),
+                            isReconciling
+                                ? 'RECONCILING OUTDATED BREAKDOWN:\nThis cash breakdown was previously verified without inventory settlement (e.g. from an older app version). Confirming will settle physical stock deductions for ${plan.totalDeliveriesToSettle} delivery order(s) and release reserved stocks without altering verified cash figures.'
+                                : 'IRREVERSIBLE ACTION:\nOnce verified, physical inventory will be permanently deducted for delivered items and returned stock will be restored. Records for this date will be locked for editing. You cannot unverify later.',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: isReconciling ? Colors.amber.shade900 : Colors.red.shade900,
+                              fontWeight: FontWeight.w600,
+                              height: 1.3,
+                            ),
                           ),
                         ),
                       ],
@@ -229,9 +273,11 @@ class _BreakdownPageState extends State<BreakdownPage> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+              style: FilledButton.styleFrom(
+                backgroundColor: isReconciling ? Colors.amber.shade800 : Colors.red.shade700,
+              ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Confirm & Settle'),
+              child: Text(isReconciling ? 'Confirm & Reconcile' : 'Confirm & Settle'),
             ),
           ],
         );
@@ -244,18 +290,25 @@ class _BreakdownPageState extends State<BreakdownPage> {
           breakdownId: widget.breakdownID,
           currentRecord: widget.breakdown,
           date: date,
+          isReconciliation: isReconciling,
         );
 
         setState(() {
           widget.breakdown.isVerifiedByDealer = true;
+          _unsettledDeliveriesCount = 0;
         });
 
         if (mounted) {
-          ShowMessage.success(context, 'Breakdown verified! Inventory for this day has been settled.');
+          ShowMessage.success(
+            context,
+            isReconciling
+                ? 'Inventory successfully reconciled for this date!'
+                : 'Breakdown verified! Inventory for this day has been settled.',
+          );
         }
       } catch (e) {
         if (mounted) {
-          ShowMessage.error(context, 'Failed to verify and settle breakdown: $e');
+          ShowMessage.error(context, 'Failed to ${isReconciling ? "reconcile" : "verify and settle"} breakdown: $e');
         }
       }
     }
@@ -752,38 +805,53 @@ class _BreakdownPageState extends State<BreakdownPage> {
           spacing: 8,
           children: [
             if (isDealer && isUpdating)
-              OutlinedButton.icon(
-                onPressed: (widget.breakdown.isVerifiedByDealer || _isLoadingPreview) ? null : onVerify,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48.0),
-                  foregroundColor: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
-                  side: BorderSide(
-                    color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade400 : colorScheme.primary,
-                    width: 1.5,
-                  ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                icon: _isLoadingPreview
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary),
-                      )
-                    : Icon(
-                        widget.breakdown.isVerifiedByDealer ? Icons.check_circle : Icons.verified_outlined,
-                        size: 20,
-                        color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
+              Builder(
+                builder: (context) {
+                  final bool needsReconciliation = widget.breakdown.isVerifiedByDealer && _unsettledDeliveriesCount > 0;
+                  final bool isFullySettled = widget.breakdown.isVerifiedByDealer && !needsReconciliation;
+
+                  final Color btnColor = needsReconciliation
+                      ? Colors.amber.shade900
+                      : (isFullySettled ? Colors.green.shade700 : colorScheme.primary);
+                  final Color borderColor = needsReconciliation
+                      ? Colors.amber.shade700
+                      : (isFullySettled ? Colors.green.shade400 : colorScheme.primary);
+
+                  return OutlinedButton.icon(
+                    onPressed: (isFullySettled || _isLoadingPreview) ? null : onVerify,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48.0),
+                      foregroundColor: btnColor,
+                      side: BorderSide(color: borderColor, width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: _isLoadingPreview
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: btnColor),
+                          )
+                        : Icon(
+                            needsReconciliation
+                                ? Icons.sync_problem_rounded
+                                : (isFullySettled ? Icons.check_circle : Icons.verified_outlined),
+                            size: 20,
+                            color: btnColor,
+                          ),
+                    label: Text(
+                      _isLoadingPreview
+                          ? 'Checking settlement...'
+                          : (needsReconciliation
+                              ? 'Reconcile Inventory ($_unsettledDeliveriesCount pending)'
+                              : (isFullySettled ? 'Verified · Inventory Settled' : 'Verify & Settle Inventory')),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: btnColor,
                       ),
-                label: Text(
-                  _isLoadingPreview
-                      ? 'Checking settlement...'
-                      : (widget.breakdown.isVerifiedByDealer ? 'Verified · Inventory Settled' : 'Verify & Settle Inventory'),
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
             FilledButton.icon(
               onPressed: widget.breakdown.isVerifiedByDealer
@@ -843,27 +911,60 @@ class _BreakdownPageState extends State<BreakdownPage> {
           spacing: 16,
           children: [
             if (widget.breakdown.isVerifiedByDealer)
-              Container(
-                margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade300, width: 1.2),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle_outline, color: Colors.green.shade900, size: 24),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Verified & Settled: Daily cash breakdown was verified and inventory was settled. All records for this day are locked.',
-                        style: TextStyle(fontSize: 13.5, color: Colors.green.shade900, fontWeight: FontWeight.w600),
+              if (_unsettledDeliveriesCount > 0)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.shade400, width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 26),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Unsettled Floating Stocks Detected',
+                              style: TextStyle(fontSize: 13.5, color: Colors.amber.shade900, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'This breakdown was verified on an older app version. $_unsettledDeliveriesCount delivery order(s) still have unsettled inventory and reserved floating stock. Click "Reconcile Inventory" below to complete settlement.',
+                              style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.shade300, width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle_outline, color: Colors.green.shade900, size: 24),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Verified & Settled: Daily cash breakdown was verified and inventory was settled. All records for this day are locked.',
+                          style: TextStyle(fontSize: 13.5, color: Colors.green.shade900, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
 
             // 1. Reconciliation Summary Banner
             _buildReconciliationSummary(),

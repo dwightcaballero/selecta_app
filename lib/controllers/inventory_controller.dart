@@ -1,3 +1,4 @@
+import 'package:selecta_ops/models/floating_stock.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/services/inventory_service.dart';
 
@@ -117,4 +118,12 @@ class InventoryController {
     int limit = 25,
   }) =>
       _service.getProductMovementsStream(productId, limit: limit);
+
+  /// Streams real-time floating stock data (incoming POs, outgoing reserved deliveries, and product breakdown).
+  Stream<FloatingStockData> getFloatingStockStream() =>
+      _service.getFloatingStockStream();
+
+  /// Manually settles or reconciles an individual delivery whose inventory was left floating / unsettled.
+  Future<void> settleSingleDelivery(String deliveryId) =>
+      _service.settleSingleDelivery(deliveryId);
 }

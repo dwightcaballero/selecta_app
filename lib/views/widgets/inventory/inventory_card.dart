@@ -4,19 +4,19 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 
 /// Card displaying product stock status, buy/sell prices, incoming PO / reserved count,
-/// and quick stepper buttons (- / +).
+/// and stock quantity indicator.
 class InventoryCard extends StatelessWidget {
   final InventoryItem item;
   final NumberFormat currencyFormat;
   final VoidCallback onTapCard;
-  final ValueChanged<int> onQuickStep;
+  final VoidCallback? onTapFloating;
 
   const InventoryCard({
     super.key,
     required this.item,
     required this.currencyFormat,
     required this.onTapCard,
-    required this.onQuickStep,
+    this.onTapFloating,
   });
 
   @override
@@ -134,92 +134,117 @@ class InventoryCard extends StatelessWidget {
                       ],
                     ),
                     if (item.incomingQuantity > 0 || item.reservedQuantity > 0) ...[
-                      const SizedBox(height: 4),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 2,
-                        children: [
-                          if (item.incomingQuantity > 0)
-                            Text(
-                              '${item.incomingQuantity} incoming PO',
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF0284C7),
-                              ),
-                            ),
-                          if (item.reservedQuantity > 0)
-                            Text(
-                              '${item.availableQuantity} available • ${item.reservedQuantity} floating',
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF7C3AED),
-                              ),
-                            ),
-                        ],
+                      const SizedBox(height: 5),
+                      InkWell(
+                        onTap: onTapFloating,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 2,
+                            children: [
+                              if (item.incomingQuantity > 0)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.arrow_downward_rounded, size: 12, color: Color(0xFF0284C7)),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '${item.incomingQuantity} incoming PO',
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF0284C7),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (item.reservedQuantity > 0)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.arrow_upward_rounded, size: 12, color: Color(0xFF7C3AED)),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '${item.availableQuantity} avail • ${item.reservedQuantity} floating',
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF7C3AED),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              if (onTapFloating != null)
+                                const Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 14,
+                                  color: Colors.grey,
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
               const SizedBox(width: 10),
-              // Quick Stepper Controls (-  Qty  +)
+              // Stock Quantity Indicator
               Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                  color: isOut
+                      ? colorScheme.error.withValues(alpha: 0.08)
+                      : (isLow
+                          ? const Color(0xFFD97706).withValues(alpha: 0.08)
+                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35)),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    color: isOut
+                        ? colorScheme.error.withValues(alpha: 0.3)
+                        : (isLow
+                            ? const Color(0xFFD97706).withValues(alpha: 0.35)
+                            : colorScheme.outlineVariant.withValues(alpha: 0.45)),
                   ),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    InkWell(
-                      borderRadius: const BorderRadius.horizontal(
-                        left: Radius.circular(9),
-                      ),
-                      onTap: item.stockQuantity > 0
-                          ? () => onQuickStep(-1)
-                          : null,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        child: Icon(
-                          Icons.remove_rounded,
-                          size: 18,
-                          color: item.stockQuantity > 0
-                              ? colorScheme.onSurface
-                              : colorScheme.outlineVariant,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${item.stockQuantity}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: stockColor,
+                            height: 1.1,
+                          ),
                         ),
-                      ),
+                        Text(
+                          'in stock',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isOut
+                                ? colorScheme.error
+                                : (isLow
+                                    ? const Color(0xFFB45309)
+                                    : colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
                     ),
-                    Container(
-                      constraints: const BoxConstraints(minWidth: 36),
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      alignment: Alignment.center,
-                      child: Text(
-                        '${item.stockQuantity}',
-                        style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                          color: stockColor,
-                        ),
-                      ),
-                    ),
-                    InkWell(
-                      borderRadius: const BorderRadius.horizontal(
-                        right: Radius.circular(9),
-                      ),
-                      onTap: () => onQuickStep(1),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        child: Icon(
-                          Icons.add_rounded,
-                          size: 18,
-                          color: colorScheme.primary,
-                        ),
-                      ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 16,
+                      color: colorScheme.outlineVariant,
                     ),
                   ],
                 ),
