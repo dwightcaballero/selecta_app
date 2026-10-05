@@ -249,7 +249,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
 
     return Scaffold(
       appBar: CustomAppbar(
-        title: _isEditing ? 'Rearrange Picklist' : 'Pending Picklists',
+        title: _isEditing ? 'Rearrange Picklist' : 'Booked Orders (Picklists)',
         subtitle: _isEditing ? 'Drag to reorder • ${_dateLabel()}' : null,
         actions: [
           if (!_isEditing)
@@ -412,7 +412,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                             child: Icon(Icons.fact_check_outlined, size: 48, color: colorScheme.onSurfaceVariant),
                                           ),
                                           const SizedBox(height: 16),
-                                          const Text('No Pending Picklists', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                                          const Text('No Booked Orders', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                                           const SizedBox(height: 8),
                                           Text(
                                             _searchQuery.isNotEmpty

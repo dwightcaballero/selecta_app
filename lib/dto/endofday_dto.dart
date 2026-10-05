@@ -3,6 +3,7 @@ class EndOfDayDTO {
   int pendingstatus = 0;
   int deliveredstatus = 0;
   int returnedstatus = 0;
+  int pendingPicklistStatus = 0;
 
   double totalorderamount = 0;
   double totaldeliveredamount = 0;
@@ -23,6 +24,7 @@ class EndOfDayDTO {
     required this.pendingstatus,
     required this.deliveredstatus,
     required this.returnedstatus,
+    this.pendingPicklistStatus = 0,
     required this.totalorderamount,
     required this.totaldeliveredamount,
     required this.cashamount,
@@ -42,6 +44,7 @@ class EndOfDayDTO {
     pendingstatus: 0,
     deliveredstatus: 0,
     returnedstatus: 0,
+    pendingPicklistStatus: 0,
     totalorderamount: 0,
     totaldeliveredamount: 0,
     cashamount: 0,

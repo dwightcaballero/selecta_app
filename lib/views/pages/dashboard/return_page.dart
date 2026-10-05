@@ -117,7 +117,10 @@ class _ReturnPageState extends State<ReturnPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Reset status to Pending for ${widget.delivery.storeName}.', style: const TextStyle(fontSize: 13.5)),
+                  Text(
+                    'Reschedule this returned order to a new delivery date. A new Booked order will be created with reserved stock so warehouse staff can prepare its picklist.',
+                    style: const TextStyle(fontSize: 13.5),
+                  ),
                   const SizedBox(height: 16),
                   const Text('Scheduled Date:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),
@@ -449,7 +452,7 @@ class _ReturnPageState extends State<ReturnPage> {
             Expanded(
               flex: 1,
               child: OutlinedButton.icon(
-                onPressed: _isProcessing
+                onPressed: (_isProcessing || widget.delivery.isInventorySettled)
                     ? null
                     : () async {
                         final confirmed = await ShowMessage.confirm(
@@ -465,26 +468,37 @@ class _ReturnPageState extends State<ReturnPage> {
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(0, 50.0),
                   foregroundColor: Colors.red.shade700,
-                  side: BorderSide(color: Colors.red.shade300, width: 1.2),
+                  side: BorderSide(
+                    color: widget.delivery.isInventorySettled ? Colors.grey.shade300 : Colors.red.shade300,
+                    width: 1.2,
+                  ),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: const Icon(Icons.delete_outline, size: 20),
-                label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: Text(
+                  widget.delivery.isInventorySettled ? 'Settled' : 'Delete',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               flex: 2,
               child: FilledButton.icon(
-                onPressed: _isProcessing ? null : _showRedeliverDialog,
+                onPressed: (_isProcessing || widget.delivery.isRescheduled) ? null : _showRedeliverDialog,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(0, 50.0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: _isProcessing
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.local_shipping_outlined, size: 20),
-                label: Text(_isProcessing ? 'Processing...' : 'Redeliver Order', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    : Icon(widget.delivery.isRescheduled ? Icons.check_circle_outline : Icons.local_shipping_outlined, size: 20),
+                label: Text(
+                  _isProcessing
+                      ? 'Processing...'
+                      : (widget.delivery.isRescheduled ? 'Already Rescheduled' : 'Redeliver Order'),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ),
             ),
           ],
@@ -523,6 +537,32 @@ class _ReturnPageState extends State<ReturnPage> {
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.amber.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (widget.delivery.isRescheduled)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade300, width: 1.2),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue.shade900, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'This return has already been rescheduled to a new delivery scheduled for ${widget.delivery.rescheduledDate != null ? DateFormat('MMM d, yyyy').format(widget.delivery.rescheduledDate!.toDate()) : 'a future date'}.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.blue.shade900,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

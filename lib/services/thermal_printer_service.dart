@@ -420,18 +420,49 @@ class ThermalPrinterService {
       buffer.writeln(divider);
     }
 
-    // ── Footer Section (Grand Total only) ───────────────────────────────────
+    // ── Footer Section (Grand Total & Returns) ─────────────────────────────
     final grandTotalAmount = cat.subtotalCase + cat.subtotalPiece + cat.subtotalOther;
     final grandTotalQty = cat.subtotalQtyCase + cat.subtotalQtyPiece + cat.subtotalQtyOther;
 
-    final grandLabel = 'GRAND TOTAL'.padRight(nameWidth);
+    final grandLabel = 'ORIGINAL TOTAL'.padRight(nameWidth);
     final grandQtyStr = grandTotalQty.toString().padLeft(qtyWidth);
     final emptyPrice = ' ' * priceWidth;
     final grandTotalStr = formatAmount(grandTotalAmount, totalWidth);
 
-    buffer.writeln(doubleDivider);
-    buffer.writeln('$grandLabel $grandQtyStr $emptyPrice $grandTotalStr');
-    buffer.writeln(doubleDivider);
+    if (delivery.hasReturnedItems || delivery.returnAmount > 0) {
+      final retAmount = delivery.hasReturnedItems ? delivery.totalReturnedItemsAmount : delivery.returnAmount;
+      final retQty = delivery.items.fold<int>(0, (sum, i) => sum + i.returnedQuantity);
+      final netDeliveredAmount = delivery.orderAmount;
+      final netDeliveredQty = (grandTotalQty - retQty).clamp(0, grandTotalQty);
+
+      buffer.writeln(divider);
+      buffer.writeln('$grandLabel $grandQtyStr $emptyPrice $grandTotalStr');
+
+      final returnLabel = 'RETURN DEDUCT'.padRight(nameWidth);
+      final returnQtyStr = retQty > 0 ? retQty.toString().padLeft(qtyWidth) : ' ' * qtyWidth;
+      final returnTotalStr = '-${formatAmount(retAmount, totalWidth - 1).trim()}';
+      buffer.writeln('$returnLabel $returnQtyStr $emptyPrice ${returnTotalStr.padLeft(totalWidth)}');
+
+      buffer.writeln(doubleDivider);
+      final netLabel = 'NET DELIVERED'.padRight(nameWidth);
+      final netQtyStr = netDeliveredQty.toString().padLeft(qtyWidth);
+      final netTotalStr = formatAmount(netDeliveredAmount, totalWidth);
+      buffer.writeln('$netLabel $netQtyStr $emptyPrice $netTotalStr');
+      buffer.writeln(doubleDivider);
+    } else {
+      final stdLabel = 'GRAND TOTAL'.padRight(nameWidth);
+      buffer.writeln(doubleDivider);
+      buffer.writeln('$stdLabel $grandQtyStr $emptyPrice $grandTotalStr');
+      buffer.writeln(doubleDivider);
+    }
+
+    if (delivery.cashAmount > 0 || delivery.onlineAmount > 0 || delivery.creditAmount > 0) {
+      buffer.writeln('PAYMENT:');
+      if (delivery.cashAmount > 0) buffer.writeln('  CASH:   ${currency.format(delivery.cashAmount)}');
+      if (delivery.onlineAmount > 0) buffer.writeln('  ONLINE: ${currency.format(delivery.onlineAmount)}');
+      if (delivery.creditAmount > 0) buffer.writeln('  CREDIT: ${currency.format(delivery.creditAmount)}');
+      buffer.writeln(divider);
+    }
 
     buffer.writeln('\n');
     if (cleanStore.isNotEmpty) {

@@ -25,6 +25,14 @@ class EndofdayServices {
     // Loop through the snapshot query objects
     for (var doc in snapshot.docs) {
       Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+      final status = data[DeliveryModelString.transactionStatus];
+
+      // Exclude orders pending picklist: they are still in order booking/picking queue
+      // (for today or future dates) and have not yet been dispatched for delivery.
+      if (status == DeliveryStatus.pendingPicklist) {
+        endofday.pendingPicklistStatus += 1;
+        continue;
+      }
 
       endofday.totalorderamount += data[DeliveryModelString.orderAmount];
       endofday.cashamount += data[DeliveryModelString.cashAmount];
@@ -35,7 +43,7 @@ class EndofdayServices {
           data[DeliveryModelString.cashAmount] + data[DeliveryModelString.onlineAmount] + data[DeliveryModelString.creditAmount];
       endofday.totaldelivery += 1;
 
-      switch (data[DeliveryModelString.transactionStatus]) {
+      switch (status) {
         case DeliveryStatus.pending:
           endofday.pendingstatus += 1;
           break;

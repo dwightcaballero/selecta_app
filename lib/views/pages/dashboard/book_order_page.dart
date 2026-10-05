@@ -668,7 +668,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       message: _isEditing
           ? 'Save changes to $storeName order (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})?'
           : 'Save order for $storeName (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})?\n\n'
-                'This will mark the order as Pending Picklist and reserve floating inventory.',
+                'This will book the order for delivery and reserve floating inventory.',
       icon: Icons.check_circle_outline,
       confirmText: 'Save Order',
     );
@@ -724,7 +724,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
           remarks: _remarksController.text,
         ).timeout(const Duration(seconds: 5));
         if (!mounted) return;
-        ShowMessage.success(context, 'Order saved for $storeName! Marked as Pending Picklist.');
+        ShowMessage.success(context, 'Order booked for $storeName!');
         Navigator.pop(context, createdResult.delivery);
       }
     } catch (e) {

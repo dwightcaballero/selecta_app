@@ -25,7 +25,36 @@ class DeliveryPage extends StatefulWidget {
 class _DeliveryPageState extends State<DeliveryPage> {
   final DeliveryController _controller = DeliveryController();
   bool hasBreakdownForDay = false;
-  bool get isSalesmanLocked => !isDealer && hasBreakdownForDay;
+  bool isDayVerified = false;
+  bool get isLocked => isDayVerified || (!isDealer && hasBreakdownForDay);
+  bool get isSalesmanLocked => isLocked;
+
+  bool _withReturns = false;
+  final Map<String, int> _returnQuantities = {};
+  final Set<String> _selectedReturnProductIds = {};
+
+  double get originalOrderTotal {
+    final orig = widget.delivery.originalOrderAmount;
+    if (orig != null && orig > 0) {
+      return orig;
+    }
+    if (widget.delivery.items.isNotEmpty) {
+      return widget.delivery.items.fold<double>(0.0, (acc, i) => acc + (i.pickedQuantity * i.sellingPrice));
+    }
+    return widget.delivery.orderAmount;
+  }
+
+  double get calculatedItemsReturnAmount {
+    if (!_withReturns || widget.delivery.items.isEmpty) return 0.0;
+    double sum = 0.0;
+    for (final item in widget.delivery.items) {
+      if (_selectedReturnProductIds.contains(item.productId)) {
+        final qty = _returnQuantities[item.productId] ?? 1;
+        sum += (item.sellingPrice * qty);
+      }
+    }
+    return sum;
+  }
 
   double discrepancy = 0;
   double get effectiveOrderAmount =>
@@ -79,6 +108,25 @@ class _DeliveryPageState extends State<DeliveryPage> {
       txtOnlineAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.onlineAmount);
       txtCreditAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.creditAmount);
       txtReturnAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.returnAmount);
+
+      if (widget.delivery.items.isNotEmpty) {
+        if (widget.delivery.hasReturnedItems) {
+          _withReturns = true;
+          for (final item in widget.delivery.items) {
+            if (item.returnedQuantity > 0) {
+              _selectedReturnProductIds.add(item.productId);
+              _returnQuantities[item.productId] = item.returnedQuantity;
+            } else {
+              _returnQuantities[item.productId] = 1;
+            }
+          }
+        } else {
+          for (final item in widget.delivery.items) {
+            _returnQuantities[item.productId] = 1;
+          }
+        }
+      }
+
       computeDiscrepancy();
     }
     prefetchData();
@@ -134,10 +182,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   Future<void> _checkBreakdownStatus() async {
-    final bool hasBreakdown = await _controller.checkBreakdownStatus(_selectedDate);
+    final status = await _controller.checkBreakdownAndVerificationStatus(_selectedDate);
     if (mounted) {
       setState(() {
-        hasBreakdownForDay = hasBreakdown;
+        hasBreakdownForDay = status.hasBreakdown;
+        isDayVerified = status.isVerified;
       });
     }
   }
@@ -196,21 +245,44 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void onUpdate() async {
-    if (isSalesmanLocked) {
-      ShowMessage.error(context, 'Editing is disabled. A cash breakdown is already recorded for this day.');
+    if (isLocked) {
+      final msg = isDayVerified
+          ? 'Editing is locked. This day\'s cash breakdown has been verified and settled.'
+          : 'Editing is disabled. A cash breakdown is already recorded for this day.';
+      ShowMessage.error(context, msg);
       return;
     }
+
+    final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
+    final double targetOrderAmount = hasItemReturns
+        ? (originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)
+        : effectiveOrderAmount;
+
     final listError = _controller.validateDeliveryForm(
       status: dropdownStatus.text,
-      orderAmount: effectiveOrderAmount,
+      orderAmount: targetOrderAmount,
       cash: txtCashAmount.text,
       online: txtOnlineAmount.text,
       credit: txtCreditAmount.text,
-      returnAmount: txtReturnAmount.text,
+      returnAmount: hasItemReturns
+          ? Helperfunctions.formatDoubleAmountForField(calculatedItemsReturnAmount)
+          : txtReturnAmount.text,
       remarks: txtRemarks.text,
+      withItemReturns: hasItemReturns,
+      hasReturnsRecorded: hasItemReturns,
     );
+
     if (listError.isEmpty) {
       try {
+        List<OrderItem>? itemsWithReturns;
+        if (widget.delivery.items.isNotEmpty) {
+          itemsWithReturns = widget.delivery.items.map((item) {
+            final isReturned = hasItemReturns && _selectedReturnProductIds.contains(item.productId);
+            final retQty = isReturned ? (_returnQuantities[item.productId] ?? 1) : 0;
+            return item.copyWith(returnedQuantity: retQty);
+          }).toList();
+        }
+
         final updatedDelivery = await _controller.updateDelivery(
           context: context,
           deliveryId: widget.deliveryID,
@@ -218,14 +290,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
           storeName: dropdownHapiStore.text,
           status: dropdownStatus.text,
           remarks: txtRemarks.text,
-          orderAmountText: txtOrderAmount.text,
+          orderAmountText: hasItemReturns
+              ? Helperfunctions.formatDoubleAmountForField(targetOrderAmount)
+              : txtOrderAmount.text,
           cashAmountText: txtCashAmount.text,
           onlineAmountText: txtOnlineAmount.text,
           creditAmountText: txtCreditAmount.text,
-          returnAmountText: txtReturnAmount.text,
+          returnAmountText: hasItemReturns
+              ? Helperfunctions.formatDoubleAmountForField(calculatedItemsReturnAmount)
+              : txtReturnAmount.text,
           imageFile: null,
           networkImagePath: networkImagePath,
           selectedDate: _selectedDate,
+          itemsWithReturns: itemsWithReturns,
         );
 
         if (mounted) {
@@ -274,12 +351,18 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void computeDiscrepancy() {
+    final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
+    final double targetOrderAmount = hasItemReturns
+        ? (originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)
+        : effectiveOrderAmount;
+
     final result = _controller.computeDiscrepancy(
-      orderAmount: effectiveOrderAmount,
+      orderAmount: targetOrderAmount,
       cash: txtCashAmount.text,
       online: txtOnlineAmount.text,
       credit: txtCreditAmount.text,
-      returnAmount: txtReturnAmount.text,
+      returnAmount: hasItemReturns ? '0' : txtReturnAmount.text,
+      withItemReturns: hasItemReturns,
     );
     if (mounted) {
       setState(() {
@@ -571,6 +654,211 @@ class _DeliveryPageState extends State<DeliveryPage> {
     );
   }
 
+  Widget _buildWithReturnsSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return _buildSectionCard(
+      title: 'Itemized Returns',
+      icon: Icons.assignment_return_outlined,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.red.shade200),
+        ),
+        child: Text(
+          'Total Return: ₱ ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.red.shade800,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CheckboxListTile(
+            value: _withReturns,
+            onChanged: isLocked
+                ? null
+                : (val) {
+                    setState(() {
+                      _withReturns = val ?? false;
+                      if (!_withReturns) {
+                        _selectedReturnProductIds.clear();
+                      }
+                      computeDiscrepancy();
+                    });
+                  },
+            title: const Text(
+              'With Returns',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            subtitle: const Text(
+              'Mark specific products or quantities being returned for this delivery.',
+              style: TextStyle(fontSize: 12.5),
+            ),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+          if (_withReturns) ...[
+            const Divider(height: 24),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Original Order Total:', style: TextStyle(fontSize: 13)),
+                      Text(
+                        '₱ ${Helperfunctions.formatDoubleAmountForDisplay(originalOrderTotal)}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Return Deduction:', style: TextStyle(fontSize: 13, color: Colors.red.shade800)),
+                      Text(
+                        '- ₱ ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red.shade800),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Adjusted Delivered Total:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      Text(
+                        '₱ ${Helperfunctions.formatDoubleAmountForDisplay((originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity))}',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Select returned products & quantities:',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: widget.delivery.items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final item = widget.delivery.items[index];
+                final isSelected = _selectedReturnProductIds.contains(item.productId);
+                final currentReturnQty = _returnQuantities[item.productId] ?? 1;
+                final maxQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? Colors.red.shade50.withValues(alpha: 0.5) : colorScheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelected ? Colors.red.shade300 : colorScheme.outlineVariant,
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: isSelected,
+                        onChanged: isLocked
+                            ? null
+                            : (checked) {
+                                setState(() {
+                                  if (checked == true) {
+                                    _selectedReturnProductIds.add(item.productId);
+                                    if (!_returnQuantities.containsKey(item.productId) || _returnQuantities[item.productId]! <= 0) {
+                                      _returnQuantities[item.productId] = 1;
+                                    }
+                                  } else {
+                                    _selectedReturnProductIds.remove(item.productId);
+                                  }
+                                  computeDiscrepancy();
+                                });
+                              },
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.productName,
+                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Picked: $maxQty  ·  ₱${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} each',
+                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            ),
+                            if (isSelected)
+                              Text(
+                                'Delivered: ${maxQty - currentReturnQty}  ·  Return: ₱${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice * currentReturnQty)}',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.red.shade800),
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (isSelected) ...[
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline, size: 20),
+                              onPressed: isLocked || currentReturnQty <= 1
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _returnQuantities[item.productId] = currentReturnQty - 1;
+                                        computeDiscrepancy();
+                                      });
+                                    },
+                            ),
+                            Text(
+                              '$currentReturnQty',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline, size: 20),
+                              onPressed: isLocked || currentReturnQty >= maxQty
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _returnQuantities[item.productId] = currentReturnQty + 1;
+                                        computeDiscrepancy();
+                                      });
+                                    },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildPaymentBreakdownCard() {
     return _buildSectionCard(
       title: 'Payment Breakdown',
@@ -605,14 +893,44 @@ class _DeliveryPageState extends State<DeliveryPage> {
             isRequired: false,
             isEnabled: !isSalesmanLocked,
           ),
-          _buildMoneyField(
-            label: 'Return Amount',
-            controller: txtReturnAmount,
-            prefixIcon: Icons.assignment_return_outlined,
-            iconColor: Colors.red,
-            isRequired: false,
-            isEnabled: !isSalesmanLocked,
-          ),
+          if (_withReturns && widget.delivery.items.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.assignment_return_outlined, color: Colors.red.shade700, size: 22),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Calculated Return Amount',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                  ),
+                  Text(
+                    '₱ ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16.5,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            _buildMoneyField(
+              label: 'Return Amount',
+              controller: txtReturnAmount,
+              prefixIcon: Icons.assignment_return_outlined,
+              iconColor: Colors.red,
+              isRequired: false,
+              isEnabled: !isSalesmanLocked,
+            ),
         ],
       ),
     );
@@ -761,26 +1079,37 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void _quickFillPayment({required String target}) {
-    String formattedOrder = Helperfunctions.formatDoubleAmountForField(effectiveOrderAmount);
+    final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
+    final double targetAmount = hasItemReturns
+        ? (originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)
+        : effectiveOrderAmount;
+    String formattedOrder = Helperfunctions.formatDoubleAmountForField(targetAmount);
 
     setState(() {
       txtCashAmount.text = target == 'cash' ? formattedOrder : '';
       txtOnlineAmount.text = target == 'online' ? formattedOrder : '';
       txtCreditAmount.text = target == 'credit' ? formattedOrder : '';
-      txtReturnAmount.text = '';
+      if (!hasItemReturns) {
+        txtReturnAmount.text = '';
+      }
       computeDiscrepancy();
     });
   }
 
   Widget _buildPaymentSummary() {
     final colorScheme = Theme.of(context).colorScheme;
+    final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
+    final double targetOrderAmt = hasItemReturns
+        ? (originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)
+        : effectiveOrderAmount;
     final double totalCollected = _controller.computeTotalCollected(
       cash: txtCashAmount.text,
       online: txtOnlineAmount.text,
       credit: txtCreditAmount.text,
-      returnAmount: txtReturnAmount.text,
+      returnAmount: hasItemReturns ? '0' : txtReturnAmount.text,
+      withItemReturns: hasItemReturns,
     );
-    double orderAmt = effectiveOrderAmount;
+    double orderAmt = targetOrderAmt;
     bool isBalanced = discrepancy.abs() < 0.005;
     bool isOver = discrepancy >= 0.005;
 
@@ -821,7 +1150,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Target Order Amount', style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      hasItemReturns ? 'Target (Delivered)' : 'Target Order Amount',
+                      style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
+                    ),
                     const SizedBox(height: 2),
                     Text(Helperfunctions.formatDoubleAmountForDisplay(orderAmt), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17.5)),
                   ],
@@ -991,28 +1323,40 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     Expanded(
                       flex: 2,
                       child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final confirmed = await ShowMessage.confirm(
-                            context,
-                            title: ConfirmTitle.delete,
-                            message: ConfirmMessage.delete,
-                            isDestructive: true,
-                            icon: Icons.delete_outline,
-                            confirmText: 'Delete',
-                          );
-                          if (confirmed) onDelete();
-                        },
+                        onPressed: (isDayVerified || widget.delivery.isInventorySettled)
+                            ? null
+                            : () async {
+                                final confirmed = await ShowMessage.confirm(
+                                  context,
+                                  title: ConfirmTitle.delete,
+                                  message: ConfirmMessage.delete,
+                                  isDestructive: true,
+                                  icon: Icons.delete_outline,
+                                  confirmText: 'Delete',
+                                );
+                                if (confirmed) onDelete();
+                              },
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           minimumSize: const Size(0, 50.0),
                           foregroundColor: Colors.red.shade700,
-                          side: BorderSide(color: Colors.red.shade300, width: 1.2),
+                          side: BorderSide(
+                            color: (isDayVerified || widget.delivery.isInventorySettled)
+                                ? Colors.grey.shade300
+                                : Colors.red.shade300,
+                            width: 1.2,
+                          ),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         icon: const Icon(Icons.delete_outline, size: 20),
-                        label: const FittedBox(
+                        label: FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: Text('Delete', maxLines: 1, softWrap: false, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            (isDayVerified || widget.delivery.isInventorySettled) ? 'Settled' : 'Delete',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
                         ),
                       ),
                     ),
@@ -1021,7 +1365,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   Expanded(
                     flex: isDealer ? 3 : 1,
                     child: FilledButton.icon(
-                      onPressed: isSalesmanLocked
+                      onPressed: isLocked
                           ? null
                           : () async {
                               final confirmed = await ShowMessage.confirm(
@@ -1038,11 +1382,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         minimumSize: const Size(0, 50.0),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      icon: Icon(isSalesmanLocked ? Icons.lock_outline : Icons.check_circle_outline, size: 22),
+                      icon: Icon(isLocked ? Icons.lock_outline : Icons.check_circle_outline, size: 22),
                       label: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Update Delivery',
+                          isDayVerified
+                              ? 'Locked (Inventory Settled)'
+                              : (isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Update Delivery'),
                           maxLines: 1,
                           softWrap: false,
                           style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
@@ -1194,7 +1540,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   Widget build(BuildContext context) {
     bool isDelivered = dropdownStatus.text == DeliveryStatus.delivered;
     bool isReturned = dropdownStatus.text == DeliveryStatus.returned;
-    bool showRemarks = isReturned || (isDelivered && txtReturnAmount.text.isNotEmpty);
+    bool showRemarks = isReturned || (isDelivered && (txtReturnAmount.text.isNotEmpty || (_withReturns && _selectedReturnProductIds.isNotEmpty)));
 
     return Scaffold(
       appBar: CustomAppbar(
@@ -1220,23 +1566,36 @@ class _DeliveryPageState extends State<DeliveryPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 16,
               children: [
-                if (isSalesmanLocked)
+                if (isLocked)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
+                      color: isDayVerified ? Colors.red.shade50 : Colors.amber.shade50,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.amber.shade300, width: 1.2),
+                      border: Border.all(
+                        color: isDayVerified ? Colors.red.shade300 : Colors.amber.shade300,
+                        width: 1.2,
+                      ),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 24),
+                        Icon(
+                          Icons.lock_outline,
+                          color: isDayVerified ? Colors.red.shade900 : Colors.amber.shade900,
+                          size: 24,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.',
-                            style: TextStyle(fontSize: 14.5, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+                            isDayVerified
+                                ? 'Locked: The dealer has verified the daily cash breakdown and inventory settlement for this day. Records cannot be edited or deleted.'
+                                : 'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.',
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              color: isDayVerified ? Colors.red.shade900 : Colors.amber.shade900,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -1257,7 +1616,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         const Icon(Icons.fact_check_outlined, color: Color(0xFF7C3AED), size: 24),
                         const SizedBox(width: 10),
                         const Expanded(
-                          child: Text('This order is still Pending Picklist.', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          child: Text('This order is Booked (Awaiting Picklist).', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                         ),
                         FilledButton.tonal(
                           onPressed: () {
@@ -1280,7 +1639,15 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 // 2. Proof of Delivery Card for reviewing uploaded photo (accessible to all users)
                 if (widget.deliveryID.isNotEmpty) _buildProofOfDeliveryCard(),
 
-                // 3. Payment Breakdown Card (Animated for Delivered status)
+                // 3. Itemized Returns Section (when Delivered and delivery has items)
+                if (widget.deliveryID.isNotEmpty && isDelivered && widget.delivery.items.isNotEmpty)
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    child: _buildWithReturnsSection(),
+                  ),
+
+                // 4. Payment Breakdown Card (Animated for Delivered status)
                 if (widget.deliveryID.isNotEmpty)
                   AnimatedSize(
                     duration: const Duration(milliseconds: 300),
@@ -1288,7 +1655,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     child: isDelivered ? _buildPaymentBreakdownCard() : const SizedBox.shrink(),
                   ),
 
-                // 3. Remarks Card (Animated for Returned or Delivered with return amount)
+                // 5. Remarks Card (Animated for Returned or Delivered with return amount)
                 if (widget.deliveryID.isNotEmpty)
                   AnimatedSize(
                     duration: const Duration(milliseconds: 300),
@@ -1296,10 +1663,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     child: showRemarks ? _buildRemarksCard() : const SizedBox.shrink(),
                   ),
 
-                // 4. Placement Card
+                // 6. Placement Card
                 if (widget.deliveryID.isEmpty && dropdownHapiStore.text.isNotEmpty) _buildPlacementCard(),
 
-                // 5. SMS Notification Card (when creating new delivery)
+                // 7. SMS Notification Card (when creating new delivery)
                 if (widget.deliveryID.isEmpty) _buildSmsCard(),
               ],
             ),

@@ -7,6 +7,7 @@ import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/endofday_services.dart';
+import 'package:selecta_ops/services/inventory_service.dart';
 
 /// Combined data snapshot for a single day's end-of-day reconciliation
 class EndOfDaySnapshot {
@@ -56,6 +57,7 @@ class RecomputeResult {
 class EndOfDayController {
   final EndofdayServices _endOfDayService = EndofdayServices();
   final BreakdownService _breakdownService = BreakdownService();
+  final InventoryService _inventoryService = InventoryService();
 
   /// Checks if the active user is a dealer
   Future<bool> checkIsDealer() async {
@@ -65,6 +67,46 @@ class EndOfDayController {
   /// Current user display name
   String get currentUserName {
     return authService.value.currentUser?.displayName ?? 'User';
+  }
+
+  /// Previews the inventory settlement effects for [date].
+  Future<SettlementPlan> previewSettlement(DateTime date) async {
+    return await _inventoryService.previewSettlementForDate(date);
+  }
+
+  /// Verifies the breakdown and settles physical and floating inventory atomically.
+  /// Once verified, this action cannot be reversed.
+  Future<void> verifyAndSettleBreakdown({
+    required String breakdownId,
+    required Breakdown currentRecord,
+    required DateTime date,
+  }) async {
+    if (currentRecord.isVerifiedByDealer) {
+      throw Exception('Breakdown for this date has already been verified.');
+    }
+
+    await _inventoryService.settleDeliveriesForDate(
+      date: date,
+      breakdownId: breakdownId,
+      breakdown: currentRecord,
+    );
+
+    final updatedRecord = currentRecord.copyWith(
+      isVerifiedByDealer: true,
+      verifiedBy: currentUserName,
+      verifiedDate: Timestamp.now(),
+      inventorySettledDate: Timestamp.now(),
+      lastUpdatedBy: currentUserName,
+      lastupdatedDate: Timestamp.now(),
+      lastUpdatedPage: AppPages.breakdown,
+    );
+
+    await Helperfunctions.logUpdate(
+      Helperfunctions.formatTimestampForDisplay(updatedRecord.breakdownDate),
+      currentRecord.toJson(),
+      updatedRecord.toJson(),
+      page: AppPages.breakdown,
+    );
   }
 
   /// Fetches complete reconciliation snapshot for a target date

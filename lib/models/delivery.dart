@@ -2,6 +2,50 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/placement.dart';
 
+int? _parseInt(dynamic val) {
+  if (val == null) return null;
+  if (val is num) return val.toInt();
+  if (val is String) return int.tryParse(val.trim());
+  return null;
+}
+
+double _parseDouble(dynamic val, [double fallback = 0.0]) {
+  if (val == null) return fallback;
+  if (val is num) return val.toDouble();
+  if (val is String) return double.tryParse(val.trim()) ?? fallback;
+  return fallback;
+}
+
+double? _parseDoubleNullable(dynamic val) {
+  if (val == null) return null;
+  if (val is num) return val.toDouble();
+  if (val is String) return double.tryParse(val.trim());
+  return null;
+}
+
+bool _parseBool(dynamic val, [bool fallback = false]) {
+  if (val == null) return fallback;
+  if (val is bool) return val;
+  if (val is num) return val != 0;
+  if (val is String) {
+    final lower = val.trim().toLowerCase();
+    if (lower == 'true' || lower == '1') return true;
+    if (lower == 'false' || lower == '0') return false;
+  }
+  return fallback;
+}
+
+Timestamp? _parseTimestamp(dynamic val) {
+  if (val == null) return null;
+  if (val is Timestamp) return val;
+  if (val is DateTime) return Timestamp.fromDate(val);
+  if (val is String) {
+    final dt = DateTime.tryParse(val.trim());
+    if (dt != null) return Timestamp.fromDate(dt);
+  }
+  return null;
+}
+
 /// Represents a single ordered / picked product line item within a unified Order-Delivery record.
 class OrderItem {
   final String productId;
@@ -14,6 +58,7 @@ class OrderItem {
   final double sellingPrice;
   final int orderedQuantity;
   final int pickedQuantity;
+  final int returnedQuantity;
   final bool isPicked;
 
   const OrderItem({
@@ -27,14 +72,24 @@ class OrderItem {
     required this.sellingPrice,
     required this.orderedQuantity,
     int? pickedQuantity,
+    this.returnedQuantity = 0,
     this.isPicked = false,
   }) : pickedQuantity = pickedQuantity ?? orderedQuantity;
 
   /// Effective quantity used for order totals (pickedQuantity when > 0, or orderedQuantity).
   int get effectiveQuantity => pickedQuantity;
 
+  /// Net delivered quantity after deducting returns.
+  int get deliveredQuantity => (pickedQuantity - returnedQuantity).clamp(0, pickedQuantity);
+
   /// Total selling price for this line item based on pickedQuantity.
   double get lineTotal => pickedQuantity * sellingPrice;
+
+  /// Total selling price for only the delivered portion.
+  double get deliveredLineTotal => deliveredQuantity * sellingPrice;
+
+  /// Total value of returned units for this line item.
+  double get returnedLineTotal => returnedQuantity * sellingPrice;
 
   /// Total buying cost for this line item based on pickedQuantity.
   double get lineCost => pickedQuantity * buyingPrice;
@@ -50,6 +105,7 @@ class OrderItem {
     double? sellingPrice,
     int? orderedQuantity,
     int? pickedQuantity,
+    int? returnedQuantity,
     bool? isPicked,
   }) {
     return OrderItem(
@@ -63,13 +119,15 @@ class OrderItem {
       sellingPrice: sellingPrice ?? this.sellingPrice,
       orderedQuantity: orderedQuantity ?? this.orderedQuantity,
       pickedQuantity: pickedQuantity ?? this.pickedQuantity,
+      returnedQuantity: returnedQuantity ?? this.returnedQuantity,
       isPicked: isPicked ?? this.isPicked,
     );
   }
 
   factory OrderItem.fromJson(Map<String, dynamic> json) {
-    final orderedQty = (json['orderedQuantity'] as num?)?.toInt() ?? 0;
-    final pickedQty = (json['pickedQuantity'] as num?)?.toInt() ?? orderedQty;
+    final orderedQty = _parseInt(json['orderedQuantity']) ?? 0;
+    final pickedQty = _parseInt(json['pickedQuantity']) ?? orderedQty;
+    final returnedQty = _parseInt(json['returnedQuantity']) ?? 0;
     return OrderItem(
       productId: json['productId'] as String? ?? '',
       productName: json['productName'] as String? ?? '',
@@ -77,11 +135,12 @@ class OrderItem {
       productSource: json['productSource'] as String? ?? 'selecta',
       category: json['category'] as String? ?? '',
       tag: (json['tag'] as String? ?? '').trim(),
-      buyingPrice: (json['buyingPrice'] as num?)?.toDouble() ?? 0.0,
-      sellingPrice: (json['sellingPrice'] as num?)?.toDouble() ?? 0.0,
+      buyingPrice: _parseDouble(json['buyingPrice']),
+      sellingPrice: _parseDouble(json['sellingPrice']),
       orderedQuantity: orderedQty,
       pickedQuantity: pickedQty,
-      isPicked: json['isPicked'] as bool? ?? false,
+      returnedQuantity: returnedQty,
+      isPicked: _parseBool(json['isPicked']),
     );
   }
 
@@ -97,6 +156,7 @@ class OrderItem {
       'sellingPrice': sellingPrice,
       'orderedQuantity': orderedQuantity,
       'pickedQuantity': pickedQuantity,
+      'returnedQuantity': returnedQuantity,
       'isPicked': isPicked,
     };
   }
@@ -109,6 +169,7 @@ class Delivery {
   String imagePath;
 
   double orderAmount;
+  double? originalOrderAmount;
   double cashAmount;
   double onlineAmount;
   double creditAmount;
@@ -119,6 +180,12 @@ class Delivery {
   List<OrderItem> items;
   bool isInventoryReserved;
   bool isInventoryDeducted;
+  bool isInventorySettled;
+  Timestamp? inventorySettledDate;
+  String inventorySettledBy;
+  bool isRescheduled;
+  String rescheduledToDeliveryId;
+  Timestamp? rescheduledDate;
   Timestamp? picklistCompletedDate;
   String picklistCompletedBy;
   int? picklistSequence;
@@ -139,6 +206,7 @@ class Delivery {
     required this.transactionStatus,
     required this.imagePath,
     required this.orderAmount,
+    this.originalOrderAmount,
     required this.returnAmount,
     required this.creditAmount,
     required this.cashAmount,
@@ -154,6 +222,12 @@ class Delivery {
     this.items = const [],
     this.isInventoryReserved = false,
     this.isInventoryDeducted = false,
+    this.isInventorySettled = false,
+    this.inventorySettledDate,
+    this.inventorySettledBy = '',
+    this.isRescheduled = false,
+    this.rescheduledToDeliveryId = '',
+    this.rescheduledDate,
     this.picklistCompletedDate,
     this.picklistCompletedBy = '',
     this.picklistSequence,
@@ -169,12 +243,19 @@ class Delivery {
   /// Total number of Other product SKUs in this order.
   int get otherItemCount => items.where((i) => i.productSource == 'other').length;
 
+  /// True if any items in this delivery have returned quantities recorded.
+  bool get hasReturnedItems => items.any((i) => i.returnedQuantity > 0);
+
+  /// Total monetary value of returned products for this delivery.
+  double get totalReturnedItemsAmount => items.fold<double>(0.0, (acc, i) => acc + i.returnedLineTotal);
+
   static Delivery empty() => Delivery(
     storeName: '',
     remarks: '',
     transactionStatus: '',
     imagePath: '',
     orderAmount: 0,
+    originalOrderAmount: null,
     returnAmount: 0,
     creditAmount: 0,
     cashAmount: 0,
@@ -190,6 +271,12 @@ class Delivery {
     items: const [],
     isInventoryReserved: false,
     isInventoryDeducted: false,
+    isInventorySettled: false,
+    inventorySettledDate: null,
+    inventorySettledBy: '',
+    isRescheduled: false,
+    rescheduledToDeliveryId: '',
+    rescheduledDate: null,
     picklistCompletedDate: null,
     picklistCompletedBy: '',
     picklistSequence: null,
@@ -215,26 +302,33 @@ class Delivery {
         remarks: json['remarks'] as String? ?? '',
         transactionStatus: json['transactionStatus'] as String? ?? '',
         imagePath: json['imagePath'] as String? ?? '',
-        orderAmount: (json['orderAmount'] as num?)?.toDouble() ?? 0.0,
-        returnAmount: (json['returnAmount'] as num?)?.toDouble() ?? 0.0,
-        creditAmount: (json['creditAmount'] as num?)?.toDouble() ?? 0.0,
-        cashAmount: (json['cashAmount'] as num?)?.toDouble() ?? 0.0,
-        onlineAmount: (json['onlineAmount'] as num?)?.toDouble() ?? 0.0,
-        deliveryDate: json['deliveryDate'] as Timestamp?,
+        orderAmount: _parseDouble(json['orderAmount']),
+        originalOrderAmount: _parseDoubleNullable(json['originalOrderAmount']),
+        returnAmount: _parseDouble(json['returnAmount']),
+        creditAmount: _parseDouble(json['creditAmount']),
+        cashAmount: _parseDouble(json['cashAmount']),
+        onlineAmount: _parseDouble(json['onlineAmount']),
+        deliveryDate: _parseTimestamp(json['deliveryDate']),
         creditStatus: json['creditStatus'] as String? ?? '',
         createdBy: json['createdBy'] as String? ?? '',
         lastUpdatedBy: json['lastUpdatedBy'] as String? ?? '',
-        createdDate: json['createdDate'] as Timestamp? ?? Timestamp.now(),
-        lastupdatedDate: json['lastupdatedDate'] as Timestamp? ?? Timestamp.now(),
+        createdDate: _parseTimestamp(json['createdDate']) ?? Timestamp.now(),
+        lastupdatedDate: _parseTimestamp(json['lastupdatedDate']) ?? Timestamp.now(),
         createdPage: json['createdPage'] as String? ?? '',
         lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
         items: _parseItems(json['items']),
-        isInventoryReserved: json['isInventoryReserved'] as bool? ?? false,
-        isInventoryDeducted: json['isInventoryDeducted'] as bool? ?? false,
-        picklistCompletedDate: json['picklistCompletedDate'] as Timestamp?,
+        isInventoryReserved: _parseBool(json['isInventoryReserved']),
+        isInventoryDeducted: _parseBool(json['isInventoryDeducted']),
+        isInventorySettled: _parseBool(json['isInventorySettled']),
+        inventorySettledDate: _parseTimestamp(json['inventorySettledDate']),
+        inventorySettledBy: json['inventorySettledBy'] as String? ?? '',
+        isRescheduled: _parseBool(json['isRescheduled']),
+        rescheduledToDeliveryId: json['rescheduledToDeliveryId'] as String? ?? '',
+        rescheduledDate: _parseTimestamp(json['rescheduledDate']),
+        picklistCompletedDate: _parseTimestamp(json['picklistCompletedDate']),
         picklistCompletedBy: json['picklistCompletedBy'] as String? ?? '',
-        picklistSequence: (json['picklistSequence'] as num?)?.toInt(),
-        deliverySequence: (json['deliverySequence'] as num?)?.toInt(),
+        picklistSequence: _parseInt(json['picklistSequence']),
+        deliverySequence: _parseInt(json['deliverySequence']),
       );
 
   factory Delivery.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -251,6 +345,7 @@ class Delivery {
     String? transactionStatus,
     String? imagePath,
     double? orderAmount,
+    double? originalOrderAmount,
     double? deliveryAmount,
     double? returnAmount,
     double? creditAmount,
@@ -261,6 +356,12 @@ class Delivery {
     List<OrderItem>? items,
     bool? isInventoryReserved,
     bool? isInventoryDeducted,
+    bool? isInventorySettled,
+    Timestamp? inventorySettledDate,
+    String? inventorySettledBy,
+    bool? isRescheduled,
+    String? rescheduledToDeliveryId,
+    Timestamp? rescheduledDate,
     Timestamp? picklistCompletedDate,
     String? picklistCompletedBy,
     int? picklistSequence,
@@ -280,6 +381,7 @@ class Delivery {
       transactionStatus: transactionStatus ?? this.transactionStatus,
       imagePath: imagePath ?? this.imagePath,
       orderAmount: orderAmount ?? this.orderAmount,
+      originalOrderAmount: originalOrderAmount ?? this.originalOrderAmount,
       returnAmount: returnAmount ?? this.returnAmount,
       creditAmount: creditAmount ?? this.creditAmount,
       cashAmount: cashAmount ?? this.cashAmount,
@@ -289,6 +391,12 @@ class Delivery {
       items: items ?? this.items,
       isInventoryReserved: isInventoryReserved ?? this.isInventoryReserved,
       isInventoryDeducted: isInventoryDeducted ?? this.isInventoryDeducted,
+      isInventorySettled: isInventorySettled ?? this.isInventorySettled,
+      inventorySettledDate: inventorySettledDate ?? this.inventorySettledDate,
+      inventorySettledBy: inventorySettledBy ?? this.inventorySettledBy,
+      isRescheduled: isRescheduled ?? this.isRescheduled,
+      rescheduledToDeliveryId: rescheduledToDeliveryId ?? this.rescheduledToDeliveryId,
+      rescheduledDate: rescheduledDate ?? this.rescheduledDate,
       picklistCompletedDate: picklistCompletedDate ?? this.picklistCompletedDate,
       picklistCompletedBy: picklistCompletedBy ?? this.picklistCompletedBy,
       picklistSequence: clearPicklistSequence ? null : (picklistSequence ?? this.picklistSequence),
@@ -309,6 +417,7 @@ class Delivery {
       'transactionStatus': transactionStatus,
       'imagePath': imagePath,
       'orderAmount': orderAmount,
+      'originalOrderAmount': originalOrderAmount,
       'returnAmount': returnAmount,
       'creditAmount': creditAmount,
       'cashAmount': cashAmount,
@@ -318,6 +427,12 @@ class Delivery {
       'items': items.map((e) => e.toJson()).toList(),
       'isInventoryReserved': isInventoryReserved,
       'isInventoryDeducted': isInventoryDeducted,
+      'isInventorySettled': isInventorySettled,
+      'inventorySettledDate': inventorySettledDate,
+      'inventorySettledBy': inventorySettledBy,
+      'isRescheduled': isRescheduled,
+      'rescheduledToDeliveryId': rescheduledToDeliveryId,
+      'rescheduledDate': rescheduledDate,
       'picklistCompletedDate': picklistCompletedDate,
       'picklistCompletedBy': picklistCompletedBy,
       'picklistSequence': picklistSequence,
@@ -340,6 +455,7 @@ class DeliveryModelString {
   static String transactionStatus = 'transactionStatus';
   static String imagePath = 'imagePath';
   static String orderAmount = 'orderAmount';
+  static String originalOrderAmount = 'originalOrderAmount';
   static String returnAmount = 'returnAmount';
   static String creditAmount = 'creditAmount';
   static String cashAmount = 'cashAmount';
@@ -349,6 +465,12 @@ class DeliveryModelString {
   static String items = 'items';
   static String isInventoryReserved = 'isInventoryReserved';
   static String isInventoryDeducted = 'isInventoryDeducted';
+  static String isInventorySettled = 'isInventorySettled';
+  static String inventorySettledDate = 'inventorySettledDate';
+  static String inventorySettledBy = 'inventorySettledBy';
+  static String isRescheduled = 'isRescheduled';
+  static String rescheduledToDeliveryId = 'rescheduledToDeliveryId';
+  static String rescheduledDate = 'rescheduledDate';
 
   static String createdBy = 'createdBy';
   static String lastUpdatedBy = 'lastUpdatedBy';

@@ -183,10 +183,12 @@ class DeliveryService {
         .collection(DELIVERY_COLLECTION_REF)
         .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned)
         .where(DeliveryModelString.lastupdatedDate, isLessThan: startOfDay)
-        .count()
         .get();
 
-    return snapshot.count;
+    return snapshot.docs.where((doc) {
+      final data = doc.data();
+      return data[DeliveryModelString.isRescheduled] != true;
+    }).length;
   }
 
   // Get list delivery within the month of the current year

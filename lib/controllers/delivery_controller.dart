@@ -85,6 +85,16 @@ class DeliveryController {
     return breakdownId.isNotEmpty;
   }
 
+  /// Returns whether a breakdown exists and whether it has already been verified by the dealer.
+  /// When verified, delivery records for that day are permanently locked for all users (including dealers).
+  Future<({bool hasBreakdown, bool isVerified})> checkBreakdownAndVerificationStatus(DateTime date) async {
+    final breakdown = await _breakdownService.getDocumentsBySpecificDate(date);
+    if (breakdown == null) {
+      return (hasBreakdown: false, isVerified: false);
+    }
+    return (hasBreakdown: true, isVerified: breakdown.isVerifiedByDealer);
+  }
+
   // ==========================================
   // List Operations (DeliveryListPage & PicklistListPage)
   // ==========================================
@@ -561,13 +571,18 @@ class DeliveryController {
     final double orderAmount = computeItemsOrderAmount(cleanItems);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
-    // 1. Permanently deduct inventory & release floating reservation
-    if (!currentDelivery.isInventoryDeducted) {
-      await _inventoryService.confirmPicklistAndDeductStock(
+    // 1. Maintain floating stock reservation for final picked items
+    // (Actual physical inventory deduction will occur when the dealer verifies the daily cash breakdown)
+    if (currentDelivery.isInventoryReserved) {
+      await _inventoryService.adjustReservedStockForOrderUpdate(
         storeName: storeName,
-        reservedItems: currentDelivery.items,
-        pickedItems: cleanItems,
-        wasReserved: currentDelivery.isInventoryReserved,
+        oldItems: currentDelivery.items,
+        newItems: cleanItems,
+      );
+    } else {
+      await _inventoryService.reserveStockForOrder(
+        storeName: storeName,
+        items: cleanItems,
       );
     }
 
@@ -585,8 +600,8 @@ class DeliveryController {
       imagePath: imageFilePath,
       orderAmount: orderAmount,
       items: cleanItems.map((i) => i.copyWith(isPicked: true)).toList(),
-      isInventoryReserved: false,
-      isInventoryDeducted: true,
+      isInventoryReserved: true,
+      isInventoryDeducted: false,
       picklistCompletedDate: Timestamp.now(),
       picklistCompletedBy: currentUserName,
       lastUpdatedBy: currentUserName,
@@ -627,17 +642,20 @@ class DeliveryController {
   /// Computes payment discrepancy (total received payments minus the required order amount).
   ///
   /// Returns `0.0` if balanced, positive if overpaid, negative if underpaid.
+  /// When [withItemReturns] is true, the orderAmount is already adjusted to exclude returned items,
+  /// so returnAmount is excluded from the collected payments to prevent double-counting.
   double computeDiscrepancy({
     required double orderAmount,
     required String cash,
     required String online,
     required String credit,
     required String returnAmount,
+    bool withItemReturns = false,
   }) {
     final Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(cash);
     final Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(online);
     final Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(credit);
-    final Decimal returnAmt = Helperfunctions.formatStringAmountToDecimal(returnAmount);
+    final Decimal returnAmt = withItemReturns ? Decimal.zero : Helperfunctions.formatStringAmountToDecimal(returnAmount);
 
     final Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmt;
     final Decimal orderAmt = Decimal.parse(orderAmount.toStringAsFixed(2));
@@ -646,11 +664,17 @@ class DeliveryController {
   }
 
   /// Calculates total collected payments across cash, online, credit, and return fields.
-  double computeTotalCollected({required String cash, required String online, required String credit, required String returnAmount}) {
+  double computeTotalCollected({
+    required String cash,
+    required String online,
+    required String credit,
+    required String returnAmount,
+    bool withItemReturns = false,
+  }) {
     final Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(cash);
     final Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(online);
     final Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(credit);
-    final Decimal returnAmt = Helperfunctions.formatStringAmountToDecimal(returnAmount);
+    final Decimal returnAmt = withItemReturns ? Decimal.zero : Helperfunctions.formatStringAmountToDecimal(returnAmount);
 
     return (cashAmount + onlineAmount + creditAmount + returnAmt).toDouble();
   }
@@ -666,12 +690,14 @@ class DeliveryController {
     required String credit,
     required String returnAmount,
     required String remarks,
+    bool withItemReturns = false,
+    bool hasReturnsRecorded = false,
   }) {
     final List<String> listError = [];
     final Decimal cashAmount = Helperfunctions.formatStringAmountToDecimal(cash);
     final Decimal onlineAmount = Helperfunctions.formatStringAmountToDecimal(online);
     final Decimal creditAmount = Helperfunctions.formatStringAmountToDecimal(credit);
-    final Decimal returnAmt = Helperfunctions.formatStringAmountToDecimal(returnAmount);
+    final Decimal returnAmt = withItemReturns ? Decimal.zero : Helperfunctions.formatStringAmountToDecimal(returnAmount);
 
     final Decimal totalAmount = cashAmount + onlineAmount + creditAmount + returnAmt;
     final Decimal orderAmt = Decimal.parse(orderAmount.toStringAsFixed(2));
@@ -679,7 +705,7 @@ class DeliveryController {
     if (status == DeliveryStatus.delivered && totalAmount != orderAmt) {
       listError.add('Total amount does not match the order amount!');
     }
-    if ((returnAmt != Decimal.zero || status == DeliveryStatus.returned) && remarks.trim().isEmpty) {
+    if ((returnAmt != Decimal.zero || hasReturnsRecorded || status == DeliveryStatus.returned) && remarks.trim().isEmpty) {
       listError.add('Please enter a remark for return details!');
     }
 
@@ -860,6 +886,7 @@ class DeliveryController {
     DateTime? selectedDate,
     List<KPlacement>? placements,
     String? placementId,
+    List<OrderItem>? itemsWithReturns,
   }) async {
     double returnAmount = 0;
     double creditAmount = 0;
@@ -867,23 +894,50 @@ class DeliveryController {
     double cashAmount = 0;
     String finalRemarks = remarks;
     double finalOrderAmount = currentDelivery.orderAmount;
+    double? finalOriginalOrderAmount = currentDelivery.originalOrderAmount;
+    List<OrderItem> finalItems = currentDelivery.items;
 
     switch (status) {
       case DeliveryStatus.pendingPicklist:
       case DeliveryStatus.pending:
         finalOrderAmount = Helperfunctions.formatStringAmountToDouble(orderAmountText);
         finalRemarks = '';
+        returnAmount = 0;
+        finalItems = currentDelivery.items.map((i) => i.copyWith(returnedQuantity: 0)).toList();
+        finalOriginalOrderAmount = null;
         break;
 
       case DeliveryStatus.delivered:
-        returnAmount = Helperfunctions.formatStringAmountToDouble(returnAmountText);
         creditAmount = Helperfunctions.formatStringAmountToDouble(creditAmountText);
         onlineAmount = Helperfunctions.formatStringAmountToDouble(onlineAmountText);
         cashAmount = Helperfunctions.formatStringAmountToDouble(cashAmountText);
+
+        if (itemsWithReturns != null) {
+          finalItems = itemsWithReturns;
+          final double totalDelivered = itemsWithReturns.fold<double>(0.0, (acc, i) => acc + i.deliveredLineTotal);
+          final double totalReturned = itemsWithReturns.fold<double>(0.0, (acc, i) => acc + i.returnedLineTotal);
+          final bool hasReturns = itemsWithReturns.any((i) => i.returnedQuantity > 0);
+
+          if (hasReturns) {
+            finalOriginalOrderAmount = currentDelivery.originalOrderAmount ?? currentDelivery.orderAmount;
+            finalOrderAmount = totalDelivered;
+            returnAmount = totalReturned;
+          } else {
+            finalOrderAmount = currentDelivery.originalOrderAmount ?? Helperfunctions.formatStringAmountToDouble(orderAmountText);
+            returnAmount = 0;
+            finalOriginalOrderAmount = null;
+          }
+        } else {
+          returnAmount = Helperfunctions.formatStringAmountToDouble(returnAmountText);
+          finalOrderAmount = Helperfunctions.formatStringAmountToDouble(orderAmountText);
+        }
         break;
 
       case DeliveryStatus.returned:
-        returnAmount = currentDelivery.orderAmount;
+        finalOriginalOrderAmount = currentDelivery.originalOrderAmount ?? currentDelivery.orderAmount;
+        finalOrderAmount = finalOriginalOrderAmount;
+        returnAmount = finalOrderAmount;
+        finalItems = currentDelivery.items.map((i) => i.copyWith(returnedQuantity: i.pickedQuantity)).toList();
         break;
       default:
     }
@@ -899,10 +953,12 @@ class DeliveryController {
       transactionStatus: status,
       imagePath: imageFilePath,
       orderAmount: finalOrderAmount,
+      originalOrderAmount: finalOriginalOrderAmount,
       returnAmount: returnAmount,
       creditAmount: creditAmount,
       cashAmount: cashAmount,
       onlineAmount: onlineAmount,
+      items: finalItems,
       deliveryDate: selectedDate != null ? Timestamp.fromDate(selectedDate) : currentDelivery.deliveryDate,
       createdBy: currentDelivery.createdBy,
       lastUpdatedBy: currentUserName,
@@ -962,7 +1018,7 @@ class DeliveryController {
     // 1. Identify all delivered products with positive quantities
     final Set<String> deliveredBestSellerNames = {};
     for (final item in delivery.items) {
-      final effectiveQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+      final effectiveQty = item.deliveredQuantity;
       if (effectiveQty > 0 && ProductTag.isBestSeller(item.tag)) {
         deliveredBestSellerNames.add(item.productName.trim());
       }
@@ -973,7 +1029,7 @@ class DeliveryController {
     final bestSellerNameMap = {for (final p in allBestSellers) p.productName.trim().toLowerCase(): p.productName.trim()};
 
     for (final item in delivery.items) {
-      final effectiveQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+      final effectiveQty = item.deliveredQuantity;
       if (effectiveQty > 0) {
         final match = bestSellerNameMap[item.productName.trim().toLowerCase()];
         if (match != null) {
@@ -1027,6 +1083,9 @@ class DeliveryController {
   /// Deletes a delivery record, releases any floating reserved inventory if still in
   /// `Pending Picklist`, and removes its associated uploaded image from storage.
   Future<void> deleteDelivery({required BuildContext context, required String deliveryId, required Delivery delivery}) async {
+    if (delivery.isInventorySettled) {
+      throw Exception('Cannot delete a delivery record for a date that has already been verified and settled.');
+    }
     if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
       await _inventoryService.releaseReservedStockForOrder(storeName: delivery.storeName, items: delivery.items);
     }

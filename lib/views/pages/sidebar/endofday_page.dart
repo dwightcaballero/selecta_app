@@ -506,6 +506,32 @@ class _EndofdayPageState extends State<EndofdayPage> {
               // 2. Pending Status Warning (if any)
               if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
 
+              // 2a. Orders in Pending Picklist Notice (if any exist for this date)
+              if (endOfDayData.pendingPicklistStatus > 0)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.purple.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.fact_check_outlined, size: 20, color: Colors.purple.shade800),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          endOfDayData.pendingPicklistStatus == 1
+                              ? '1 order is currently Booked (Awaiting Picklist) and not included in delivery reconciliation.'
+                              : '${endOfDayData.pendingPicklistStatus} orders are currently Booked (Awaiting Picklist) and not included in delivery reconciliation.',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Colors.purple.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               // 2b. Empty state notice if no activity recorded
               if (endOfDayData.totaldelivery == 0)
                 Container(

@@ -24,6 +24,9 @@ class Breakdown {
   Timestamp createdDate;
   Timestamp lastupdatedDate;
   bool isVerifiedByDealer;
+  String verifiedBy;
+  Timestamp? verifiedDate;
+  Timestamp? inventorySettledDate;
   String createdPage;
   String lastUpdatedPage;
 
@@ -49,6 +52,9 @@ class Breakdown {
     required this.createdDate,
     required this.lastupdatedDate,
     this.isVerifiedByDealer = false,
+    this.verifiedBy = '',
+    this.verifiedDate,
+    this.inventorySettledDate,
     this.createdPage = '',
     this.lastUpdatedPage = '',
   });
@@ -76,6 +82,9 @@ class Breakdown {
     createdDate: Timestamp.now(),
     lastupdatedDate: Timestamp.now(),
     isVerifiedByDealer: false,
+    verifiedBy: '',
+    verifiedDate: null,
+    inventorySettledDate: null,
     createdPage: '',
     lastUpdatedPage: '',
   );
@@ -104,6 +113,9 @@ class Breakdown {
         createdDate: json['createdDate']! as Timestamp,
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
         isVerifiedByDealer: (json['isVerifiedByDealer'] as bool?) ?? false,
+        verifiedBy: json['verifiedBy'] as String? ?? '',
+        verifiedDate: json['verifiedDate'] as Timestamp?,
+        inventorySettledDate: json['inventorySettledDate'] as Timestamp?,
         createdPage: json['createdPage'] as String? ?? '',
         lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
       );
@@ -134,6 +146,9 @@ class Breakdown {
         createdDate: data?['createdDate'],
         lastupdatedDate: data?['lastupdatedDate'],
         isVerifiedByDealer: (data?['isVerifiedByDealer'] as bool?) ?? false,
+        verifiedBy: data?['verifiedBy'] as String? ?? '',
+        verifiedDate: data?['verifiedDate'] as Timestamp?,
+        inventorySettledDate: data?['inventorySettledDate'] as Timestamp?,
         createdPage: data?['createdPage'] as String? ?? '',
         lastUpdatedPage: data?['lastUpdatedPage'] as String? ?? '',
       );
@@ -165,6 +180,9 @@ class Breakdown {
     Timestamp? createdDate,
     Timestamp? lastupdatedDate,
     bool? isVerifiedByDealer,
+    String? verifiedBy,
+    Timestamp? verifiedDate,
+    Timestamp? inventorySettledDate,
     String? createdPage,
     String? lastUpdatedPage,
   }) {
@@ -192,6 +210,9 @@ class Breakdown {
       createdDate: createdDate ?? this.createdDate,
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
       isVerifiedByDealer: isVerifiedByDealer ?? this.isVerifiedByDealer,
+      verifiedBy: verifiedBy ?? this.verifiedBy,
+      verifiedDate: verifiedDate ?? this.verifiedDate,
+      inventorySettledDate: inventorySettledDate ?? this.inventorySettledDate,
       createdPage: createdPage ?? this.createdPage,
       lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
     );
@@ -222,6 +243,9 @@ class Breakdown {
       'createdDate': createdDate,
       'lastupdatedDate': lastupdatedDate,
       'isVerifiedByDealer': isVerifiedByDealer,
+      'verifiedBy': verifiedBy,
+      'verifiedDate': verifiedDate,
+      'inventorySettledDate': inventorySettledDate,
       'createdPage': createdPage,
       'lastUpdatedPage': lastUpdatedPage,
     };

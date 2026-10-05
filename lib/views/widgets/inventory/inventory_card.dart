@@ -150,7 +150,7 @@ class InventoryCard extends StatelessWidget {
                             ),
                           if (item.reservedQuantity > 0)
                             Text(
-                              '${item.availableQuantity} available • ${item.reservedQuantity} in picklist',
+                              '${item.availableQuantity} available • ${item.reservedQuantity} floating',
                               style: const TextStyle(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600,

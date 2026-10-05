@@ -383,7 +383,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   Widget _statusBadge(String status) {
     final (Color color, IconData icon, String label) = switch (status) {
-      DeliveryStatus.pendingPicklist => (const Color(0xFF7C3AED), Icons.fact_check_outlined, 'Pending Picklist'),
+      DeliveryStatus.pendingPicklist => (const Color(0xFF7C3AED), Icons.fact_check_outlined, 'Booked'),
       DeliveryStatus.delivered => (Colors.green.shade700, Icons.check_circle_outline, 'Delivered'),
       DeliveryStatus.returned => (Colors.red.shade700, Icons.cancel_outlined, 'Returned'),
       _ => (Colors.orange.shade800, Icons.local_shipping_outlined, 'For Delivery'),

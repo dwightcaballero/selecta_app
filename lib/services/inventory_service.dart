@@ -2,11 +2,15 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/admin_selecta_product.dart';
+import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/other_product.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
+import 'package:selecta_ops/services/breakdown_service.dart';
+import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/other_product_service.dart';
 import 'package:selecta_ops/services/purchaseorder_service.dart';
 import 'package:selecta_ops/services/selecta_product_service.dart';
@@ -911,4 +915,422 @@ class InventoryService {
 
     await batch.commit();
   }
+
+  /// Calculates net stock and reserved adjustments for verified deliveries without writing to Firestore.
+  /// Pure function suitable for unit tests and verification preview modals.
+  static SettlementPlan computeSettlement(List<({String id, Delivery delivery})> deliveries) {
+    final Map<String, ProductSettlementDelta> deltas = {};
+    final List<SettlementMovementPlan> movements = [];
+    final List<String> settledIds = [];
+
+    int totalDeliveredUnits = 0;
+    int totalReturnedUnits = 0;
+    int totalLegacyRestockedUnits = 0;
+    int orderCount = 0;
+    int deliveredOrderCount = 0;
+    int returnedOrderCount = 0;
+
+    void addDelta({
+      required String source,
+      required String productId,
+      required String productName,
+      int stockDelta = 0,
+      int reservedDelta = 0,
+    }) {
+      if (productId.isEmpty || (stockDelta == 0 && reservedDelta == 0)) return;
+      final key = '$source:$productId';
+      final current = deltas[key];
+      if (current == null) {
+        deltas[key] = ProductSettlementDelta(
+          productId: productId,
+          productName: productName,
+          productSource: source,
+          stockDelta: stockDelta,
+          reservedDelta: reservedDelta,
+        );
+      } else {
+        deltas[key] = current.copyWith(
+          stockDelta: current.stockDelta + stockDelta,
+          reservedDelta: current.reservedDelta + reservedDelta,
+        );
+      }
+    }
+
+    for (final entry in deliveries) {
+      final id = entry.id;
+      final d = entry.delivery;
+
+      // Skip orders that are already settled or not yet eligible
+      if (d.isInventorySettled) continue;
+      if (d.transactionStatus == DeliveryStatus.pendingPicklist) continue;
+      if (d.transactionStatus == DeliveryStatus.pending) continue;
+
+      bool orderProcessed = false;
+
+      if (d.transactionStatus == DeliveryStatus.delivered) {
+        orderProcessed = true;
+        deliveredOrderCount++;
+        settledIds.add(id);
+
+        for (final item in d.items) {
+          if (item.productId.isEmpty) continue;
+          final dQty = item.deliveredQuantity;
+          final rQty = item.returnedQuantity;
+
+          if (!d.isInventoryDeducted) {
+            // New workflow: physical stock was never deducted, but was held in reservedQuantity
+            totalDeliveredUnits += dQty;
+            totalReturnedUnits += rQty;
+
+            // Deduct delivered units from stock & reserved; release returned units from reserved
+            addDelta(
+              source: item.productSource,
+              productId: item.productId,
+              productName: item.productName,
+              stockDelta: -dQty,
+              reservedDelta: -(dQty + rQty),
+            );
+
+            if (dQty > 0) {
+              movements.add(SettlementMovementPlan(
+                productId: item.productId,
+                productName: item.productName,
+                productSource: item.productSource,
+                delta: -dQty,
+                reason: 'Delivery Settled (Breakdown Verified)',
+                notes: 'Store: ${d.storeName} (Delivered: $dQty${rQty > 0 ? ", Returned: $rQty" : ""})',
+              ));
+            }
+          } else {
+            // Legacy workflow: stock was already deducted at picklist completion
+            totalReturnedUnits += rQty;
+            if (rQty > 0) {
+              totalLegacyRestockedUnits += rQty;
+              addDelta(
+                source: item.productSource,
+                productId: item.productId,
+                productName: item.productName,
+                stockDelta: rQty,
+                reservedDelta: 0,
+              );
+              movements.add(SettlementMovementPlan(
+                productId: item.productId,
+                productName: item.productName,
+                productSource: item.productSource,
+                delta: rQty,
+                reason: 'Return Restocked (Legacy Order)',
+                notes: 'Store: ${d.storeName} (Restocked: $rQty)',
+              ));
+            }
+          }
+        }
+      } else if (d.transactionStatus == DeliveryStatus.returned) {
+        orderProcessed = true;
+        returnedOrderCount++;
+        settledIds.add(id);
+
+        for (final item in d.items) {
+          if (item.productId.isEmpty) continue;
+          final pickedQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+          totalReturnedUnits += pickedQty;
+
+          if (!d.isInventoryDeducted) {
+            // New workflow: physical stock was never deducted, but was held in reservedQuantity
+            // Upon breakdown verification, return is verified: release floating reservation
+            addDelta(
+              source: item.productSource,
+              productId: item.productId,
+              productName: item.productName,
+              stockDelta: 0,
+              reservedDelta: -pickedQty,
+            );
+          } else {
+            // Legacy workflow: stock was already deducted at picklist! We must restock physical stock
+            totalLegacyRestockedUnits += pickedQty;
+            addDelta(
+              source: item.productSource,
+              productId: item.productId,
+              productName: item.productName,
+              stockDelta: pickedQty,
+              reservedDelta: 0,
+            );
+            movements.add(SettlementMovementPlan(
+              productId: item.productId,
+              productName: item.productName,
+              productSource: item.productSource,
+              delta: pickedQty,
+              reason: 'Return Restocked (Legacy Order)',
+              notes: 'Store: ${d.storeName} (Restocked: $pickedQty)',
+            ));
+          }
+        }
+      }
+
+      if (orderProcessed) {
+        orderCount++;
+      }
+    }
+
+    return SettlementPlan(
+      productDeltas: deltas,
+      movements: movements,
+      settledDeliveryIds: settledIds,
+      totalDeliveredUnits: totalDeliveredUnits,
+      totalReturnedUnits: totalReturnedUnits,
+      totalLegacyRestockedUnits: totalLegacyRestockedUnits,
+      affectedProductCount: deltas.length,
+      affectedOrderCount: orderCount,
+      deliveredCount: deliveredOrderCount,
+      returnedCount: returnedOrderCount,
+    );
+  }
+
+  /// Queries all deliveries for [date] and computes the pending settlement plan for preview.
+  Future<SettlementPlan> previewSettlementForDate(DateTime date) async {
+    final startOfDay = DateTime(date.year, date.month, date.day, 0, 0, 0);
+    final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
+
+    final snapshot = await _firestore
+        .collection(DELIVERY_COLLECTION_REF)
+        .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where(DeliveryModelString.deliveryDate, isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+        .get();
+
+    final deliveries = snapshot.docs.map((doc) {
+      return (id: doc.id, delivery: Delivery.fromJson(doc.data()));
+    }).toList();
+
+    return computeSettlement(deliveries);
+  }
+
+  /// Atomically settles inventory for all delivered and returned orders on [date]
+  /// inside a Firestore transaction.
+  ///
+  /// Permanently updates physical stock, releases floating reservations, creates audit
+  /// movements, marks deliveries as settled, and verifies the breakdown.
+  Future<void> settleDeliveriesForDate({
+    required DateTime date,
+    required String breakdownId,
+    required Breakdown breakdown,
+  }) async {
+    final startOfDay = DateTime(date.year, date.month, date.day, 0, 0, 0);
+    final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
+
+    final deliverySnapshot = await _firestore
+        .collection(DELIVERY_COLLECTION_REF)
+        .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where(DeliveryModelString.deliveryDate, isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+        .get();
+
+    final deliveries = deliverySnapshot.docs.map((doc) {
+      return (id: doc.id, delivery: Delivery.fromJson(doc.data()));
+    }).toList();
+
+    final plan = computeSettlement(deliveries);
+    final now = Timestamp.now();
+    final actorName = _currentActorName();
+
+    await _firestore.runTransaction((transaction) async {
+      // 1. Check breakdown doc to prevent double-verification
+      if (breakdownId.isNotEmpty) {
+        final bRef = _firestore.collection(BREAKDOWN_COLLECTION_REF).doc(breakdownId);
+        final bSnap = await transaction.get(bRef);
+        if (bSnap.exists && (bSnap.data()?['isVerifiedByDealer'] as bool? ?? false)) {
+          throw Exception('This cash breakdown is already verified.');
+        }
+      }
+
+      // 2. Read all affected product docs
+      final Map<String, DocumentSnapshot<Map<String, dynamic>>> productSnaps = {};
+      for (final delta in plan.productDeltas.values) {
+        final collectionName = _collectionForSource(delta.productSource);
+        final pRef = _firestore.collection(collectionName).doc(delta.productId);
+        final pSnap = await transaction.get(pRef);
+        productSnaps['${delta.productSource}:${delta.productId}'] = pSnap;
+      }
+
+      // 3. Update products
+      for (final delta in plan.productDeltas.values) {
+        final key = '${delta.productSource}:${delta.productId}';
+        final pSnap = productSnaps[key];
+        if (pSnap == null || !pSnap.exists) continue;
+
+        final data = pSnap.data() ?? {};
+        final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+        final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
+
+        final nextStock = (currentStock + delta.stockDelta).clamp(0, 99999999);
+        final nextReserved = (currentReserved + delta.reservedDelta).clamp(0, 99999999);
+
+        final collectionName = _collectionForSource(delta.productSource);
+        final pRef = _firestore.collection(collectionName).doc(delta.productId);
+
+        transaction.update(pRef, {
+          'stockQuantity': nextStock,
+          'reservedQuantity': nextReserved,
+          'updatedAt': now,
+        });
+      }
+
+      // 4. Record stock movement logs
+      for (final mov in plan.movements) {
+        final key = '${mov.productSource}:${mov.productId}';
+        final pSnap = productSnaps[key];
+        final currentStock = ((pSnap?.data()?['stockQuantity'] as num?)?.toInt() ?? 0);
+        final nextStock = (currentStock + mov.delta).clamp(0, 99999999);
+
+        final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+        final movement = InventoryMovement(
+          id: movementRef.id,
+          productId: mov.productId,
+          productName: mov.productName,
+          productSource: mov.productSource,
+          previousStock: currentStock,
+          newStock: nextStock,
+          delta: mov.delta,
+          reason: mov.reason,
+          notes: mov.notes,
+          createdBy: actorName,
+          createdAt: now,
+        );
+        transaction.set(movementRef, movement.toJson());
+      }
+
+      // 5. Mark all affected deliveries as settled
+      for (final deliveryId in plan.settledDeliveryIds) {
+        final dRef = _firestore.collection(DELIVERY_COLLECTION_REF).doc(deliveryId);
+        transaction.update(dRef, {
+          DeliveryModelString.isInventorySettled: true,
+          DeliveryModelString.isInventoryDeducted: true,
+          DeliveryModelString.isInventoryReserved: false,
+          DeliveryModelString.inventorySettledDate: now,
+          DeliveryModelString.inventorySettledBy: actorName,
+          DeliveryModelString.lastupdatedDate: now,
+          DeliveryModelString.lastUpdatedBy: actorName,
+        });
+      }
+
+      // 6. Update breakdown doc
+      if (breakdownId.isNotEmpty) {
+        final bRef = _firestore.collection(BREAKDOWN_COLLECTION_REF).doc(breakdownId);
+        transaction.update(bRef, {
+          'isVerifiedByDealer': true,
+          'verifiedBy': actorName,
+          'verifiedDate': now,
+          'inventorySettledDate': now,
+          'lastupdatedDate': now,
+          'lastUpdatedBy': actorName,
+        });
+      }
+    });
+  }
+
+  /// Re-reserves floating inventory (`reservedQuantity`) for an order created when rescheduling
+  /// a verified returned delivery.
+  Future<void> reReserveForRescheduledOrder(List<OrderItem> items) async {
+    await reserveStockForOrder(storeName: 'Rescheduled Order', items: items);
+  }
+}
+
+/// Represents the calculated net changes to be applied to a product during settlement.
+class ProductSettlementDelta {
+  final String productId;
+  final String productName;
+  final String productSource;
+  final int stockDelta;
+  final int reservedDelta;
+
+  const ProductSettlementDelta({
+    required this.productId,
+    required this.productName,
+    required this.productSource,
+    required this.stockDelta,
+    required this.reservedDelta,
+  });
+
+  ProductSettlementDelta copyWith({
+    String? productId,
+    String? productName,
+    String? productSource,
+    int? stockDelta,
+    int? reservedDelta,
+  }) {
+    return ProductSettlementDelta(
+      productId: productId ?? this.productId,
+      productName: productName ?? this.productName,
+      productSource: productSource ?? this.productSource,
+      stockDelta: stockDelta ?? this.stockDelta,
+      reservedDelta: reservedDelta ?? this.reservedDelta,
+    );
+  }
+}
+
+/// Represents an audit movement to be written during settlement.
+class SettlementMovementPlan {
+  final String productId;
+  final String productName;
+  final String productSource;
+  final int delta;
+  final String reason;
+  final String notes;
+
+  const SettlementMovementPlan({
+    required this.productId,
+    required this.productName,
+    required this.productSource,
+    required this.delta,
+    required this.reason,
+    required this.notes,
+  });
+}
+
+/// Aggregated settlement outcome bundling per-product deltas, movement plans, and summary metrics.
+class SettlementPlan {
+  final Map<String, ProductSettlementDelta> productDeltas;
+  final List<SettlementMovementPlan> movements;
+  final List<String> settledDeliveryIds;
+  final int totalDeliveredUnits;
+  final int totalReturnedUnits;
+  final int totalLegacyRestockedUnits;
+  final int affectedProductCount;
+  final int affectedOrderCount;
+  final int deliveredCount;
+  final int returnedCount;
+
+  int get totalDeliveriesToSettle => affectedOrderCount;
+  Map<String, ProductSettlementDelta> get deltas => productDeltas;
+
+  ProductSettlementDelta? getDelta(String productId) {
+    if (productDeltas.containsKey(productId)) return productDeltas[productId];
+    for (final entry in productDeltas.entries) {
+      if (entry.value.productId == productId) return entry.value;
+    }
+    return null;
+  }
+
+  const SettlementPlan({
+    required this.productDeltas,
+    required this.movements,
+    required this.settledDeliveryIds,
+    required this.totalDeliveredUnits,
+    required this.totalReturnedUnits,
+    required this.totalLegacyRestockedUnits,
+    required this.affectedProductCount,
+    required this.affectedOrderCount,
+    this.deliveredCount = 0,
+    this.returnedCount = 0,
+  });
+
+  static const empty = SettlementPlan(
+    productDeltas: {},
+    movements: [],
+    settledDeliveryIds: [],
+    totalDeliveredUnits: 0,
+    totalReturnedUnits: 0,
+    totalLegacyRestockedUnits: 0,
+    affectedProductCount: 0,
+    affectedOrderCount: 0,
+    deliveredCount: 0,
+    returnedCount: 0,
+  );
 }
