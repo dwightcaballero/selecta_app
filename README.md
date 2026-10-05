@@ -92,4 +92,4 @@ Set your admin password immediately from the **Admin Password** card.
 
 ## Version
 
-Current: 1.0.0+32
+Current: 1.0.0+33
