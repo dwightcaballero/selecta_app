@@ -37,6 +37,7 @@ class DashboardSidebar extends StatelessWidget {
   final DashboardDTO dashboardDTO;
   final Stream<int> merchBlitzCountStream;
   final Stream<int> tasksCountStream;
+  final Stream<int>? activeReturnsCountStream;
   final VoidCallback onSync;
   final VoidCallback onLogout;
   final Future<void> Function(Widget page) onNavigate;
@@ -51,6 +52,7 @@ class DashboardSidebar extends StatelessWidget {
     required this.dashboardDTO,
     required this.merchBlitzCountStream,
     required this.tasksCountStream,
+    this.activeReturnsCountStream,
     required this.onSync,
     required this.onLogout,
     required this.onNavigate,
@@ -94,7 +96,17 @@ class DashboardSidebar extends StatelessWidget {
                     stream: tasksCountStream,
                     builder: (ctx, snap) => _buildItem(ctx, Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badge: snap.data ?? 0),
                   ),
-                  _buildItem(context, Icons.assignment_return_outlined, 'Returns', const ReturnlistPage(), badge: dashboardDTO.returnedDeliveryCount),
+                  StreamBuilder<int>(
+                    stream: activeReturnsCountStream,
+                    initialData: dashboardDTO.returnedDeliveryCount,
+                    builder: (ctx, snap) => _buildItem(
+                      ctx,
+                      Icons.assignment_return_outlined,
+                      'Returns',
+                      const ReturnlistPage(),
+                      badge: snap.data ?? dashboardDTO.returnedDeliveryCount,
+                    ),
+                  ),
                   _buildItem(context, Icons.account_balance_wallet_outlined, 'Credit List', const CreditlistPage(), badge: dashboardDTO.unpaidCreditCount),
                   _buildItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
                   _buildItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),

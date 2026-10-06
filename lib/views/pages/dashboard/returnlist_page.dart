@@ -25,6 +25,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+  String _selectedTab = 'Active';
 
   @override
   void initState() {
@@ -66,7 +67,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Total Returned Value',
+                'Active Returned Value',
                 style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 4),
@@ -84,7 +85,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
             ),
             child: Column(
               children: [
-                const Text('Orders', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                const Text('Action Req.', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 Text(
                   '$totalCount',
                   style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
@@ -133,6 +134,42 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
               borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterTabs() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+      child: SizedBox(
+        width: double.infinity,
+        child: SegmentedButton<String>(
+          showSelectedIcon: false,
+          style: SegmentedButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          segments: const [
+            ButtonSegment<String>(
+              value: 'Active',
+              label: Text('Action Required', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+            ButtonSegment<String>(
+              value: 'Completed',
+              label: Text('Completed', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+            ButtonSegment<String>(
+              value: 'All',
+              label: Text('All', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ],
+          selected: {_selectedTab},
+          onSelectionChanged: (newSelection) {
+            setState(() {
+              _selectedTab = newSelection.first;
+            });
+          },
         ),
       ),
     );
@@ -223,7 +260,47 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                               style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
                             ),
                           ),
-                        if (delivery.isReturnApprovedByDealer)
+                        if (delivery.isReturnFinalized)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.grey.shade400),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.inventory_2_outlined, size: 10, color: Colors.grey.shade700),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Finalized',
+                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (delivery.isRescheduled)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.blue.shade300),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle_outline, size: 10, color: Colors.blue.shade700),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Rescheduled',
+                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.blue.shade800),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (delivery.isReturnApprovedByDealer)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
@@ -237,7 +314,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                                 Icon(Icons.check_circle_rounded, size: 10, color: Colors.green.shade700),
                                 const SizedBox(width: 3),
                                 Text(
-                                  'Approved',
+                                  'Approved (Action Needed)',
                                   style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green.shade800),
                                 ),
                               ],
@@ -254,19 +331,6 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                             child: const Text(
                               'Needs Approval',
                               style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
-                            ),
-                          ),
-                        if (delivery.isRescheduled)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.blue.shade300),
-                            ),
-                            child: Text(
-                              'Rescheduled',
-                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.blue.shade800),
                             ),
                           ),
                       ],
@@ -405,6 +469,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
           final filteredDocs = _controller.filterReturns(
             docs: allDocs,
             searchQuery: _searchQuery,
+            filterTab: _selectedTab,
           );
 
           return Column(
@@ -412,7 +477,10 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
               // 1. Summary Card
               _buildSummaryCard(totalAmount: metrics.totalAmount, totalCount: metrics.totalCount),
 
-              // 2. Search Bar
+              // 2. Filter Tabs (Action Required, Completed, All)
+              _buildFilterTabs(),
+
+              // 3. Search Bar
               _buildSearchBar(),
 
               // 3. Returned Orders List

@@ -67,6 +67,17 @@ class DeliveryService {
     });
   }
 
+  /// Real-time stream of the count of returned deliveries requiring dealer action
+  /// (not yet rescheduled and not yet finalized).
+  Stream<int> getActiveReturnedDeliveriesCountStream() {
+    return getListDeliveryWithReturnStatus().map((snap) {
+      return snap.docs.where((doc) {
+        final delivery = doc.data() as Delivery;
+        return !delivery.isRescheduled && !delivery.isReturnFinalized;
+      }).length;
+    });
+  }
+
   Stream<QuerySnapshot> getListDelivery() {
     return _ordersRef.orderBy(DeliveryModelString.createdDate).snapshots();
   }
@@ -159,6 +170,30 @@ class DeliveryService {
     return snapshot.count;
   }
 
+  /// Counts returned deliveries requiring dealer action (not yet rescheduled and not yet finalized).
+  static Future<int> getCountActiveReturnedDeliveries() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection(DELIVERY_COLLECTION_REF)
+          .where(
+            Filter.or(
+              Filter(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned),
+              Filter(DeliveryModelString.isReturnIncoming, isEqualTo: true),
+              Filter(DeliveryModelString.isReturnApprovedByDealer, isEqualTo: true),
+            ),
+          )
+          .get();
+
+      return snapshot.docs.where((doc) {
+        final data = doc.data();
+        return data[DeliveryModelString.isRescheduled] != true &&
+            data[DeliveryModelString.isReturnFinalized] != true;
+      }).length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
   /// Counts pending picklists specifically scheduled/created for [date].
   static Future<int> getCountPendingPicklistsForDate(DateTime date) async {
     try {
@@ -192,7 +227,8 @@ class DeliveryService {
 
     return snapshot.docs.where((doc) {
       final data = doc.data();
-      return data[DeliveryModelString.isRescheduled] != true;
+      return data[DeliveryModelString.isRescheduled] != true &&
+          data[DeliveryModelString.isReturnFinalized] != true;
     }).length;
   }
 

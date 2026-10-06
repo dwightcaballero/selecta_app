@@ -41,6 +41,9 @@ class DashboardController {
   /// Live count stream for deliveries pending completion for [date] (defaults to current day).
   Stream<int> getPendingDeliveriesCountStream({DateTime? date}) => _deliveryService.getPendingDeliveriesCountStream(date: date);
 
+  /// Live count stream for returned deliveries requiring dealer action.
+  Stream<int> getActiveReturnsCountStream() => _deliveryService.getActiveReturnedDeliveriesCountStream();
+
   /// Live count stream for stores in PJP of current day that are not yet visited.
   Stream<int> getPendingPjpCountStream({DateTime? date}) => _hapiStoreService.getPendingPjpCountStream(date);
 
@@ -196,7 +199,7 @@ class DashboardController {
     dashboardDTO.unpaidCreditCount = await DeliveryService.getCountDeliveryWithCreditNotYetPaid() ?? 0;
     dashboardDTO.pendingPicklistCount = await DeliveryService.getCountPendingPicklistsForDate(DateTime.now());
     dashboardDTO.pendingDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending) ?? 0;
-    dashboardDTO.returnedDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.returned) ?? 0;
+    dashboardDTO.returnedDeliveryCount = await DeliveryService.getCountActiveReturnedDeliveries();
     dashboardDTO.overpaymentCount = await PurchaseOrderService.getCountDeliveriesNotYetSettled() ?? 0;
 
     // DASHBOARD: buying and non Buying

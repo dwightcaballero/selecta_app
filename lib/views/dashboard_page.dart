@@ -46,6 +46,7 @@ class _DashboardPageState extends State<DashboardPage> {
   late final Stream<int> _purchaseOrdersAwaitingCountStream;
   late final Stream<int> _pendingPicklistsCountStream;
   late final Stream<int> _pendingDeliveriesCountStream;
+  late final Stream<int> _activeReturnsCountStream;
   DashboardDTO dashboardDTO = DashboardDTO.empty();
   Users? _currentUser;
   Configuration? _configuration;
@@ -63,6 +64,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _purchaseOrdersAwaitingCountStream = _controller.getPurchaseOrdersAwaitingCountStream();
     _pendingPicklistsCountStream = _controller.getPendingPicklistsCountStream();
     _pendingDeliveriesCountStream = _controller.getPendingDeliveriesCountStream();
+    _activeReturnsCountStream = _controller.getActiveReturnsCountStream();
     _configSubscription = ConfigurationService().getConfigurationStream().listen((config) {
       if (mounted && config != null) {
         setState(() {
@@ -325,6 +327,7 @@ class _DashboardPageState extends State<DashboardPage> {
     dashboardDTO: dashboardDTO,
     merchBlitzCountStream: _merchBlitzCountStream,
     tasksCountStream: _tasksCountStream,
+    activeReturnsCountStream: _activeReturnsCountStream,
     onSync: () => syncDashboard(force: true),
     onLogout: onLogout,
     onNavigate: _navigateToPage,
@@ -360,6 +363,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     dashboardDTO: dashboardDTO,
                     pendingPicklistsCountStream: _pendingPicklistsCountStream,
                     purchaseOrdersAwaitingCountStream: _purchaseOrdersAwaitingCountStream,
+                    activeReturnsCountStream: _activeReturnsCountStream,
                     onNavigate: _navigateToPage,
                   ),
 
@@ -535,6 +539,7 @@ class _DashboardPageState extends State<DashboardPage> {
         dashboardDTO: dashboardDTO,
         merchBlitzCountStream: _merchBlitzCountStream,
         tasksCountStream: _tasksCountStream,
+        activeReturnsCountStream: _activeReturnsCountStream,
         onSync: () => syncDashboard(force: true),
         onLogout: onLogout,
         onNavigate: _navigateToPage,

@@ -87,6 +87,20 @@ class EndOfDayController {
       throw Exception('Breakdown for this date has already been verified.');
     }
 
+    if (!isReconciliation) {
+      final endOfDayData = await _endOfDayService.getListDeliveryForEndOfDay(date);
+      if (endOfDayData.pendingstatus > 0) {
+        throw Exception(
+          'Cannot verify breakdown: There are still ${endOfDayData.pendingstatus} delivery record(s) pending "For Delivery". All deliveries must be completed (Delivered or Returned) before verifying.',
+        );
+      }
+      if (endOfDayData.pendingPicklistStatus > 0) {
+        throw Exception(
+          'Cannot verify breakdown: There are still ${endOfDayData.pendingPicklistStatus} order(s) "Pending Picklist" for this date. Complete or reschedule them first.',
+        );
+      }
+    }
+
     await _inventoryService.settleDeliveriesForDate(
       date: date,
       breakdownId: breakdownId,

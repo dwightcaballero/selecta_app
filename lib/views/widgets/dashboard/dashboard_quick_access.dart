@@ -10,6 +10,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
   final DashboardDTO dashboardDTO;
   final Stream<int>? pendingPicklistsCountStream;
   final Stream<int>? purchaseOrdersAwaitingCountStream;
+  final Stream<int>? activeReturnsCountStream;
   final Future<void> Function(Widget page) onNavigate;
 
   const DashboardQuickAccessGrid({
@@ -17,6 +18,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
     required this.dashboardDTO,
     required this.pendingPicklistsCountStream,
     required this.purchaseOrdersAwaitingCountStream,
+    this.activeReturnsCountStream,
     required this.onNavigate,
   });
 
@@ -44,6 +46,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
               label: 'Returns',
               icon: Icons.assignment_return_outlined,
               count: dashboardDTO.returnedDeliveryCount,
+              stream: activeReturnsCountStream,
               color: primaryColor,
               nextPage: const ReturnlistPage(),
             ),

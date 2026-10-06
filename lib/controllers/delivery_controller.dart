@@ -409,6 +409,11 @@ class DeliveryController {
     required List<OrderItem> items,
     String remarks = '',
   }) async {
+    final status = await checkBreakdownAndVerificationStatus(selectedDate);
+    if (status.isVerified) {
+      throw Exception('Cannot book order: Daily cash breakdown for this date has already been verified and closed.');
+    }
+
     final cleanItems = items.where((i) => i.pickedQuantity > 0).toList();
     final double orderAmount = computeItemsOrderAmount(cleanItems);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
@@ -570,6 +575,12 @@ class DeliveryController {
     final cleanItems = pickedItems.where((i) => i.pickedQuantity > 0).toList();
     final double orderAmount = computeItemsOrderAmount(cleanItems);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
+
+    final deliveryDate = currentDelivery.deliveryDate?.toDate() ?? DateTime.now();
+    final status = await checkBreakdownAndVerificationStatus(deliveryDate);
+    if (status.isVerified) {
+      throw Exception('Cannot process for delivery: The daily cash breakdown for this date has already been verified and closed by the dealer.');
+    }
 
     // 1. Stock Physically Leaves Warehouse (Marked "For Delivery"):
     // Deduct from physical Current Stock (stockQuantity) and release Reserved Stock (reservedQuantity).
@@ -808,8 +819,13 @@ class DeliveryController {
     required bool sendText,
     required String smsMessage,
   }) async {
+    final status = await checkBreakdownAndVerificationStatus(selectedDate);
+    if (status.isVerified) {
+      throw Exception('Cannot create delivery: Daily cash breakdown for this date has already been verified and closed.');
+    }
+
     String imageFilePath = '';
-    if (imageFile != null) {
+    if (imageFile != null && context.mounted) {
       imageFilePath = await Helperfunctions.saveImage(context, imageFile);
     }
 
@@ -959,7 +975,10 @@ class DeliveryController {
     }
 
     // Update image
-    final String imageFilePath = await Helperfunctions.updateImage(context, imageFile, networkImagePath, currentDelivery.imagePath);
+    String imageFilePath = currentDelivery.imagePath;
+    if (context.mounted) {
+      imageFilePath = await Helperfunctions.updateImage(context, imageFile, networkImagePath, currentDelivery.imagePath);
+    }
 
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
@@ -1116,5 +1135,10 @@ class DeliveryController {
     _deliveryService.deleteDelivery(deliveryId);
 
     await Helperfunctions.logDelete(delivery.storeName, delivery.toJson(), page: AppPages.delivery);
+  }
+
+  /// Settles inventory movements for an individual delivery that was completed after daily verification.
+  Future<void> settleSingleDelivery(String deliveryId) async {
+    await _inventoryService.settleSingleDelivery(deliveryId);
   }
 }

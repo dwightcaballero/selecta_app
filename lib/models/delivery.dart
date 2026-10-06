@@ -190,6 +190,9 @@ class Delivery {
   bool isRescheduled;
   String rescheduledToDeliveryId;
   Timestamp? rescheduledDate;
+  bool isReturnFinalized;
+  Timestamp? returnFinalizedDate;
+  String returnFinalizedBy;
   Timestamp? picklistCompletedDate;
   String picklistCompletedBy;
   int? picklistSequence;
@@ -236,6 +239,9 @@ class Delivery {
     this.isRescheduled = false,
     this.rescheduledToDeliveryId = '',
     this.rescheduledDate,
+    this.isReturnFinalized = false,
+    this.returnFinalizedDate,
+    this.returnFinalizedBy = '',
     this.picklistCompletedDate,
     this.picklistCompletedBy = '',
     this.picklistSequence,
@@ -289,6 +295,9 @@ class Delivery {
     isRescheduled: false,
     rescheduledToDeliveryId: '',
     rescheduledDate: null,
+    isReturnFinalized: false,
+    returnFinalizedDate: null,
+    returnFinalizedBy: '',
     picklistCompletedDate: null,
     picklistCompletedBy: '',
     picklistSequence: null,
@@ -341,6 +350,9 @@ class Delivery {
         isRescheduled: _parseBool(json['isRescheduled']),
         rescheduledToDeliveryId: json['rescheduledToDeliveryId'] as String? ?? '',
         rescheduledDate: _parseTimestamp(json['rescheduledDate']),
+        isReturnFinalized: _parseBool(json['isReturnFinalized']),
+        returnFinalizedDate: _parseTimestamp(json['returnFinalizedDate']),
+        returnFinalizedBy: json['returnFinalizedBy'] as String? ?? '',
         picklistCompletedDate: _parseTimestamp(json['picklistCompletedDate']),
         picklistCompletedBy: json['picklistCompletedBy'] as String? ?? '',
         picklistSequence: _parseInt(json['picklistSequence']),
@@ -382,6 +394,9 @@ class Delivery {
     bool? isRescheduled,
     String? rescheduledToDeliveryId,
     Timestamp? rescheduledDate,
+    bool? isReturnFinalized,
+    Timestamp? returnFinalizedDate,
+    String? returnFinalizedBy,
     Timestamp? picklistCompletedDate,
     String? picklistCompletedBy,
     int? picklistSequence,
@@ -421,6 +436,9 @@ class Delivery {
       isRescheduled: isRescheduled ?? this.isRescheduled,
       rescheduledToDeliveryId: rescheduledToDeliveryId ?? this.rescheduledToDeliveryId,
       rescheduledDate: rescheduledDate ?? this.rescheduledDate,
+      isReturnFinalized: isReturnFinalized ?? this.isReturnFinalized,
+      returnFinalizedDate: returnFinalizedDate ?? this.returnFinalizedDate,
+      returnFinalizedBy: returnFinalizedBy ?? this.returnFinalizedBy,
       picklistCompletedDate: picklistCompletedDate ?? this.picklistCompletedDate,
       picklistCompletedBy: picklistCompletedBy ?? this.picklistCompletedBy,
       picklistSequence: clearPicklistSequence ? null : (picklistSequence ?? this.picklistSequence),
@@ -461,6 +479,9 @@ class Delivery {
       'isRescheduled': isRescheduled,
       'rescheduledToDeliveryId': rescheduledToDeliveryId,
       'rescheduledDate': rescheduledDate,
+      'isReturnFinalized': isReturnFinalized,
+      'returnFinalizedDate': returnFinalizedDate,
+      'returnFinalizedBy': returnFinalizedBy,
       'picklistCompletedDate': picklistCompletedDate,
       'picklistCompletedBy': picklistCompletedBy,
       'picklistSequence': picklistSequence,
@@ -503,6 +524,9 @@ class DeliveryModelString {
   static String isRescheduled = 'isRescheduled';
   static String rescheduledToDeliveryId = 'rescheduledToDeliveryId';
   static String rescheduledDate = 'rescheduledDate';
+  static String isReturnFinalized = 'isReturnFinalized';
+  static String returnFinalizedDate = 'returnFinalizedDate';
+  static String returnFinalizedBy = 'returnFinalizedBy';
 
   static String createdBy = 'createdBy';
   static String lastUpdatedBy = 'lastUpdatedBy';

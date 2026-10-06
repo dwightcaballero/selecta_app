@@ -135,6 +135,53 @@ class _ReturnPageState extends State<ReturnPage> {
     }
   }
 
+  void onFinalizeReturn() async {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to finalize return records.');
+      return;
+    }
+    if (!_delivery.isReturnApprovedByDealer) {
+      ShowMessage.error(context, 'Dealer approval is required before finalizing. Please approve the return first.');
+      return;
+    }
+    if (_delivery.isReturnFinalized) {
+      ShowMessage.info(context, 'This return has already been finalized.');
+      return;
+    }
+    if (_isProcessing) return;
+
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Finalize Return',
+      message:
+          'Returned items for [${_delivery.storeName}] have already been checked into Current Stock in the warehouse.\n\n'
+          'Finalizing this return will close the transaction as cancelled and clear it from active returns.\n\n'
+          'Do you want to finalize this return?',
+      confirmText: 'Finalize Return',
+      icon: Icons.archive_outlined,
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _isProcessing = true);
+    try {
+      final updatedDelivery = await _controller.finalizeReturn(
+        deliveryId: widget.recID,
+        delivery: _delivery,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _delivery = updatedDelivery;
+      });
+      ShowMessage.success(context, 'Successfully finalized return for [${updatedDelivery.storeName}]!');
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) ShowMessage.error(context, 'Failed to finalize return: $e');
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
   void onDelete() async {
     if (!_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to delete return records.');
@@ -709,35 +756,81 @@ class _ReturnPageState extends State<ReturnPage> {
                   ),
                 ),
               ),
-            ] else ...[
+            ] else if (_delivery.isReturnFinalized) ...[
               Expanded(
-                flex: 2,
                 child: Container(
                   height: 50.0,
                   alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade50,
+                    color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.green.shade300),
+                    border: Border.all(color: Colors.grey.shade300),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.check_circle_rounded, color: Colors.green.shade700, size: 18),
-                      const SizedBox(width: 6),
+                      Icon(Icons.inventory_2_outlined, color: Colors.grey.shade700, size: 20),
+                      const SizedBox(width: 8),
                       Text(
-                        'Approved',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800, fontSize: 13),
+                        'Return Finalized (Stock in Warehouse)',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade800, fontSize: 13.5),
                       ),
                     ],
                   ),
                 ),
               ),
+            ] else if (_delivery.isRescheduled) ...[
+              Expanded(
+                child: Container(
+                  height: 50.0,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.blue.shade300),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline, color: Colors.blue.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Already Rescheduled (New Order Created)',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800, fontSize: 13.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else ...[
+              Expanded(
+                flex: 1,
+                child: OutlinedButton.icon(
+                  onPressed: _isProcessing ? null : onFinalizeReturn,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 50.0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    foregroundColor: Colors.orange.shade800,
+                    side: BorderSide(color: Colors.orange.shade400, width: 1.2),
+                  ),
+                  icon: const Icon(Icons.archive_outlined, size: 20),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Finalize Return',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(width: 10),
               Expanded(
-                flex: 3,
+                flex: 1,
                 child: FilledButton.icon(
-                  onPressed: (_isProcessing || _delivery.isRescheduled) ? null : _showRedeliverDialog,
+                  onPressed: _isProcessing ? null : _showRedeliverDialog,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     minimumSize: const Size(0, 50.0),
@@ -745,16 +838,14 @@ class _ReturnPageState extends State<ReturnPage> {
                   ),
                   icon: _isProcessing
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Icon(_delivery.isRescheduled ? Icons.check_circle_outline : Icons.local_shipping_outlined, size: 20),
-                  label: FittedBox(
+                      : const Icon(Icons.local_shipping_outlined, size: 20),
+                  label: const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
-                      _isProcessing
-                          ? 'Processing...'
-                          : (_delivery.isRescheduled ? 'Already Rescheduled' : 'Redeliver Order'),
+                      'Redeliver Order',
                       maxLines: 1,
                       softWrap: false,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -819,7 +910,71 @@ class _ReturnPageState extends State<ReturnPage> {
                   ],
                 ),
               ),
-            if (_delivery.isReturnApprovedByDealer)
+            if (_delivery.isReturnFinalized)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300, width: 1.2),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.inventory_2_outlined, color: Colors.grey.shade700, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Return Finalized (Completed)',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey.shade900),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Returned stock was physically checked into the warehouse by ${_delivery.returnApprovedBy.isNotEmpty ? _delivery.returnApprovedBy : "Dealer"}. This order has been finalized and closed${_delivery.returnFinalizedBy.isNotEmpty ? " by ${_delivery.returnFinalizedBy}" : ""}${_delivery.returnFinalizedDate != null ? " on ${DateFormat('MMM d, yyyy h:mm a').format(_delivery.returnFinalizedDate!.toDate())}" : ""}.',
+                            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade800),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (_delivery.isRescheduled)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade300, width: 1.2),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.local_shipping_outlined, color: Colors.blue.shade700, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Rescheduled for Redelivery',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'A new delivery order has been booked in Pending Picklist${_delivery.rescheduledDate != null ? " for ${DateFormat('MMM d, yyyy').format(_delivery.rescheduledDate!.toDate())}" : ""}. Warehouse staff will prepare the picklist for redelivery.',
+                            style: TextStyle(fontSize: 12.5, color: Colors.blue.shade800),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (_delivery.isReturnApprovedByDealer)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -842,7 +997,7 @@ class _ReturnPageState extends State<ReturnPage> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Returned stock was physically checked into the warehouse by ${_delivery.returnApprovedBy.isNotEmpty ? _delivery.returnApprovedBy : "Dealer"}${_delivery.returnApprovedDate != null ? " on ${DateFormat('MMM d, yyyy h:mm a').format(_delivery.returnApprovedDate!.toDate())}" : ""}. Items are now part of Current Stock. This record is locked.',
+                            'Returned stock was physically checked into the warehouse by ${_delivery.returnApprovedBy.isNotEmpty ? _delivery.returnApprovedBy : "Dealer"}${_delivery.returnApprovedDate != null ? " on ${DateFormat('MMM d, yyyy h:mm a').format(_delivery.returnApprovedDate!.toDate())}" : ""}. Items are now in Current Stock. You can now Redeliver or Finalize this return below.',
                             style: TextStyle(fontSize: 12.5, color: Colors.green.shade800),
                           ),
                         ],

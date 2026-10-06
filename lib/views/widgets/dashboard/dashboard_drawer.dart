@@ -32,6 +32,7 @@ class DashboardDrawer extends StatelessWidget {
   final DashboardDTO dashboardDTO;
   final Stream<int> merchBlitzCountStream;
   final Stream<int> tasksCountStream;
+  final Stream<int>? activeReturnsCountStream;
   final VoidCallback onSync;
   final VoidCallback onLogout;
   final Future<void> Function(Widget page) onNavigate;
@@ -44,6 +45,7 @@ class DashboardDrawer extends StatelessWidget {
     required this.dashboardDTO,
     required this.merchBlitzCountStream,
     required this.tasksCountStream,
+    this.activeReturnsCountStream,
     required this.onSync,
     required this.onLogout,
     required this.onNavigate,
@@ -116,12 +118,16 @@ class DashboardDrawer extends StatelessWidget {
               return _buildDrawerItem(context, Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badgeCount: snapshot.data ?? 0);
             },
           ),
-          _buildDrawerItem(
-            context,
-            Icons.assignment_return_outlined,
-            'Returns',
-            const ReturnlistPage(),
-            badgeCount: dashboardDTO.returnedDeliveryCount,
+          StreamBuilder<int>(
+            stream: activeReturnsCountStream,
+            initialData: dashboardDTO.returnedDeliveryCount,
+            builder: (ctx, snap) => _buildDrawerItem(
+              context,
+              Icons.assignment_return_outlined,
+              'Returns',
+              const ReturnlistPage(),
+              badgeCount: snap.data ?? dashboardDTO.returnedDeliveryCount,
+            ),
           ),
           _buildDrawerItem(
             context,

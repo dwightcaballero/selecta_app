@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
@@ -222,6 +223,17 @@ class _PicklistPageState extends State<PicklistPage> {
 
     if (!_hasProofOfDelivery) {
       ShowMessage.error(context, 'Please attach a Proof of Delivery image before marking For Delivery.');
+      return;
+    }
+
+    final deliveryDate = _currentDelivery.deliveryDate?.toDate() ?? DateTime.now();
+    final status = await _controller.checkBreakdownAndVerificationStatus(deliveryDate);
+    if (!mounted) return;
+    if (status.isVerified) {
+      ShowMessage.error(
+        context,
+        'Cannot mark For Delivery: The daily cash breakdown for ${DateFormat('MMM d, yyyy').format(deliveryDate)} has already been verified and closed by the dealer.\n\nPlease reschedule this delivery to an open date before dispatching.',
+      );
       return;
     }
 

@@ -59,7 +59,7 @@ class ReturnController {
     int activeCount = 0;
     for (final doc in docs) {
       final Delivery delivery = doc.data() as Delivery;
-      if (delivery.isRescheduled) continue;
+      if (delivery.isRescheduled || delivery.isReturnFinalized) continue;
       final returnAmount = delivery.returnAmount > 0 ? delivery.returnAmount : delivery.orderAmount;
       totalAmount += returnAmount;
       activeCount++;
@@ -75,8 +75,22 @@ class ReturnController {
   List filterReturns({
     required List docs,
     required String searchQuery,
+    String filterTab = 'Active',
   }) {
-    final list = List.from(docs);
+    var list = List.from(docs);
+
+    if (filterTab == 'Active') {
+      list = list.where((doc) {
+        final d = doc.data() as Delivery;
+        return !d.isRescheduled && !d.isReturnFinalized;
+      }).toList();
+    } else if (filterTab == 'Completed') {
+      list = list.where((doc) {
+        final d = doc.data() as Delivery;
+        return d.isRescheduled || d.isReturnFinalized;
+      }).toList();
+    }
+
     list.sort((a, b) {
       final da = (a.data() as Delivery).deliveryDate?.toDate() ?? DateTime(2000);
       final db = (b.data() as Delivery).deliveryDate?.toDate() ?? DateTime(2000);
@@ -231,6 +245,47 @@ class ReturnController {
 
     await Helperfunctions.logUpdate(
       '[RESCHEDULE RETURN] ${delivery.storeName} -> New Order: $newDeliveryId',
+      delivery.toJson(),
+      updatedDelivery.toJson(),
+      page: AppPages.returnPage,
+    );
+
+    return updatedDelivery;
+  }
+
+  /// Finalizes an approved return order (closes/cancels the order without rescheduling).
+  ///
+  /// The stock has already been approved and checked back into the warehouse.
+  /// Finalizing marks the order as closed and removes it from the active returns queue
+  /// while preserving financial and inventory audit trails.
+  Future<Delivery> finalizeReturn({
+    required String deliveryId,
+    required Delivery delivery,
+  }) async {
+    if (!delivery.isReturnApprovedByDealer) {
+      throw Exception('Dealer approval is required before finalizing. Please approve the returned stock into warehouse inventory first.');
+    }
+    if (delivery.isReturnFinalized) {
+      throw Exception('This return has already been finalized.');
+    }
+
+    final currentUserName = authService.value.currentUser?.displayName ??
+        authService.value.currentUser?.email ??
+        'Dealer';
+
+    final updatedDelivery = delivery.copyWith(
+      isReturnFinalized: true,
+      returnFinalizedBy: currentUserName,
+      returnFinalizedDate: Timestamp.now(),
+      lastUpdatedBy: currentUserName,
+      lastupdatedDate: Timestamp.now(),
+      lastUpdatedPage: AppPages.returnPage,
+    );
+
+    await _deliveryService.updateDelivery(deliveryId, updatedDelivery);
+
+    await Helperfunctions.logUpdate(
+      '[RETURN FINALIZED] ${delivery.storeName}',
       delivery.toJson(),
       updatedDelivery.toJson(),
       page: AppPages.returnPage,

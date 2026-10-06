@@ -27,12 +27,21 @@ class _DeliveryPageState extends State<DeliveryPage> {
   final DeliveryController _controller = DeliveryController();
   bool hasBreakdownForDay = false;
   bool isDayVerified = false;
-  bool get isLocked =>
-      isDayVerified ||
-      widget.delivery.isReturnApprovedByDealer ||
-      widget.delivery.isInventorySettled ||
-      (!isDealer && hasBreakdownForDay);
+  bool get isPermanentlySettled =>
+      widget.delivery.isReturnApprovedByDealer || widget.delivery.isInventorySettled;
+
+  bool get isLocked {
+    if (isPermanentlySettled) return true;
+    if (!isDealer) {
+      return isDayVerified || hasBreakdownForDay;
+    }
+    return false;
+  }
+
   bool get isSalesmanLocked => isLocked;
+
+  bool get isDealerLateReconciliation =>
+      isDealer && isDayVerified && !widget.delivery.isInventorySettled && widget.deliveryID.isNotEmpty;
 
   bool _withReturns = false;
   final Map<String, int> _returnQuantities = {};
@@ -253,11 +262,27 @@ class _DeliveryPageState extends State<DeliveryPage> {
     if (isLocked) {
       final msg = widget.delivery.isReturnApprovedByDealer
           ? 'Editing is locked. This returned order has already been approved by the dealer and cannot be modified.'
-          : (isDayVerified || widget.delivery.isInventorySettled
-              ? 'Editing is locked. This day\'s cash breakdown has been verified and settled.'
-              : 'Editing is disabled. A cash breakdown is already recorded for this day.');
+          : (widget.delivery.isInventorySettled
+              ? 'Editing is locked. This delivery order has already been settled into inventory.'
+              : (isDayVerified
+                  ? 'Editing is locked. This day\'s cash breakdown has been verified.'
+                  : 'Editing is disabled. A cash breakdown is already recorded for this day.'));
       ShowMessage.error(context, msg);
       return;
+    }
+
+    if (isDealerLateReconciliation) {
+      final confirmReconcile = await ShowMessage.confirm(
+        context,
+        title: 'Reconcile Late Delivery',
+        message:
+            'This date\'s cash breakdown has already been verified and closed.\n\n'
+            'Updating this order will automatically reconcile and settle inventory movements for these items.\n\n'
+            'Do you want to proceed?',
+        confirmText: 'Update & Reconcile',
+        icon: Icons.sync_problem_outlined,
+      );
+      if (confirmReconcile != true || !mounted) return;
     }
 
     final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
@@ -312,8 +337,18 @@ class _DeliveryPageState extends State<DeliveryPage> {
           itemsWithReturns: itemsWithReturns,
         );
 
+        // If this was a late delivery reconciled on a verified date, settle inventory immediately
+        if (isDealerLateReconciliation &&
+            (dropdownStatus.text == DeliveryStatus.delivered || dropdownStatus.text == DeliveryStatus.returned)) {
+          await _controller.settleSingleDelivery(widget.deliveryID);
+        }
+
         if (mounted) {
-          ShowMessage.success(context, 'Successfully updated delivery record!\n[${updatedDelivery.storeName}]');
+          final successMsg = isDealerLateReconciliation &&
+                  (dropdownStatus.text == DeliveryStatus.delivered || dropdownStatus.text == DeliveryStatus.returned)
+              ? 'Successfully updated [${updatedDelivery.storeName}] and reconciled inventory!'
+              : 'Successfully updated delivery record!\n[${updatedDelivery.storeName}]';
+          ShowMessage.success(context, successMsg);
           Navigator.pop(context); // go back to previous page
         }
       } catch (e) {
@@ -331,8 +366,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
       ShowMessage.error(context, 'This returned order has already been approved by the dealer and cannot be deleted.');
       return;
     }
-    if (isDayVerified || widget.delivery.isInventorySettled) {
-      ShowMessage.error(context, 'This delivery has been verified and settled, and cannot be deleted.');
+    if (widget.delivery.isInventorySettled) {
+      ShowMessage.error(context, 'This delivery has been settled into inventory, and cannot be deleted.');
+      return;
+    }
+    if (!isDealer && isDayVerified) {
+      ShowMessage.error(context, 'This delivery date has been verified and settled. Only dealers can manage records for this day.');
       return;
     }
     try {
@@ -1405,9 +1444,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         child: Text(
                           widget.delivery.isReturnApprovedByDealer
                               ? 'Locked (Return Approved)'
-                              : (isDayVerified || widget.delivery.isInventorySettled
+                              : (widget.delivery.isInventorySettled
                                   ? 'Locked (Inventory Settled)'
-                                  : (isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Update Delivery')),
+                                  : (isLocked
+                                      ? 'Locked (Breakdown Verified)'
+                                      : (isDealerLateReconciliation
+                                          ? 'Reconcile & Update'
+                                          : 'Update Delivery'))),
                           maxLines: 1,
                           softWrap: false,
                           style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
@@ -1592,12 +1635,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     decoration: BoxDecoration(
                       color: widget.delivery.isReturnApprovedByDealer
                           ? Colors.green.shade50
-                          : (isDayVerified ? Colors.red.shade50 : Colors.amber.shade50),
+                          : (widget.delivery.isInventorySettled || isDayVerified ? Colors.red.shade50 : Colors.amber.shade50),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: widget.delivery.isReturnApprovedByDealer
                             ? Colors.green.shade300
-                            : (isDayVerified ? Colors.red.shade300 : Colors.amber.shade300),
+                            : (widget.delivery.isInventorySettled || isDayVerified ? Colors.red.shade300 : Colors.amber.shade300),
                         width: 1.2,
                       ),
                     ),
@@ -1607,7 +1650,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           widget.delivery.isReturnApprovedByDealer ? Icons.check_circle_outline : Icons.lock_outline,
                           color: widget.delivery.isReturnApprovedByDealer
                               ? Colors.green.shade900
-                              : (isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                              : (widget.delivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
                           size: 24,
                         ),
                         const SizedBox(width: 12),
@@ -1615,14 +1658,49 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           child: Text(
                             widget.delivery.isReturnApprovedByDealer
                                 ? 'Locked: This return order has been approved by the dealer. Returned items have been moved into Current Stock and this record cannot be modified or deleted.'
-                                : (isDayVerified
-                                    ? 'Locked: The dealer has verified the daily cash breakdown and deliveries for this day are locked to protect inventory accuracy.'
-                                    : 'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.'),
+                                : (widget.delivery.isInventorySettled
+                                    ? 'Locked: This delivery order has already been verified and settled into inventory.'
+                                    : (isDayVerified
+                                        ? 'Locked: The dealer has verified the daily cash breakdown and delivery records for this day are locked for salesmen.'
+                                        : 'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.')),
                             style: TextStyle(
                               fontSize: 14,
                               color: widget.delivery.isReturnApprovedByDealer
                                   ? Colors.green.shade900
-                                  : (isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                                  : (widget.delivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (isDealerLateReconciliation)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.amber.shade400,
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.amber.shade900,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Late Delivery: This date\'s cash breakdown has already been verified. As a dealer, you can update or reschedule this transaction; saving as Delivered or Returned will automatically reconcile inventory.',
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              color: Colors.amber.shade900,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

@@ -100,6 +100,24 @@ class _BreakdownPageState extends State<BreakdownPage> {
       return;
     }
 
+    final date = widget.breakdown.breakdownDate.toDate();
+    final snapshot = await _controller.fetchEndOfDayData(date);
+    if (!mounted) return;
+    if (snapshot.endOfDayData.pendingstatus > 0) {
+      ShowMessage.error(
+        context,
+        'Cannot verify breakdown: There are still ${snapshot.endOfDayData.pendingstatus} delivery record(s) pending "For Delivery" on this date.\n\nAll deliveries must be completed (Delivered or Returned) before verifying the breakdown.',
+      );
+      return;
+    }
+    if (snapshot.endOfDayData.pendingPicklistStatus > 0) {
+      ShowMessage.error(
+        context,
+        'Cannot verify breakdown: There are still ${snapshot.endOfDayData.pendingPicklistStatus} order(s) pending picklist on this date.\n\nPlease complete or reschedule them first.',
+      );
+      return;
+    }
+
     final confirmed = await ShowMessage.confirm(
       context,
       title: 'Verify Cash Breakdown',
@@ -110,7 +128,6 @@ class _BreakdownPageState extends State<BreakdownPage> {
 
     if (confirmed != true || !mounted) return;
 
-    final date = widget.breakdown.breakdownDate.toDate();
     setState(() => _isVerifying = true);
 
     try {
