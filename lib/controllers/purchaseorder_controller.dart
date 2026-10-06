@@ -9,6 +9,7 @@ import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/gemini_ai_service.dart';
 import 'package:selecta_ops/services/inventory_service.dart';
 import 'package:selecta_ops/services/purchaseorder_service.dart';
+import 'package:selecta_ops/services/supplier_oos_service.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 
 /// Class to hold summary count statistics for purchase orders.
@@ -369,6 +370,32 @@ class PurchaseOrderController {
       updatedPurchaseorder.toJson(),
       page: AppPages.purchaseOrder,
     );
+
+    // Record undelivered / missing Selecta products (0 delivered) to Supplier OOS tracker
+    try {
+      final oosProductIds = missingItems
+          .where((i) => i.productSource == 'selecta')
+          .map((i) => i.productId)
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+
+      final matchedProductIds = {
+        ...confirmedItems.where((c) => c.productSource == 'selecta').map((c) => c.productId),
+        ...oosProductIds,
+      }.toList();
+
+      if (oosProductIds.isNotEmpty) {
+        await SupplierOosService().recordDailyScan(
+          scanDate: officialInvoiceDate,
+          outOfStockProductIds: oosProductIds,
+          matchedProductIds: matchedProductIds,
+          notes: 'Auto-recorded from PO #${currentOrder.poNumber.isNotEmpty ? currentOrder.poNumber : resolvedInvoiceNumber} (Invoice #$resolvedInvoiceNumber)',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error auto-recording supplier OOS from PO invoice: $e');
+    }
   }
 
   // ============================================================

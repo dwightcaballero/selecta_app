@@ -19,6 +19,7 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -148,6 +149,7 @@ class DashboardDrawer extends StatelessWidget {
           // 2. Applications
           _buildDrawerSectionHeader(context, 'Applications'),
           _buildDrawerItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: 'Dealer')),
+          _buildDrawerItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
           _buildDrawerItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
           _buildDrawerItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
           _buildDrawerItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),

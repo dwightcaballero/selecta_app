@@ -20,6 +20,7 @@ import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -136,6 +137,7 @@ class DashboardSidebar extends StatelessWidget {
                     ),
                   ),
                   _buildItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
+                  if (isDealer) _buildItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
                   if (isDealer) _buildItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
                   _buildItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badge: dashboardDTO.pendingPjpCount),
                   _buildItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
