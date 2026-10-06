@@ -71,15 +71,22 @@ class ReturnController {
     );
   }
 
-  /// Filters returned delivery document snapshots by matching store name or remarks.
+  /// Filters and sorts returned delivery document snapshots by matching store name or remarks.
   List filterReturns({
     required List docs,
     required String searchQuery,
   }) {
-    final query = searchQuery.trim().toLowerCase();
-    if (query.isEmpty) return docs;
+    final list = List.from(docs);
+    list.sort((a, b) {
+      final da = (a.data() as Delivery).deliveryDate?.toDate() ?? DateTime(2000);
+      final db = (b.data() as Delivery).deliveryDate?.toDate() ?? DateTime(2000);
+      return db.compareTo(da);
+    });
 
-    return docs.where((doc) {
+    final query = searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return list;
+
+    return list.where((doc) {
       final Delivery delivery = doc.data() as Delivery;
       final nameMatches = delivery.storeName.toLowerCase().contains(query);
       final remarkMatches = delivery.remarks.toLowerCase().contains(query);
@@ -91,13 +98,63 @@ class ReturnController {
   // Detail Operations (ReturnPage)
   // ==========================================
 
+  /// Dealer approves returned delivery order:
+  /// Verifies physical arrival at warehouse, moves returned items from Incoming Stock into Current Stock,
+  /// and updates delivery record with approval metadata.
+  Future<Delivery> approveReturnedStock({
+    required String deliveryId,
+    required Delivery delivery,
+  }) async {
+    final isDealer = await checkIsDealer();
+    if (!isDealer) {
+      throw Exception('Only dealers are authorized to approve returned stock.');
+    }
+    if (delivery.isReturnApprovedByDealer) {
+      throw Exception('This return has already been approved by the dealer.');
+    }
+
+    final currentUserName = authService.value.currentUser?.displayName ??
+        authService.value.currentUser?.email ??
+        'Dealer';
+
+    // 1. Move returned units from incomingQuantity to physical stockQuantity
+    await _inventoryService.approveReturnAndReplenishStock(delivery: delivery);
+
+    // 2. Mark delivery document as dealer approved
+    final updatedDelivery = delivery.copyWith(
+      isReturnApprovedByDealer: true,
+      returnApprovedBy: currentUserName,
+      returnApprovedDate: Timestamp.now(),
+      isReturnIncoming: false,
+      lastUpdatedBy: currentUserName,
+      lastupdatedDate: Timestamp.now(),
+      lastUpdatedPage: AppPages.returnPage,
+    );
+
+    await _deliveryService.updateDelivery(deliveryId, updatedDelivery);
+
+    await Helperfunctions.logUpdate(
+      '[RETURN APPROVED] ${delivery.storeName}',
+      delivery.toJson(),
+      updatedDelivery.toJson(),
+      page: AppPages.returnPage,
+    );
+
+    return updatedDelivery;
+  }
+
   /// Reschedules a returned delivery (Option A: creates a new delivery in [DeliveryStatus.pendingPicklist]
   /// on the target date, re-reserves stock, and marks the original delivery as rescheduled).
+  /// Requires dealer approval of returned stock before rescheduling.
   Future<Delivery> rescheduleDelivery({
     required String deliveryId,
     required Delivery delivery,
     DateTime? rescheduleDate,
   }) async {
+    if (!delivery.isReturnApprovedByDealer) {
+      throw Exception('Dealer approval is required before rescheduling. Please approve the returned stock into warehouse inventory first.');
+    }
+
     final targetDate = rescheduleDate != null
         ? Timestamp.fromDate(rescheduleDate)
         : Timestamp.now();
@@ -189,6 +246,9 @@ class ReturnController {
     required String deliveryId,
     required Delivery delivery,
   }) async {
+    if (delivery.isReturnApprovedByDealer) {
+      throw Exception('Cannot delete a return record after it has already been approved by the dealer.');
+    }
     if (delivery.isInventorySettled) {
       throw Exception('Cannot delete a return record after the daily breakdown has been verified and settled.');
     }

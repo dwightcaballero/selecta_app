@@ -571,18 +571,14 @@ class DeliveryController {
     final double orderAmount = computeItemsOrderAmount(cleanItems);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
-    // 1. Maintain floating stock reservation for final picked items
-    // (Actual physical inventory deduction will occur when the dealer verifies the daily cash breakdown)
-    if (currentDelivery.isInventoryReserved) {
-      await _inventoryService.adjustReservedStockForOrderUpdate(
+    // 1. Stock Physically Leaves Warehouse (Marked "For Delivery"):
+    // Deduct from physical Current Stock (stockQuantity) and release Reserved Stock (reservedQuantity).
+    if (!currentDelivery.isInventoryDeducted) {
+      await _inventoryService.confirmPicklistAndDeductStock(
         storeName: storeName,
-        oldItems: currentDelivery.items,
-        newItems: cleanItems,
-      );
-    } else {
-      await _inventoryService.reserveStockForOrder(
-        storeName: storeName,
-        items: cleanItems,
+        reservedItems: currentDelivery.items,
+        pickedItems: cleanItems,
+        wasReserved: currentDelivery.isInventoryReserved,
       );
     }
 
@@ -600,8 +596,8 @@ class DeliveryController {
       imagePath: imageFilePath,
       orderAmount: orderAmount,
       items: cleanItems.map((i) => i.copyWith(isPicked: true)).toList(),
-      isInventoryReserved: true,
-      isInventoryDeducted: false,
+      isInventoryReserved: false,
+      isInventoryDeducted: true,
       picklistCompletedDate: Timestamp.now(),
       picklistCompletedBy: currentUserName,
       lastUpdatedBy: currentUserName,
@@ -888,6 +884,13 @@ class DeliveryController {
     String? placementId,
     List<OrderItem>? itemsWithReturns,
   }) async {
+    if (currentDelivery.isReturnApprovedByDealer) {
+      throw Exception('This delivery order has already been approved by the dealer and cannot be modified.');
+    }
+    if (currentDelivery.isInventorySettled) {
+      throw Exception('This delivery order has already been verified and locked.');
+    }
+
     double returnAmount = 0;
     double creditAmount = 0;
     double onlineAmount = 0;
@@ -942,6 +945,19 @@ class DeliveryController {
       default:
     }
 
+    // Returned Stock Tracking:
+    // When an order is marked returned or has partial returns, and physical stock had already left the warehouse,
+    // the returned goods are now incoming stock heading back to the warehouse.
+    final returnedItems = finalItems.where((i) => i.returnedQuantity > 0).toList();
+    bool markReturnIncoming = currentDelivery.isReturnIncoming;
+    if (returnedItems.isNotEmpty && !currentDelivery.isReturnIncoming && currentDelivery.isInventoryDeducted) {
+      await _inventoryService.addIncomingStockForReturn(
+        storeName: storeName,
+        returnedItems: returnedItems,
+      );
+      markReturnIncoming = true;
+    }
+
     // Update image
     final String imageFilePath = await Helperfunctions.updateImage(context, imageFile, networkImagePath, currentDelivery.imagePath);
 
@@ -959,6 +975,8 @@ class DeliveryController {
       cashAmount: cashAmount,
       onlineAmount: onlineAmount,
       items: finalItems,
+      isReturnIncoming: markReturnIncoming,
+      isReturnApprovedByDealer: false,
       deliveryDate: selectedDate != null ? Timestamp.fromDate(selectedDate) : currentDelivery.deliveryDate,
       createdBy: currentDelivery.createdBy,
       lastUpdatedBy: currentUserName,
@@ -1083,8 +1101,11 @@ class DeliveryController {
   /// Deletes a delivery record, releases any floating reserved inventory if still in
   /// `Pending Picklist`, and removes its associated uploaded image from storage.
   Future<void> deleteDelivery({required BuildContext context, required String deliveryId, required Delivery delivery}) async {
+    if (delivery.isReturnApprovedByDealer) {
+      throw Exception('Cannot delete a delivery record that has already been approved by dealer.');
+    }
     if (delivery.isInventorySettled) {
-      throw Exception('Cannot delete a delivery record for a date that has already been verified and settled.');
+      throw Exception('Cannot delete a delivery record for a date that has already been verified and locked.');
     }
     if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
       await _inventoryService.releaseReservedStockForOrder(storeName: delivery.storeName, items: delivery.items);

@@ -1442,7 +1442,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       );
       if (mounted) {
         setState(() => _isSaving = false);
-        ShowMessage.success(context, '🟡 Purchase Order saved. Floating inventory is now available for ordering.');
+        ShowMessage.success(context, '🟡 Purchase Order saved. Incoming stock is now available for ordering.');
         Navigator.pop(context);
       }
     } catch (e, s) {

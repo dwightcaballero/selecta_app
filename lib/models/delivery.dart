@@ -183,6 +183,10 @@ class Delivery {
   bool isInventorySettled;
   Timestamp? inventorySettledDate;
   String inventorySettledBy;
+  bool isReturnApprovedByDealer;
+  Timestamp? returnApprovedDate;
+  String returnApprovedBy;
+  bool isReturnIncoming;
   bool isRescheduled;
   String rescheduledToDeliveryId;
   Timestamp? rescheduledDate;
@@ -225,6 +229,10 @@ class Delivery {
     this.isInventorySettled = false,
     this.inventorySettledDate,
     this.inventorySettledBy = '',
+    this.isReturnApprovedByDealer = false,
+    this.returnApprovedDate,
+    this.returnApprovedBy = '',
+    this.isReturnIncoming = false,
     this.isRescheduled = false,
     this.rescheduledToDeliveryId = '',
     this.rescheduledDate,
@@ -274,6 +282,10 @@ class Delivery {
     isInventorySettled: false,
     inventorySettledDate: null,
     inventorySettledBy: '',
+    isReturnApprovedByDealer: false,
+    returnApprovedDate: null,
+    returnApprovedBy: '',
+    isReturnIncoming: false,
     isRescheduled: false,
     rescheduledToDeliveryId: '',
     rescheduledDate: null,
@@ -322,6 +334,10 @@ class Delivery {
         isInventorySettled: _parseBool(json['isInventorySettled']),
         inventorySettledDate: _parseTimestamp(json['inventorySettledDate']),
         inventorySettledBy: json['inventorySettledBy'] as String? ?? '',
+        isReturnApprovedByDealer: _parseBool(json['isReturnApprovedByDealer']),
+        returnApprovedDate: _parseTimestamp(json['returnApprovedDate']),
+        returnApprovedBy: json['returnApprovedBy'] as String? ?? '',
+        isReturnIncoming: _parseBool(json['isReturnIncoming']),
         isRescheduled: _parseBool(json['isRescheduled']),
         rescheduledToDeliveryId: json['rescheduledToDeliveryId'] as String? ?? '',
         rescheduledDate: _parseTimestamp(json['rescheduledDate']),
@@ -359,6 +375,10 @@ class Delivery {
     bool? isInventorySettled,
     Timestamp? inventorySettledDate,
     String? inventorySettledBy,
+    bool? isReturnApprovedByDealer,
+    Timestamp? returnApprovedDate,
+    String? returnApprovedBy,
+    bool? isReturnIncoming,
     bool? isRescheduled,
     String? rescheduledToDeliveryId,
     Timestamp? rescheduledDate,
@@ -394,6 +414,10 @@ class Delivery {
       isInventorySettled: isInventorySettled ?? this.isInventorySettled,
       inventorySettledDate: inventorySettledDate ?? this.inventorySettledDate,
       inventorySettledBy: inventorySettledBy ?? this.inventorySettledBy,
+      isReturnApprovedByDealer: isReturnApprovedByDealer ?? this.isReturnApprovedByDealer,
+      returnApprovedDate: returnApprovedDate ?? this.returnApprovedDate,
+      returnApprovedBy: returnApprovedBy ?? this.returnApprovedBy,
+      isReturnIncoming: isReturnIncoming ?? this.isReturnIncoming,
       isRescheduled: isRescheduled ?? this.isRescheduled,
       rescheduledToDeliveryId: rescheduledToDeliveryId ?? this.rescheduledToDeliveryId,
       rescheduledDate: rescheduledDate ?? this.rescheduledDate,
@@ -430,6 +454,10 @@ class Delivery {
       'isInventorySettled': isInventorySettled,
       'inventorySettledDate': inventorySettledDate,
       'inventorySettledBy': inventorySettledBy,
+      'isReturnApprovedByDealer': isReturnApprovedByDealer,
+      'returnApprovedDate': returnApprovedDate,
+      'returnApprovedBy': returnApprovedBy,
+      'isReturnIncoming': isReturnIncoming,
       'isRescheduled': isRescheduled,
       'rescheduledToDeliveryId': rescheduledToDeliveryId,
       'rescheduledDate': rescheduledDate,
@@ -468,6 +496,10 @@ class DeliveryModelString {
   static String isInventorySettled = 'isInventorySettled';
   static String inventorySettledDate = 'inventorySettledDate';
   static String inventorySettledBy = 'inventorySettledBy';
+  static String isReturnApprovedByDealer = 'isReturnApprovedByDealer';
+  static String returnApprovedDate = 'returnApprovedDate';
+  static String returnApprovedBy = 'returnApprovedBy';
+  static String isReturnIncoming = 'isReturnIncoming';
   static String isRescheduled = 'isRescheduled';
   static String rescheduledToDeliveryId = 'rescheduledToDeliveryId';
   static String rescheduledDate = 'rescheduledDate';

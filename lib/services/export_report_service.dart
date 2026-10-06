@@ -375,7 +375,7 @@ class ExportReportService {
             marginPct.toStringAsFixed(1),
             costVal.toStringAsFixed(2),
             retailVal.toStringAsFixed(2),
-            p.stockQuantity <= 0 ? 'Out of Stock' : (p.stockQuantity <= 10 ? 'Low Stock' : 'Good'),
+            p.isOutOfStock ? 'Out of Stock' : (p.isLowStock ? 'Low Stock' : 'Good'),
           ]);
         }
 

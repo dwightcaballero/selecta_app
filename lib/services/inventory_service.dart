@@ -36,6 +36,7 @@ class InventoryService {
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? adminSub;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? otherSub;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? poSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? returnSub;
 
     List<InventoryItem> selectaItems = [];
     List<InventoryItem> otherItems = [];
@@ -44,21 +45,30 @@ class InventoryService {
     List<AdminSelectaProduct> adminProducts = [];
     Map<String, int> pendingIncomingById = {};
     Map<String, int> pendingIncomingByName = {};
+    Map<String, int> pendingReturnById = {};
+    Map<String, int> pendingReturnByName = {};
     Set<String> allLocalSelectaIds = {};
     Set<String> allLocalSelectaNames = {};
     bool selectaLoaded = false;
     bool otherLoaded = false;
     bool poLoaded = false;
+    bool returnLoaded = false;
 
     void emitCombined() {
-      if (!selectaLoaded || !otherLoaded || !poLoaded) return;
+      if (!selectaLoaded || !otherLoaded || !poLoaded || !returnLoaded) return;
       if (controller.isClosed) return;
+
+      int resolveLiveIncoming(InventoryItem item) {
+        final nameKey = item.productName.trim().toLowerCase();
+        final poIncoming = pendingIncomingById[item.id] ?? pendingIncomingByName[nameKey] ?? 0;
+        final retIncoming = pendingReturnById[item.id] ?? pendingReturnByName[nameKey] ?? 0;
+        final liveTotal = poIncoming + retIncoming;
+        return liveTotal > 0 ? liveTotal : item.incomingQuantity;
+      }
 
       final resolvedSelecta = selectaItems.map((item) {
         final nameKey = item.productName.trim().toLowerCase();
-
-        final liveIncoming = pendingIncomingById[item.id] ?? pendingIncomingByName[nameKey] ?? 0;
-        final effectiveIncoming = liveIncoming > 0 ? liveIncoming : item.incomingQuantity;
+        final effectiveIncoming = resolveLiveIncoming(item);
         var current = item.copyWith(incomingQuantity: effectiveIncoming);
 
         if (current.tag.isNotEmpty) return current;
@@ -75,7 +85,8 @@ class InventoryService {
         if (adminProd.productName.isNotEmpty &&
             !allLocalSelectaIds.contains(adminProd.id) &&
             !allLocalSelectaNames.contains(nameKey)) {
-          final liveIncoming = pendingIncomingById[adminProd.id] ?? pendingIncomingByName[nameKey] ?? 0;
+          final liveIncoming = (pendingIncomingById[adminProd.id] ?? pendingIncomingByName[nameKey] ?? 0) +
+              (pendingReturnById[adminProd.id] ?? pendingReturnByName[nameKey] ?? 0);
           resolvedSelecta.add(
             InventoryItem(
               id: adminProd.id,
@@ -97,9 +108,14 @@ class InventoryService {
         }
       }
 
+      final resolvedOther = otherItems.map((item) {
+        final effectiveIncoming = resolveLiveIncoming(item);
+        return item.copyWith(incomingQuantity: effectiveIncoming);
+      }).toList();
+
       final combined = <InventoryItem>[
         ...resolvedSelecta,
-        ...otherItems,
+        ...resolvedOther,
       ].where((item) => item.isActive).toList()
         ..sort((a, b) => a.productName.toLowerCase().compareTo(b.productName.toLowerCase()));
       controller.add(combined);
@@ -224,12 +240,62 @@ class InventoryService {
             emitCombined();
           },
         );
+
+        returnSub = _firestore
+            .collection(DELIVERY_COLLECTION_REF)
+            .snapshots()
+            .listen(
+          (snap) {
+            final Map<String, int> rById = {};
+            final Map<String, int> rByName = {};
+
+            for (final doc in snap.docs) {
+              final data = doc.data();
+              final isApproved = data['isReturnApprovedByDealer'] as bool? ?? false;
+              final status = data['transactionStatus'] as String? ?? '';
+              final isReturnIncoming = data['isReturnIncoming'] as bool? ?? false;
+              final isFullReturn = status == DeliveryStatus.returned;
+
+              // Only include unapproved returns (full order return or explicit partial return incoming)
+              if (!isApproved && (isFullReturn || isReturnIncoming)) {
+                final itemsList = data['items'] as List<dynamic>? ?? [];
+                for (final raw in itemsList) {
+                  if (raw is Map) {
+                    final pid = (raw['productId'] as String? ?? '').trim();
+                    final pName = (raw['productName'] as String? ?? '').trim().toLowerCase();
+                    final retQty = (raw['returnedQuantity'] as num?)?.toInt() ?? 0;
+                    final pickedQty = (raw['pickedQuantity'] as num?)?.toInt() ?? 0;
+                    final qty = retQty > 0 ? retQty : (isFullReturn ? pickedQty : 0);
+                    if (qty > 0) {
+                      if (pid.isNotEmpty) {
+                        rById[pid] = (rById[pid] ?? 0) + qty;
+                      }
+                      if (pName.isNotEmpty) {
+                        rByName[pName] = (rByName[pName] ?? 0) + qty;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            pendingReturnById = rById;
+            pendingReturnByName = rByName;
+            returnLoaded = true;
+            emitCombined();
+          },
+          onError: (Object _, StackTrace _) {
+            returnLoaded = true;
+            emitCombined();
+          },
+        );
       },
       onCancel: () async {
         await selectaSub?.cancel();
         await adminSub?.cancel();
         await otherSub?.cancel();
         await poSub?.cancel();
+        await returnSub?.cancel();
       },
     );
 
@@ -925,6 +991,104 @@ class InventoryService {
     }
 
     await batch.commit();
+  }
+
+  /// Adds returned items into incoming stock (`incomingQuantity`) when a delivery order
+  /// has returns recorded or is tagged as returned, awaiting physical arrival and dealer inspection.
+  Future<void> addIncomingStockForReturn({
+    required String storeName,
+    required List<OrderItem> returnedItems,
+  }) async {
+    if (returnedItems.isEmpty) return;
+    final now = Timestamp.now();
+    final batch = _firestore.batch();
+    bool hasUpdates = false;
+
+    for (final item in returnedItems) {
+      final qty = item.returnedQuantity > 0 ? item.returnedQuantity : item.pickedQuantity;
+      if (item.productId.isEmpty || qty <= 0) continue;
+      final collectionName = _collectionForSource(item.productSource);
+      final productRef = _firestore.collection(collectionName).doc(item.productId);
+      final snap = await productRef.get();
+      if (!snap.exists) continue;
+      final data = snap.data() ?? {};
+
+      final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
+      final nextIncoming = currentIncoming + qty;
+
+      batch.update(productRef, {
+        'incomingQuantity': nextIncoming,
+        'updatedAt': now,
+      });
+      hasUpdates = true;
+    }
+
+    if (hasUpdates) {
+      await batch.commit();
+    }
+  }
+
+  /// Called when the dealer approves returned items in the Return page.
+  /// Moves returned stock out of `incomingQuantity` and adds it into physical `stockQuantity`.
+  /// Also logs an [InventoryMovement] audit record for each approved returned item.
+  Future<void> approveReturnAndReplenishStock({
+    required Delivery delivery,
+  }) async {
+    if (delivery.items.isEmpty) return;
+    final now = Timestamp.now();
+    final createdBy = _currentActorName();
+    final batch = _firestore.batch();
+    bool hasUpdates = false;
+
+    final isFullReturn = delivery.transactionStatus == DeliveryStatus.returned;
+    final returnItems = delivery.items.where((i) {
+      final qty = i.returnedQuantity > 0 ? i.returnedQuantity : (isFullReturn ? i.pickedQuantity : 0);
+      return i.productId.isNotEmpty && qty > 0;
+    }).toList();
+
+    for (final item in returnItems) {
+      final retQty = item.returnedQuantity > 0 ? item.returnedQuantity : (isFullReturn ? item.pickedQuantity : 0);
+      if (retQty <= 0) continue;
+
+      final collectionName = _collectionForSource(item.productSource);
+      final productRef = _firestore.collection(collectionName).doc(item.productId);
+      final snap = await productRef.get();
+      if (!snap.exists) continue;
+      final data = snap.data() ?? {};
+
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
+
+      final nextStock = currentStock + retQty;
+      final nextIncoming = (currentIncoming - retQty) < 0 ? 0 : (currentIncoming - retQty);
+
+      batch.update(productRef, {
+        'stockQuantity': nextStock,
+        'incomingQuantity': nextIncoming,
+        'updatedAt': now,
+      });
+      hasUpdates = true;
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        productSource: item.productSource,
+        previousStock: currentStock,
+        newStock: nextStock,
+        delta: retQty,
+        reason: 'Return Approved by Dealer',
+        notes: 'Store: ${delivery.storeName} (Restocked: $retQty)',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
+    }
+
+    if (hasUpdates) {
+      await batch.commit();
+    }
   }
 
   /// Calculates net stock and reserved adjustments for verified deliveries without writing to Firestore.

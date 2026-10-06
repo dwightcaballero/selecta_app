@@ -577,7 +577,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     final availableQty = dealerP?.availableQuantity ?? stockQty;
     final lowStockThreshold = dealerP?.lowStockThreshold ?? 10;
     final isOutOfStock = dealerP?.isOutOfStock ?? (stockQty <= 0);
-    final isLowStock = dealerP?.isLowStock ?? (stockQty > 0 && stockQty <= lowStockThreshold);
+    final isLowStock = dealerP?.isLowStock ?? (stockQty > 0 && availableQty <= lowStockThreshold);
 
     final Color stockBadgeColor = isOutOfStock
         ? colorScheme.error

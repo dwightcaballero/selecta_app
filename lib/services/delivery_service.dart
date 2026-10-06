@@ -123,8 +123,13 @@ class DeliveryService {
 
   Stream<QuerySnapshot> getListDeliveryWithReturnStatus() {
     return _ordersRef
-        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned)
-        .orderBy(DeliveryModelString.deliveryDate, descending: true)
+        .where(
+          Filter.or(
+            Filter(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned),
+            Filter(DeliveryModelString.isReturnIncoming, isEqualTo: true),
+            Filter(DeliveryModelString.isReturnApprovedByDealer, isEqualTo: true),
+          ),
+        )
         .snapshots();
   }
 

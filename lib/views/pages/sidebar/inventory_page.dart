@@ -54,7 +54,8 @@ class _InventoryPageState extends State<InventoryPage> {
         'By Piece' => item.source == InventoryProductSource.selecta && !item.category.trim().toLowerCase().contains('case'),
         'By Case' => item.source == InventoryProductSource.selecta && item.category.trim().toLowerCase().contains('case'),
         'Other' => item.source == InventoryProductSource.other,
-        'Floating' => (item.incomingQuantity > 0 || item.reservedQuantity > 0),
+        'Incoming' => item.incomingQuantity > 0,
+        'Reserved' => item.reservedQuantity > 0,
         'Needs Restock' => item.isNeedsRestock,
         'Low Stock' => item.isLowStock,
         'Out of Stock' => item.isOutOfStock,
@@ -170,7 +171,19 @@ class _InventoryPageState extends State<InventoryPage> {
                     const SizedBox(width: 8),
                     _buildFilterChip('Other', null, colorScheme),
                     const SizedBox(width: 8),
-                    _buildFilterChip('Floating', floatingCount > 0 ? floatingCount : null, colorScheme, alertColor: const Color(0xFF7C3AED)),
+                    _buildFilterChip(
+                      'Incoming',
+                      summary.totalIncomingUnits > 0 ? summary.totalIncomingUnits : null,
+                      colorScheme,
+                      alertColor: const Color(0xFF0284C7),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(
+                      'Reserved',
+                      summary.totalReservedUnits > 0 ? summary.totalReservedUnits : null,
+                      colorScheme,
+                      alertColor: const Color(0xFF7C3AED),
+                    ),
                     const SizedBox(width: 8),
                     _buildFilterChip(
                       'Needs Restock',
@@ -313,7 +326,7 @@ class _InventoryPageState extends State<InventoryPage> {
               const Icon(Icons.sync_alt_rounded, size: 20, color: Color(0xFF7C3AED)),
               const SizedBox(width: 12),
               const Expanded(
-                child: Text('Floating Stocks', style: TextStyle(fontWeight: FontWeight.w600)),
+                child: Text('Incoming & Reserved Stocks', style: TextStyle(fontWeight: FontWeight.w600)),
               ),
               if (floatingCount > 0)
                 Container(
@@ -466,9 +479,9 @@ class _InventoryPageState extends State<InventoryPage> {
               const SizedBox(height: 8),
               if (summary.totalIncomingUnits > 0 || summary.totalReservedUnits > 0) ...[
                 _buildStockBreakdownTile(
-                  title: 'Floating Stock',
+                  title: 'Incoming & Reserved Stock',
                   value: '${summary.totalIncomingUnits} incoming • ${summary.totalReservedUnits} reserved',
-                  subtitle: '${summary.totalAvailableUnits} available to promise',
+                  subtitle: '${summary.totalAvailableUnits} available stock',
                   icon: Icons.sync_alt_rounded,
                   color: const Color(0xFF7C3AED),
                   onTap: () {

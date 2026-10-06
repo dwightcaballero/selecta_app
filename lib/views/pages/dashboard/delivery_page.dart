@@ -6,6 +6,7 @@ import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/return_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
@@ -26,7 +27,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
   final DeliveryController _controller = DeliveryController();
   bool hasBreakdownForDay = false;
   bool isDayVerified = false;
-  bool get isLocked => isDayVerified || (!isDealer && hasBreakdownForDay);
+  bool get isLocked =>
+      isDayVerified ||
+      widget.delivery.isReturnApprovedByDealer ||
+      widget.delivery.isInventorySettled ||
+      (!isDealer && hasBreakdownForDay);
   bool get isSalesmanLocked => isLocked;
 
   bool _withReturns = false;
@@ -246,9 +251,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   void onUpdate() async {
     if (isLocked) {
-      final msg = isDayVerified
-          ? 'Editing is locked. This day\'s cash breakdown has been verified and settled.'
-          : 'Editing is disabled. A cash breakdown is already recorded for this day.';
+      final msg = widget.delivery.isReturnApprovedByDealer
+          ? 'Editing is locked. This returned order has already been approved by the dealer and cannot be modified.'
+          : (isDayVerified || widget.delivery.isInventorySettled
+              ? 'Editing is locked. This day\'s cash breakdown has been verified and settled.'
+              : 'Editing is disabled. A cash breakdown is already recorded for this day.');
       ShowMessage.error(context, msg);
       return;
     }
@@ -320,6 +327,14 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void onDelete() async {
+    if (widget.delivery.isReturnApprovedByDealer) {
+      ShowMessage.error(context, 'This returned order has already been approved by the dealer and cannot be deleted.');
+      return;
+    }
+    if (isDayVerified || widget.delivery.isInventorySettled) {
+      ShowMessage.error(context, 'This delivery has been verified and settled, and cannot be deleted.');
+      return;
+    }
     try {
       await _controller.deleteDelivery(context: context, deliveryId: widget.deliveryID, delivery: widget.delivery);
 
@@ -1323,7 +1338,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     Expanded(
                       flex: 2,
                       child: OutlinedButton.icon(
-                        onPressed: (isDayVerified || widget.delivery.isInventorySettled)
+                        onPressed: (isDayVerified || widget.delivery.isInventorySettled || widget.delivery.isReturnApprovedByDealer)
                             ? null
                             : () async {
                                 final confirmed = await ShowMessage.confirm(
@@ -1341,7 +1356,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           minimumSize: const Size(0, 50.0),
                           foregroundColor: Colors.red.shade700,
                           side: BorderSide(
-                            color: (isDayVerified || widget.delivery.isInventorySettled)
+                            color: (isDayVerified || widget.delivery.isInventorySettled || widget.delivery.isReturnApprovedByDealer)
                                 ? Colors.grey.shade300
                                 : Colors.red.shade300,
                             width: 1.2,
@@ -1352,7 +1367,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         label: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
-                            (isDayVerified || widget.delivery.isInventorySettled) ? 'Settled' : 'Delete',
+                            widget.delivery.isReturnApprovedByDealer
+                                ? 'Approved'
+                                : ((isDayVerified || widget.delivery.isInventorySettled) ? 'Settled' : 'Delete'),
                             maxLines: 1,
                             softWrap: false,
                             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -1386,9 +1403,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       label: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          isDayVerified
-                              ? 'Locked (Inventory Settled)'
-                              : (isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Update Delivery'),
+                          widget.delivery.isReturnApprovedByDealer
+                              ? 'Locked (Return Approved)'
+                              : (isDayVerified || widget.delivery.isInventorySettled
+                                  ? 'Locked (Inventory Settled)'
+                                  : (isSalesmanLocked ? 'Locked (Breakdown Recorded)' : 'Update Delivery')),
                           maxLines: 1,
                           softWrap: false,
                           style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
@@ -1571,33 +1590,100 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: isDayVerified ? Colors.red.shade50 : Colors.amber.shade50,
+                      color: widget.delivery.isReturnApprovedByDealer
+                          ? Colors.green.shade50
+                          : (isDayVerified ? Colors.red.shade50 : Colors.amber.shade50),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isDayVerified ? Colors.red.shade300 : Colors.amber.shade300,
+                        color: widget.delivery.isReturnApprovedByDealer
+                            ? Colors.green.shade300
+                            : (isDayVerified ? Colors.red.shade300 : Colors.amber.shade300),
                         width: 1.2,
                       ),
                     ),
                     child: Row(
                       children: [
                         Icon(
-                          Icons.lock_outline,
-                          color: isDayVerified ? Colors.red.shade900 : Colors.amber.shade900,
+                          widget.delivery.isReturnApprovedByDealer ? Icons.check_circle_outline : Icons.lock_outline,
+                          color: widget.delivery.isReturnApprovedByDealer
+                              ? Colors.green.shade900
+                              : (isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
                           size: 24,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            isDayVerified
-                                ? 'Locked: The dealer has verified the daily cash breakdown and inventory settlement for this day. Records cannot be edited or deleted.'
-                                : 'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.',
+                            widget.delivery.isReturnApprovedByDealer
+                                ? 'Locked: This return order has been approved by the dealer. Returned items have been moved into Current Stock and this record cannot be modified or deleted.'
+                                : (isDayVerified
+                                    ? 'Locked: The dealer has verified the daily cash breakdown and deliveries for this day are locked to protect inventory accuracy.'
+                                    : 'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.'),
                             style: TextStyle(
-                              fontSize: 14.5,
-                              color: isDayVerified ? Colors.red.shade900 : Colors.amber.shade900,
+                              fontSize: 14,
+                              color: widget.delivery.isReturnApprovedByDealer
+                                  ? Colors.green.shade900
+                                  : (isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
+                      ],
+                    ),
+                  )
+                else if (widget.delivery.isReturnIncoming || widget.delivery.hasReturnedItems || widget.delivery.returnAmount > 0)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.3),
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.assignment_return_outlined,
+                          color: Color(0xFF0284C7),
+                          size: 24,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Pending Dealer Return Approval',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0284C7),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Returned items (₱${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount > 0 ? widget.delivery.returnAmount : widget.delivery.orderAmount)}) are tracked as Incoming Stock until approved into Current Stock by the dealer.',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF0C4A6E)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isDealer) ...[
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: () => Helperfunctions.navigateTo(
+                              context,
+                              ReturnPage(recID: widget.deliveryID, delivery: widget.delivery),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF0284C7),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            ),
+                            child: const Text('Review', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
                       ],
                     ),
                   ),

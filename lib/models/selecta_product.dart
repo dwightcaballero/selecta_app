@@ -48,20 +48,24 @@ class SelectaProduct {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
-  /// Available stock after subtracting floating/reserved orders and adding incoming PO stock.
+  /// Physical unreserved stock in the warehouse (Current Stock - Reserved Stock).
+  int get netPhysicalStock => stockQuantity - reservedQuantity;
+
+  /// Available stock = Current stock + Incoming Stock - Reserved stock.
   int get availableQuantity =>
       ((stockQuantity + incomingQuantity) - reservedQuantity) < 0
           ? 0
           : ((stockQuantity + incomingQuantity) - reservedQuantity);
 
-  /// True when physical stock is 0 or less.
+  /// True when physical stock in warehouse is 0 or less.
   bool get isOutOfStock => stockQuantity <= 0;
 
   /// True when both physical stock and incoming stock are exhausted or committed.
   bool get isAvailableOutOfStock => availableQuantity <= 0;
 
-  /// True when stock is positive but at or below [lowStockThreshold].
-  bool get isLowStock => stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+  /// Low Stock indicator based strictly on Current stock - Reserved stock <= lowStockThreshold.
+  /// Does NOT include incoming stock in the computation.
+  bool get isLowStock => stockQuantity > 0 && netPhysicalStock <= lowStockThreshold;
 
   /// Total inventory value at buying cost.
   double get stockCostValue => stockQuantity * buyingPrice;

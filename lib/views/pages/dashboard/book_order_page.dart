@@ -840,7 +840,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       message: _isEditing
           ? 'Save changes to $storeName order (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})?'
           : 'Save order for $storeName (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})?\n\n'
-                'This will book the order for delivery and reserve floating inventory.',
+                'This will book the order for delivery and hold reserved stock.',
       icon: Icons.check_circle_outline,
       confirmText: 'Save Order',
     );

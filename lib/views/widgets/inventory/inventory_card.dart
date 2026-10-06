@@ -146,42 +146,63 @@ class InventoryCard extends StatelessWidget {
                             runSpacing: 2,
                             children: [
                               if (item.incomingQuantity > 0)
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.arrow_downward_rounded, size: 12, color: Color(0xFF0284C7)),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '${item.incomingQuantity} incoming PO',
-                                      style: const TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF0284C7),
-                                      ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: const Color(0xFF0284C7).withValues(alpha: 0.22),
                                     ),
-                                  ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.arrow_downward_rounded, size: 12, color: Color(0xFF0284C7)),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        '${item.incomingQuantity} incoming',
+                                        style: const TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF0284C7),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               if (item.reservedQuantity > 0)
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.arrow_upward_rounded, size: 12, color: Color(0xFF7C3AED)),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '${item.availableQuantity} avail • ${item.reservedQuantity} floating',
-                                      style: const TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF7C3AED),
-                                      ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF7C3AED).withValues(alpha: isLow ? 0.14 : 0.08),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: const Color(0xFF7C3AED).withValues(alpha: isLow ? 0.45 : 0.25),
+                                      width: isLow ? 1.2 : 1.0,
                                     ),
-                                  ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.arrow_upward_rounded, size: 12, color: Color(0xFF7C3AED)),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        '${item.availableQuantity} avail • ${item.reservedQuantity} reserved',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: isLow ? FontWeight.w800 : FontWeight.w700,
+                                          color: const Color(0xFF7C3AED),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               if (onTapFloating != null)
-                                const Icon(
+                                Icon(
                                   Icons.chevron_right_rounded,
-                                  size: 14,
-                                  color: Colors.grey,
+                                  size: 15,
+                                  color: isLow ? const Color(0xFF7C3AED) : Colors.grey,
                                 ),
                             ],
                           ),
@@ -227,7 +248,7 @@ class InventoryCard extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          'in stock',
+                          'on-hand',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,

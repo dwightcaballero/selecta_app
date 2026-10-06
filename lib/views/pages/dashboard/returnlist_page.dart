@@ -205,6 +205,73 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                       ),
                     ],
                     const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (isPartialReturn)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.amber.shade300),
+                            ),
+                            child: Text(
+                              'Partial Return',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                            ),
+                          ),
+                        if (delivery.isReturnApprovedByDealer)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.green.shade300),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle_rounded, size: 10, color: Colors.green.shade700),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Approved',
+                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3)),
+                            ),
+                            child: const Text(
+                              'Needs Approval',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0284C7)),
+                            ),
+                          ),
+                        if (delivery.isRescheduled)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.blue.shade300),
+                            ),
+                            child: Text(
+                              'Rescheduled',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.blue.shade800),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),

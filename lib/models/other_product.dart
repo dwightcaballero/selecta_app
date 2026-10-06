@@ -123,7 +123,7 @@ class OtherProduct {
 
   bool get isAvailableOutOfStock => availableQuantity <= 0;
 
-  bool get isLowStock => stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+  bool get isLowStock => stockQuantity > 0 && availableQuantity <= lowStockThreshold;
 
   double get stockCostValue => stockQuantity * buyingPrice;
 

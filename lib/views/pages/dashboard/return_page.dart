@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/return_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -25,12 +26,14 @@ class ReturnPage extends StatefulWidget {
 
 class _ReturnPageState extends State<ReturnPage> {
   final ReturnController _controller = ReturnController();
+  late Delivery _delivery;
   bool _isProcessing = false;
   bool _isDealer = false;
 
   @override
   void initState() {
     super.initState();
+    _delivery = widget.delivery;
     prefetchData();
   }
 
@@ -43,9 +46,70 @@ class _ReturnPageState extends State<ReturnPage> {
     }
   }
 
+  void onApproveReturn() async {
+    if (!_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to approve returned stock.');
+      return;
+    }
+    if (_isProcessing) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warehouse_rounded, color: Color(0xFF15803D)),
+            SizedBox(width: 8),
+            Text('Approve Returned Stock', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          'Confirm that returned products for [${_delivery.storeName}] have physically arrived and been checked into the warehouse?\n\nThis will move the returned stock from Incoming Stock into Current Stock.',
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF15803D)),
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.check_circle_outline, size: 18),
+            label: const Text('Approve by Dealer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isProcessing = true);
+    try {
+      final updated = await _controller.approveReturnedStock(
+        deliveryId: widget.recID,
+        delivery: _delivery,
+      );
+      if (!mounted) return;
+      setState(() {
+        _delivery = updated;
+      });
+      ShowMessage.success(context, 'Returned stock approved and added to Current Stock!');
+    } catch (e) {
+      if (mounted) ShowMessage.error(context, 'Failed to approve return: $e');
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
   void onUpdate({DateTime? rescheduleDate}) async {
     if (!_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to redeliver orders.');
+      return;
+    }
+    if (!_delivery.isReturnApprovedByDealer) {
+      ShowMessage.error(context, 'Dealer approval is required before rescheduling. Please approve the return first.');
       return;
     }
     if (_isProcessing) return;
@@ -54,11 +118,14 @@ class _ReturnPageState extends State<ReturnPage> {
     try {
       final updatedDelivery = await _controller.rescheduleDelivery(
         deliveryId: widget.recID,
-        delivery: widget.delivery,
+        delivery: _delivery,
         rescheduleDate: rescheduleDate,
       );
 
       if (!mounted) return;
+      setState(() {
+        _delivery = updatedDelivery;
+      });
       ShowMessage.success(context, 'Successfully rescheduled delivery for [${updatedDelivery.storeName}]!');
       Navigator.pop(context);
     } catch (e) {
@@ -73,6 +140,10 @@ class _ReturnPageState extends State<ReturnPage> {
       ShowMessage.error(context, 'Only dealers are authorized to delete return records.');
       return;
     }
+    if (_delivery.isReturnApprovedByDealer) {
+      ShowMessage.error(context, 'Cannot delete a return record after it has already been approved by dealer.');
+      return;
+    }
     if (_isProcessing) return;
     setState(() => _isProcessing = true);
 
@@ -80,11 +151,11 @@ class _ReturnPageState extends State<ReturnPage> {
       await _controller.deleteReturn(
         context: context,
         deliveryId: widget.recID,
-        delivery: widget.delivery,
+        delivery: _delivery,
       );
 
       if (!mounted) return;
-      ShowMessage.success(context, 'Successfully deleted delivery record!\n[${widget.delivery.storeName}]');
+      ShowMessage.success(context, 'Successfully deleted delivery record!\n[${_delivery.storeName}]');
       Navigator.pop(context);
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to delete record: $e');
@@ -96,6 +167,10 @@ class _ReturnPageState extends State<ReturnPage> {
   Future<void> _showRedeliverDialog() async {
     if (!_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to reschedule deliveries.');
+      return;
+    }
+    if (!_delivery.isReturnApprovedByDealer) {
+      ShowMessage.error(context, 'Dealer approval is required before rescheduling. Please click "Approved by Dealer" first.');
       return;
     }
     DateTime selectedDate = DateTime.now();
@@ -293,6 +368,129 @@ class _ReturnPageState extends State<ReturnPage> {
 
 
 
+  Widget _buildReturnedItemsCard() {
+    if (_delivery.items.isEmpty) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
+    final isFullReturn = _delivery.transactionStatus == DeliveryStatus.returned;
+    final returnedItems = _delivery.items.where((item) {
+      return item.returnedQuantity > 0 || (isFullReturn && item.pickedQuantity > 0);
+    }).toList();
+
+    if (returnedItems.isEmpty) return const SizedBox.shrink();
+
+    final totalReturnedQty = returnedItems.fold<int>(
+      0,
+      (sum, item) => sum + (item.returnedQuantity > 0 ? item.returnedQuantity : item.pickedQuantity),
+    );
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.inventory_2_outlined, size: 18, color: colorScheme.primary),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Returned Products',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Text(
+                    '$totalReturnedQty units',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red.shade800),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: returnedItems.length,
+              separatorBuilder: (context, index) => const Divider(height: 12),
+              itemBuilder: (context, index) {
+                final item = returnedItems[index];
+                final qty = item.returnedQuantity > 0 ? item.returnedQuantity : item.pickedQuantity;
+                final lineTotal = item.returnedLineTotal > 0 ? item.returnedLineTotal : (qty * item.sellingPrice);
+
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.productName,
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '₱${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} each',
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '₱${Helperfunctions.formatDoubleAmountForDisplay(lineTotal)}',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.bold,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$qty returned',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildProofCard() {
     if (widget.delivery.imagePath.isEmpty) return const SizedBox.shrink();
     final colorScheme = Theme.of(context).colorScheme;
@@ -440,6 +638,8 @@ class _ReturnPageState extends State<ReturnPage> {
   Widget _buildStickyBottomBar() {
     if (!_isDealer) return const SizedBox.shrink();
     final colorScheme = Theme.of(context).colorScheme;
+    final isApproved = _delivery.isReturnApprovedByDealer;
+
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -450,70 +650,116 @@ class _ReturnPageState extends State<ReturnPage> {
         ),
         child: Row(
           children: [
-            Expanded(
-              flex: 2,
-              child: OutlinedButton.icon(
-                onPressed: (_isProcessing || widget.delivery.isInventorySettled)
-                    ? null
-                    : () async {
-                        final confirmed = await ShowMessage.confirm(
-                          context,
-                          title: 'Delete Return Record',
-                          message: 'Are you sure you want to permanently delete this return record for [${widget.delivery.storeName}]?',
-                          isDestructive: true,
-                          icon: Icons.delete_outline,
-                          confirmText: 'Delete',
-                        );
-                        if (confirmed) onDelete();
-                      },
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  minimumSize: const Size(0, 50.0),
-                  foregroundColor: Colors.red.shade700,
-                  side: BorderSide(
-                    color: widget.delivery.isInventorySettled ? Colors.grey.shade300 : Colors.red.shade300,
-                    width: 1.2,
+            if (!isApproved) ...[
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  onPressed: (_isProcessing || _delivery.isInventorySettled)
+                      ? null
+                      : () async {
+                          final confirmed = await ShowMessage.confirm(
+                            context,
+                            title: 'Delete Return Record',
+                            message: 'Are you sure you want to permanently delete this return record for [${_delivery.storeName}]?',
+                            isDestructive: true,
+                            icon: Icons.delete_outline,
+                            confirmText: 'Delete',
+                          );
+                          if (confirmed) onDelete();
+                        },
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 50.0),
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(
+                      color: _delivery.isInventorySettled ? Colors.grey.shade300 : Colors.red.shade300,
+                      width: 1.2,
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                icon: const Icon(Icons.delete_outline, size: 20),
-                label: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    widget.delivery.isInventorySettled ? 'Settled' : 'Delete',
-                    maxLines: 1,
-                    softWrap: false,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              flex: 3,
-              child: FilledButton.icon(
-                onPressed: (_isProcessing || widget.delivery.isRescheduled) ? null : _showRedeliverDialog,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  minimumSize: const Size(0, 50.0),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                icon: _isProcessing
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Icon(widget.delivery.isRescheduled ? Icons.check_circle_outline : Icons.local_shipping_outlined, size: 20),
-                label: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    _isProcessing
-                        ? 'Processing...'
-                        : (widget.delivery.isRescheduled ? 'Already Rescheduled' : 'Redeliver Order'),
-                    maxLines: 1,
-                    softWrap: false,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: FilledButton.icon(
+                  onPressed: _isProcessing ? null : onApproveReturn,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF15803D),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 50.0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: _isProcessing
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.check_circle_outline, size: 20),
+                  label: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Approved by Dealer',
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ] else ...[
+              Expanded(
+                flex: 2,
+                child: Container(
+                  height: 50.0,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.green.shade300),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_rounded, color: Colors.green.shade700, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Approved',
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade800, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 3,
+                child: FilledButton.icon(
+                  onPressed: (_isProcessing || _delivery.isRescheduled) ? null : _showRedeliverDialog,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    minimumSize: const Size(0, 50.0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: _isProcessing
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Icon(_delivery.isRescheduled ? Icons.check_circle_outline : Icons.local_shipping_outlined, size: 20),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      _isProcessing
+                          ? 'Processing...'
+                          : (_delivery.isRescheduled ? 'Already Rescheduled' : 'Redeliver Order'),
+                      maxLines: 1,
+                      softWrap: false,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -525,15 +771,15 @@ class _ReturnPageState extends State<ReturnPage> {
     return Scaffold(
       appBar: CustomAppbar(
         title: 'Return Details',
-        subtitle: widget.delivery.storeName,
+        subtitle: _delivery.storeName,
         actions: [
-          if (widget.delivery.items.isNotEmpty)
+          if (_delivery.items.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
               tooltip: 'Digital Receipt & Thermal Print',
               onPressed: () => DigitalReceiptDialog.show(
                 context,
-                delivery: widget.delivery,
+                delivery: _delivery,
                 deliveryId: widget.recID,
                 proceedLabel: 'Close',
               ),
@@ -562,7 +808,7 @@ class _ReturnPageState extends State<ReturnPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'View-Only: Only dealers are authorized to redeliver or delete returned orders.',
+                        'View-Only: Only dealers are authorized to approve returned stock, redeliver, or delete returned orders.',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.amber.shade900,
@@ -573,7 +819,71 @@ class _ReturnPageState extends State<ReturnPage> {
                   ],
                 ),
               ),
-            if (widget.delivery.isRescheduled)
+            if (_delivery.isReturnApprovedByDealer)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade300, width: 1.2),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle_rounded, color: Colors.green.shade700, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Approved by Dealer',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Returned stock was physically checked into the warehouse by ${_delivery.returnApprovedBy.isNotEmpty ? _delivery.returnApprovedBy : "Dealer"}${_delivery.returnApprovedDate != null ? " on ${DateFormat('MMM d, yyyy h:mm a').format(_delivery.returnApprovedDate!.toDate())}" : ""}. Items are now part of Current Stock. This record is locked.',
+                            style: TextStyle(fontSize: 12.5, color: Colors.green.shade800),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3), width: 1.2),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded, color: Color(0xFF0369A1), size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Incoming Return Stock',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0369A1)),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Returned stock is counted as Incoming Stock. Click "Approved by Dealer" below once the items physically arrive and are verified in the warehouse to add them to Current Stock.',
+                            style: TextStyle(fontSize: 12.5, color: Color(0xFF0C4A6E)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (_delivery.isRescheduled)
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -588,7 +898,7 @@ class _ReturnPageState extends State<ReturnPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'This return has already been rescheduled to a new delivery scheduled for ${widget.delivery.rescheduledDate != null ? DateFormat('MMM d, yyyy').format(widget.delivery.rescheduledDate!.toDate()) : 'a future date'}.',
+                        'This return has already been rescheduled to a new delivery scheduled for ${_delivery.rescheduledDate != null ? DateFormat('MMM d, yyyy').format(_delivery.rescheduledDate!.toDate()) : 'a future date'}.',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.blue.shade900,
@@ -603,13 +913,16 @@ class _ReturnPageState extends State<ReturnPage> {
             // 1. Return Overview Hero Card
             _buildReturnOverviewCard(),
 
-            // 2. Remarks / Reason Card
+            // 2. Returned Products Card
+            _buildReturnedItemsCard(),
+
+            // 3. Remarks / Reason Card
             if (widget.delivery.remarks.isNotEmpty) _buildRemarksCard(),
 
-            // 3. Proof of Return / Attachment Card
+            // 4. Proof of Return / Attachment Card
             if (widget.delivery.imagePath.isNotEmpty) _buildProofCard(),
 
-            // 4. Payment breakdown if recorded
+            // 5. Payment breakdown if recorded
             _buildPaymentDetailsCard(),
 
             // 5. Audit & History Card

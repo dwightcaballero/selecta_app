@@ -139,7 +139,10 @@ class InventoryItem {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
-  /// Available stock after subtracting floating/reserved orders and including incoming PO stock.
+  /// Physical unreserved stock in the warehouse (Current Stock - Reserved Stock).
+  int get netPhysicalStock => stockQuantity - reservedQuantity;
+
+  /// Available stock = Current stock + Incoming Stock - Reserved stock.
   int get availableQuantity =>
       ((stockQuantity + incomingQuantity) - reservedQuantity) < 0
           ? 0
@@ -149,7 +152,9 @@ class InventoryItem {
 
   bool get isAvailableOutOfStock => availableQuantity <= 0;
 
-  bool get isLowStock => stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+  /// Low Stock indicator based strictly on Current stock - Reserved stock <= lowStockThreshold.
+  /// Does NOT include incoming stock in the computation.
+  bool get isLowStock => stockQuantity > 0 && netPhysicalStock <= lowStockThreshold;
 
   /// True if item is either completely out of stock or at or below low stock threshold.
   bool get isNeedsRestock => isOutOfStock || isLowStock;

@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/inventory_controller.dart';
 import 'package:selecta_ops/models/floating_stock.dart';
-import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 
-/// Modal bottom sheet allowing dealers to inspect floating stocks (Going In from POs
+/// Modal bottom sheet allowing dealers to inspect incoming and reserved stocks (Going In from POs
 /// and Going Out from reserved store orders).
 class FloatingStocksSheet extends StatefulWidget {
   final InventoryController controller;
@@ -49,76 +48,6 @@ class _FloatingStocksSheetState extends State<FloatingStocksSheet> {
   int _selectedTab = 0; // 0: By Product, 1: Going In (POs), 2: Going Out (Deliveries)
   String _searchQuery = '';
   final Set<String> _expandedItemIds = {};
-  final Set<String> _settlingDeliveryIds = {};
-
-  Future<void> _promptSettleDelivery(FloatingTransaction tx) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          icon: Icon(Icons.sync_problem_rounded, color: Colors.amber.shade800, size: 36),
-          title: const Text(
-            'Settle Delivery Stock',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Are you sure you want to manually settle floating stock for ${tx.title} (${tx.subtitle})?',
-                style: const TextStyle(fontSize: 13.5),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.shade300),
-                ),
-                child: Text(
-                  'This will permanently deduct physical stock, release held reservations (${tx.totalUnits} units), and record an audit log. Use this for delivered orders left unsettled by older app versions.',
-                  style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade800),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Settle Stock'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed == true) {
-      setState(() => _settlingDeliveryIds.add(tx.id));
-      try {
-        await widget.controller.settleSingleDelivery(tx.id);
-        if (mounted) {
-          ShowMessage.success(context, 'Inventory for ${tx.title} settled successfully!');
-        }
-      } catch (e) {
-        if (mounted) {
-          ShowMessage.error(context, 'Failed to settle delivery: $e');
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _settlingDeliveryIds.remove(tx.id));
-        }
-      }
-    }
-  }
 
   @override
   void initState() {
@@ -207,7 +136,7 @@ class _FloatingStocksSheetState extends State<FloatingStocksSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Floating Stocks',
+                              'Incoming & Reserved Stocks',
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -215,7 +144,7 @@ class _FloatingStocksSheetState extends State<FloatingStocksSheet> {
                               ),
                             ),
                             Text(
-                              'Live incoming orders & outgoing reservations',
+                              'Live incoming POs, returns & outgoing reservations',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: colorScheme.onSurfaceVariant,
@@ -284,7 +213,7 @@ class _FloatingStocksSheetState extends State<FloatingStocksSheet> {
                     onChanged: _onSearchChanged,
                     decoration: InputDecoration(
                       hintText: _selectedTab == 0
-                          ? 'Search products with floating stock...'
+                          ? 'Search products with incoming or reserved stock...'
                           : _selectedTab == 1
                               ? 'Search PO # or supplier...'
                               : 'Search store name, route, or status...',
@@ -458,7 +387,7 @@ class _FloatingStocksSheetState extends State<FloatingStocksSheet> {
     if (filtered.isEmpty) {
       return _buildEmptyState(
         icon: Icons.inventory_2_outlined,
-        title: _searchQuery.isEmpty ? 'No Floating Stock' : 'No Matching Products',
+        title: _searchQuery.isEmpty ? 'No Incoming or Reserved Stock' : 'No Matching Products',
         subtitle: _searchQuery.isEmpty
             ? 'There are currently no active incoming POs or outgoing reserved orders.'
             : 'Try adjusting your search query.',
@@ -722,7 +651,7 @@ class _FloatingStocksSheetState extends State<FloatingStocksSheet> {
         subtitle: _searchQuery.isEmpty
             ? (isIncoming
                 ? 'All purchase orders have been replenished into physical stock.'
-                : 'There are no store orders currently reserving floating inventory.')
+                : 'There are no store orders currently reserving stock.')
             : 'Try adjusting your search query.',
       );
     }
@@ -908,57 +837,6 @@ class _FloatingStocksSheetState extends State<FloatingStocksSheet> {
                           ),
                         );
                       }),
-                      if (!isIncoming) ...[
-                        const SizedBox(height: 12),
-                        const Divider(height: 1),
-                        const SizedBox(height: 10),
-                        Builder(
-                          builder: (context) {
-                            final isUnsettled = tx.status.toLowerCase().contains('unsettled') ||
-                                tx.status.toLowerCase() == 'delivered' ||
-                                tx.status.toLowerCase() == 'returned';
-                            final isSettling = _settlingDeliveryIds.contains(tx.id);
-
-                            return SizedBox(
-                              width: double.maxFinite,
-                              child: FilledButton.tonalIcon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: isUnsettled
-                                      ? Colors.amber.shade100
-                                      : colorScheme.primaryContainer.withValues(alpha: 0.5),
-                                  foregroundColor: isUnsettled
-                                      ? Colors.amber.shade900
-                                      : colorScheme.primary,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  padding: const EdgeInsets.symmetric(vertical: 10),
-                                ),
-                                onPressed: isSettling ? null : () => _promptSettleDelivery(tx),
-                                icon: isSettling
-                                    ? SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: isUnsettled ? Colors.amber.shade900 : colorScheme.primary,
-                                        ),
-                                      )
-                                    : Icon(
-                                        isUnsettled ? Icons.sync_problem_rounded : Icons.check_circle_outline,
-                                        size: 18,
-                                      ),
-                                label: Text(
-                                  isSettling
-                                      ? 'Settling delivery stock...'
-                                      : (isUnsettled
-                                          ? 'Settle & Deduct Order Stock (${tx.totalUnits} units)'
-                                          : 'Release / Settle Order Stock'),
-                                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
                     ],
                   ),
                 ),
