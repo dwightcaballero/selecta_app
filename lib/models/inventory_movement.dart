@@ -30,6 +30,7 @@ class InventoryItem {
   final int incomingQuantity;
   final int reservedQuantity;
   final int lowStockThreshold;
+  final int maxStock;
   final InventoryProductSource source;
   final String category;
   final String tag;
@@ -47,6 +48,7 @@ class InventoryItem {
     this.incomingQuantity = 0,
     this.reservedQuantity = 0,
     required this.lowStockThreshold,
+    this.maxStock = 0,
     required this.source,
     this.category = '',
     this.tag = '',
@@ -65,6 +67,7 @@ class InventoryItem {
     int? incomingQuantity,
     int? reservedQuantity,
     int? lowStockThreshold,
+    int? maxStock,
     InventoryProductSource? source,
     String? category,
     String? tag,
@@ -82,6 +85,7 @@ class InventoryItem {
       incomingQuantity: incomingQuantity ?? this.incomingQuantity,
       reservedQuantity: reservedQuantity ?? this.reservedQuantity,
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
+      maxStock: maxStock ?? this.maxStock,
       source: source ?? this.source,
       category: category ?? this.category,
       tag: tag ?? this.tag,
@@ -102,6 +106,7 @@ class InventoryItem {
       incomingQuantity: product.incomingQuantity,
       reservedQuantity: product.reservedQuantity,
       lowStockThreshold: product.lowStockThreshold,
+      maxStock: product.maxStock,
       source: InventoryProductSource.selecta,
       category: product.category,
       tag: product.tag,
@@ -121,6 +126,7 @@ class InventoryItem {
       incomingQuantity: 0,
       reservedQuantity: product.reservedQuantity,
       lowStockThreshold: product.lowStockThreshold,
+      maxStock: 0,
       source: InventoryProductSource.other,
       category: '',
       tag: '',
@@ -147,6 +153,15 @@ class InventoryItem {
 
   /// True if item is either completely out of stock or at or below low stock threshold.
   bool get isNeedsRestock => isOutOfStock || isLowStock;
+
+  /// Target restock quantity: exclusive to Selecta products.
+  /// Uses maxStock if configured (> 0), otherwise falls back to (lowStockThreshold * 2).
+  int get suggestedRestockQuantity {
+    if (source != InventoryProductSource.selecta) return 0;
+    final target = maxStock > 0 ? maxStock : (lowStockThreshold * 2);
+    final deficit = target - availableQuantity;
+    return deficit > 0 ? deficit : 0;
+  }
 
   double get stockCostValue => stockQuantity * buyingPrice;
 

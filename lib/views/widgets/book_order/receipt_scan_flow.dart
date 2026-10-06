@@ -291,6 +291,11 @@ class ReceiptScanFlow {
     required int unitCount,
     required List<ReceiptCapNote> capped,
     required List<String> skipped,
+    List<ScannedReceiptLine>? scannedLines,
+    List<ScannedReceiptLine> Function()? getScannedLines,
+    Set<String>? correctedKeys,
+    Set<String> Function()? getCorrectedKeys,
+    Future<void> Function(ScannedReceiptLine line)? onCorrectLine,
   }) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -298,12 +303,16 @@ class ReceiptScanFlow {
       useSafeArea: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        final colorScheme = Theme.of(ctx).colorScheme;
-        const warnColor = Color(0xFFD97706);
-        final allGood = capped.isEmpty && skipped.isEmpty;
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final colorScheme = Theme.of(ctx).colorScheme;
+            const warnColor = Color(0xFFD97706);
+            final allGood = capped.isEmpty && skipped.isEmpty;
+            final currentLines = getScannedLines != null ? getScannedLines() : (scannedLines ?? const []);
+            final activeCorrected = getCorrectedKeys != null ? getCorrectedKeys() : (correctedKeys ?? const {});
 
         return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.85),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Column(
@@ -375,8 +384,147 @@ class ReceiptScanFlow {
                             title: Text(s, style: const TextStyle(fontSize: 13)),
                           ),
                         ),
+                        const SizedBox(height: 8),
                       ],
-                      if (allGood)
+                      if (currentLines.isNotEmpty) ...[
+                        _sectionLabel('SCANNED RECEIPT PRODUCTS (${currentLines.length})', colorScheme.primary),
+                        ...currentLines.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final line = entry.value;
+                          final lineKey = '${line.item.source.key}:${line.item.id}';
+                          final isItemCorrected = activeCorrected.contains(lineKey);
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isItemCorrected
+                                  ? Colors.blue.withValues(alpha: 0.05)
+                                  : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isItemCorrected
+                                    ? Colors.blue.shade300
+                                    : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 26,
+                                      height: 26,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: isItemCorrected ? Colors.blue.shade100 : Colors.amber.shade100,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '#${idx + 1}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: isItemCorrected ? Colors.blue.shade900 : Colors.amber.shade900,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    CachedProductImage(imageUrl: line.item.imageUrl, size: 40),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            line.item.productName,
+                                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Row(
+                                            children: [
+                                              Text(
+                                                'Qty: ${line.quantity}',
+                                                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                              ),
+                                              if (isItemCorrected) ...[
+                                                const SizedBox(width: 8),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.blue.shade100,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text(
+                                                    '✓ Corrected',
+                                                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (onCorrectLine != null)
+                                      OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          side: BorderSide(color: Colors.blue.shade300),
+                                        ),
+                                        icon: const Icon(Icons.edit_note_rounded, size: 16, color: Colors.blue),
+                                        label: const Text('Correct', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                                        onPressed: () async {
+                                          await onCorrectLine(line);
+                                          setModalState(() {});
+                                        },
+                                      ),
+                                  ],
+                                ),
+                                if (line.rawText.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.shade50,
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.amber.shade200),
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(Icons.receipt_long_outlined, size: 13, color: Colors.amber.shade900),
+                                        const SizedBox(width: 5),
+                                        Expanded(
+                                          child: Text.rich(
+                                            TextSpan(
+                                              children: [
+                                                TextSpan(
+                                                  text: 'Scanned: ',
+                                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                                                ),
+                                                TextSpan(
+                                                  text: line.rawText,
+                                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                      if (allGood && currentLines.isEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 6),
                           child: Text(
@@ -409,6 +557,8 @@ class ReceiptScanFlow {
         );
       },
     );
+  },
+);
   }
 
   static Widget _sectionLabel(String text, Color color) => Padding(

@@ -15,6 +15,8 @@ class ProductOrderCard extends StatelessWidget {
   final VoidCallback onTap;
   final int? receiptIndex;
   final String? rawReceiptText;
+  final bool isCorrected;
+  final VoidCallback? onCorrectAi;
 
   const ProductOrderCard({
     super.key,
@@ -26,6 +28,8 @@ class ProductOrderCard extends StatelessWidget {
     required this.onTap,
     this.receiptIndex,
     this.rawReceiptText,
+    this.isCorrected = false,
+    this.onCorrectAi,
   });
 
   @override
@@ -50,6 +54,10 @@ class ProductOrderCard extends StatelessWidget {
       cardBgColor = colorScheme.primary.withValues(alpha: 0.05);
       cardBorderColor = colorScheme.primary;
       cardBorderWidth = 1.5;
+    } else if (isCorrected) {
+      cardBgColor = Colors.blue.withValues(alpha: 0.04);
+      cardBorderColor = Colors.blue.shade400;
+      cardBorderWidth = 1.2;
     }
 
     return Card(
@@ -174,13 +182,84 @@ class ProductOrderCard extends StatelessWidget {
                       ),
                     ),
                     if (rawReceiptText != null && rawReceiptText!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'From receipt: "${rawReceiptText!.trim()}"',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                      const SizedBox(height: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.amber.shade300),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.receipt_long_outlined, size: 12, color: Colors.amber.shade900),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'SCANNED ON DOCUMENT:',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.4,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                                if (isCorrected) ...[
+                                  const Spacer(),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade100,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '✓ Corrected',
+                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              rawReceiptText!.trim(),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.black87,
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                      if (onCorrectAi != null) ...[
+                        const SizedBox(height: 4),
+                        InkWell(
+                          onTap: onCorrectAi,
+                          borderRadius: BorderRadius.circular(6),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.edit_note_rounded, size: 15, color: Colors.blue.shade700),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Correct AI Reading',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 5),
                     Wrap(

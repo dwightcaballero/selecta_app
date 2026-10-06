@@ -984,7 +984,8 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
                       Icon(Icons.info_outline, size: 14, color: colorScheme.onSurfaceVariant),
                       const SizedBox(width: 6),
                       Text(
-                        'Low Stock Threshold: $lowStockThreshold pcs',
+                        'Low Stock Alert: $lowStockThreshold pcs'
+                        '${dealerP.maxStock > 0 ? ' • Max Stock: ${dealerP.maxStock} pcs' : ''}',
                         style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
                       ),
                     ],

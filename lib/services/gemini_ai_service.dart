@@ -121,6 +121,41 @@ class ExtractedPoItem {
   });
 }
 
+/// Result of extracting supplier daily available stock status from document images.
+class ExtractedSupplierStockData {
+  final DateTime? reportDate;
+  final List<SupplierStockItemStatus> matchedItems;
+  final List<String> outOfStockProductIds;
+  final List<String> inStockProductIds;
+  final String rawAiResponse;
+
+  const ExtractedSupplierStockData({
+    this.reportDate,
+    this.matchedItems = const [],
+    this.outOfStockProductIds = const [],
+    this.inStockProductIds = const [],
+    this.rawAiResponse = '',
+  });
+
+  bool isProductOutOfStock(String productId) => outOfStockProductIds.contains(productId);
+}
+
+class SupplierStockItemStatus {
+  final String productId;
+  final String matchedProductName;
+  final String rawText;
+  final bool isOutOfStock;
+  final int? supplierAvailableQuantity;
+
+  const SupplierStockItemStatus({
+    required this.productId,
+    required this.matchedProductName,
+    required this.rawText,
+    required this.isOutOfStock,
+    this.supplierAvailableQuantity,
+  });
+}
+
 /// Result status when verifying if AI operations are allowed.
 class AiStatusCheck {
   final bool isAllowed;
@@ -1166,6 +1201,226 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
       );
     } catch (_) {
       return ExtractedPurchaseOrderData(rawAiResponse: rawText);
+    }
+  }
+
+  /// Extracts supplier daily stock availability from one or multiple screenshots / documents,
+  /// strictly matching against products that exist in the dealer's catalog (active or inactive).
+  /// Excludes any products not in the dealer catalog.
+  Future<ExtractedSupplierStockData> extractSupplierStockStatusFromImages({
+    required List<Uint8List> imagesBytesList,
+    List<String>? mimeTypes,
+    required List<InventoryItem> dealerCatalog,
+    List<SupplierProductMapping>? knownMappings,
+  }) async {
+    final status = await checkAiAvailability();
+    if (!status.isAllowed) {
+      throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
+    }
+    if (imagesBytesList.isEmpty) {
+      throw Exception('No supplier stock images provided for analysis.');
+    }
+
+    // Exclude other products: this feature is strictly exclusive to Selecta products
+    final selectaCatalog = dealerCatalog
+        .where((item) => item.source == InventoryProductSource.selecta)
+        .toList();
+
+    final catalogLines = selectaCatalog.map((item) {
+      final codePart = item.itemCode.isNotEmpty ? ' | Code: "${item.itemCode}"' : '';
+      return '- ID: "${item.id}"$codePart | Name: "${item.productName}" | Category: "${item.category}"';
+    }).join('\n');
+
+    final singleMappings = (knownMappings ?? []).where((m) => !m.isMultiMatch).toList();
+    final buffer = StringBuffer();
+    if (singleMappings.isNotEmpty) {
+      buffer.writeln('CONFIRMED SUPPLIER ALIASES:');
+      for (final m in singleMappings.take(30)) {
+        buffer.writeln('• "${m.rawSupplierText}" -> ID: "${m.productId}" (${m.productName})');
+      }
+      buffer.writeln();
+    }
+    final mappingsSection = buffer.toString();
+
+    final List<Uint8List> processedBytesList = [];
+    final List<String> processedMimeTypes = [];
+    for (int i = 0; i < imagesBytesList.length; i++) {
+      final originalBytes = imagesBytesList[i];
+      final slices = await ImageSlicingService.sliceIfScrollingScreenshot(originalBytes);
+      if (slices.length > 1) {
+        for (final slice in slices) {
+          processedBytesList.add(slice);
+          processedMimeTypes.add('image/png');
+        }
+      } else {
+        processedBytesList.add(originalBytes);
+        final mime = (mimeTypes != null && i < mimeTypes.length) ? mimeTypes[i] : 'image/jpeg';
+        processedMimeTypes.add(mime);
+      }
+    }
+
+    final isMulti = processedBytesList.length > 1;
+
+    final prompt = '''
+You are an expert purchasing and inventory AI assistant for a Selecta ice cream dealership.
+You are inspecting ${isMulti ? '${processedBytesList.length} sequential screenshots or document pages' : 'an image'} of a supplier stock availability list, warehouse stock report, or distributor portal snapshot.
+
+YOUR OBJECTIVES:
+1. Extract the Report Date in YYYY-MM-DD format if visible (e.g. at the top or header). If not present, output null.
+2. STRICT MATCHING WITH DEALER SELECTA CATALOG ONLY:
+   CRITICAL REQUIREMENT: The supplier document will contain many products that DO NOT exist in the dealer's inventory.
+   You MUST ONLY match and output items that exist in the DEALER SELECTA CATALOG below!
+   Do NOT output or invent items that are not in the DEALER SELECTA CATALOG. Ignore all other items.
+
+3. DETERMINE STOCK STATUS FOR EACH MATCHED ITEM:
+   - "is_out_of_stock": true IF the row indicates no stock, 0 quantity, "OOS", "Out of Stock", "Not Available", "Zero", crossed out, or highlighted as unavailable.
+   - "is_out_of_stock": false IF the supplier indicates available stock, positive quantity, or standard available status.
+   - "supplier_quantity": numeric available quantity if specified (e.g. 50, 120), or null if unstated.
+
+$mappingsSection
+DEALER SELECTA CATALOG (Active & Inactive products):
+$catalogLines
+
+CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT include markdown or text outside JSON):
+{
+  "report_date": "2026-10-06",
+  "matched_items": [
+    {
+      "product_id": "exact-dealer-catalog-id",
+      "matched_product_name": "exact-dealer-catalog-name",
+      "raw_text": "text seen on supplier document",
+      "is_out_of_stock": false,
+      "supplier_quantity": 45
+    }
+  ],
+  "out_of_stock_product_ids": [
+    "exact-dealer-catalog-id"
+  ]
+}
+''';
+
+    for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
+      try {
+        final model = await getModel(modelIndex: _activeModelIndex);
+        if (model == null) {
+          throw Exception('Failed to initialize AI model session.');
+        }
+
+        final parts = <Part>[TextPart(prompt)];
+        for (int i = 0; i < processedBytesList.length; i++) {
+          parts.add(DataPart(processedMimeTypes[i], processedBytesList[i]));
+        }
+
+        final content = [Content.multi(parts)];
+        final response = await model.generateContent(content);
+        await recordAiUsage();
+        final rawText = response.text ?? '';
+        return _parseExtractedSupplierStockData(rawText, selectaCatalog);
+      } catch (e) {
+        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
+          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
+          await Future.delayed(const Duration(milliseconds: 750));
+          continue;
+        }
+
+        if (_isOverloadedError(e)) {
+          throw Exception(
+            'Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.',
+          );
+        }
+        rethrow;
+      }
+    }
+
+    throw Exception('Failed to process supplier stock images.');
+  }
+
+  ExtractedSupplierStockData _parseExtractedSupplierStockData(
+    String rawText,
+    List<InventoryItem> dealerCatalog,
+  ) {
+    try {
+      var cleaned = rawText.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replaceFirst(RegExp(r'^```(?:json)?\s*'), '');
+        if (cleaned.endsWith('```')) {
+          cleaned = cleaned.substring(0, cleaned.length - 3).trim();
+        }
+      }
+      final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(cleaned);
+      if (jsonMatch != null) {
+        cleaned = jsonMatch.group(0)!;
+      }
+      final decoded = jsonDecode(cleaned) as Map<String, dynamic>;
+
+      DateTime? reportDate;
+      final rawDate = decoded['report_date'] as String?;
+      if (rawDate != null && rawDate.isNotEmpty) {
+        reportDate = DateTime.tryParse(rawDate);
+      }
+
+      final Map<String, InventoryItem> catalogById = {
+        for (final item in dealerCatalog) item.id: item
+      };
+      final Map<String, InventoryItem> catalogByName = {
+        for (final item in dealerCatalog) item.productName.toLowerCase(): item
+      };
+
+      final List<SupplierStockItemStatus> matchedItems = [];
+      final Set<String> outOfStockIds = {};
+      final Set<String> inStockIds = {};
+
+      final rawMatched = decoded['matched_items'] as List<dynamic>? ?? [];
+      for (final raw in rawMatched) {
+        if (raw is! Map) continue;
+        final map = Map<String, dynamic>.from(raw);
+        final productId = (map['product_id'] as String? ?? '').trim();
+        final matchedName = (map['matched_product_name'] as String? ?? '').trim();
+        final rawTextItem = (map['raw_text'] as String? ?? matchedName).trim();
+        final isOos = map['is_out_of_stock'] == true;
+        final supplierQty = (map['supplier_quantity'] as num?)?.toInt();
+
+        InventoryItem? matchedItem = catalogById[productId];
+        if (matchedItem == null && matchedName.isNotEmpty) {
+          matchedItem = catalogByName[matchedName.toLowerCase()];
+        }
+
+        if (matchedItem != null) {
+          matchedItems.add(
+            SupplierStockItemStatus(
+              productId: matchedItem.id,
+              matchedProductName: matchedItem.productName,
+              rawText: rawTextItem,
+              isOutOfStock: isOos,
+              supplierAvailableQuantity: supplierQty,
+            ),
+          );
+          if (isOos) {
+            outOfStockIds.add(matchedItem.id);
+          } else {
+            inStockIds.add(matchedItem.id);
+          }
+        }
+      }
+
+      final rawOosList = decoded['out_of_stock_product_ids'] as List<dynamic>? ?? [];
+      for (final rawId in rawOosList) {
+        final idStr = rawId.toString().trim();
+        if (catalogById.containsKey(idStr)) {
+          outOfStockIds.add(idStr);
+          inStockIds.remove(idStr);
+        }
+      }
+
+      return ExtractedSupplierStockData(
+        reportDate: reportDate,
+        matchedItems: matchedItems,
+        outOfStockProductIds: outOfStockIds.toList(),
+        inStockProductIds: inStockIds.toList(),
+        rawAiResponse: rawText,
+      );
+    } catch (_) {
+      return ExtractedSupplierStockData(rawAiResponse: rawText);
     }
   }
 }

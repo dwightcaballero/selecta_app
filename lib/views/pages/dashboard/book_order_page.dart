@@ -76,6 +76,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
   /// Preserves the raw text printed on the receipt for each item key
   final Map<String, String> _scannedRawTexts = {};
 
+  /// Tracks item keys corrected by the user during/after scanning
+  final Set<String> _correctedReceiptKeys = {};
+
   /// When true (default after scanning), orders selected items according to the scanned receipt
   bool _sortByReceiptOrder = true;
 
@@ -263,9 +266,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
     return result;
   }
 
-  Future<void> _promptQuantityDialog(InventoryItem item) async {
+  Future<void> _promptQuantityDialog(InventoryItem item, {List<InventoryItem>? allInventory}) async {
     _searchFocusNode.unfocus();
     FocusManager.instance.primaryFocus?.unfocus();
+    final itemKey = _itemKey(item);
+    final rawReceiptText = _scannedRawTexts[itemKey];
     final currentQty = _getSelectedQty(item);
     final maxAllowed = _getMaxOrderableQty(item);
     final defaultQty = currentQty > 0 ? currentQty : (maxAllowed >= 1 ? 1 : 0);
@@ -348,6 +353,62 @@ class _BookOrderPageState extends State<BookOrderPage> {
                           ),
                         ],
                       ),
+
+                      if (rawReceiptText != null && rawReceiptText.trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.shade300),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.receipt_long_outlined, size: 16, color: Colors.amber.shade900),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'SCANNED ON DOCUMENT:',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.4,
+                                        color: Colors.amber.shade900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      rawReceiptText.trim(),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (allInventory != null)
+                                TextButton.icon(
+                                  style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  ),
+                                  icon: const Icon(Icons.edit_note_rounded, size: 16),
+                                  label: const Text('Correct AI', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    _showCorrectionDialog(itemKey: itemKey, allInventory: allInventory);
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
 
                       if (item.incomingQuantity > 0) ...[
                         const SizedBox(height: 8),
@@ -627,6 +688,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
                         final rawReceiptText = _scannedRawTexts[itemKey];
 
+                        final isItemCorrected = _correctedReceiptKeys.contains(itemKey);
+
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(vertical: 4),
                           leading: CachedProductImage(imageUrl: item.imageUrl, size: 52),
@@ -637,31 +700,87 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                   margin: const EdgeInsets.only(right: 6),
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                   decoration: BoxDecoration(
-                                    color: Colors.amber.shade100,
+                                    color: isItemCorrected ? Colors.blue.shade100 : Colors.amber.shade100,
                                     borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: Colors.amber.shade400.withValues(alpha: 0.6)),
+                                    border: Border.all(
+                                      color: (isItemCorrected ? Colors.blue.shade400 : Colors.amber.shade400).withValues(alpha: 0.6),
+                                    ),
                                   ),
                                   child: Text(
                                     '#$receiptNum',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.amber.shade900),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: isItemCorrected ? Colors.blue.shade900 : Colors.amber.shade900,
+                                    ),
                                   ),
                                 ),
                               Expanded(
                                 child: Text(item.productName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                               ),
+                              if (rawReceiptText != null)
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.edit_note_rounded, color: Colors.blue, size: 22),
+                                  tooltip: 'Correct AI Reading',
+                                  onPressed: () async {
+                                    Navigator.pop(ctx);
+                                    await _showCorrectionDialog(itemKey: itemKey, allInventory: allInventory);
+                                  },
+                                ),
                             ],
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (rawReceiptText != null && rawReceiptText.trim().isNotEmpty) ...[
-                                Text(
-                                  'Receipt: "${rawReceiptText.trim()}"',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                                const SizedBox(height: 3),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade50,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.amber.shade200),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(Icons.receipt_long_outlined, size: 12, color: Colors.amber.shade900),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: RichText(
+                                          text: TextSpan(
+                                            children: [
+                                              TextSpan(
+                                                text: 'Scanned: ',
+                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                                              ),
+                                              TextSpan(
+                                                text: rawReceiptText.trim(),
+                                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      if (isItemCorrected) ...[
+                                        const SizedBox(width: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade100,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            '✓ Corrected',
+                                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 ),
-                                const SizedBox(height: 2),
+                                const SizedBox(height: 3),
                               ],
                               Text(
                                 '${isSelecta ? 'Selecta' : 'Other'} • ${_currencyFormat.format(item.sellingPrice)} × ${item.pickedQuantity}',
@@ -926,13 +1045,442 @@ class _BookOrderPageState extends State<BookOrderPage> {
       _scannedRawTexts
         ..clear()
         ..addAll(scannedTexts);
+      _correctedReceiptKeys.clear();
       _sortByReceiptOrder = true;
       _searchController.clear();
       _searchQuery = '';
       _showSelectedOnly = _selectedQuantities.isNotEmpty;
     });
 
-    await ReceiptScanFlow.showSummary(context, skuCount: addedSkus, unitCount: addedUnits, capped: capped, skipped: outcome.skipped);
+    await ReceiptScanFlow.showSummary(
+      context,
+      skuCount: addedSkus,
+      unitCount: addedUnits,
+      capped: capped,
+      skipped: outcome.skipped,
+      scannedLines: _buildScannedReceiptLines(allInventory),
+      getScannedLines: () => _buildScannedReceiptLines(allInventory),
+      correctedKeys: _correctedReceiptKeys,
+      getCorrectedKeys: () => _correctedReceiptKeys,
+      onCorrectLine: (line) async {
+        final key = _itemKey(line.item);
+        await _showCorrectionDialog(itemKey: key, allInventory: allInventory);
+      },
+    );
+  }
+
+  /// Builds the current list of scanned receipt lines reflecting any user corrections.
+  List<ScannedReceiptLine> _buildScannedReceiptLines(List<InventoryItem> allInventory) {
+    final Map<String, InventoryItem> byKey = {for (final item in allInventory) _itemKey(item): item};
+    final List<ScannedReceiptLine> lines = [];
+    for (final key in _scannedReceiptOrder) {
+      final inv = byKey[key];
+      final qty = _selectedQuantities[key] ?? 0;
+      if (inv != null && qty > 0) {
+        lines.add(
+          ScannedReceiptLine(
+            item: inv,
+            quantity: qty,
+            rawText: _scannedRawTexts[key] ?? inv.productName,
+          ),
+        );
+      }
+    }
+    return lines;
+  }
+
+  // ============================================================
+  // Scanned Receipt AI Correction Dialog
+  // ============================================================
+
+  /// Mirrors the Purchase Order AI correction sheet: lets the dealer compare
+  /// the full document raw text with the device product, replace it with another
+  /// catalog product, adjust quantity, and remember the mapping for future scans.
+  Future<void> _showCorrectionDialog({
+    required String itemKey,
+    required List<InventoryItem> allInventory,
+  }) async {
+    final Map<String, InventoryItem> byKey = {for (final item in allInventory) _itemKey(item): item};
+    final currentItem = byKey[itemKey];
+    if (currentItem == null) return;
+
+    final rawReceiptText = _scannedRawTexts[itemKey] ?? '';
+    final receiptIdx = _scannedReceiptOrder.indexOf(itemKey);
+    final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : 1;
+    final searchCtrl = TextEditingController();
+
+    InventoryItem? replacementProduct;
+    int updatedQty = _selectedQuantities[itemKey] ?? 1;
+    if (updatedQty < 1) updatedQty = 1;
+    bool rememberCorrection = true;
+    String filter = '';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final colorScheme = Theme.of(ctx).colorScheme;
+            final searchResults = filter.trim().isEmpty
+                ? <InventoryItem>[]
+                : allInventory
+                    .where((i) =>
+                        i.isActive &&
+                        (i.productName.toLowerCase().contains(filter.toLowerCase()) ||
+                         i.itemCode.toLowerCase().contains(filter.toLowerCase()) ||
+                         i.category.toLowerCase().contains(filter.toLowerCase())))
+                    .take(10)
+                    .toList();
+
+            final effectiveProduct = replacementProduct;
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.88),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.edit_note_rounded, color: Colors.blue, size: 22),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Correct Item #$receiptNum',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  'Item #$receiptNum • Receipt Product Verification',
+                                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Dedicated Actual Scanned Product Name Callout Card
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.amber.shade300),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade100,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.receipt_long_outlined, color: Colors.amber.shade900, size: 20),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'PRINTED ON DOCUMENT / RECEIPT:',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.amber.shade900,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    rawReceiptText.isNotEmpty ? rawReceiptText : currentItem.productName,
+                                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.black87),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Current / Replaced Product Card
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                effectiveProduct != null ? 'New Product to Assign:' : 'Currently Assigned Device Product:',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: colorScheme.outlineVariant),
+                                ),
+                                child: Row(
+                                  children: [
+                                    CachedProductImage(
+                                      imageUrl: effectiveProduct?.imageUrl ?? currentItem.imageUrl,
+                                      size: 44,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            effectiveProduct?.productName ?? currentItem.productName,
+                                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                          ),
+                                          Text(
+                                            'Selling Price: ${_currencyFormat.format(effectiveProduct?.sellingPrice ?? currentItem.sellingPrice)}',
+                                            style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (effectiveProduct != null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(8)),
+                                        child: Text(
+                                          '✓ Selected',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+
+                              // Quantity editor
+                              Row(
+                                children: [
+                                  Text(
+                                    'Quantity on Receipt:',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                                  ),
+                                  const Spacer(),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: colorScheme.outlineVariant),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.remove, size: 16),
+                                          onPressed: () {
+                                            if (updatedQty > 1) {
+                                              setModalState(() => updatedQty--);
+                                            }
+                                          },
+                                        ),
+                                        Text('$updatedQty', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                                        IconButton(
+                                          icon: const Icon(Icons.add, size: 16),
+                                          onPressed: () => setModalState(() => updatedQty++),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+
+                              // Search & Replace
+                              Text(
+                                'Replace with different product:',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: searchCtrl,
+                                decoration: InputDecoration(
+                                  hintText: 'Search catalog by product name or item code...',
+                                  prefixIcon: const Icon(Icons.search, size: 20),
+                                  suffixIcon: filter.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.close, size: 18),
+                                          onPressed: () {
+                                            searchCtrl.clear();
+                                            setModalState(() => filter = '');
+                                          },
+                                        )
+                                      : null,
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                ),
+                                onChanged: (val) => setModalState(() => filter = val),
+                              ),
+                              const SizedBox(height: 6),
+                              if (searchResults.isNotEmpty) ...[
+                                Container(
+                                  constraints: const BoxConstraints(maxHeight: 180),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: colorScheme.outlineVariant),
+                                  ),
+                                  child: ListView.separated(
+                                    shrinkWrap: true,
+                                    itemCount: searchResults.length,
+                                    separatorBuilder: (_, _) => const Divider(height: 1),
+                                    itemBuilder: (_, i) {
+                                      final item = searchResults[i];
+                                      final isPicked = replacementProduct?.id == item.id;
+                                      return ListTile(
+                                        dense: true,
+                                        leading: CachedProductImage(imageUrl: item.imageUrl, size: 32),
+                                        title: Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                        subtitle: Text(_currencyFormat.format(item.sellingPrice), style: TextStyle(fontSize: 11, color: colorScheme.primary)),
+                                        trailing: isPicked ? const Icon(Icons.check_circle, color: Colors.green, size: 20) : null,
+                                        onTap: () => setModalState(() => replacementProduct = item),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+
+                              // Remember mapping switch
+                              if (rawReceiptText.isNotEmpty)
+                                CheckboxListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  value: rememberCorrection,
+                                  dense: true,
+                                  onChanged: (val) => setModalState(() => rememberCorrection = val ?? true),
+                                  title: const Text('Remember this mapping for future scans', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                                  subtitle: Text(
+                                    'AI will automatically assign "$rawReceiptText" to this product next time.',
+                                    style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          IconButton.outlined(
+                            tooltip: 'Delete Line',
+                            style: IconButton.styleFrom(
+                              foregroundColor: colorScheme.error,
+                              side: BorderSide(color: colorScheme.error),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              setState(() {
+                                _selectedQuantities.remove(itemKey);
+                                _scannedReceiptOrder.remove(itemKey);
+                                _scannedRawTexts.remove(itemKey);
+                                _correctedReceiptKeys.remove(itemKey);
+                              });
+                              ShowMessage.info(context, 'Line item removed from order.');
+                            },
+                            icon: const Icon(Icons.delete_outline, size: 20),
+                          ),
+                          const Spacer(),
+                          TextButton(
+                            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            ),
+                            child: const Text('Save Changes'),
+                            onPressed: () async {
+                              final finalProduct = replacementProduct;
+                              final finalKey = finalProduct != null ? _itemKey(finalProduct) : itemKey;
+
+                              setState(() {
+                                if (finalProduct != null) {
+                                  _selectedQuantities.remove(itemKey);
+                                  _scannedRawTexts.remove(itemKey);
+                                  _correctedReceiptKeys.remove(itemKey);
+
+                                  if (receiptIdx != -1) {
+                                    _scannedReceiptOrder[receiptIdx] = finalKey;
+                                  } else if (!_scannedReceiptOrder.contains(finalKey)) {
+                                    _scannedReceiptOrder.add(finalKey);
+                                  }
+
+                                  final maxAllowed = _getMaxOrderableQty(finalProduct);
+                                  final appliedQty = maxAllowed <= 0 ? updatedQty : updatedQty.clamp(1, maxAllowed);
+                                  _selectedQuantities[finalKey] = appliedQty;
+                                  _scannedRawTexts[finalKey] = rawReceiptText;
+                                  _correctedReceiptKeys.add(finalKey);
+                                } else {
+                                  final maxAllowed = _getMaxOrderableQty(currentItem);
+                                  final appliedQty = maxAllowed <= 0 ? updatedQty : updatedQty.clamp(1, maxAllowed);
+                                  _selectedQuantities[itemKey] = appliedQty;
+                                  _correctedReceiptKeys.add(itemKey);
+                                }
+                              });
+
+                              Navigator.pop(ctx);
+
+                              if (rememberCorrection && rawReceiptText.isNotEmpty) {
+                                await ReceiptScanFlow.mappingService.saveOrUpdateMapping(
+                                  rawSupplierText: rawReceiptText,
+                                  product: finalProduct ?? currentItem,
+                                );
+                              }
+
+                              if (mounted) ShowMessage.success(context, 'Item #$receiptNum updated!');
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -1435,14 +1983,14 @@ class _BookOrderPageState extends State<BookOrderPage> {
             colorScheme: colorScheme,
           );
         } else if (entry is _BookOrderCardEntry) {
-          return Padding(padding: const EdgeInsets.only(bottom: 8), child: _buildProductOrderCard(entry.item, colorScheme));
+          return Padding(padding: const EdgeInsets.only(bottom: 8), child: _buildProductOrderCard(entry.item, colorScheme, allInventory));
         }
         return const SizedBox.shrink();
       },
     );
   }
 
-  Widget _buildProductOrderCard(InventoryItem item, ColorScheme colorScheme) {
+  Widget _buildProductOrderCard(InventoryItem item, ColorScheme colorScheme, List<InventoryItem> allInventory) {
     final key = _itemKey(item);
     final receiptIdx = _scannedReceiptOrder.indexOf(key);
     final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
@@ -1456,7 +2004,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
       currencyFormat: _currencyFormat,
       receiptIndex: receiptNum,
       rawReceiptText: rawText,
-      onTap: () => _promptQuantityDialog(item),
+      isCorrected: _correctedReceiptKeys.contains(key),
+      onCorrectAi: rawText != null ? () => _showCorrectionDialog(itemKey: key, allInventory: allInventory) : null,
+      onTap: () => _promptQuantityDialog(item, allInventory: allInventory),
     );
   }
 

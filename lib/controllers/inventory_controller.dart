@@ -78,11 +78,12 @@ class InventoryController {
     );
   }
 
-  /// Updates the stock quantity (and optional low stock threshold) of an [InventoryItem].
+  /// Updates the stock quantity (and optional low stock & max stock thresholds) of an [InventoryItem].
   Future<void> updateStock({
     required InventoryItem item,
     required int newStockQuantity,
     int? newLowStockThreshold,
+    int? newMaxStock,
     required String reason,
     String notes = '',
   }) =>
@@ -90,6 +91,7 @@ class InventoryController {
         item: item,
         newStockQuantity: newStockQuantity,
         newLowStockThreshold: newLowStockThreshold,
+        newMaxStock: newMaxStock,
         reason: reason,
         notes: notes,
       );

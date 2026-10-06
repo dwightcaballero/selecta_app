@@ -455,12 +455,13 @@ class InventoryService {
     await batch.commit();
   }
 
-  /// Updates the stock quantity (and optionally lowStockThreshold) of a product
+  /// Updates the stock quantity (and optionally lowStockThreshold and maxStock) of a product
   /// and records an [InventoryMovement] entry in `inventory_movements`.
   Future<void> updateStock({
     required InventoryItem item,
     required int newStockQuantity,
     int? newLowStockThreshold,
+    int? newMaxStock,
     required String reason,
     String notes = '',
   }) async {
@@ -468,6 +469,9 @@ class InventoryService {
     final threshold = (newLowStockThreshold ?? item.lowStockThreshold) < 0
         ? 0
         : (newLowStockThreshold ?? item.lowStockThreshold);
+    final maxStockVal = (newMaxStock ?? item.maxStock) < 0
+        ? 0
+        : (newMaxStock ?? item.maxStock);
     final delta = clampedNewStock - item.stockQuantity;
     final now = Timestamp.now();
 
@@ -480,11 +484,16 @@ class InventoryService {
     final batch = _firestore.batch();
     final productRef = _firestore.collection(collectionName).doc(item.id);
 
-    batch.update(productRef, {
+    final updatePayload = <String, dynamic>{
       'stockQuantity': clampedNewStock,
       'lowStockThreshold': threshold,
       'updatedAt': now,
-    });
+    };
+    if (item.source == InventoryProductSource.selecta) {
+      updatePayload['maxStock'] = maxStockVal;
+    }
+
+    batch.update(productRef, updatePayload);
 
     if (delta != 0) {
       final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();

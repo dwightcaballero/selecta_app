@@ -6,6 +6,7 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/inventory/inventory_movements_sheet.dart';
+import 'package:selecta_ops/views/widgets/purchaseorder/product_supplier_calendar_dialog.dart';
 
 /// Modal bottom sheet for adjusting stock quantities (Stock In, Stock Out, Set Exact)
 /// with audit reasons, optional notes, and embedded recent movement logs.
@@ -54,6 +55,7 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
   String _mode = 'add'; // 'add', 'deduct', 'set'
   late final TextEditingController _qtyController;
   late final TextEditingController _thresholdController;
+  late final TextEditingController _maxStockController;
   late final TextEditingController _notesController;
   String _selectedReason = 'Restock / PO';
   bool _isSaving = false;
@@ -71,6 +73,9 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
     _thresholdController = TextEditingController(
       text: widget.item.lowStockThreshold.toString(),
     );
+    _maxStockController = TextEditingController(
+      text: widget.item.maxStock > 0 ? widget.item.maxStock.toString() : '',
+    );
     _notesController = TextEditingController();
   }
 
@@ -78,6 +83,7 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
   void dispose() {
     _qtyController.dispose();
     _thresholdController.dispose();
+    _maxStockController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -181,6 +187,18 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                     ],
                   ),
                 ),
+                if (item.source == InventoryProductSource.selecta)
+                  IconButton(
+                    icon: const Icon(Icons.calendar_month_outlined, color: Colors.blue),
+                    tooltip: 'Supplier Stock History',
+                    onPressed: () {
+                      ProductSupplierCalendarDialog.show(
+                        context: context,
+                        productId: item.id,
+                        productName: item.productName,
+                      );
+                    },
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -219,50 +237,85 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
             ),
             const SizedBox(height: 14),
 
-            // Quantity Input + Quick Presets
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    controller: _qtyController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      labelText: _mode == 'set' ? 'New Exact Stock' : 'Quantity',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
+            // Quantity Input
+            TextField(
+              controller: _qtyController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: _mode == 'set' ? 'New Exact Stock' : 'Adjustment Quantity',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: _thresholdController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: InputDecoration(
-                      labelText: 'Low Alert ≤',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
                 ),
-              ],
+              ),
             ),
+            const SizedBox(height: 10),
+
+            // Thresholds: Low Alert ≤ (and Max Stock for Selecta products only)
+            if (item.source == InventoryProductSource.selecta)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _thresholdController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        labelText: 'Low Alert ≤',
+                        hintText: 'e.g. 10',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _maxStockController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        labelText: 'Max Stock',
+                        hintText: 'Auto P.O. Cap',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else
+              TextField(
+                controller: _thresholdController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: InputDecoration(
+                  labelText: 'Low Stock Alert Threshold ≤',
+                  hintText: 'e.g. 10',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
+              ),
             const SizedBox(height: 8),
 
             // Preset quantity buttons
@@ -382,10 +435,14 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                                 _thresholdController.text.trim(),
                               ) ??
                               item.lowStockThreshold;
+                          final newMaxStock = item.source == InventoryProductSource.selecta
+                              ? (int.tryParse(_maxStockController.text.trim()) ?? item.maxStock)
+                              : 0;
                           await widget.controller.updateStock(
                             item: item,
                             newStockQuantity: previewStock,
                             newLowStockThreshold: newThreshold,
+                            newMaxStock: newMaxStock,
                             reason: _selectedReason,
                             notes: _notesController.text,
                           );

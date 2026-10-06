@@ -15,6 +15,7 @@ class SelectaProduct {
   final int incomingQuantity;
   final int reservedQuantity;
   final int lowStockThreshold;
+  final int maxStock;
   final Timestamp? importedAt;
   final Timestamp? updatedAt;
 
@@ -32,6 +33,7 @@ class SelectaProduct {
     this.incomingQuantity = 0,
     this.reservedQuantity = 0,
     this.lowStockThreshold = 10,
+    this.maxStock = 0,
     this.importedAt,
     this.updatedAt,
   });
@@ -81,6 +83,7 @@ class SelectaProduct {
         incomingQuantity: 0,
         reservedQuantity: 0,
         lowStockThreshold: 10,
+        maxStock: 0,
       );
 
   factory SelectaProduct.fromJson(String id, Map<String, Object?> json) {
@@ -106,6 +109,7 @@ class SelectaProduct {
       incomingQuantity: (json['incomingQuantity'] as num?)?.toInt() ?? 0,
       reservedQuantity: (json['reservedQuantity'] as num?)?.toInt() ?? 0,
       lowStockThreshold: (json['lowStockThreshold'] as num?)?.toInt() ?? 10,
+      maxStock: (json['maxStock'] as num?)?.toInt() ?? 0,
       importedAt: json['importedAt'] as Timestamp?,
       updatedAt: json['updatedAt'] as Timestamp?,
     );
@@ -132,6 +136,7 @@ class SelectaProduct {
     int? incomingQuantity,
     int? reservedQuantity,
     int? lowStockThreshold,
+    int? maxStock,
     Timestamp? importedAt,
     Timestamp? updatedAt,
   }) {
@@ -149,6 +154,7 @@ class SelectaProduct {
       incomingQuantity: incomingQuantity ?? this.incomingQuantity,
       reservedQuantity: reservedQuantity ?? this.reservedQuantity,
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
+      maxStock: maxStock ?? this.maxStock,
       importedAt: importedAt ?? this.importedAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -167,6 +173,7 @@ class SelectaProduct {
     int incomingQuantity = 0,
     int reservedQuantity = 0,
     int lowStockThreshold = 10,
+    int maxStock = 0,
     String itemCode = '',
     String category = '',
     String tag = '',
@@ -187,6 +194,7 @@ class SelectaProduct {
       incomingQuantity: incomingQuantity,
       reservedQuantity: reservedQuantity,
       lowStockThreshold: lowStockThreshold,
+      maxStock: maxStock,
       importedAt: importedAt,
       updatedAt: updatedAt,
     );
@@ -207,6 +215,7 @@ class SelectaProduct {
       'incomingQuantity': incomingQuantity,
       'reservedQuantity': reservedQuantity,
       'lowStockThreshold': lowStockThreshold,
+      'maxStock': maxStock,
       'importedAt': importedAt,
       'updatedAt': updatedAt,
     };

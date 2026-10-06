@@ -26,6 +26,7 @@ import 'package:selecta_ops/views/widgets/purchaseorder/po_confirmed_status_card
 import 'package:selecta_ops/views/widgets/purchaseorder/po_document_line_card.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/po_reconciliation_header.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/po_phase2_confirmation_card.dart';
+import 'package:selecta_ops/views/widgets/purchaseorder/automated_po_suggestion_dialog.dart';
 
 class PurchaseorderPage extends StatefulWidget {
   const PurchaseorderPage({super.key, required this.purchaseorderID, required this.purchaseorder});
@@ -181,8 +182,35 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   // ============================================================
-  // AI Document Scanner
+  // AI Document Scanner & Automated P.O. Suggestion
   // ============================================================
+
+  Future<void> _openAutomatedPoSuggestions(List<InventoryItem> allInventory) async {
+    final suggestedLines = await AutomatedPoSuggestionDialog.show(
+      context: context,
+      allInventory: allInventory,
+      currencyFormat: _currencyFormat,
+    );
+
+    if (suggestedLines != null && suggestedLines.isNotEmpty) {
+      setState(() {
+        _documentLines
+          ..clear()
+          ..addAll(suggestedLines);
+        _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
+        _docTotalAmountRead = _currentListTotalCost;
+        orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
+        _aiExtractionSummary =
+            '✨ Auto-suggested ${_documentLines.length} products ($_currentListUnits units)';
+      });
+      if (mounted) {
+        ShowMessage.success(
+          context,
+          'Applied automated P.O. suggestion with ${_documentLines.length} products.',
+        );
+      }
+    }
+  }
 
   Future<void> _showImageSourcePicker(List<InventoryItem> allInventory, {bool append = false}) async {
     await showModalBottomSheet<void>(
@@ -1971,7 +1999,11 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     return StreamBuilder<List<InventoryItem>>(
       stream: _inventoryController.getActiveInventoryStream(),
       builder: (context, snapshot) {
-        final allInventory = snapshot.data ?? [];
+        // Purchase Orders are strictly exclusive to Selecta products.
+        // Other products are completely excluded from PO catalog matching, suggestions, and discrepancy analysis.
+        final allInventory = (snapshot.data ?? [])
+            .where((item) => item.source == InventoryProductSource.selecta)
+            .toList();
 
         return Scaffold(
           appBar: CustomAppbar(
@@ -2019,10 +2051,22 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                             style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 20),
-                          FilledButton.icon(
-                            onPressed: () => _showImageSourcePicker(allInventory),
-                            icon: const Icon(Icons.camera_alt_outlined),
-                            label: const Text('Scan / Upload Document', style: TextStyle(fontWeight: FontWeight.bold)),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 12,
+                            runSpacing: 10,
+                            children: [
+                              FilledButton.icon(
+                                onPressed: () => _showImageSourcePicker(allInventory),
+                                icon: const Icon(Icons.camera_alt_outlined),
+                                label: const Text('Scan / Upload Document', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                              FilledButton.tonalIcon(
+                                onPressed: () => _openAutomatedPoSuggestions(allInventory),
+                                icon: const Icon(Icons.auto_awesome_rounded),
+                                label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -2046,6 +2090,16 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        TextButton.icon(
+                          onPressed: () => _openAutomatedPoSuggestions(allInventory),
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          ),
+                          icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                          label: const Text('Auto-Suggest', style: TextStyle(fontSize: 12)),
+                        ),
+                        const SizedBox(width: 4),
                         TextButton.icon(
                           onPressed: () => _showAddMissingLineDialog(allInventory),
                           style: TextButton.styleFrom(
