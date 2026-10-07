@@ -16,6 +16,7 @@ import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/book_order/receipt_scan_flow.dart';
 import 'package:selecta_ops/views/widgets/book_order/sticky_order_summary_bar.dart';
 import 'package:selecta_ops/views/widgets/book_order/store_date_modal.dart';
+import 'package:selecta_ops/views/widgets/book_order/store_recommendations_modal.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
 
@@ -62,7 +63,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
   DateTime _selectedDate = DateTime.now();
   bool _hasUserManuallyPickedDate = false;
   String _searchQuery = '';
-  bool _showSelectedOnly = false;
+  String _selectedCategoryFilter = 'all';
+  bool _hideOutOfStock = false;
   bool _isSaving = false;
   bool _isScanning = false;
   Set<String> _placedProductNames = {};
@@ -373,21 +375,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                   children: [
                                     Text(
                                       'SCANNED ON DOCUMENT:',
-                                      style: TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 0.4,
-                                        color: Colors.amber.shade900,
-                                      ),
+                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 0.4, color: Colors.amber.shade900),
                                     ),
                                     const SizedBox(height: 1),
                                     Text(
                                       rawReceiptText.trim(),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.black87,
-                                      ),
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black87),
                                     ),
                                   ],
                                 ),
@@ -622,8 +615,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
   }
 
   Future<void> _showCartSummarySheet(List<InventoryItem> allInventory) async {
-    final items = _buildOrderItemsList(allInventory);
-    if (items.isEmpty) return;
+    final Map<String, InventoryItem> byKey = {for (final item in allInventory) _itemKey(item): item};
+    if (_selectedQuantities.isEmpty) return;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -631,184 +624,310 @@ class _BookOrderPageState extends State<BookOrderPage> {
       useSafeArea: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
-        final colorScheme = Theme.of(ctx).colorScheme;
-        final totalAmount = _deliveryController.computeItemsOrderAmount(items);
-        final totalUnits = items.fold<int>(0, (sum, i) => sum + i.pickedQuantity);
+        return StatefulBuilder(
+          builder: (sheetCtx, setSheetState) {
+            final items = _buildOrderItemsList(allInventory);
+            if (items.isEmpty) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (Navigator.canPop(sheetCtx)) Navigator.pop(sheetCtx);
+              });
+              return const SizedBox.shrink();
+            }
 
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.65,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
-          builder: (_, scrollController) {
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 44,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
-                    ),
-                  ),
-                  Row(
+            final colorScheme = Theme.of(sheetCtx).colorScheme;
+            final totalAmount = _deliveryController.computeItemsOrderAmount(items);
+            final totalUnits = items.fold<int>(0, (sum, i) => sum + i.pickedQuantity);
+
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.70,
+              minChildSize: 0.4,
+              maxChildSize: 0.95,
+              builder: (_, scrollController) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.shopping_bag_outlined, color: colorScheme.primary, size: 26),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Order Summary (${items.length} SKU${items.length == 1 ? '' : 's'} • $totalUnits units)',
-                          style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold),
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
                         ),
                       ),
-                      TextButton.icon(
-                        onPressed: () {
-                          setState(() => _selectedQuantities.clear());
-                          Navigator.pop(ctx);
-                        },
-                        icon: Icon(Icons.delete_sweep_outlined, size: 22, color: colorScheme.error),
-                        label: Text('Clear', style: TextStyle(fontSize: 13.5, color: colorScheme.error)),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 12),
-                  Expanded(
-                    child: ListView.separated(
-                      controller: scrollController,
-                      itemCount: items.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-                        final isSelecta = item.productSource == 'selecta';
-                        final itemKey = '${item.productSource}:${item.productId}';
-                        final receiptIdx = _scannedReceiptOrder.indexOf(itemKey);
-                        final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
-                        final rawReceiptText = _scannedRawTexts[itemKey];
-
-                        final isItemCorrected = _correctedReceiptKeys.contains(itemKey);
-
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                          leading: CachedProductImage(imageUrl: item.imageUrl, size: 52),
-                          title: Row(
-                            children: [
-                              if (receiptNum != null)
-                                Container(
-                                  margin: const EdgeInsets.only(right: 6),
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                  decoration: BoxDecoration(
-                                    color: isItemCorrected ? Colors.blue.shade100 : Colors.amber.shade100,
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: (isItemCorrected ? Colors.blue.shade400 : Colors.amber.shade400).withValues(alpha: 0.6),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    '#$receiptNum',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: isItemCorrected ? Colors.blue.shade900 : Colors.amber.shade900,
-                                    ),
-                                  ),
-                                ),
-                              Expanded(
-                                child: Text(item.productName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                              ),
-                              if (rawReceiptText != null)
-                                IconButton(
-                                  visualDensity: VisualDensity.compact,
-                                  icon: const Icon(Icons.edit_note_rounded, color: Colors.blue, size: 22),
-                                  tooltip: 'Correct AI Reading',
-                                  onPressed: () async {
-                                    Navigator.pop(ctx);
-                                    await _showCorrectionDialog(itemKey: itemKey, allInventory: allInventory);
-                                  },
-                                ),
-                            ],
+                      Row(
+                        children: [
+                          Icon(Icons.shopping_bag_outlined, color: colorScheme.primary, size: 26),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Order Summary (${items.length} SKU${items.length == 1 ? '' : 's'} • $totalUnits units)',
+                              style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold),
+                            ),
                           ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (rawReceiptText != null && rawReceiptText.trim().isNotEmpty) ...[
-                                const SizedBox(height: 3),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.shade50,
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: Colors.amber.shade200),
-                                  ),
-                                  child: Row(
+                          TextButton.icon(
+                            onPressed: () async {
+                              final confirmed = await ShowMessage.confirm(
+                                sheetCtx,
+                                title: 'Clear Order',
+                                message: 'Are you sure you want to remove all items from this order?',
+                                confirmText: 'Clear All',
+                                isDestructive: true,
+                              );
+                              if (confirmed) {
+                                setState(() => _selectedQuantities.clear());
+                                if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                              }
+                            },
+                            icon: Icon(Icons.delete_sweep_outlined, size: 20, color: colorScheme.error),
+                            label: Text('Clear', style: TextStyle(fontSize: 13, color: colorScheme.error)),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 12),
+                      Expanded(
+                        child: ListView.separated(
+                          controller: scrollController,
+                          itemCount: items.length,
+                          separatorBuilder: (_, _) => const Divider(height: 16),
+                          itemBuilder: (context, index) {
+                            final item = items[index];
+                            final isSelecta = item.productSource == 'selecta';
+                            final itemKey = '${item.productSource}:${item.productId}';
+                            final invItem = byKey[itemKey];
+                            final maxAllowed = invItem != null ? _getMaxOrderableQty(invItem) : 9999;
+                            final receiptIdx = _scannedReceiptOrder.indexOf(itemKey);
+                            final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
+                            final rawReceiptText = _scannedRawTexts[itemKey];
+                            final isItemCorrected = _correctedReceiptKeys.contains(itemKey);
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // ── Row 1: Image + Full-Width Title + Delete Icon ──
+                                  Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Icon(Icons.receipt_long_outlined, size: 12, color: Colors.amber.shade900),
-                                      const SizedBox(width: 4),
+                                      CachedProductImage(imageUrl: item.imageUrl, size: 44, borderRadius: 8),
+                                      const SizedBox(width: 10),
                                       Expanded(
-                                        child: RichText(
-                                          text: TextSpan(
-                                            children: [
-                                              TextSpan(
-                                                text: 'Scanned: ',
-                                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
-                                              ),
-                                              TextSpan(
-                                                text: rawReceiptText.trim(),
-                                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                if (receiptNum != null)
+                                                  Container(
+                                                    margin: const EdgeInsets.only(right: 6),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                    decoration: BoxDecoration(
+                                                      color: isItemCorrected ? Colors.blue.shade100 : Colors.amber.shade100,
+                                                      borderRadius: BorderRadius.circular(4),
+                                                      border: Border.all(
+                                                        color: (isItemCorrected ? Colors.blue.shade400 : Colors.amber.shade400).withValues(
+                                                          alpha: 0.6,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      '#$receiptNum',
+                                                      style: TextStyle(
+                                                        fontSize: 10.5,
+                                                        fontWeight: FontWeight.w800,
+                                                        color: isItemCorrected ? Colors.blue.shade900 : Colors.amber.shade900,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                Expanded(
+                                                  child: Text(
+                                                    item.productName,
+                                                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, height: 1.25),
+                                                    maxLines: 4,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            if (rawReceiptText != null && rawReceiptText.trim().isNotEmpty) ...[
+                                              const SizedBox(height: 3),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber.shade50,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: Colors.amber.shade200),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.receipt_long_outlined, size: 11, color: Colors.amber.shade900),
+                                                    const SizedBox(width: 4),
+                                                    Expanded(
+                                                      child: Text(
+                                                        'Scanned: ${rawReceiptText.trim()}',
+                                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow.ellipsis,
+                                                      ),
+                                                    ),
+                                                    if (isItemCorrected)
+                                                      Text(
+                                                        '✓ Corrected',
+                                                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                                                      ),
+                                                  ],
+                                                ),
                                               ),
                                             ],
-                                          ),
+                                          ],
                                         ),
                                       ),
-                                      if (isItemCorrected) ...[
-                                        const SizedBox(width: 4),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.shade100,
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: Text(
-                                            '✓ Corrected',
-                                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
-                                          ),
-                                        ),
-                                      ],
+                                      const SizedBox(width: 6),
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        icon: Icon(Icons.delete_outline_rounded, color: colorScheme.error, size: 20),
+                                        tooltip: 'Remove',
+                                        onPressed: () {
+                                          if (invItem != null) {
+                                            _setSelectedQty(invItem, 0);
+                                          } else {
+                                            setState(() => _selectedQuantities.remove(itemKey));
+                                          }
+                                          setSheetState(() {});
+                                        },
+                                      ),
                                     ],
                                   ),
-                                ),
-                                const SizedBox(height: 3),
-                              ],
-                              Text(
-                                '${isSelecta ? 'Selecta' : 'Other'} • ${_currencyFormat.format(item.sellingPrice)} × ${item.pickedQuantity}',
-                                style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                                  const SizedBox(height: 8),
+
+                                  // ── Row 2: Price / Subtotal on Left + Stepper on Right ──
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 54),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              '${isSelecta ? 'Selecta' : 'Other'} • ${_currencyFormat.format(item.sellingPrice)} each',
+                                              style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                            ),
+                                            Text(
+                                              _currencyFormat.format(item.lineTotal),
+                                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.primary),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            InkWell(
+                                              borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
+                                              onTap: () {
+                                                HapticFeedback.lightImpact();
+                                                if (invItem != null) {
+                                                  _setSelectedQty(invItem, item.pickedQuantity - 1);
+                                                } else {
+                                                  final newQ = item.pickedQuantity - 1;
+                                                  setState(() {
+                                                    if (newQ <= 0) {
+                                                      _selectedQuantities.remove(itemKey);
+                                                    } else {
+                                                      _selectedQuantities[itemKey] = newQ;
+                                                    }
+                                                  });
+                                                }
+                                                setSheetState(() {});
+                                              },
+                                              child: SizedBox(
+                                                width: 30,
+                                                height: 32,
+                                                child: Icon(
+                                                  item.pickedQuantity == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
+                                                  size: 16,
+                                                  color: item.pickedQuantity == 1 ? colorScheme.error : colorScheme.primary,
+                                                ),
+                                              ),
+                                            ),
+                                            InkWell(
+                                              onTap: () async {
+                                                if (invItem != null) {
+                                                  await _promptQuantityDialog(invItem, allInventory: allInventory);
+                                                  setSheetState(() {});
+                                                }
+                                              },
+                                              child: Container(
+                                                constraints: const BoxConstraints(minWidth: 32),
+                                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                                                alignment: Alignment.center,
+                                                child: Text(
+                                                  '${item.pickedQuantity}',
+                                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                                ),
+                                              ),
+                                            ),
+                                            InkWell(
+                                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
+                                              onTap: item.pickedQuantity < maxAllowed
+                                                  ? () {
+                                                      HapticFeedback.lightImpact();
+                                                      if (invItem != null) {
+                                                        _setSelectedQty(invItem, item.pickedQuantity + 1);
+                                                      } else {
+                                                        setState(() => _selectedQuantities[itemKey] = item.pickedQuantity + 1);
+                                                      }
+                                                      setSheetState(() {});
+                                                    }
+                                                  : null,
+                                              child: SizedBox(
+                                                width: 30,
+                                                height: 32,
+                                                child: Icon(
+                                                  Icons.add_rounded,
+                                                  size: 16,
+                                                  color: item.pickedQuantity < maxAllowed ? colorScheme.primary : colorScheme.outlineVariant,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            ],
+                            );
+                          },
+                        ),
+                      ),
+                      const Divider(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Total Order Amount', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+                          Text(
+                            _currencyFormat.format(totalAmount),
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
                           ),
-                          trailing: Text(
-                            _currencyFormat.format(item.lineTotal),
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const Divider(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Order Amount', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
-                      Text(
-                        _currencyFormat.format(totalAmount),
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -1049,7 +1168,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       _sortByReceiptOrder = true;
       _searchController.clear();
       _searchQuery = '';
-      _showSelectedOnly = _selectedQuantities.isNotEmpty;
+      _selectedCategoryFilter = _selectedQuantities.isNotEmpty ? 'selected' : 'all';
     });
 
     await ReceiptScanFlow.showSummary(
@@ -1077,13 +1196,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       final inv = byKey[key];
       final qty = _selectedQuantities[key] ?? 0;
       if (inv != null && qty > 0) {
-        lines.add(
-          ScannedReceiptLine(
-            item: inv,
-            quantity: qty,
-            rawText: _scannedRawTexts[key] ?? inv.productName,
-          ),
-        );
+        lines.add(ScannedReceiptLine(item: inv, quantity: qty, rawText: _scannedRawTexts[key] ?? inv.productName));
       }
     }
     return lines;
@@ -1096,10 +1209,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
   /// Mirrors the Purchase Order AI correction sheet: lets the dealer compare
   /// the full document raw text with the device product, replace it with another
   /// catalog product, adjust quantity, and remember the mapping for future scans.
-  Future<void> _showCorrectionDialog({
-    required String itemKey,
-    required List<InventoryItem> allInventory,
-  }) async {
+  Future<void> _showCorrectionDialog({required String itemKey, required List<InventoryItem> allInventory}) async {
     final Map<String, InventoryItem> byKey = {for (final item in allInventory) _itemKey(item): item};
     final currentItem = byKey[itemKey];
     if (currentItem == null) return;
@@ -1127,13 +1237,15 @@ class _BookOrderPageState extends State<BookOrderPage> {
             final searchResults = filter.trim().isEmpty
                 ? <InventoryItem>[]
                 : allInventory
-                    .where((i) =>
-                        i.isActive &&
-                        (i.productName.toLowerCase().contains(filter.toLowerCase()) ||
-                         i.itemCode.toLowerCase().contains(filter.toLowerCase()) ||
-                         i.category.toLowerCase().contains(filter.toLowerCase())))
-                    .take(10)
-                    .toList();
+                      .where(
+                        (i) =>
+                            i.isActive &&
+                            (i.productName.toLowerCase().contains(filter.toLowerCase()) ||
+                                i.itemCode.toLowerCase().contains(filter.toLowerCase()) ||
+                                i.category.toLowerCase().contains(filter.toLowerCase())),
+                      )
+                      .take(10)
+                      .toList();
 
             final effectiveProduct = replacementProduct;
 
@@ -1159,10 +1271,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withValues(alpha: 0.12),
-                              shape: BoxShape.circle,
-                            ),
+                            decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.12), shape: BoxShape.circle),
                             child: const Icon(Icons.edit_note_rounded, color: Colors.blue, size: 22),
                           ),
                           const SizedBox(width: 10),
@@ -1170,10 +1279,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Correct Item #$receiptNum',
-                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                ),
+                                Text('Correct Item #$receiptNum', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                 Text(
                                   'Item #$receiptNum • Receipt Product Verification',
                                   style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
@@ -1198,10 +1304,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                           children: [
                             Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.amber.shade100,
-                                shape: BoxShape.circle,
-                              ),
+                              decoration: BoxDecoration(color: Colors.amber.shade100, shape: BoxShape.circle),
                               child: Icon(Icons.receipt_long_outlined, color: Colors.amber.shade900, size: 20),
                             ),
                             const SizedBox(width: 10),
@@ -1211,12 +1314,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                 children: [
                                   Text(
                                     'PRINTED ON DOCUMENT / RECEIPT:',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.amber.shade900,
-                                      letterSpacing: 0.5,
-                                    ),
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.amber.shade900, letterSpacing: 0.5),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
@@ -1251,10 +1349,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                 ),
                                 child: Row(
                                   children: [
-                                    CachedProductImage(
-                                      imageUrl: effectiveProduct?.imageUrl ?? currentItem.imageUrl,
-                                      size: 44,
-                                    ),
+                                    CachedProductImage(imageUrl: effectiveProduct?.imageUrl ?? currentItem.imageUrl, size: 44),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
@@ -1310,10 +1405,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                           },
                                         ),
                                         Text('$updatedQty', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                                        IconButton(
-                                          icon: const Icon(Icons.add, size: 16),
-                                          onPressed: () => setModalState(() => updatedQty++),
-                                        ),
+                                        IconButton(icon: const Icon(Icons.add, size: 16), onPressed: () => setModalState(() => updatedQty++)),
                                       ],
                                     ),
                                   ),
@@ -1365,7 +1457,10 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                         dense: true,
                                         leading: CachedProductImage(imageUrl: item.imageUrl, size: 32),
                                         title: Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                        subtitle: Text(_currencyFormat.format(item.sellingPrice), style: TextStyle(fontSize: 11, color: colorScheme.primary)),
+                                        subtitle: Text(
+                                          _currencyFormat.format(item.sellingPrice),
+                                          style: TextStyle(fontSize: 11, color: colorScheme.primary),
+                                        ),
                                         trailing: isPicked ? const Icon(Icons.check_circle, color: Colors.green, size: 20) : null,
                                         onTap: () => setModalState(() => replacementProduct = item),
                                       );
@@ -1382,7 +1477,10 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                   value: rememberCorrection,
                                   dense: true,
                                   onChanged: (val) => setModalState(() => rememberCorrection = val ?? true),
-                                  title: const Text('Remember this mapping for future scans', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                                  title: const Text(
+                                    'Remember this mapping for future scans',
+                                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                                  ),
                                   subtitle: Text(
                                     'AI will automatically assign "$rawReceiptText" to this product next time.',
                                     style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
@@ -1497,13 +1595,21 @@ class _BookOrderPageState extends State<BookOrderPage> {
         final orderItems = _buildOrderItemsList(allInventory);
         final totalAmount = _deliveryController.computeItemsOrderAmount(orderItems);
         final totalUnits = orderItems.fold<int>(0, (sum, i) => sum + i.pickedQuantity);
+        final unplacedCount = allInventory
+            .where(
+              (i) =>
+                  i.source == InventoryProductSource.selecta &&
+                  ProductTag.isBestSeller(i.tag) &&
+                  !_placedProductNames.contains(i.productName.trim().toLowerCase()),
+            )
+            .length;
 
         return Scaffold(
           appBar: CustomAppbar(
             title: _isEditing ? 'Edit Order' : 'Store Order',
             subtitle: hasSelectedStore ? '$selectedStoreName • ${_formatAppBarDate(_selectedDate)}' : 'Order for a Hapi Store',
             centerTitle: false,
-            actions: [_buildScanReceiptAction(allInventory), const SizedBox(width: 8), _buildToggleStoreDateAction()],
+            actions: [_buildOverflowMenuAction(allInventory: allInventory, unplacedCount: unplacedCount, colorScheme: colorScheme)],
           ),
           bottomNavigationBar: hasSelectedStore
               ? _buildStickyOrderSummaryBar(
@@ -1540,7 +1646,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
                                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                                     decoration: InputDecoration(
-                                      hintText: 'Search products...',
+                                      hintText: 'Search product, SKU, or category...',
                                       hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
                                       prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
                                       suffixIcon: _searchQuery.isNotEmpty
@@ -1576,19 +1682,145 @@ class _BookOrderPageState extends State<BookOrderPage> {
                             child: Row(
                               children: [
                                 FilterChip(
-                                  selected: _showSelectedOnly,
+                                  selected: _selectedCategoryFilter == 'all',
                                   label: Text(
-                                    'Selected (${orderItems.length})',
+                                    'All',
                                     style: TextStyle(
                                       fontSize: 13.5,
                                       fontWeight: FontWeight.bold,
-                                      color: _showSelectedOnly ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      color: _selectedCategoryFilter == 'all' ? colorScheme.onPrimary : colorScheme.onSurface,
                                     ),
                                   ),
                                   selectedColor: colorScheme.primary,
                                   showCheckmark: false,
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  onSelected: (val) => setState(() => _showSelectedOnly = val),
+                                  onSelected: (_) => setState(() => _selectedCategoryFilter = 'all'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilterChip(
+                                  selected: _selectedCategoryFilter == 'selected',
+                                  label: Text(
+                                    'Selected (${orderItems.length})',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _selectedCategoryFilter == 'selected' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  selectedColor: colorScheme.primary,
+                                  showCheckmark: false,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'selected' : 'all'),
+                                ),
+                                if (unplacedCount > 0) ...[
+                                  const SizedBox(width: 8),
+                                  FilterChip(
+                                    key: const Key('unplaced_recommendations_chip'),
+                                    selected: _selectedCategoryFilter == 'unplaced',
+                                    avatar: Icon(
+                                      Icons.lightbulb_outline_rounded,
+                                      size: 15,
+                                      color: _selectedCategoryFilter == 'unplaced' ? colorScheme.onPrimary : const Color(0xFFD97706),
+                                    ),
+                                    label: Text(
+                                      'Unplaced ($unplacedCount)',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedCategoryFilter == 'unplaced' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: const Color(0xFFD97706),
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'unplaced' : 'all'),
+                                  ),
+                                ],
+                                const SizedBox(width: 8),
+                                FilterChip(
+                                  selected: _selectedCategoryFilter == 'best_sellers',
+                                  label: Text(
+                                    '⭐ Best Sellers',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _selectedCategoryFilter == 'best_sellers' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  selectedColor: colorScheme.primary,
+                                  showCheckmark: false,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'best_sellers' : 'all'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilterChip(
+                                  selected: _selectedCategoryFilter == 'by_case',
+                                  label: Text(
+                                    '📦 By Case',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _selectedCategoryFilter == 'by_case' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  selectedColor: colorScheme.primary,
+                                  showCheckmark: false,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_case' : 'all'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilterChip(
+                                  selected: _selectedCategoryFilter == 'by_piece',
+                                  label: Text(
+                                    '🍦 By Piece',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _selectedCategoryFilter == 'by_piece' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  selectedColor: colorScheme.primary,
+                                  showCheckmark: false,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_piece' : 'all'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilterChip(
+                                  selected: _selectedCategoryFilter == 'other',
+                                  label: Text(
+                                    '🛒 Other Products',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _selectedCategoryFilter == 'other' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  selectedColor: colorScheme.primary,
+                                  showCheckmark: false,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'other' : 'all'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilterChip(
+                                  key: const Key('hide_out_of_stock_chip'),
+                                  selected: _hideOutOfStock,
+                                  avatar: Icon(
+                                    _hideOutOfStock ? Icons.visibility_off_rounded : Icons.visibility_outlined,
+                                    size: 16,
+                                    color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
+                                  ),
+                                  label: Text(
+                                    'Hide Out of Stock',
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  selectedColor: colorScheme.primary,
+                                  showCheckmark: false,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  onSelected: (val) => setState(() => _hideOutOfStock = val),
                                 ),
                                 if (_scannedReceiptOrder.isNotEmpty) ...[
                                   const SizedBox(width: 8),
@@ -1665,39 +1897,152 @@ class _BookOrderPageState extends State<BookOrderPage> {
     );
   }
 
-  Widget _buildScanReceiptAction(List<InventoryItem> allInventory) {
+  Widget _buildOverflowMenuAction({required List<InventoryItem> allInventory, required int unplacedCount, required ColorScheme colorScheme}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.18),
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
       ),
-      child: IconButton(
-        key: const Key('book_order_scan_receipt_action'),
-        icon: const Icon(Icons.document_scanner_outlined, size: 20, color: Colors.white),
-        onPressed: _isScanning ? null : () => _onScanReceipt(allInventory),
-        tooltip: 'Scan Receipt',
-        splashRadius: 20,
-        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-        padding: EdgeInsets.zero,
-      ),
-    );
-  }
-
-  Widget _buildToggleStoreDateAction() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
-      ),
-      child: IconButton(
-        icon: const Icon(Icons.storefront_outlined, size: 20, color: Colors.white),
-        onPressed: _showStoreAndDateModal,
-        tooltip: 'Store & Delivery Date',
-        splashRadius: 20,
-        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-        padding: EdgeInsets.zero,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          PopupMenuButton<String>(
+            key: const Key('book_order_overflow_menu'),
+            icon: const Icon(Icons.more_vert_rounded, size: 20, color: Colors.white),
+            tooltip: 'Order options',
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            color: colorScheme.surface,
+            elevation: 8,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+            onSelected: (value) {
+              switch (value) {
+                case 'scan':
+                  if (!_isScanning) {
+                    _onScanReceipt(allInventory);
+                  }
+                  break;
+                case 'recommendations':
+                  final storeName = _storeController.text.trim();
+                  if (storeName.isEmpty) {
+                    ShowMessage.info(context, 'Please select a store first.');
+                    return;
+                  }
+                  StoreRecommendationsModal.show(
+                    context: context,
+                    storeName: storeName,
+                    actionButtonLabel: 'Filter Unplaced in Catalog',
+                    onProceedToBookOrder: () {
+                      setState(() => _selectedCategoryFilter = 'unplaced');
+                    },
+                  );
+                  break;
+                case 'store_date':
+                  _showStoreAndDateModal();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                key: const Key('book_order_menu_scan_receipt'),
+                value: 'scan',
+                child: Row(
+                  children: [
+                    Icon(Icons.document_scanner_outlined, size: 20, color: colorScheme.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Scan Receipt', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                          Text('Extract with Sedy AI', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem<String>(
+                key: const Key('book_order_menu_recommendations'),
+                value: 'recommendations',
+                child: Row(
+                  children: [
+                    const Icon(Icons.lightbulb_outline_rounded, size: 20, color: Color(0xFFD97706)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Recommendations', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                          Text(
+                            unplacedCount > 0 ? '$unplacedCount unplaced this month' : 'View store guide & depot stock',
+                            style: TextStyle(fontSize: 11, color: unplacedCount > 0 ? const Color(0xFFD97706) : colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (unplacedCount > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(10)),
+                        child: Text(
+                          '$unplacedCount',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem<String>(
+                key: const Key('book_order_menu_store_date'),
+                value: 'store_date',
+                child: Row(
+                  children: [
+                    Icon(Icons.storefront_outlined, size: 20, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Store & Delivery Date', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                          if (_storeController.text.trim().isNotEmpty)
+                            Text(
+                              _storeController.text.trim(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (unplacedCount > 0)
+            Positioned(
+              right: 2,
+              top: 2,
+              child: Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEF4444),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1847,14 +2192,66 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
     final filtered = allInventory.where((item) {
       if (!item.isActive) return false;
-      if (_showSelectedOnly && _getSelectedQty(item) <= 0) return false;
-      if (_searchQuery.isNotEmpty && !item.productName.toLowerCase().contains(_searchQuery)) {
-        return false;
+      if (_selectedCategoryFilter == 'selected' && _getSelectedQty(item) <= 0) return false;
+      if (_hideOutOfStock && _getMaxOrderableQty(item) <= 0) return false;
+
+      // Category filter:
+      if (_selectedCategoryFilter == 'unplaced') {
+        if (item.source != InventoryProductSource.selecta ||
+            !ProductTag.isBestSeller(item.tag) ||
+            _placedProductNames.contains(item.productName.trim().toLowerCase())) {
+          return false;
+        }
+      } else if (_selectedCategoryFilter == 'best_sellers') {
+        if (item.source != InventoryProductSource.selecta || !ProductTag.isBestSeller(item.tag)) {
+          return false;
+        }
+      } else if (_selectedCategoryFilter == 'by_case') {
+        if (item.source != InventoryProductSource.selecta ||
+            ProductTag.isBestSeller(item.tag) ||
+            !item.category.trim().toLowerCase().contains('case')) {
+          return false;
+        }
+      } else if (_selectedCategoryFilter == 'by_piece') {
+        if (item.source != InventoryProductSource.selecta ||
+            ProductTag.isBestSeller(item.tag) ||
+            item.category.trim().toLowerCase().contains('case')) {
+          return false;
+        }
+      } else if (_selectedCategoryFilter == 'other') {
+        if (item.source == InventoryProductSource.selecta) {
+          return false;
+        }
+      }
+
+      // Expanded search: check name, SKU/barcode (itemCode), category, and tag
+      if (_searchQuery.isNotEmpty) {
+        final query = _searchQuery;
+        final nameMatch = item.productName.toLowerCase().contains(query);
+        final codeMatch = item.itemCode.toLowerCase().contains(query);
+        final categoryMatch = item.category.toLowerCase().contains(query);
+        final tagMatch = item.tag.toLowerCase().contains(query);
+        if (!nameMatch && !codeMatch && !categoryMatch && !tagMatch) {
+          return false;
+        }
       }
       return true;
     }).toList();
 
     if (filtered.isEmpty) {
+      String emptyMessage;
+      if (_searchQuery.isNotEmpty) {
+        emptyMessage = 'No products matching "$_searchQuery"';
+      } else if (_selectedCategoryFilter == 'selected') {
+        emptyMessage = 'No selected products found';
+      } else if (_selectedCategoryFilter == 'unplaced') {
+        emptyMessage = 'All target best-sellers have already been placed for this store!';
+      } else if (_hideOutOfStock) {
+        emptyMessage = 'No in-stock products found';
+      } else {
+        emptyMessage = 'No products found in this category';
+      }
+
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -1864,9 +2261,25 @@ class _BookOrderPageState extends State<BookOrderPage> {
               Icon(Icons.search_off_rounded, size: 48, color: colorScheme.outline),
               const SizedBox(height: 12),
               Text(
-                _showSelectedOnly ? 'No selected products found' : 'No products matching "$_searchQuery"',
+                emptyMessage,
+                textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant),
               ),
+              if (_selectedCategoryFilter != 'all' || _hideOutOfStock || _searchQuery.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _selectedCategoryFilter = 'all';
+                      _hideOutOfStock = false;
+                      _searchQuery = '';
+                      _searchController.clear();
+                    });
+                  },
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Reset Filters'),
+                ),
+              ],
             ],
           ),
         ),
@@ -1875,7 +2288,22 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
     final entries = <_BookOrderListEntry>[];
 
-    if (_sortByReceiptOrder && _scannedReceiptOrder.isNotEmpty) {
+    if (_selectedCategoryFilter == 'unplaced') {
+      final sortedUnplaced = filtered.toList()..sort(_compareProducts);
+      if (sortedUnplaced.isNotEmpty) {
+        entries.add(
+          _BookOrderHeaderEntry(
+            title: 'Unplaced Best Sellers',
+            count: sortedUnplaced.length,
+            icon: Icons.lightbulb_outline_rounded,
+            accentColor: const Color(0xFFD97706),
+          ),
+        );
+        for (final p in sortedUnplaced) {
+          entries.add(_BookOrderCardEntry(p));
+        }
+      }
+    } else if (_sortByReceiptOrder && _scannedReceiptOrder.isNotEmpty) {
       final receiptItems = filtered.where((i) => _scannedReceiptOrder.contains(_itemKey(i))).toList()
         ..sort((a, b) => _scannedReceiptOrder.indexOf(_itemKey(a)).compareTo(_scannedReceiptOrder.indexOf(_itemKey(b))));
       final otherItems = filtered.where((i) => !_scannedReceiptOrder.contains(_itemKey(i))).toList()..sort(_compareProducts);
@@ -2007,6 +2435,16 @@ class _BookOrderPageState extends State<BookOrderPage> {
       isCorrected: _correctedReceiptKeys.contains(key),
       onCorrectAi: rawText != null ? () => _showCorrectionDialog(itemKey: key, allInventory: allInventory) : null,
       onTap: () => _promptQuantityDialog(item, allInventory: allInventory),
+      onIncrement: () {
+        HapticFeedback.lightImpact();
+        final current = _getSelectedQty(item);
+        _setSelectedQty(item, current + 1);
+      },
+      onDecrement: () {
+        HapticFeedback.lightImpact();
+        final current = _getSelectedQty(item);
+        _setSelectedQty(item, current - 1);
+      },
     );
   }
 

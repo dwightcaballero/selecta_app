@@ -4,8 +4,12 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 
-/// Product Card in Book Order list with stock indicator, tag badges, price,
-/// and quantity badge/prompt.
+/// Product Card in Book Order list with two-tier layout:
+/// - Top tier: Thumbnail image and full-width product title with tag badges and scanned document info.
+/// - Bottom tier: Pricing & stock availability on the left, and inline stepper / add button on the right.
+///
+/// Designed to prevent RenderFlex overflow and title compression on narrow mobile devices,
+/// even when product titles span 3 to 4 lines.
 class ProductOrderCard extends StatelessWidget {
   final InventoryItem item;
   final int selectedQty;
@@ -17,6 +21,8 @@ class ProductOrderCard extends StatelessWidget {
   final String? rawReceiptText;
   final bool isCorrected;
   final VoidCallback? onCorrectAi;
+  final VoidCallback? onIncrement;
+  final VoidCallback? onDecrement;
 
   const ProductOrderCard({
     super.key,
@@ -30,6 +36,8 @@ class ProductOrderCard extends StatelessWidget {
     this.rawReceiptText,
     this.isCorrected = false,
     this.onCorrectAi,
+    this.onIncrement,
+    this.onDecrement,
   });
 
   @override
@@ -70,274 +78,350 @@ class ProductOrderCard extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: isOutOfStock ? null : onTap,
+        onTap: isOutOfStock ? null : (!isSelected ? (onIncrement ?? onTap) : onTap),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          child: Row(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              CachedProductImage(imageUrl: item.imageUrl, isActive: !isOutOfStock, size: 54),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (receiptIndex != null || isBestSeller || isNewProduct || showNotPlacedMark) ...[
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          if (receiptIndex != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.amber.shade100,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: Colors.amber.shade400.withValues(alpha: 0.6)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.receipt_long_outlined, size: 12, color: Colors.amber.shade900),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '#$receiptIndex on Receipt',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.amber.shade900),
+              // ── Top Tier: Image + Full-Width Product Info ────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CachedProductImage(imageUrl: item.imageUrl, isActive: !isOutOfStock, size: 50),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (receiptIndex != null || isBestSeller || isNewProduct || showNotPlacedMark) ...[
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (receiptIndex != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade100,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: Colors.amber.shade400.withValues(alpha: 0.6)),
                                   ),
-                                ],
-                              ),
-                            ),
-                          if (isBestSeller)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEF3C7),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.star_rounded, size: 13, color: Color(0xFFD97706)),
-                                  SizedBox(width: 3),
-                                  Text(
-                                    'Best Seller',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFB45309)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (isNewProduct)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE0F2FE),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.fiber_new_rounded, size: 14, color: Color(0xFF0284C7)),
-                                  SizedBox(width: 3),
-                                  Text(
-                                    'New Product',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (showNotPlacedMark)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEE2E2),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.6)),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.warning_amber_rounded, size: 13, color: Color(0xFFDC2626)),
-                                  SizedBox(width: 3),
-                                  Text(
-                                    'Not Placed',
-                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C)),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    Text(
-                      item.productName,
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                        color: isOutOfStock ? colorScheme.onSurfaceVariant : colorScheme.onSurface,
-                        height: 1.25,
-                      ),
-                    ),
-                    if (rawReceiptText != null && rawReceiptText!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.amber.shade300),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.receipt_long_outlined, size: 12, color: Colors.amber.shade900),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'SCANNED ON DOCUMENT:',
-                                  style: TextStyle(
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 0.4,
-                                    color: Colors.amber.shade900,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.receipt_long_outlined, size: 12, color: Colors.amber.shade900),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        '#$receiptIndex on Receipt',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.amber.shade900),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                if (isCorrected) ...[
-                                  const Spacer(),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.shade100,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Text(
-                                      '✓ Corrected',
-                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
-                                    ),
+                              if (isBestSeller)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF3C7),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.5)),
                                   ),
-                                ],
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.star_rounded, size: 13, color: Color(0xFFD97706)),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        'Best Seller',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFB45309)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              if (isNewProduct)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0F2FE),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.5)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.fiber_new_rounded, size: 14, color: Color(0xFF0284C7)),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        'New Product',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              if (showNotPlacedMark)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEE2E2),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.6)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.warning_amber_rounded, size: 13, color: Color(0xFFDC2626)),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        'Not Placed',
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                        ],
+                        Text(
+                          item.productName,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isOutOfStock ? colorScheme.onSurfaceVariant : colorScheme.onSurface,
+                            height: 1.25,
+                          ),
+                        ),
+                        if (rawReceiptText != null && rawReceiptText!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade300),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.receipt_long_outlined, size: 12, color: Colors.amber.shade900),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'SCANNED ON DOCUMENT:',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.4,
+                                        color: Colors.amber.shade900,
+                                      ),
+                                    ),
+                                    if (isCorrected) ...[
+                                      const Spacer(),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.shade100,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          '✓ Corrected',
+                                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  rawReceiptText!.trim(),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.black87,
+                                    height: 1.25,
+                                  ),
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              rawReceiptText!.trim(),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.black87,
-                                height: 1.25,
+                          ),
+                          if (onCorrectAi != null) ...[
+                            const SizedBox(height: 4),
+                            InkWell(
+                              onTap: onCorrectAi,
+                              borderRadius: BorderRadius.circular(6),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 2),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.edit_note_rounded, size: 15, color: Colors.blue.shade700),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      'Correct AI Reading',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                      ),
-                      if (onCorrectAi != null) ...[
-                        const SizedBox(height: 4),
-                        InkWell(
-                          onTap: onCorrectAi,
-                          borderRadius: BorderRadius.circular(6),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.edit_note_rounded, size: 15, color: Colors.blue.shade700),
-                                const SizedBox(width: 3),
-                                Text(
-                                  'Correct AI Reading',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                    const SizedBox(height: 5),
-                    Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 7,
-                      runSpacing: 2,
-                      children: [
-                        Text(
-                          currencyFormat.format(item.sellingPrice),
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.primary),
-                        ),
-                        if (isOutOfStock)
-                          Text(
-                            'Out of stock',
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: stockColor),
-                          )
-                        else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.local_shipping_outlined, size: 12, color: Color(0xFF0284C7)),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '${item.incomingQuantity} incoming PO',
-                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
-                                ),
-                              ],
-                            ),
-                          )
-                        else if (item.incomingQuantity > 0)
-                          Text(
-                            '+${item.incomingQuantity} incoming',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)),
-                          ),
+                        ],
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 10),
-              if (!isSelected)
-                SizedBox(
-                  width: 46,
-                  height: 46,
-                  child: FilledButton(
-                    onPressed: isOutOfStock ? null : onTap,
-                    style: FilledButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      shape: const CircleBorder(),
-                      minimumSize: const Size(46, 46),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+
+              const SizedBox(height: 8),
+
+              // ── Bottom Tier: Price & Stock on Left, Stepper on Right ──────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Left: Price & Available stock
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 60),
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 2,
+                        children: [
+                          Text(
+                            currencyFormat.format(item.sellingPrice),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.primary),
+                          ),
+                          if (isOutOfStock)
+                            Text(
+                              'Out of stock',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: stockColor),
+                            )
+                          else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.local_shipping_outlined, size: 11, color: Color(0xFF0284C7)),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${item.incomingQuantity} incoming PO',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            Text(
+                              '• $maxOrderable available',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                            ),
+                        ],
+                      ),
                     ),
-                    child: const Icon(Icons.add_rounded, size: 24),
                   ),
-                )
-              else
-                GestureDetector(
-                  onTap: onTap,
-                  child: Container(
-                    height: 46,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(23)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.edit_outlined, size: 18, color: Colors.white),
-                        const SizedBox(width: 6),
-                        Text(
-                          '$selectedQty',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.white),
-                        ),
-                      ],
+
+                  // Right: Add button or Stepper
+                  if (isOutOfStock)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        '0 stock',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colorScheme.outline),
+                      ),
+                    )
+                  else if (!isSelected)
+                    FilledButton.icon(
+                      onPressed: onIncrement ?? onTap,
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        minimumSize: const Size(82, 40),
+                        tapTargetSize: MaterialTapTargetSize.padded,
+                      ),
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Add', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                    )
+                  else
+                    Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(19),
+                        border: Border.all(color: colorScheme.primary.withValues(alpha: 0.35)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: const BorderRadius.horizontal(left: Radius.circular(19)),
+                              onTap: onDecrement,
+                              child: SizedBox(
+                                width: 36,
+                                height: 38,
+                                child: Icon(
+                                  selectedQty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
+                                  size: 19,
+                                  color: selectedQty == 1 ? colorScheme.error : colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            onTap: onTap,
+                            child: Container(
+                              constraints: const BoxConstraints(minWidth: 36),
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              alignment: Alignment.center,
+                              child: Text(
+                                '$selectedQty',
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(19)),
+                              onTap: (selectedQty < maxOrderable && maxOrderable > 0) ? onIncrement : null,
+                              child: SizedBox(
+                                width: 36,
+                                height: 38,
+                                child: Icon(
+                                  Icons.add_rounded,
+                                  size: 19,
+                                  color: (selectedQty < maxOrderable && maxOrderable > 0)
+                                      ? colorScheme.primary
+                                      : colorScheme.outlineVariant,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                ],
+              ),
             ],
           ),
         ),

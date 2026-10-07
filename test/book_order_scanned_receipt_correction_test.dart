@@ -169,5 +169,62 @@ void main() {
       expect(correctedLine, isNotNull);
       expect(correctedLine!.rawText, 'RAW DOC TEXT CORNETTO');
     });
+
+    testWidgets('ProductOrderCard renders Add button when unselected and triggers onIncrement', (tester) async {
+      bool incremented = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ProductOrderCard(
+              item: testItem,
+              selectedQty: 0,
+              maxOrderable: 50,
+              isPlaced: false,
+              currencyFormat: currencyFormat,
+              onTap: () {},
+              onIncrement: () => incremented = true,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Add'), findsOneWidget);
+      await tester.tap(find.text('Add'));
+      expect(incremented, isTrue);
+    });
+
+    testWidgets('ProductOrderCard renders inline stepper when selected and triggers onDecrement and onIncrement', (tester) async {
+      bool decremented = false;
+      bool incremented = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ProductOrderCard(
+              item: testItem,
+              selectedQty: 3,
+              maxOrderable: 50,
+              isPlaced: false,
+              currencyFormat: currencyFormat,
+              onTap: () {},
+              onDecrement: () => decremented = true,
+              onIncrement: () => incremented = true,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('3'), findsOneWidget);
+      expect(find.byIcon(Icons.remove_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.remove_rounded));
+      expect(decremented, isTrue);
+
+      await tester.tap(find.byIcon(Icons.add_rounded));
+      expect(incremented, isTrue);
+    });
   });
 }
+

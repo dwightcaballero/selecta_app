@@ -11,12 +11,14 @@ import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 class StoreRecommendationsModal extends StatefulWidget {
   final String storeName;
   final VoidCallback? onProceedToBookOrder;
+  final String? actionButtonLabel;
   final PjpController? controller;
 
   const StoreRecommendationsModal({
     super.key,
     required this.storeName,
     this.onProceedToBookOrder,
+    this.actionButtonLabel,
     this.controller,
   });
 
@@ -25,6 +27,7 @@ class StoreRecommendationsModal extends StatefulWidget {
     required BuildContext context,
     required String storeName,
     VoidCallback? onProceedToBookOrder,
+    String? actionButtonLabel,
     PjpController? controller,
   }) {
     return showModalBottomSheet<void>(
@@ -35,6 +38,7 @@ class StoreRecommendationsModal extends StatefulWidget {
       builder: (ctx) => StoreRecommendationsModal(
         storeName: storeName,
         onProceedToBookOrder: onProceedToBookOrder,
+        actionButtonLabel: actionButtonLabel,
         controller: controller,
       ),
     );
@@ -305,9 +309,9 @@ class _StoreRecommendationsModalState extends State<StoreRecommendationsModal> w
                     widget.onProceedToBookOrder?.call();
                   },
                   icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
-                  label: const Text(
-                    'Proceed to Book Order',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  label: Text(
+                    widget.actionButtonLabel ?? 'Proceed to Book Order',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                   ),
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
