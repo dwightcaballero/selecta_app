@@ -11,6 +11,7 @@ import 'package:selecta_ops/services/push_notification_service.dart';
 import 'package:selecta_ops/theme/app_theme.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
 import 'package:selecta_ops/views/widgets/offline_banner_widget.dart';
+import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final AppRouteObserver routeObserver = AppRouteObserver();
@@ -94,6 +95,7 @@ class _MyAppState extends State<MyApp> {
         final fontScale = appFontScaleNotifier.value;
 
         return MaterialApp(
+          scaffoldMessengerKey: rootScaffoldMessengerKey,
           title: 'Selecta Ops',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightThemeFor(preset),

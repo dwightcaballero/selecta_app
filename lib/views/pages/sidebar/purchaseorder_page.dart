@@ -275,7 +275,11 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
   Future<void> _handlePickMultiImagePhase1(List<InventoryItem> allInventory, {bool append = false}) async {
     try {
-      final List<XFile> pickedList = await _picker.pickMultiImage();
+      final List<XFile> pickedList = await _picker.pickMultiImage(
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
       if (pickedList.isNotEmpty) {
         final newFiles = pickedList.map((x) => File(x.path)).toList();
         final targetList = append ? [..._pickedImages, ...newFiles] : newFiles;
@@ -313,15 +317,31 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       _isAnalyzingWithAi = true;
       _aiExtractionSummary = null;
     });
+
+    final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing & compressing document images...');
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Processing Purchase Order',
+      subtitle: 'Please wait while Sedy AI analyzes your document.',
+      statusNotifier: statusNotifier,
+    );
+
     try {
       final knownMappings = await _mappingService.getAllMappings();
       final List<Uint8List> bytesList = [];
       final List<String> mimeTypes = [];
-      for (final file in files) {
-        bytesList.add(await file.readAsBytes());
+      for (int i = 0; i < files.length; i++) {
+        final file = files[i];
+        statusNotifier.value = 'Step 1/3: Compressing image ${i + 1} of ${files.length}...';
+        final rawBytes = await file.readAsBytes();
+        final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
+        bytesList.add(compressedBytes);
         final ext = file.path.split('.').last.toLowerCase();
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }
+
+      statusNotifier.value = 'Step 2/3: Sedy AI reading products & quantities...';
       final result = await _aiService.extractPurchaseOrderFromImages(
         imagesBytesList: bytesList,
         mimeTypes: mimeTypes,
@@ -329,6 +349,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         knownMappings: knownMappings,
       );
       if (!mounted) return;
+
+      statusNotifier.value = 'Step 3/3: Matching with inventory catalog...';
+      // Dismiss loading modal before interactive disambiguation if user selection is required
+      Helperfunctions.showLoading(context: context, showLoading: false);
 
       final lines = await _resolveExtractionResultWithCatalog(
         result: result,
@@ -372,6 +396,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       if (mounted) {
         setState(() => _isAnalyzingWithAi = false);
         ShowMessage.error(context, 'AI: ${e.toString().replaceAll('Exception: ', '')}');
+      }
+    } finally {
+      if (mounted) {
+        Helperfunctions.showLoading(context: context, showLoading: false);
       }
     }
   }
@@ -1157,7 +1185,11 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     List<File> newFiles = [];
     try {
       if (fromGalleryMulti) {
-        final pickedList = await _picker.pickMultiImage();
+        final pickedList = await _picker.pickMultiImage(
+          maxWidth: 1600,
+          maxHeight: 1600,
+          imageQuality: 85,
+        );
         if (pickedList.isNotEmpty) {
           newFiles = pickedList.map((x) => File(x.path)).toList();
         }
@@ -1204,16 +1236,31 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       _isComparingWithAi = true;
       _comparisonResult = null;
     });
+
+    final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing & compressing invoice images...');
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Analyzing Official Invoice',
+      subtitle: 'Comparing against original P.O. products...',
+      statusNotifier: statusNotifier,
+    );
+
     try {
       final knownMappings = await _mappingService.getAllMappings();
       final List<Uint8List> bytesList = [];
       final List<String> mimeTypes = [];
-      for (final file in _officialInvoiceImages) {
-        bytesList.add(await file.readAsBytes());
+      for (int i = 0; i < _officialInvoiceImages.length; i++) {
+        final file = _officialInvoiceImages[i];
+        statusNotifier.value = 'Step 1/3: Compressing invoice image ${i + 1} of ${_officialInvoiceImages.length}...';
+        final rawBytes = await file.readAsBytes();
+        final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
+        bytesList.add(compressedBytes);
         final ext = file.path.split('.').last.toLowerCase();
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }
 
+      statusNotifier.value = 'Step 2/3: Sedy AI reading invoice items...';
       final result = await _aiService.extractPurchaseOrderFromImages(
         imagesBytesList: bytesList,
         mimeTypes: mimeTypes,
@@ -1222,6 +1269,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       );
 
       if (!mounted) return;
+
+      statusNotifier.value = 'Step 3/3: Reconciling invoice with P.O....';
+      Helperfunctions.showLoading(context: context, showLoading: false);
 
       final lines = await _resolveExtractionResultWithCatalog(
         result: result,
@@ -1273,6 +1323,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       if (mounted) {
         setState(() => _isComparingWithAi = false);
         ShowMessage.error(context, 'Invoice AI: ${e.toString().replaceAll('Exception: ', '')}');
+      }
+    } finally {
+      if (mounted) {
+        Helperfunctions.showLoading(context: context, showLoading: false);
       }
     }
   }
@@ -1429,6 +1483,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         : Helperfunctions.formatStringAmountToDouble(orderAmountController.text);
 
     setState(() => _isSaving = true);
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Saving Purchase Order',
+      subtitle: 'Creating incoming floating stock & persisting order...',
+    );
+
     try {
       await _controller.savePurchaseOrder(
         context: context,
@@ -1441,16 +1502,20 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         poNumber: orderNumberController.text.trim(),
       );
       if (mounted) {
+        Helperfunctions.showLoading(showLoading: false);
         setState(() => _isSaving = false);
         ShowMessage.success(context, '🟡 Purchase Order saved. Incoming stock is now available for ordering.');
         Navigator.pop(context);
       }
     } catch (e, s) {
+      Helperfunctions.showLoading(showLoading: false);
       ErrorLogService.logError(page: 'PurchaseorderPage', action: 'Save PO', error: e, stackTrace: s);
       if (mounted) {
         setState(() => _isSaving = false);
         ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       }
+    } finally {
+      Helperfunctions.showLoading(showLoading: false);
     }
   }
 
@@ -1458,6 +1523,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     final items = _buildOrderItemsFromLines();
 
     setState(() => _isSaving = true);
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Updating Purchase Order',
+      subtitle: 'Adjusting incoming stock allocations...',
+    );
+
     try {
       await _controller.updatePendingPurchaseOrder(
         context: context,
@@ -1471,16 +1543,20 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         updatedOrderAmount: _currentListTotalCost,
       );
       if (mounted) {
+        Helperfunctions.showLoading(showLoading: false);
         setState(() => _isSaving = false);
         ShowMessage.success(context, 'PO items updated.');
         Navigator.pop(context);
       }
     } catch (e, s) {
+      Helperfunctions.showLoading(showLoading: false);
       ErrorLogService.logError(page: 'PurchaseorderPage', action: 'Update PO', error: e, stackTrace: s);
       if (mounted) {
         setState(() => _isSaving = false);
         ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       }
+    } finally {
+      Helperfunctions.showLoading(showLoading: false);
     }
   }
 
@@ -1577,6 +1653,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     if (!didConfirm || !mounted) return;
 
     setState(() => _isSaving = true);
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Attaching Official Invoice',
+      subtitle: 'Replenishing stock & updating supplier records...',
+    );
+
     try {
       await _controller.confirmOfficialInvoice(
         context: context,
@@ -1590,6 +1673,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         pickedImage: _officialInvoiceImages.isNotEmpty ? _officialInvoiceImages.last : null,
       );
       if (mounted) {
+        Helperfunctions.showLoading(showLoading: false);
         setState(() => _isSaving = false);
         final repMsg = '✅ Invoice #$officialInvoiceNum attached! ${confirmed.length} products replenished.';
         final misMsg = missing.isNotEmpty ? ' ${missing.length} missing removed.' : '';
@@ -1598,16 +1682,26 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         Navigator.pop(context);
       }
     } catch (e, s) {
+      Helperfunctions.showLoading(showLoading: false);
       ErrorLogService.logError(page: 'PurchaseorderPage', action: 'Confirm Official Invoice', error: e, stackTrace: s);
       if (mounted) {
         setState(() => _isSaving = false);
         ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       }
+    } finally {
+      Helperfunctions.showLoading(showLoading: false);
     }
   }
 
   Future<void> onDelete() async {
     setState(() => _isSaving = true);
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Deleting Purchase Order',
+      subtitle: 'Reverting inventory allocations...',
+    );
+
     try {
       await _controller.deletePurchaseOrder(
         context: context,
@@ -1615,16 +1709,20 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         order: widget.purchaseorder,
       );
       if (mounted) {
+        Helperfunctions.showLoading(showLoading: false);
         setState(() => _isSaving = false);
         ShowMessage.success(context, 'Purchase Order deleted.');
         Navigator.pop(context);
       }
     } catch (e, s) {
+      Helperfunctions.showLoading(showLoading: false);
       ErrorLogService.logError(page: 'PurchaseorderPage', action: 'Delete PO', error: e, stackTrace: s);
       if (mounted) {
         setState(() => _isSaving = false);
         ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       }
+    } finally {
+      Helperfunctions.showLoading(showLoading: false);
     }
   }
 
@@ -1963,6 +2061,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isLocked = _isSaving || _isAnalyzingWithAi || _isComparingWithAi;
 
     // Phase 3: confirmed / invoiced PO (read-only view)
     if (_isEditing && _isConfirmed) {
@@ -1972,44 +2071,64 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       final invRef = widget.purchaseorder.invoiceNumber.isNotEmpty
           ? ' • Inv: ${widget.purchaseorder.invoiceNumber}'
           : '';
-      return Scaffold(
-        appBar: CustomAppbar(title: 'Purchase Order', subtitle: 'Invoiced — $poRef$invRef'),
-        bottomNavigationBar: _buildStickyBottomBar([]),
-        body: SingleChildScrollView(
-          child: Column(
-            children: [
-              _buildConfirmedStatusCard(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                child: AuditHistoryWidget(
-                  createdBy: widget.purchaseorder.createdBy,
-                  createdDate: widget.purchaseorder.createdDate,
-                  createdPage: widget.purchaseorder.createdPage,
-                  lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
-                  lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
-                  lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+      return PopScope(
+        canPop: !isLocked,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) {
+            ShowMessage.warning(context, 'Operation in progress. Please wait.');
+          }
+        },
+        child: Scaffold(
+          appBar: CustomAppbar(
+            title: 'Purchase Order',
+            subtitle: 'Invoiced — $poRef$invRef',
+            onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
+          ),
+          bottomNavigationBar: _buildStickyBottomBar([]),
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                _buildConfirmedStatusCard(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  child: AuditHistoryWidget(
+                    createdBy: widget.purchaseorder.createdBy,
+                    createdDate: widget.purchaseorder.createdDate,
+                    createdPage: widget.purchaseorder.createdPage,
+                    lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
+                    lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
+                    lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return StreamBuilder<List<InventoryItem>>(
-      stream: _inventoryController.getActiveInventoryStream(),
-      builder: (context, snapshot) {
-        // Purchase Orders are strictly exclusive to Selecta products.
-        // Other products are completely excluded from PO catalog matching, suggestions, and discrepancy analysis.
-        final allInventory = (snapshot.data ?? [])
-            .where((item) => item.source == InventoryProductSource.selecta)
-            .toList();
+    return PopScope(
+      canPop: !isLocked,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          ShowMessage.warning(context, 'Operation in progress. Please wait.');
+        }
+      },
+      child: StreamBuilder<List<InventoryItem>>(
+        stream: _inventoryController.getActiveInventoryStream(),
+        builder: (context, snapshot) {
+          // Purchase Orders are strictly exclusive to Selecta products.
+          // Other products are completely excluded from PO catalog matching, suggestions, and discrepancy analysis.
+          final allInventory = (snapshot.data ?? [])
+              .where((item) => item.source == InventoryProductSource.selecta)
+              .toList();
 
-        return Scaffold(
-          appBar: CustomAppbar(
-            title: 'Purchase Order',
-            subtitle: isNewRecord ? 'Step 1: Create PO (Pending)' : '🟡 Pending Delivery (Attach Invoice)',
-          ),
+          return Scaffold(
+            appBar: CustomAppbar(
+              title: 'Purchase Order',
+              subtitle: isNewRecord ? 'Step 1: Create PO (Pending)' : '🟡 Pending Delivery (Attach Invoice)',
+              onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
+            ),
           bottomNavigationBar: _buildStickyBottomBar(allInventory),
           body: CustomScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -2198,6 +2317,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           ),
         );
       },
+    ),
     );
   }
 }

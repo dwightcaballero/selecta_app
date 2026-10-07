@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 class SnackBarWidget {
   const SnackBarWidget._();
 
@@ -19,8 +21,46 @@ class SnackBarWidget {
     _show(context, message: message, icon: Icons.info_outline_rounded, backgroundColor: Theme.of(context).colorScheme.primary);
   }
 
+  /// Displays a floating retry toast to reassure the user when network or Gemini request slows down.
+  static void showRetryToast(String message) {
+    final messenger = rootScaffoldMessengerKey.currentState;
+    if (messenger == null) return;
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFE65100),
+          margin: const EdgeInsets.all(16),
+          elevation: 6,
+          duration: const Duration(seconds: 4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      );
+  }
+
   static void _show(BuildContext context, {required String message, required IconData icon, required Color backgroundColor}) {
-    final messenger = ScaffoldMessenger.maybeOf(context);
+    final messenger = ScaffoldMessenger.maybeOf(context) ?? rootScaffoldMessengerKey.currentState;
 
     if (messenger == null) return;
 

@@ -932,7 +932,7 @@ class _PjpPageState extends State<PjpPage> {
     if (source == null || !mounted) return;
 
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: source, imageQuality: 80);
+    final picked = await picker.pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
 
     if (picked == null || !mounted) return;
 

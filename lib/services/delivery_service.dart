@@ -28,8 +28,8 @@ class DeliveryService {
     await _ordersRef.doc(deliveryID).update(delivery.toJson());
   }
 
-  void deleteDelivery(String deliveryID) {
-    _ordersRef.doc(deliveryID).delete();
+  Future<void> deleteDelivery(String deliveryID) async {
+    await _ordersRef.doc(deliveryID).delete();
   }
 
   Future<Delivery?> getDeliveryById(String deliveryID) async {

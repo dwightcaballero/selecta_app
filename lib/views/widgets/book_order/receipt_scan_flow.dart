@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/supplier_product_mapping.dart';
 import 'package:selecta_ops/services/gemini_ai_service.dart';
@@ -125,7 +126,7 @@ class ReceiptScanFlow {
     try {
       switch (source) {
         case 'gallery':
-          final picked = await _picker.pickMultiImage();
+          final picked = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
           return picked.map((x) => File(x.path)).toList();
         case 'scan':
           final scanned = await FlutterDocScanner().getScannedDocumentAsImages(page: 4);
@@ -171,15 +172,21 @@ class ReceiptScanFlow {
   static Future<(ExtractedPurchaseOrderData, List<SupplierProductMapping>)> extract({
     required List<File> files,
     required List<InventoryItem> allInventory,
+    void Function(String status)? onProgress,
   }) async {
     final knownMappings = await mappingService.getAllMappings();
     final List<Uint8List> bytesList = [];
     final List<String> mimeTypes = [];
-    for (final file in files) {
-      bytesList.add(await file.readAsBytes());
+    for (int i = 0; i < files.length; i++) {
+      final file = files[i];
+      onProgress?.call('Step 1/3: Compressing receipt image ${i + 1} of ${files.length}...');
+      final rawBytes = await file.readAsBytes();
+      final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
+      bytesList.add(compressedBytes);
       final ext = file.path.split('.').last.toLowerCase();
       mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
     }
+    onProgress?.call('Step 2/3: Sedy AI reading receipt products...');
     final result = await GeminiAiService().extractStoreOrderFromImages(
       imagesBytesList: bytesList,
       mimeTypes: mimeTypes,

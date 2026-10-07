@@ -17,16 +17,16 @@ class PurchaseOrderService {
   final _firestore = FirebaseFirestore.instance;
   late final CollectionReference _purchaseordersRef;
 
-  void addPurchaseorder(Purchaseorder purchaseorder) {
-    _purchaseordersRef.add(purchaseorder);
+  Future<DocumentReference> addPurchaseorder(Purchaseorder purchaseorder) {
+    return _purchaseordersRef.add(purchaseorder);
   }
 
-  void updatePurchaseorder(String purchaseorderID, Purchaseorder purchaseorder) {
-    _purchaseordersRef.doc(purchaseorderID).update(purchaseorder.toJson());
+  Future<void> updatePurchaseorder(String purchaseorderID, Purchaseorder purchaseorder) {
+    return _purchaseordersRef.doc(purchaseorderID).update(purchaseorder.toJson());
   }
 
-  void deletePurchaseorder(String purchaseorderID) {
-    _purchaseordersRef.doc(purchaseorderID).delete();
+  Future<void> deletePurchaseorder(String purchaseorderID) {
+    return _purchaseordersRef.doc(purchaseorderID).delete();
   }
 
   Stream<QuerySnapshot> getListPurchaseordersAsStream() {

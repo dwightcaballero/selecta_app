@@ -12,6 +12,7 @@ import 'package:selecta_ops/services/supplier_mapping_service.dart';
 import 'package:selecta_ops/services/supplier_oos_service.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/product_supplier_calendar_dialog.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 
 class SuggestedPoItem {
@@ -99,14 +100,23 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
   Future<void> _pickImages(ImageSource source) async {
     try {
       if (source == ImageSource.gallery) {
-        final List<XFile> pickedList = await _picker.pickMultiImage();
+        final List<XFile> pickedList = await _picker.pickMultiImage(
+          maxWidth: 1600,
+          maxHeight: 1600,
+          imageQuality: 85,
+        );
         if (pickedList.isNotEmpty) {
           setState(() {
             _pickedImages.addAll(pickedList.map((x) => File(x.path)));
           });
         }
       } else {
-        final XFile? file = await _picker.pickImage(source: ImageSource.camera);
+        final XFile? file = await _picker.pickImage(
+          source: ImageSource.camera,
+          maxWidth: 1600,
+          maxHeight: 1600,
+          imageQuality: 85,
+        );
         if (file != null) {
           setState(() {
             _pickedImages.add(File(file.path));
@@ -146,7 +156,9 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
       final List<Uint8List> bytesList = [];
       final List<String> mimeTypes = [];
       for (final file in _pickedImages) {
-        bytesList.add(await file.readAsBytes());
+        final rawBytes = await file.readAsBytes();
+        final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
+        bytesList.add(compressedBytes);
         final ext = file.path.split('.').last.toLowerCase();
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }

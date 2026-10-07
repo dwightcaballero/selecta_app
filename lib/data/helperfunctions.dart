@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:decimal/decimal.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/transactionlog.dart';
@@ -12,6 +15,28 @@ import 'package:selecta_ops/services/transactionlog_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
+
+/// Background worker function executed in an isolate via [compute].
+Uint8List _compressImageWorker(Map<String, dynamic> params) {
+  final Uint8List rawBytes = params['bytes'] as Uint8List;
+  final int maxDimension = params['maxDimension'] as int;
+  final int quality = params['quality'] as int;
+
+  final decoded = img.decodeImage(rawBytes);
+  if (decoded == null) return rawBytes;
+
+  img.Image processed = decoded;
+  if (decoded.width > maxDimension || decoded.height > maxDimension) {
+    if (decoded.width >= decoded.height) {
+      processed = img.copyResize(decoded, width: maxDimension);
+    } else {
+      processed = img.copyResize(decoded, height: maxDimension);
+    }
+  }
+
+  final compressed = img.encodeJpg(processed, quality: quality);
+  return Uint8List.fromList(compressed);
+}
 
 class Helperfunctions {
   static String formatStringAmountForDisplay(String stringAmount) {
@@ -133,24 +158,65 @@ class Helperfunctions {
     return imageFilePath;
   }
 
-  static Future<String> saveImage(BuildContext context, File image) async {
+  /// Compresses and resizes raw image bytes in a background isolate via [compute].
+  /// Scales image down if larger than [maxDimension] (default 1280) and encodes as JPEG at [quality] (default 75).
+  static Future<Uint8List> compressImageBytes(
+    Uint8List rawBytes, {
+    int maxDimension = 1280,
+    int quality = 75,
+  }) async {
+    try {
+      return await compute(_compressImageWorker, {
+        'bytes': rawBytes,
+        'maxDimension': maxDimension,
+        'quality': quality,
+      });
+    } catch (_) {
+      return rawBytes;
+    }
+  }
+
+  static Future<String> saveImage(
+    BuildContext context,
+    File image, {
+    Duration timeout = const Duration(seconds: 25),
+  }) async {
     try {
       final userID = authService.value.currentUser?.uid ?? 'guest';
       final storageRef = FirebaseStorage.instance.ref();
-      final fileName = image.path.split('/').last;
+      final originalName = image.path.split('/').last;
+      final nameWithoutExt = originalName.contains('.')
+          ? originalName.substring(0, originalName.lastIndexOf('.'))
+          : originalName;
       final timestamp = DateTime.now().microsecondsSinceEpoch;
-      final filePath = '$userID/uploads/$timestamp-$fileName';
+      final filePath = '$userID/uploads/$timestamp-$nameWithoutExt.jpg';
       final uploadRef = storageRef.child(filePath);
 
-      await uploadRef.putFile(image);
-      return await storageRef.child(filePath).getDownloadURL();
+      final rawBytes = await image.readAsBytes();
+      final compressedBytes = await compressImageBytes(rawBytes);
+
+      final metadata = SettableMetadata(
+        contentType: 'image/jpeg',
+      );
+
+      await uploadRef.putData(compressedBytes, metadata).timeout(timeout);
+      return await storageRef.child(filePath).getDownloadURL().timeout(timeout);
+    } on TimeoutException {
+      if (context.mounted) {
+        ShowMessage.error(context, 'Image upload timed out. Please check your internet connection.');
+      }
+      rethrow;
     } on FirebaseException catch (e) {
       if (context.mounted) {
         ShowMessage.error(context, e.message ?? 'There was an error upon uploading an image.');
       }
+      rethrow;
+    } catch (e) {
+      if (context.mounted) {
+        ShowMessage.error(context, 'Failed to process and upload image: $e');
+      }
+      rethrow;
     }
-
-    return '';
   }
 
   static Future<String> getImageURL(BuildContext context, String filePath) async {
@@ -245,7 +311,13 @@ class Helperfunctions {
   static BuildContext? _activeLoadingContext;
   static bool _isLoadingDialogOpen = false;
 
-  static Future<void> showLoading({BuildContext? context, required bool showLoading}) async {
+  static Future<void> showLoading({
+    BuildContext? context,
+    required bool showLoading,
+    String message = '',
+    String subtitle = '',
+    ValueNotifier<String>? statusNotifier,
+  }) async {
     if (showLoading) {
       if (_isLoadingDialogOpen) return;
       if (context == null || !context.mounted) return;
@@ -266,32 +338,80 @@ class Helperfunctions {
             });
           }
           final theme = Theme.of(dialogContext);
+          final hasMessage = message.isNotEmpty || statusNotifier != null;
+
           return PopScope(
-            canPop: false, // Prevents closing via the physical back button (Flutter 3.12+)
+            canPop: false, // Prevents closing via the physical back button or swipe
             child: Center(
               child: Container(
-                width: 88,
-                height: 88,
+                constraints: BoxConstraints(maxWidth: hasMessage ? 320 : 88),
+                margin: const EdgeInsets.symmetric(horizontal: 28),
+                padding: EdgeInsets.symmetric(
+                  horizontal: hasMessage ? 24 : 16,
+                  vertical: hasMessage ? 24 : 16,
+                ),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 20,
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 24,
                       offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: Center(
-                  child: SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: CircularProgressIndicator.adaptive(
-                      strokeWidth: 3,
-                      valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: CircularProgressIndicator.adaptive(
+                        strokeWidth: 3.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                      ),
                     ),
-                  ),
+                    if (hasMessage) ...[
+                      const SizedBox(height: 18),
+                      if (statusNotifier != null)
+                        ValueListenableBuilder<String>(
+                          valueListenable: statusNotifier,
+                          builder: (context, currentText, _) {
+                            final displayTitle = currentText.isNotEmpty ? currentText : message;
+                            return Text(
+                              displayTitle,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                              textAlign: TextAlign.center,
+                            );
+                          },
+                        )
+                      else
+                        Text(
+                          message,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitle.isNotEmpty ? subtitle : 'Please wait, do not close or exit the app.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurfaceVariant,
+                          height: 1.3,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),

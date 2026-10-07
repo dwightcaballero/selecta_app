@@ -224,7 +224,7 @@ class PurchaseOrderController {
     );
 
     // Persist purchase order record
-    _service.addPurchaseorder(newPurchaseorder);
+    await _service.addPurchaseorder(newPurchaseorder);
 
     // Create floating incoming inventory for products in the purchase order
     if (cleanItems.isNotEmpty) {
@@ -252,7 +252,7 @@ class PurchaseOrderController {
           order.lastUpdatedBy = currentUserDisplayName;
           order.lastupdatedDate = Timestamp.now();
           order.lastUpdatedPage = AppPages.purchaseOrder;
-          _service.updatePurchaseorder(doc.id, order);
+          await _service.updatePurchaseorder(doc.id, order);
           await Helperfunctions.logUpdate(
             order.invoiceNumber.isNotEmpty ? order.invoiceNumber : Helperfunctions.formatTimestampForDisplay(order.orderDate),
             prevJson,
@@ -364,7 +364,7 @@ class PurchaseOrderController {
     );
 
     final prevJson = currentOrder.toJson();
-    _service.updatePurchaseorder(purchaseOrderId, updatedPurchaseorder);
+    await _service.updatePurchaseorder(purchaseOrderId, updatedPurchaseorder);
     await Helperfunctions.logUpdate(
       resolvedInvoiceNumber.isNotEmpty
           ? resolvedInvoiceNumber
@@ -460,7 +460,7 @@ class PurchaseOrderController {
       );
     }
 
-    _service.updatePurchaseorder(purchaseOrderId, updatedPurchaseorder);
+    await _service.updatePurchaseorder(purchaseOrderId, updatedPurchaseorder);
     await Helperfunctions.logUpdate(
       updatedPurchaseorder.poNumber.isNotEmpty
           ? updatedPurchaseorder.poNumber
@@ -503,7 +503,7 @@ class PurchaseOrderController {
       }
     }
 
-    _service.deletePurchaseorder(purchaseOrderId);
+    await _service.deletePurchaseorder(purchaseOrderId);
     await Helperfunctions.logDelete(
       order.invoiceNumber.isNotEmpty
           ? order.invoiceNumber

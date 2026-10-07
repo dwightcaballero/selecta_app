@@ -152,9 +152,9 @@ class _ScanningPageState extends State<ScanningPage> {
     try {
       final pickedFile = await _picker.pickImage(
         source: source,
-        maxWidth: 1200,
-        maxHeight: 1200,
-        imageQuality: 80,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
       );
       if (pickedFile != null && mounted) {
         setState(() {

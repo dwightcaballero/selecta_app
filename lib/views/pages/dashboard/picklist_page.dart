@@ -102,7 +102,7 @@ class _PicklistPageState extends State<PicklistPage> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final XFile? pickedFile = await _picker.pickImage(source: source, maxWidth: 1200, maxHeight: 1200, imageQuality: 80);
+      final XFile? pickedFile = await _picker.pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
       if (pickedFile != null) {
         setState(() {
           _pickedImage = File(pickedFile.path);
@@ -267,6 +267,12 @@ class _PicklistPageState extends State<PicklistPage> {
   Future<void> _onSaveProgress() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
+    await Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Saving picklist draft...',
+    );
+    if (!mounted) return;
     try {
       final updated = await _controller.savePicklistProgress(
         context: context,
@@ -286,10 +292,14 @@ class _PicklistPageState extends State<PicklistPage> {
           _networkImagePath = updated.imagePath;
           _pickedImage = null;
         });
-        ShowMessage.success(context, 'Picklist draft saved.');
-        Navigator.pop(context, true);
+        await Helperfunctions.showLoading(showLoading: false);
+        if (mounted) {
+          ShowMessage.success(context, 'Picklist draft saved.');
+          Navigator.pop(context, true);
+        }
       }
     } catch (e) {
+      await Helperfunctions.showLoading(showLoading: false);
       if (mounted) {
         ShowMessage.error(context, 'Failed to save progress: $e');
       }
@@ -299,6 +309,7 @@ class _PicklistPageState extends State<PicklistPage> {
   }
 
   Future<void> _onCompletePicklist() async {
+    if (_isSaving) return;
     if (!_allItemsPicked) {
       ShowMessage.error(context, 'Please check all products before marking For Delivery.');
       return;
@@ -329,7 +340,20 @@ class _PicklistPageState extends State<PicklistPage> {
     );
     if (!confirmed || !mounted) return;
 
+    final statusNotifier = ValueNotifier<String>('Preparing picklist...');
     setState(() => _isSaving = true);
+    await Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      statusNotifier: statusNotifier,
+      message: 'Processing picklist...',
+      subtitle: 'Please wait, do not close or exit the app.',
+    );
+    if (!mounted) {
+      statusNotifier.dispose();
+      return;
+    }
+
     try {
       final updatedDelivery = await _controller.completePicklist(
         context: context,
@@ -344,6 +368,9 @@ class _PicklistPageState extends State<PicklistPage> {
         sendText: false,
         smsMessage: '',
         remarks: _currentDelivery.remarks,
+        onProgress: (step) {
+          statusNotifier.value = step;
+        },
       );
 
       if (!mounted) return;
@@ -353,6 +380,9 @@ class _PicklistPageState extends State<PicklistPage> {
         _networkImagePath = updatedDelivery.imagePath;
         _pickedImage = null;
       });
+
+      await Helperfunctions.showLoading(showLoading: false);
+      if (!mounted) return;
 
       ShowMessage.success(context, 'Picklist completed! [${updatedDelivery.storeName}] is now For Delivery.');
 
@@ -368,15 +398,18 @@ class _PicklistPageState extends State<PicklistPage> {
         },
       );
     } catch (e) {
+      await Helperfunctions.showLoading(showLoading: false);
       if (mounted) {
         ShowMessage.error(context, 'Error completing picklist: $e');
       }
     } finally {
+      statusNotifier.dispose();
       if (mounted) setState(() => _isSaving = false);
     }
   }
 
   Future<void> _onDeleteOrder() async {
+    if (_isSaving) return;
     final confirmed = await ShowMessage.confirm(
       context,
       title: 'Delete Order',
@@ -388,13 +421,24 @@ class _PicklistPageState extends State<PicklistPage> {
     if (!confirmed || !mounted) return;
 
     setState(() => _isSaving = true);
+    await Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Deleting order & releasing reserved stock...',
+    );
+    if (!mounted) return;
+
     try {
       await _controller.deleteDelivery(context: context, deliveryId: widget.deliveryID, delivery: _currentDelivery);
       if (mounted) {
-        ShowMessage.success(context, 'Deleted order for [${_currentDelivery.storeName}].');
-        Navigator.pop(context, true);
+        await Helperfunctions.showLoading(showLoading: false);
+        if (mounted) {
+          ShowMessage.success(context, 'Deleted order for [${_currentDelivery.storeName}].');
+          Navigator.pop(context, true);
+        }
       }
     } catch (e) {
+      await Helperfunctions.showLoading(showLoading: false);
       if (mounted) {
         ShowMessage.error(context, 'Failed to delete order: $e');
       }
@@ -1002,9 +1046,10 @@ class _PicklistPageState extends State<PicklistPage> {
     int calcUnits(List<int> idxs) => idxs.fold<int>(0, (sum, i) => sum + _items[i].pickedQuantity);
 
     return PopScope(
-      canPop: !_hasUnsavedChanges || _isSaving,
+      canPop: !_isSaving && !_hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
+        if (_isSaving) return;
         final shouldDiscard = await ShowMessage.confirm(
           context,
           title: 'Discard Changes?',
@@ -1021,6 +1066,7 @@ class _PicklistPageState extends State<PicklistPage> {
           title: _currentDelivery.storeName,
           subtitle: 'Picklist • ${Helperfunctions.formatDateForDisplay(deliveryDate)}',
           centerTitle: false,
+          onBackPressed: _isSaving ? () {} : null,
           actions: [
             _buildAppBarIconAction(
               icon: Icons.edit_note_rounded,

@@ -103,10 +103,10 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
           picked = scanned.images.map((p) => File(p.replaceFirst('file://', ''))).toList();
         }
       } else if (fromCamera) {
-        final photo = await _picker.pickImage(source: ImageSource.camera, maxWidth: 1800, maxHeight: 1800, imageQuality: 88);
+        final photo = await _picker.pickImage(source: ImageSource.camera, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
         if (photo != null) picked = [File(photo.path)];
       } else {
-        final galleryImages = await _picker.pickMultiImage(maxWidth: 1800, maxHeight: 1800, imageQuality: 88);
+        final galleryImages = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
         if (galleryImages.isNotEmpty) {
           picked = galleryImages.map((x) => File(x.path)).toList();
         }
@@ -144,12 +144,25 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
 
     setState(() => _isAnalyzing = true);
 
+    final statusNotifier = ValueNotifier<String>('Step 1/2: Preparing supplier report images...');
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Analyzing Supplier Stock',
+      subtitle: 'Please wait while Sedy AI reads the stock document.',
+      statusNotifier: statusNotifier,
+    );
+
     try {
       final List<Uint8List> bytesList = [];
       final List<String> mimeTypes = [];
 
-      for (final file in _images) {
-        bytesList.add(await file.readAsBytes());
+      for (int i = 0; i < _images.length; i++) {
+        final file = _images[i];
+        statusNotifier.value = 'Step 1/2: Compressing image ${i + 1} of ${_images.length}...';
+        final rawBytes = await file.readAsBytes();
+        final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
+        bytesList.add(compressedBytes);
         final ext = file.path.split('.').last.toLowerCase();
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }
@@ -172,12 +185,15 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
 
       final knownMappings = await widget.mappingService.getAllMappings();
 
+      statusNotifier.value = 'Step 2/2: Sedy AI analyzing stock report...';
       final result = await widget.aiService.extractSupplierStockStatusFromImages(
         imagesBytesList: bytesList,
         mimeTypes: mimeTypes,
         dealerCatalog: selectaCatalog,
         knownMappings: knownMappings,
       );
+
+      Helperfunctions.showLoading(showLoading: false);
 
       // Auto-update inventory date if found in document
       if (result.reportDate != null) {
@@ -242,6 +258,10 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
       if (mounted) {
         setState(() => _isAnalyzing = false);
         ShowMessage.error(context, 'AI scan failed: $e');
+      }
+    } finally {
+      if (mounted) {
+        Helperfunctions.showLoading(context: context, showLoading: false);
       }
     }
   }
@@ -347,6 +367,12 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
     final oosIds = oosItems.map((i) => i.product.id).toSet().toList();
 
     setState(() => _isSaving = true);
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Saving Supplier Records',
+      subtitle: 'Recording out-of-stock items for ${_dateFormat.format(_inventoryDate)}...',
+    );
 
     try {
       await widget.oosService.recordDailyScan(
@@ -357,6 +383,7 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
       );
 
       if (mounted) {
+        Helperfunctions.showLoading(context: context, showLoading: false);
         setState(() => _isSaving = false);
         ShowMessage.success(
           context,
@@ -366,8 +393,13 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
       }
     } catch (e) {
       if (mounted) {
+        Helperfunctions.showLoading(context: context, showLoading: false);
         setState(() => _isSaving = false);
         ShowMessage.error(context, 'Failed to save records: $e');
+      }
+    } finally {
+      if (mounted) {
+        Helperfunctions.showLoading(context: context, showLoading: false);
       }
     }
   }
@@ -398,76 +430,86 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
     final mediaQuery = MediaQuery.of(context);
     final maxHeight = mediaQuery.size.height * 0.92;
 
-    return Container(
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF161A23) : colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          children: [
-            // Drag Handle
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-                  borderRadius: BorderRadius.circular(2),
+    final isLocked = _isAnalyzing || _isSaving;
+
+    return PopScope(
+      canPop: !isLocked,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          ShowMessage.warning(context, 'Operation in progress. Please wait.');
+        }
+      },
+      child: Container(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF161A23) : colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            children: [
+              // Drag Handle
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
 
-            // Header Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
+              // Header Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.document_scanner_outlined, color: colorScheme.primary, size: 22),
                     ),
-                    child: Icon(Icons.document_scanner_outlined, color: colorScheme.primary, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Scan Supplier Inventory',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
-                        ),
-                        Text(
-                          _hasAnalyzed
-                              ? 'Review and correct detected stock availability'
-                              : 'Upload supplier inventory document / sheet',
-                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                        ),
-                      ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Scan Supplier Inventory',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                          ),
+                          Text(
+                            _hasAnalyzed
+                                ? 'Review and correct detected stock availability'
+                                : 'Upload supplier inventory document / sheet',
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const Divider(height: 1),
+              const Divider(height: 1),
 
-            // Content
-            Expanded(
-              child: _hasAnalyzed
-                  ? _buildReviewAndCorrectionView(context)
-                  : _buildUploadAndScanView(context),
-            ),
-          ],
+              // Content
+              Expanded(
+                child: _hasAnalyzed
+                    ? _buildReviewAndCorrectionView(context)
+                    : _buildUploadAndScanView(context),
+              ),
+            ],
+          ),
         ),
       ),
     );

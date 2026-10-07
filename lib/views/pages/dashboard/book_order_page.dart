@@ -967,6 +967,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
     if (!confirmed || !mounted) return;
 
     setState(() => _isSaving = true);
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: _isEditing ? 'Updating Order' : 'Saving Order',
+      subtitle: 'Reserving inventory stock for $storeName...',
+    );
     try {
       final isOnline = await OfflineSyncService.isOnline();
       if (!isOnline) {
@@ -987,6 +993,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
           );
         }
         if (!mounted) return;
+        Helperfunctions.showLoading(context: context, showLoading: false);
         ShowMessage.warning(context, 'Saved to Offline Queue! Order will automatically sync once connectivity is restored.');
         Navigator.pop(context);
         return;
@@ -1004,6 +1011,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
             )
             .timeout(const Duration(seconds: 5));
         if (!mounted) return;
+        Helperfunctions.showLoading(context: context, showLoading: false);
         ShowMessage.success(context, 'Order updated for $storeName!');
         Navigator.pop(context, updated);
       } else {
@@ -1011,6 +1019,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
             .createBookedOrder(storeName: storeName, selectedDate: _selectedDate, items: orderItems, remarks: _remarksController.text)
             .timeout(const Duration(seconds: 5));
         if (!mounted) return;
+        Helperfunctions.showLoading(context: context, showLoading: false);
         ShowMessage.success(context, 'Order booked for $storeName!');
         Navigator.pop(context, createdResult.delivery);
       }
@@ -1043,6 +1052,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
             );
           }
           if (!mounted) return;
+          Helperfunctions.showLoading(context: context, showLoading: false);
           ShowMessage.warning(context, 'Saved to Offline Queue! Order will automatically sync once connectivity is restored.');
           Navigator.pop(context);
           return;
@@ -1052,10 +1062,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
       }
 
       if (mounted) {
+        Helperfunctions.showLoading(context: context, showLoading: false);
         ShowMessage.error(context, 'Failed to save order: $e');
       }
     } finally {
       if (mounted) {
+        Helperfunctions.showLoading(context: context, showLoading: false);
         setState(() => _isSaving = false);
       }
     }
@@ -1092,11 +1104,28 @@ class _BookOrderPageState extends State<BookOrderPage> {
     }
 
     setState(() => _isScanning = true);
+    final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing receipt images...');
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Scanning Order Receipt',
+      subtitle: 'Please wait while Sedy AI reads your receipt.',
+      statusNotifier: statusNotifier,
+    );
+
     ReceiptScanOutcome outcome;
     try {
-      final (result, knownMappings) = await ReceiptScanFlow.extract(files: files, allInventory: allInventory);
+      final (result, knownMappings) = await ReceiptScanFlow.extract(
+        files: files,
+        allInventory: allInventory,
+        onProgress: (status) => statusNotifier.value = status,
+      );
       if (!mounted) return;
+
+      statusNotifier.value = 'Step 3/3: Matching with product catalog...';
+      Helperfunctions.showLoading(showLoading: false);
       setState(() => _isScanning = false);
+
       outcome = await ReceiptScanFlow.resolve(context, result: result, allInventory: allInventory, knownMappings: knownMappings);
     } catch (e) {
       if (mounted) {
@@ -1104,7 +1133,10 @@ class _BookOrderPageState extends State<BookOrderPage> {
         ShowMessage.error(context, 'AI: ${e.toString().replaceAll('Exception: ', '')}');
       }
       return;
+    } finally {
+      Helperfunctions.showLoading(showLoading: false);
     }
+
     if (!mounted) return;
 
     if (outcome.lines.isEmpty) {
@@ -1171,6 +1203,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       _selectedCategoryFilter = _selectedQuantities.isNotEmpty ? 'selected' : 'all';
     });
 
+    if (!mounted) return;
     await ReceiptScanFlow.showSummary(
       context,
       skuCount: addedSkus,
@@ -1604,13 +1637,23 @@ class _BookOrderPageState extends State<BookOrderPage> {
             )
             .length;
 
-        return Scaffold(
-          appBar: CustomAppbar(
-            title: _isEditing ? 'Edit Order' : 'Store Order',
-            subtitle: hasSelectedStore ? '$selectedStoreName • ${_formatAppBarDate(_selectedDate)}' : 'Order for a Hapi Store',
-            centerTitle: false,
-            actions: [_buildOverflowMenuAction(allInventory: allInventory, unplacedCount: unplacedCount, colorScheme: colorScheme)],
-          ),
+        final isLocked = _isSaving || _isScanning;
+
+        return PopScope(
+          canPop: !isLocked,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) {
+              ShowMessage.warning(context, 'Operation in progress. Please wait.');
+            }
+          },
+          child: Scaffold(
+            appBar: CustomAppbar(
+              title: _isEditing ? 'Edit Order' : 'Store Order',
+              subtitle: hasSelectedStore ? '$selectedStoreName • ${_formatAppBarDate(_selectedDate)}' : 'Order for a Hapi Store',
+              centerTitle: false,
+              onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
+              actions: [_buildOverflowMenuAction(allInventory: allInventory, unplacedCount: unplacedCount, colorScheme: colorScheme)],
+            ),
           bottomNavigationBar: hasSelectedStore
               ? _buildStickyOrderSummaryBar(
                   colorScheme: colorScheme,
@@ -1868,8 +1911,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
               if (_isScanning) Positioned.fill(child: _buildScanningOverlay(colorScheme)),
             ],
           ),
-        );
-      },
+        ),
+      );
+    },
     );
   }
 

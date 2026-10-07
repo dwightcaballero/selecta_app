@@ -557,12 +557,15 @@ class DeliveryController {
     return updated;
   }
 
+  final Set<String> _inFlightPicklistDeliveries = {};
+
   /// Completes the Picklist:
-  /// 1. Permanently deducts picked quantities from physical inventory (`stockQuantity`)
-  ///    and releases floating reservations (`reservedQuantity`).
-  /// 2. Saves receipt image & store placement checklist.
-  /// 3. Marks the unified transaction as `DeliveryStatus.pending` ("For Delivery").
-  /// 4. Optionally sends the customer SMS confirmation.
+  /// 1. Verifies the daily cash breakdown is not already locked.
+  /// 2. Uploads/updates receipt image FIRST (so image failures never corrupt database state).
+  /// 3. Atomically deducts inventory stock, releases reserved stock, records movements,
+  ///    updates the delivery status to `DeliveryStatus.pending` ("For Delivery"), and saves placement
+  ///    in a single Firestore transaction (All or Nothing).
+  /// 4. Logs audit trail and optionally sends customer SMS.
   Future<Delivery> completePicklist({
     required BuildContext context,
     required String deliveryId,
@@ -576,75 +579,89 @@ class DeliveryController {
     required bool sendText,
     required String smsMessage,
     String? remarks,
+    void Function(String step)? onProgress,
   }) async {
-    final cleanItems = pickedItems.where((i) => i.pickedQuantity > 0).toList();
-    final double orderAmount = computeItemsOrderAmount(cleanItems);
-    final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
-
-    final deliveryDate = currentDelivery.deliveryDate?.toDate() ?? DateTime.now();
-    final status = await checkBreakdownAndVerificationStatus(deliveryDate);
-    if (status.isVerified) {
-      throw Exception('Cannot process for delivery: The daily cash breakdown for this date has already been verified and closed by the dealer.');
+    if (_inFlightPicklistDeliveries.contains(deliveryId)) {
+      throw Exception('This picklist is already being processed. Please wait.');
     }
+    _inFlightPicklistDeliveries.add(deliveryId);
 
-    // 1. Stock Physically Leaves Warehouse (Marked "For Delivery"):
-    // Deduct from physical Current Stock (stockQuantity) and release Reserved Stock (reservedQuantity).
-    if (!currentDelivery.isInventoryDeducted) {
-      await _inventoryService.confirmPicklistAndDeductStock(
+    try {
+      final cleanItems = pickedItems.where((i) => i.pickedQuantity > 0).toList();
+      final double orderAmount = computeItemsOrderAmount(cleanItems);
+      final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
+
+      final deliveryDate = currentDelivery.deliveryDate?.toDate() ?? DateTime.now();
+      final status = await checkBreakdownAndVerificationStatus(deliveryDate);
+      if (status.isVerified) {
+        throw Exception('Cannot process for delivery: The daily cash breakdown for this date has already been verified and closed by the dealer.');
+      }
+
+      // 1. Upload/update receipt image FIRST (outside DB transaction with timeout protection)
+      String imageFilePath = currentDelivery.imagePath;
+      if (context.mounted && (imageFile != null || networkImagePath.isEmpty)) {
+        onProgress?.call('Uploading proof photo...');
+        imageFilePath = await Helperfunctions.updateImage(
+          context,
+          imageFile,
+          networkImagePath,
+          currentDelivery.imagePath,
+        );
+      }
+
+      // 2. Prepare updated delivery model
+      final updated = currentDelivery.copyWith(
         storeName: storeName,
+        remarks: remarks ?? currentDelivery.remarks,
+        transactionStatus: DeliveryStatus.pending,
+        imagePath: imageFilePath,
+        orderAmount: orderAmount,
+        items: cleanItems.map((i) => i.copyWith(isPicked: true)).toList(),
+        isInventoryReserved: false,
+        isInventoryDeducted: true,
+        picklistCompletedDate: Timestamp.now(),
+        picklistCompletedBy: currentUserName,
+        lastUpdatedBy: currentUserName,
+        lastupdatedDate: Timestamp.now(),
+        lastUpdatedPage: AppPages.picklist,
+      );
+
+      // 3. Prepare placement model if present
+      Placement? placement;
+      if (placements.isNotEmpty && updated.deliveryDate != null) {
+        placement = Placement.fromFlags(
+          storeName: updated.storeName,
+          deliveryDate: updated.deliveryDate!,
+          flags: placements.map((p) => p.isPlaced).toList(),
+          id: placementId,
+        );
+        placement.progressCount = placements.where((p) => p.isPlaced).length;
+        placement.isFinished = placement.progressCount == 12;
+      }
+
+      // 4. ATOMIC DATABASE TRANSACTION (All or Nothing: Stock + Movements + Delivery + Placement)
+      onProgress?.call('Verifying stock & marking for delivery...');
+      await _inventoryService.completePicklistAtomicTransaction(
+        deliveryId: deliveryId,
+        updatedDelivery: updated,
         reservedItems: currentDelivery.items,
         pickedItems: cleanItems,
         wasReserved: currentDelivery.isInventoryReserved,
+        placement: placement,
       );
+
+      // 5. Write audit trail
+      await Helperfunctions.logUpdate(storeName, currentDelivery.toJson(), updated.toJson(), page: AppPages.picklist);
+
+      // 6. Optional SMS notification
+      if (sendText && smsMessage.isNotEmpty) {
+        await sendDeliverySms(storeName: storeName, message: smsMessage);
+      }
+
+      return updated;
+    } finally {
+      _inFlightPicklistDeliveries.remove(deliveryId);
     }
-
-    // 2. Upload/update receipt image if present
-    String imageFilePath = currentDelivery.imagePath;
-    if (context.mounted) {
-      imageFilePath = await Helperfunctions.updateImage(context, imageFile, networkImagePath, currentDelivery.imagePath);
-    }
-
-    // 3. Transition status to DeliveryStatus.pending ("For Delivery")
-    final updated = currentDelivery.copyWith(
-      storeName: storeName,
-      remarks: remarks ?? currentDelivery.remarks,
-      transactionStatus: DeliveryStatus.pending,
-      imagePath: imageFilePath,
-      orderAmount: orderAmount,
-      items: cleanItems.map((i) => i.copyWith(isPicked: true)).toList(),
-      isInventoryReserved: false,
-      isInventoryDeducted: true,
-      picklistCompletedDate: Timestamp.now(),
-      picklistCompletedBy: currentUserName,
-      lastUpdatedBy: currentUserName,
-      lastupdatedDate: Timestamp.now(),
-      lastUpdatedPage: AppPages.picklist,
-    );
-
-    await _deliveryService.updateDelivery(deliveryId, updated);
-
-    // 4. Save placement progress
-    if (placements.isNotEmpty && updated.deliveryDate != null) {
-      final placement = Placement.fromFlags(
-        storeName: updated.storeName,
-        deliveryDate: updated.deliveryDate!,
-        flags: placements.map((p) => p.isPlaced).toList(),
-        id: placementId,
-      );
-      placement.progressCount = placements.where((p) => p.isPlaced).length;
-      placement.isFinished = placement.progressCount == 12;
-      await _placementService.savePlacement(placement);
-    }
-
-    // 5. Write audit trail
-    await Helperfunctions.logUpdate(storeName, currentDelivery.toJson(), updated.toJson(), page: AppPages.picklist);
-
-    // 6. Optional SMS notification
-    if (sendText && smsMessage.isNotEmpty) {
-      await sendDeliverySms(storeName: storeName, message: smsMessage);
-    }
-
-    return updated;
   }
 
   // ==========================================
@@ -1137,7 +1154,7 @@ class DeliveryController {
     if (delivery.imagePath.isNotEmpty && context.mounted) {
       await Helperfunctions.deleteImage(context, delivery.imagePath);
     }
-    _deliveryService.deleteDelivery(deliveryId);
+    await _deliveryService.deleteDelivery(deliveryId);
 
     await Helperfunctions.logDelete(delivery.storeName, delivery.toJson(), page: AppPages.delivery);
   }

@@ -12,8 +12,10 @@ import 'package:selecta_ops/models/other_product.dart';
 import 'package:selecta_ops/models/purchaseorder.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
+import 'package:selecta_ops/models/placement.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/other_product_service.dart';
+import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/services/purchaseorder_service.dart';
 import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:intl/intl.dart';
@@ -519,6 +521,135 @@ class InventoryService {
     }
 
     await batch.commit();
+  }
+
+  /// Atomically completes a picklist inside a Firestore transaction:
+  /// 1. Idempotency Check: Verifies the delivery record is still in `picklist` status and `isInventoryDeducted == false`.
+  ///    If already processed or deducted, throws an Exception to prevent double-processing.
+  /// 2. Reads all affected product documents.
+  /// 3. Deducts physical `stockQuantity` and releases `reservedQuantity` for each picked product.
+  /// 4. Creates `InventoryMovement` audit log records.
+  /// 5. Updates the `deliveries` document to `DeliveryStatus.pending` with `isInventoryDeducted = true`.
+  /// 6. Saves placement record if provided.
+  ///
+  /// Everything is executed inside `_firestore.runTransaction` — All or Nothing.
+  Future<void> completePicklistAtomicTransaction({
+    required String deliveryId,
+    required Delivery updatedDelivery,
+    required List<OrderItem> reservedItems,
+    required List<OrderItem> pickedItems,
+    required bool wasReserved,
+    Placement? placement,
+  }) async {
+    final now = Timestamp.now();
+    final createdBy = _currentActorName();
+
+    await _firestore.runTransaction((transaction) async {
+      // 1. Idempotency & Concurrency check: read latest delivery document
+      final deliveryRef = _firestore.collection(DELIVERY_COLLECTION_REF).doc(deliveryId);
+      final deliverySnap = await transaction.get(deliveryRef);
+      if (!deliverySnap.exists) {
+        throw Exception('Delivery record "$deliveryId" not found.');
+      }
+      final deliveryData = deliverySnap.data() ?? {};
+      final isDeducted = deliveryData['isInventoryDeducted'] as bool? ?? false;
+      final status = deliveryData['transactionStatus'] as String? ?? '';
+      if (isDeducted || status == DeliveryStatus.pending || status == DeliveryStatus.delivered) {
+        throw Exception('This picklist has already been processed or marked For Delivery.');
+      }
+
+      // Map reserved and picked quantities by product
+      final Map<String, ({String source, String id, String name, int reservedQty, int pickedQty})> merged = {};
+
+      if (wasReserved) {
+        for (final r in reservedItems) {
+          if (r.productId.isEmpty) continue;
+          final key = '${r.productSource}:${r.productId}';
+          final existing = merged[key];
+          merged[key] = (
+            source: r.productSource,
+            id: r.productId,
+            name: r.productName,
+            reservedQty: (existing?.reservedQty ?? 0) + r.pickedQuantity,
+            pickedQty: existing?.pickedQty ?? 0,
+          );
+        }
+      }
+
+      for (final p in pickedItems) {
+        if (p.productId.isEmpty) continue;
+        final key = '${p.productSource}:${p.productId}';
+        final existing = merged[key];
+        merged[key] = (
+          source: p.productSource,
+          id: p.productId,
+          name: p.productName,
+          reservedQty: existing?.reservedQty ?? 0,
+          pickedQty: (existing?.pickedQty ?? 0) + p.pickedQuantity,
+        );
+      }
+
+      // 2. Read all affected product docs (Firestore transactions require all reads before writes)
+      final Map<String, DocumentSnapshot<Map<String, dynamic>>> productSnaps = {};
+      for (final item in merged.values) {
+        final collectionName = _collectionForSource(item.source);
+        final productRef = _firestore.collection(collectionName).doc(item.id);
+        final snap = await transaction.get(productRef);
+        productSnaps['${item.source}:${item.id}'] = snap;
+      }
+
+      // 3. Stage product stock updates and movement logs
+      for (final item in merged.values) {
+        final key = '${item.source}:${item.id}';
+        final snap = productSnaps[key];
+        if (snap == null || !snap.exists) continue;
+        final data = snap.data() ?? {};
+
+        final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+        final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
+
+        final nextStock = (currentStock - item.pickedQty) < 0 ? 0 : (currentStock - item.pickedQty);
+        final nextReserved = (currentReserved - item.reservedQty) < 0 ? 0 : (currentReserved - item.reservedQty);
+        final delta = nextStock - currentStock;
+
+        final collectionName = _collectionForSource(item.source);
+        final productRef = _firestore.collection(collectionName).doc(item.id);
+
+        transaction.update(productRef, {
+          'stockQuantity': nextStock,
+          'reservedQuantity': nextReserved,
+          'updatedAt': now,
+        });
+
+        if (item.pickedQty > 0) {
+          final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+          final movement = InventoryMovement(
+            id: movementRef.id,
+            productId: item.id,
+            productName: item.name,
+            productSource: item.source,
+            previousStock: currentStock,
+            newStock: nextStock,
+            delta: delta != 0 ? delta : -item.pickedQty,
+            reason: 'Picklist Completed (For Delivery)',
+            notes: 'Store: ${updatedDelivery.storeName} (Picked: ${item.pickedQty})',
+            createdBy: createdBy,
+            createdAt: now,
+          );
+          transaction.set(movementRef, movement.toJson());
+        }
+      }
+
+      // 4. Stage delivery document update
+      transaction.update(deliveryRef, updatedDelivery.toJson());
+
+      // 5. Stage placement update if provided
+      if (placement != null) {
+        final pId = placement.id.isNotEmpty ? placement.id : deliveryId;
+        final placementRef = _firestore.collection(PLACEMENT_COLLECTION_REF).doc(pId);
+        transaction.set(placementRef, placement.toJson(), SetOptions(merge: true));
+      }
+    });
   }
 
   /// Updates the stock quantity (and optionally lowStockThreshold and maxStock) of a product

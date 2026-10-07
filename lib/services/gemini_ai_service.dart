@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/models/delivery.dart';
@@ -7,6 +6,8 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/supplier_product_mapping.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/image_slicing_service.dart';
+import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:intl/intl.dart';
 
@@ -182,8 +183,11 @@ class GeminiAiService {
   static const String _usageCollection = 'ai_usage_metrics';
   static const String defaultApiKey = '';
 
-  final ConfigurationService _configService = ConfigurationService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  ConfigurationService? _configServiceInstance;
+  ConfigurationService get _configService => _configServiceInstance ??= ConfigurationService();
+
+  FirebaseFirestore? _firestoreInstance;
+  FirebaseFirestore get _firestore => _firestoreInstance ??= FirebaseFirestore.instance;
 
   int _activeModelIndex = 0;
   GenerativeModel? _model;
@@ -369,13 +373,56 @@ class GeminiAiService {
     return _chatSession;
   }
 
+  /// Optional listener/callback for retry events across the app.
+  static void Function(String message)? onRetryNotification;
+
+  void _notifyRetry(int attemptNumber, int totalAttempts) {
+    final message = 'Network slowed down — retrying (attempt $attemptNumber of $totalAttempts)...';
+    SnackBarWidget.showRetryToast(message);
+    onRetryNotification?.call(message);
+  }
+
+  @visibleForTesting
+  void notifyRetryForTesting(int attemptNumber, int totalAttempts) => _notifyRetry(attemptNumber, totalAttempts);
+
+  @visibleForTesting
+  bool isRetryableError(dynamic e) => _isOverloadedError(e);
+
+  Future<void> _handleRetry({
+    required int attempt,
+    Future<void> Function()? onBeforeRetry,
+  }) async {
+    _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
+    _notifyRetry(attempt + 2, _candidateModels.length);
+    final delayMs = 1000 * (1 << attempt);
+    await Future.delayed(Duration(milliseconds: delayMs));
+    if (onBeforeRetry != null) {
+      await onBeforeRetry();
+    }
+  }
+
   bool _isOverloadedError(dynamic e) {
     final errStr = e.toString().toLowerCase();
     return errStr.contains('high demand') ||
         errStr.contains('overloaded') ||
         errStr.contains('503') ||
+        errStr.contains('429') ||
         errStr.contains('resourceexhausted') ||
-        errStr.contains('try again later');
+        errStr.contains('resource_exhausted') ||
+        errStr.contains('rate limit') ||
+        errStr.contains('ratelimit') ||
+        errStr.contains('quota') ||
+        errStr.contains('socketexception') ||
+        errStr.contains('timeoutexception') ||
+        errStr.contains('connection closed') ||
+        errStr.contains('connection reset') ||
+        errStr.contains('connection refused') ||
+        errStr.contains('handshake') ||
+        errStr.contains('clientexception') ||
+        errStr.contains('failed host lookup') ||
+        errStr.contains('broken pipe') ||
+        errStr.contains('try again later') ||
+        errStr.contains('temporarily unavailable');
   }
 
   /// Sends a message in the active chat session after validating quota,
@@ -401,10 +448,10 @@ class GeminiAiService {
         return response.text ?? 'No response received from Gemini.';
       } catch (e) {
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          // Failover to next candidate model
-          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
-          await Future.delayed(const Duration(milliseconds: 750));
-          await startChat(contextPrompt: _cachedContextPrompt);
+          await _handleRetry(
+            attempt: attempt,
+            onBeforeRetry: () => startChat(contextPrompt: _cachedContextPrompt),
+          );
           continue;
         }
 
@@ -439,8 +486,7 @@ class GeminiAiService {
         return response.text ?? 'No response generated.';
       } catch (e) {
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
-          await Future.delayed(const Duration(milliseconds: 750));
+          await _handleRetry(attempt: attempt);
           continue;
         }
 
@@ -650,8 +696,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
         return _parseExtractedPurchaseOrderData(rawText, catalog, knownMappings);
       } catch (e) {
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
-          await Future.delayed(const Duration(milliseconds: 750));
+          await _handleRetry(attempt: attempt);
           continue;
         }
 
@@ -825,8 +870,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
         return _parseExtractedPurchaseOrderData(response.text ?? '', catalog, knownMappings);
       } catch (e) {
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
-          await Future.delayed(const Duration(milliseconds: 750));
+          await _handleRetry(attempt: attempt);
           continue;
         }
         if (_isOverloadedError(e)) {
@@ -933,8 +977,7 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
         return _parseInvoiceComparisonResult(rawText, originalPoItems);
       } catch (e) {
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
-          await Future.delayed(const Duration(milliseconds: 750));
+          await _handleRetry(attempt: attempt);
           continue;
         }
         if (_isOverloadedError(e)) {
@@ -1318,8 +1361,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
         return _parseExtractedSupplierStockData(rawText, selectaCatalog);
       } catch (e) {
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
-          await Future.delayed(const Duration(milliseconds: 750));
+          await _handleRetry(attempt: attempt);
           continue;
         }
 

@@ -548,9 +548,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                 itemBuilder: (context, index) {
                                   final Delivery delivery = filteredDocs[index].data();
                                   final String deliveryID = filteredDocs[index].id;
-                                  final store = _storesByName[delivery.storeName.trim().toLowerCase()];
-                                  final targetPjpDay = _controller.getPreviousPjpDayName(_selectedDate, _storesByName);
-                                  final isTodayPjp = store?.pjpSchedule?.trim().toLowerCase() == targetPjpDay.toLowerCase();
 
                                   return Material(
                                     color: theme.colorScheme.surface,
@@ -628,24 +625,6 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                           color: theme.colorScheme.onSurfaceVariant,
                                                         ),
                                                       ),
-                                                      if (store?.pjpSchedule != null && store!.pjpSchedule!.isNotEmpty)
-                                                        Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                          decoration: BoxDecoration(
-                                                            color: isTodayPjp ? Colors.green.withValues(alpha: 0.12) : Colors.amber.withValues(alpha: 0.15),
-                                                            borderRadius: BorderRadius.circular(6),
-                                                          ),
-                                                          child: Text(
-                                                            isTodayPjp
-                                                                ? 'PJP Stop #${store.pjpSequence != null ? (store.pjpSequence! + 1) : (index + 1)}'
-                                                                : 'PJP: ${store.pjpSchedule}',
-                                                            style: TextStyle(
-                                                              fontSize: 11,
-                                                              fontWeight: FontWeight.bold,
-                                                              color: isTodayPjp ? Colors.green.shade800 : Colors.amber.shade900,
-                                                            ),
-                                                          ),
-                                                        ),
                                                       if (delivery.hasReturnedItems || delivery.returnAmount > 0)
                                                         Container(
                                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -655,17 +634,8 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                           ),
                                                           child: Text(
                                                             '${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)} ret.',
-                                                            style: TextStyle(
-                                                              fontSize: 11,
-                                                              fontWeight: FontWeight.bold,
-                                                              color: Colors.red.shade800,
-                                                            ),
+                                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red.shade800),
                                                           ),
-                                                        ),
-                                                      if (delivery.imagePath.trim().isNotEmpty)
-                                                        Tooltip(
-                                                          message: 'Proof of delivery attached',
-                                                          child: Icon(Icons.photo_camera_outlined, size: 15, color: theme.colorScheme.primary),
                                                         ),
                                                     ],
                                                   ),

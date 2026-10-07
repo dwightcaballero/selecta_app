@@ -466,7 +466,6 @@ class _PicklistListPageState extends State<PicklistListPage> {
                     final pickedCount = delivery.items.where((i) => i.isPicked).length;
                     final totalLines = delivery.items.length;
                     final isComplete = totalLines > 0 && pickedCount == totalLines;
-                    final deliveryDate = delivery.deliveryDate?.toDate() ?? DateTime.now();
 
                     final store = _storesByName[delivery.storeName.trim().toLowerCase()];
                     final isTodayPjp = store?.pjpSchedule?.trim().toLowerCase() == targetPjpDay.toLowerCase();
