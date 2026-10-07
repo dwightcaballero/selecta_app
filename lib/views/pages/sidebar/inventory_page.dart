@@ -17,14 +17,40 @@ class InventoryPage extends StatefulWidget {
   State<InventoryPage> createState() => _InventoryPageState();
 }
 
+enum InventorySortOption {
+  defaultSrp('Default (SRP)', Icons.sort_rounded),
+  stockAsc('Stock: Low to High', Icons.arrow_upward_rounded),
+  stockDesc('Stock: High to Low', Icons.arrow_downward_rounded),
+  nameAsc('Name (A to Z)', Icons.sort_by_alpha_rounded),
+  priceDesc('Price: High to Low', Icons.payments_outlined);
+
+  final String label;
+  final IconData icon;
+  const InventorySortOption(this.label, this.icon);
+}
+
 class _InventoryPageState extends State<InventoryPage> {
   final InventoryController _controller = InventoryController();
   final TextEditingController _searchController = TextEditingController();
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
   final DateFormat _dateFormat = DateFormat('MMM d, yyyy • h:mm a');
 
+  late Stream<List<InventoryItem>> _inventoryStream;
   String _searchQuery = '';
-  String _selectedFilter = 'All'; // 'All', 'By Piece', 'By Case', 'Other', 'Floating', 'Needs Restock', 'Low Stock', 'Out of Stock'
+  String _selectedFilter = 'All'; // 'All', 'By Piece', 'By Case', 'Other', 'Incoming', 'Reserved', 'Needs Restock', 'Low Stock', 'Out of Stock'
+  InventorySortOption _selectedSort = InventorySortOption.defaultSrp;
+
+  @override
+  void initState() {
+    super.initState();
+    _inventoryStream = _controller.getActiveInventoryStream();
+  }
+
+  Future<void> _refreshInventory() async {
+    setState(() {
+      _inventoryStream = _controller.getActiveInventoryStream();
+    });
+  }
 
   @override
   void dispose() {
@@ -36,19 +62,27 @@ class _InventoryPageState extends State<InventoryPage> {
     setState(() => _searchQuery = value.trim().toLowerCase());
   }
 
+  bool _matchesSearch(InventoryItem item, String query) {
+    if (query.isEmpty) return true;
+    final terms = query.split(RegExp(r'\s+')).where((t) => t.isNotEmpty);
+    final searchableContent =
+        '${item.productName} ${item.itemCode} ${item.category} ${item.tag}'.toLowerCase();
+    return terms.every((term) => searchableContent.contains(term));
+  }
+
   void _resetFilters() {
     _searchController.clear();
     setState(() {
       _searchQuery = '';
       _selectedFilter = 'All';
+      _selectedSort = InventorySortOption.defaultSrp;
     });
   }
 
   List<InventoryItem> _applyFilters(List<InventoryItem> items) {
     return items.where((item) {
       if (!item.isActive) return false;
-      final matchesSearch = _searchQuery.isEmpty || item.productName.toLowerCase().contains(_searchQuery);
-      if (!matchesSearch) return false;
+      if (!_matchesSearch(item, _searchQuery)) return false;
 
       return switch (_selectedFilter) {
         'By Piece' => item.source == InventoryProductSource.selecta && !item.category.trim().toLowerCase().contains('case'),
@@ -82,7 +116,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return StreamBuilder<List<InventoryItem>>(
-      stream: _controller.getActiveInventoryStream(),
+      stream: _inventoryStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Scaffold(
@@ -108,51 +142,74 @@ class _InventoryPageState extends State<InventoryPage> {
         final filteredItems = _applyFilters(allItems);
         final isKeyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
 
+        // Breakdown counts for filter chips
+        final pieceCount = allItems.where((i) => i.source == InventoryProductSource.selecta && !i.category.trim().toLowerCase().contains('case')).length;
+        final caseCount = allItems.where((i) => i.source == InventoryProductSource.selecta && i.category.trim().toLowerCase().contains('case')).length;
+        final otherCount = allItems.where((i) => i.source == InventoryProductSource.other).length;
+        final incomingCount = allItems.where((i) => i.incomingQuantity > 0).length;
+        final reservedCount = allItems.where((i) => i.reservedQuantity > 0).length;
+
+        // Contextual subtitle
+        final isFiltered = _searchQuery.isNotEmpty || _selectedFilter != 'All' || _selectedSort != InventorySortOption.defaultSrp;
+        final filteredSummary = isFiltered ? _controller.computeSummary(filteredItems) : summary;
+
+        final subtitleText = allItems.isEmpty
+            ? 'Selecta & Other Products Stock'
+            : isFiltered
+                ? 'Showing ${filteredItems.length} of ${allItems.length} items (${filteredSummary.totalUnits} units)'
+                : '${summary.totalUnits} units • Cost: ${_currencyFormat.format(summary.totalCostValue)}';
+
         return Scaffold(
           appBar: CustomAppbar(
             title: 'Inventory',
-            subtitle: allItems.isEmpty
-                ? 'Selecta & Other Products Stock'
-                : '${summary.totalUnits} units • Cost: ${_currencyFormat.format(summary.totalCostValue)}',
+            subtitle: subtitleText,
             actions: [_buildAppbarMenu(summary, floatingCount, colorScheme)],
           ),
           body: Column(
             children: [
-              // ── Search Bar ───────────────────────────────────────────────────
+              // ── Search Bar & Sort ─────────────────────────────────────────────
               Padding(
                 padding: EdgeInsets.fromLTRB(16, isKeyboardVisible ? 12 : 8, 16, 6),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: 'Search active inventory...',
-                    hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-                    prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: colorScheme.outlineVariant),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: _onSearchChanged,
+                        decoration: InputDecoration(
+                          hintText: 'Search by name, SKU, tag...',
+                          hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _onSearchChanged('');
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: colorScheme.outlineVariant),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+                          ),
+                        ),
+                      ),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
-                    ),
-                  ),
+                    const SizedBox(width: 8),
+                    _buildSortButton(colorScheme),
+                  ],
                 ),
               ),
 
@@ -163,45 +220,45 @@ class _InventoryPageState extends State<InventoryPage> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   children: [
-                    _buildFilterChip('All', null, colorScheme),
+                    _buildFilterChip('All', allItems.length, colorScheme),
                     const SizedBox(width: 8),
-                    _buildFilterChip('By Piece', null, colorScheme),
+                    _buildFilterChip('By Piece', pieceCount, colorScheme),
                     const SizedBox(width: 8),
-                    _buildFilterChip('By Case', null, colorScheme),
+                    _buildFilterChip('By Case', caseCount, colorScheme),
                     const SizedBox(width: 8),
-                    _buildFilterChip('Other', null, colorScheme),
+                    _buildFilterChip('Other', otherCount, colorScheme),
                     const SizedBox(width: 8),
                     _buildFilterChip(
                       'Incoming',
-                      summary.totalIncomingUnits > 0 ? summary.totalIncomingUnits : null,
+                      incomingCount,
                       colorScheme,
                       alertColor: const Color(0xFF0284C7),
                     ),
                     const SizedBox(width: 8),
                     _buildFilterChip(
                       'Reserved',
-                      summary.totalReservedUnits > 0 ? summary.totalReservedUnits : null,
+                      reservedCount,
                       colorScheme,
                       alertColor: const Color(0xFF7C3AED),
                     ),
                     const SizedBox(width: 8),
                     _buildFilterChip(
                       'Needs Restock',
-                      summary.needsRestockCount > 0 ? summary.needsRestockCount : null,
+                      summary.needsRestockCount,
                       colorScheme,
                       alertColor: const Color(0xFFE11D48),
                     ),
                     const SizedBox(width: 8),
                     _buildFilterChip(
                       'Low Stock',
-                      summary.lowStockCount > 0 ? summary.lowStockCount : null,
+                      summary.lowStockCount,
                       colorScheme,
                       alertColor: const Color(0xFFD97706),
                     ),
                     const SizedBox(width: 8),
                     _buildFilterChip(
                       'Out of Stock',
-                      summary.outOfStockCount > 0 ? summary.outOfStockCount : null,
+                      summary.outOfStockCount,
                       colorScheme,
                       alertColor: colorScheme.error,
                     ),
@@ -222,25 +279,29 @@ class _InventoryPageState extends State<InventoryPage> {
                     : Builder(
                         builder: (context) {
                           final entries = _buildGroupedEntries(filteredItems, colorScheme);
-                          return ListView.builder(
-                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-                            itemCount: entries.length,
-                            itemBuilder: (context, index) {
-                              final entry = entries[index];
-                              if (entry is _InventoryHeaderEntry) {
-                                return _buildCategorySectionHeader(
-                                  title: entry.title,
-                                  count: entry.count,
-                                  icon: entry.icon,
-                                  accentColor: entry.accentColor,
-                                  colorScheme: colorScheme,
-                                );
-                              } else if (entry is _InventoryCardEntry) {
-                                return Padding(padding: const EdgeInsets.only(bottom: 8), child: _buildInventoryCard(entry.item, colorScheme));
-                              }
-                              return const SizedBox.shrink();
-                            },
+                          return RefreshIndicator(
+                            onRefresh: _refreshInventory,
+                            child: ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                              itemCount: entries.length,
+                              itemBuilder: (context, index) {
+                                final entry = entries[index];
+                                if (entry is _InventoryHeaderEntry) {
+                                  return _buildCategorySectionHeader(
+                                    title: entry.title,
+                                    count: entry.count,
+                                    icon: entry.icon,
+                                    accentColor: entry.accentColor,
+                                    colorScheme: colorScheme,
+                                  );
+                                } else if (entry is _InventoryCardEntry) {
+                                  return Padding(padding: const EdgeInsets.only(bottom: 8), child: _buildInventoryCard(entry.item, colorScheme));
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
                           );
                         },
                       ),
@@ -255,7 +316,8 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget _buildFilterChip(String filter, int? count, ColorScheme colorScheme, {Color? alertColor}) {
     final isSelected = _selectedFilter == filter;
     final effectiveColor = alertColor ?? colorScheme.primary;
-    final hasCount = count != null && count > 0;
+    final hasCount = count != null;
+    final isAlert = alertColor != null && (count ?? 0) > 0;
 
     return FilterChip(
       selected: isSelected,
@@ -263,21 +325,100 @@ class _InventoryPageState extends State<InventoryPage> {
         hasCount ? '$filter ($count)' : filter,
         style: TextStyle(
           fontSize: 12.5,
-          fontWeight: isSelected || hasCount ? FontWeight.bold : FontWeight.w500,
-          color: isSelected ? colorScheme.onPrimary : (hasCount ? effectiveColor : colorScheme.onSurface),
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          color: isSelected ? colorScheme.onPrimary : (isAlert ? effectiveColor : colorScheme.onSurface),
         ),
       ),
       selectedColor: effectiveColor,
-      backgroundColor: hasCount && !isSelected ? effectiveColor.withValues(alpha: 0.1) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+      backgroundColor: isAlert && !isSelected
+          ? effectiveColor.withValues(alpha: 0.1)
+          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
       showCheckmark: false,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(
-          color: isSelected ? effectiveColor : (hasCount ? effectiveColor.withValues(alpha: 0.4) : colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          color: isSelected
+              ? effectiveColor
+              : (isAlert
+                  ? effectiveColor.withValues(alpha: 0.4)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.5)),
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 4),
       onSelected: (_) => setState(() => _selectedFilter = filter),
+    );
+  }
+
+  Widget _buildSortButton(ColorScheme colorScheme) {
+    final isCustomSort = _selectedSort != InventorySortOption.defaultSrp;
+
+    return PopupMenuButton<InventorySortOption>(
+      tooltip: 'Sort Inventory',
+      initialValue: _selectedSort,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      onSelected: (sortOption) {
+        setState(() => _selectedSort = sortOption);
+      },
+      itemBuilder: (context) => InventorySortOption.values.map((option) {
+        final isSelected = option == _selectedSort;
+        return PopupMenuItem<InventorySortOption>(
+          value: option,
+          child: Row(
+            children: [
+              Icon(
+                option.icon,
+                size: 18,
+                color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  option.label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              if (isSelected)
+                Icon(Icons.check_rounded, size: 16, color: colorScheme.primary),
+            ],
+          ),
+        );
+      }).toList(),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: isCustomSort
+              ? colorScheme.primary.withValues(alpha: 0.12)
+              : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isCustomSort
+                ? colorScheme.primary
+                : colorScheme.outlineVariant.withValues(alpha: 0.5),
+            width: isCustomSort ? 1.4 : 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _selectedSort.icon,
+              size: 19,
+              color: isCustomSort ? colorScheme.primary : colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 2),
+            Icon(
+              Icons.arrow_drop_down_rounded,
+              size: 18,
+              color: isCustomSort ? colorScheme.primary : colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -472,9 +613,13 @@ class _InventoryPageState extends State<InventoryPage> {
               _buildStockBreakdownTile(
                 title: 'On-Hand Units',
                 value: '${summary.totalUnits} units',
-                subtitle: 'Physical stock across all products',
+                subtitle: 'Physical stock across all products (Tap to show All)',
                 icon: Icons.inventory_2_outlined,
                 color: colorScheme.primary,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  setState(() => _selectedFilter = 'All');
+                },
               ),
               const SizedBox(height: 8),
               if (summary.totalIncomingUnits > 0 || summary.totalReservedUnits > 0) ...[
@@ -615,7 +760,25 @@ class _InventoryPageState extends State<InventoryPage> {
         return a.isOutOfStock ? -1 : 1;
       }
     }
-    return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
+
+    return switch (_selectedSort) {
+      InventorySortOption.stockAsc => a.stockQuantity.compareTo(b.stockQuantity) != 0
+          ? a.stockQuantity.compareTo(b.stockQuantity)
+          : a.productName.toLowerCase().compareTo(b.productName.toLowerCase()),
+      InventorySortOption.stockDesc => b.stockQuantity.compareTo(a.stockQuantity) != 0
+          ? b.stockQuantity.compareTo(a.stockQuantity)
+          : a.productName.toLowerCase().compareTo(b.productName.toLowerCase()),
+      InventorySortOption.nameAsc => a.productName.toLowerCase().compareTo(b.productName.toLowerCase()),
+      InventorySortOption.priceDesc => b.sellingPrice.compareTo(a.sellingPrice) != 0
+          ? b.sellingPrice.compareTo(a.sellingPrice)
+          : a.productName.toLowerCase().compareTo(b.productName.toLowerCase()),
+      InventorySortOption.defaultSrp => Helperfunctions.compareBySrpAndName(
+          nameA: a.productName,
+          priceA: a.sellingPrice,
+          nameB: b.productName,
+          priceB: b.sellingPrice,
+        ),
+    };
   }
 
   Widget _buildCategorySectionHeader({
@@ -718,35 +881,41 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Widget _buildEmptyState({required String title, required String subtitle, required bool showReset}) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.08), shape: BoxShape.circle),
-              child: Icon(Icons.inventory_2_outlined, size: 40, color: colorScheme.primary),
+    return RefreshIndicator(
+      onRefresh: _refreshInventory,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 48),
+        children: [
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.08), shape: BoxShape.circle),
+                  child: Icon(Icons.inventory_2_outlined, size: 40, color: colorScheme.primary),
+                ),
+                const SizedBox(height: 18),
+                Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                ),
+                if (showReset) ...[
+                  const SizedBox(height: 20),
+                  OutlinedButton.icon(
+                    onPressed: _resetFilters,
+                    icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                    label: const Text('Reset Filters'),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 18),
-            Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-            ),
-            if (showReset) ...[
-              const SizedBox(height: 20),
-              OutlinedButton.icon(
-                onPressed: _resetFilters,
-                icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
-                label: const Text('Reset Filters'),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

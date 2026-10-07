@@ -228,7 +228,10 @@ class PurchaseOrderController {
 
     // Create floating incoming inventory for products in the purchase order
     if (cleanItems.isNotEmpty) {
-      await _inventoryService.addIncomingStockForPurchaseOrder(items: cleanItems);
+      await _inventoryService.addIncomingStockForPurchaseOrder(
+        items: cleanItems,
+        poNumber: newPurchaseorder.poNumber,
+      );
     }
 
     await Helperfunctions.logCreate(
@@ -453,6 +456,7 @@ class PurchaseOrderController {
       await _inventoryService.adjustIncomingStockForPurchaseOrder(
         oldItems: currentOrder.items,
         newItems: cleanItems.isNotEmpty ? cleanItems : currentOrder.items,
+        poNumber: updatedPurchaseorder.poNumber,
       );
     }
 
@@ -489,6 +493,7 @@ class PurchaseOrderController {
       // Release floating incoming stock
       await _inventoryService.removeIncomingStockForPurchaseOrder(
         items: order.items,
+        poNumber: order.poNumber,
       );
     }
 

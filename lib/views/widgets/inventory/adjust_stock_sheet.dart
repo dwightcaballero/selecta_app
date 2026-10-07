@@ -492,8 +492,29 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
             ),
             const SizedBox(height: 6),
             StreamBuilder<List<InventoryMovement>>(
-              stream: widget.controller.getProductMovementsStream(item.id, limit: 5),
+              stream: widget.controller.getProductMovementsStream(item.id, limit: 10),
               builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  );
+                }
+                if (snap.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Failed to load history: ${snap.error}',
+                      style: TextStyle(fontSize: 12, color: colorScheme.error),
+                    ),
+                  );
+                }
                 final movements = snap.data ?? [];
                 if (movements.isEmpty) {
                   return Padding(

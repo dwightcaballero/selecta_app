@@ -597,11 +597,13 @@ class InventoryService {
     return _firestore
         .collection(INVENTORY_MOVEMENTS_COLLECTION_REF)
         .where('productId', isEqualTo: productId)
-        .limit(limit)
         .snapshots()
         .map((snap) {
           final list = snap.docs.map(InventoryMovement.fromSnapshot).toList();
           list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          if (limit > 0 && list.length > limit) {
+            return list.sublist(0, limit);
+          }
           return list;
         });
   }
@@ -783,12 +785,14 @@ class InventoryService {
   }
 
   /// Adds floating incoming stock (`incomingQuantity`) when a new Purchase Order is created
-  /// with status `'pending'`.
+  /// with status `'pending'`, and logs an [InventoryMovement] audit entry.
   Future<void> addIncomingStockForPurchaseOrder({
     required List<OrderItem> items,
+    String poNumber = '',
   }) async {
     if (items.isEmpty) return;
     final now = Timestamp.now();
+    final createdBy = _currentActorName();
     final batch = _firestore.batch();
     bool hasUpdates = false;
 
@@ -801,6 +805,7 @@ class InventoryService {
       if (!snap.exists) continue;
       final data = snap.data() ?? {};
 
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
       final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
       final nextIncoming = currentIncoming + qty;
 
@@ -809,6 +814,22 @@ class InventoryService {
         'updatedAt': now,
       });
       hasUpdates = true;
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        productSource: item.productSource,
+        previousStock: currentStock,
+        newStock: currentStock,
+        delta: qty,
+        reason: 'PO Placed (Incoming Stock)',
+        notes: poNumber.isNotEmpty ? 'PO Ref: $poNumber (Incoming: +$qty)' : 'Incoming: +$qty',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
     }
 
     if (hasUpdates) {
@@ -821,53 +842,71 @@ class InventoryService {
   Future<void> adjustIncomingStockForPurchaseOrder({
     required List<OrderItem> oldItems,
     required List<OrderItem> newItems,
+    String poNumber = '',
   }) async {
     final now = Timestamp.now();
+    final createdBy = _currentActorName();
     final batch = _firestore.batch();
 
-    final Map<String, ({String source, int delta})> deltas = {};
+    final Map<String, int> oldQtyByKey = {
+      for (final item in oldItems) '${item.productSource}:${item.productId}': item.effectiveQuantity
+    };
+    final Map<String, int> newQtyByKey = {
+      for (final item in newItems) '${item.productSource}:${item.productId}': item.effectiveQuantity
+    };
 
-    for (final oldItem in oldItems) {
-      if (oldItem.productId.isEmpty) continue;
-      final key = '${oldItem.productSource}:${oldItem.productId}';
-      final prev = deltas[key];
-      deltas[key] = (
-        source: oldItem.productSource,
-        delta: (prev?.delta ?? 0) - oldItem.effectiveQuantity,
-      );
-    }
-
-    for (final newItem in newItems) {
-      if (newItem.productId.isEmpty) continue;
-      final key = '${newItem.productSource}:${newItem.productId}';
-      final prev = deltas[key];
-      deltas[key] = (
-        source: newItem.productSource,
-        delta: (prev?.delta ?? 0) + newItem.effectiveQuantity,
-      );
-    }
-
+    final allKeys = {...oldQtyByKey.keys, ...newQtyByKey.keys};
     bool hasUpdates = false;
-    for (final entry in deltas.entries) {
-      if (entry.value.delta == 0) continue;
-      final parts = entry.key.split(':');
+
+    for (final key in allKeys) {
+      final parts = key.split(':');
       if (parts.length != 2) continue;
+      final source = parts[0];
       final productId = parts[1];
 
-      final collectionName = _collectionForSource(entry.value.source);
+      final oldQty = oldQtyByKey[key] ?? 0;
+      final newQty = newQtyByKey[key] ?? 0;
+      final delta = newQty - oldQty;
+      if (delta == 0) continue;
+
+      final collectionName = _collectionForSource(source);
       final productRef = _firestore.collection(collectionName).doc(productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
       final data = snap.data() ?? {};
 
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
       final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
-      final nextIncoming = currentIncoming + entry.value.delta;
+      final nextIncoming = (currentIncoming + delta) < 0 ? 0 : (currentIncoming + delta);
 
       batch.update(productRef, {
-        'incomingQuantity': nextIncoming < 0 ? 0 : nextIncoming,
+        'incomingQuantity': nextIncoming,
         'updatedAt': now,
       });
       hasUpdates = true;
+
+      final itemSample = newItems.firstWhere(
+        (i) => '${i.productSource}:${i.productId}' == key,
+        orElse: () => oldItems.firstWhere((i) => '${i.productSource}:${i.productId}' == key),
+      );
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: productId,
+        productName: itemSample.productName,
+        productSource: source,
+        previousStock: currentStock,
+        newStock: currentStock,
+        delta: delta,
+        reason: 'PO Adjusted (Incoming Stock)',
+        notes: poNumber.isNotEmpty
+            ? 'PO Ref: $poNumber (Incoming: ${delta > 0 ? "+$delta" : "$delta"})'
+            : 'Incoming: ${delta > 0 ? "+$delta" : "$delta"}',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
     }
 
     if (hasUpdates) {
@@ -878,9 +917,11 @@ class InventoryService {
   /// Removes floating incoming stock (`incomingQuantity`) when a pending Purchase Order is deleted/cancelled.
   Future<void> removeIncomingStockForPurchaseOrder({
     required List<OrderItem> items,
+    String poNumber = '',
   }) async {
     if (items.isEmpty) return;
     final now = Timestamp.now();
+    final createdBy = _currentActorName();
     final batch = _firestore.batch();
     bool hasUpdates = false;
 
@@ -893,6 +934,7 @@ class InventoryService {
       if (!snap.exists) continue;
       final data = snap.data() ?? {};
 
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
       final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
       final nextIncoming = currentIncoming - qty;
 
@@ -901,6 +943,22 @@ class InventoryService {
         'updatedAt': now,
       });
       hasUpdates = true;
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        productSource: item.productSource,
+        previousStock: currentStock,
+        newStock: currentStock,
+        delta: -qty,
+        reason: 'PO Cancelled (Incoming Removed)',
+        notes: poNumber.isNotEmpty ? 'PO Ref: $poNumber (Cancelled: -$qty)' : 'Cancelled: -$qty',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
     }
 
     if (hasUpdates) {
@@ -995,12 +1053,14 @@ class InventoryService {
 
   /// Adds returned items into incoming stock (`incomingQuantity`) when a delivery order
   /// has returns recorded or is tagged as returned, awaiting physical arrival and dealer inspection.
+  /// Also logs an [InventoryMovement] audit record for each returned item.
   Future<void> addIncomingStockForReturn({
     required String storeName,
     required List<OrderItem> returnedItems,
   }) async {
     if (returnedItems.isEmpty) return;
     final now = Timestamp.now();
+    final createdBy = _currentActorName();
     final batch = _firestore.batch();
     bool hasUpdates = false;
 
@@ -1013,6 +1073,7 @@ class InventoryService {
       if (!snap.exists) continue;
       final data = snap.data() ?? {};
 
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
       final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
       final nextIncoming = currentIncoming + qty;
 
@@ -1021,6 +1082,22 @@ class InventoryService {
         'updatedAt': now,
       });
       hasUpdates = true;
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        productSource: item.productSource,
+        previousStock: currentStock,
+        newStock: currentStock,
+        delta: qty,
+        reason: 'Return Received (Incoming to Warehouse)',
+        notes: 'Store: $storeName (Incoming: +$qty, Pending Inspection)',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
     }
 
     if (hasUpdates) {
