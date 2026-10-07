@@ -25,10 +25,11 @@ class DeliveryPage extends StatefulWidget {
 
 class _DeliveryPageState extends State<DeliveryPage> {
   final DeliveryController _controller = DeliveryController();
+  late Delivery _currentDelivery;
   bool hasBreakdownForDay = false;
   bool isDayVerified = false;
   bool get isPermanentlySettled =>
-      widget.delivery.isReturnApprovedByDealer || widget.delivery.isInventorySettled;
+      _currentDelivery.isReturnApprovedByDealer || _currentDelivery.isInventorySettled;
 
   bool get isLocked {
     if (isPermanentlySettled) return true;
@@ -41,29 +42,29 @@ class _DeliveryPageState extends State<DeliveryPage> {
   bool get isSalesmanLocked => isLocked;
 
   bool get isDealerLateReconciliation =>
-      isDealer && isDayVerified && !widget.delivery.isInventorySettled && widget.deliveryID.isNotEmpty;
+      isDealer && isDayVerified && !_currentDelivery.isInventorySettled && widget.deliveryID.isNotEmpty;
 
   bool _withReturns = false;
   final Map<String, int> _returnQuantities = {};
   final Set<String> _selectedReturnProductIds = {};
 
   double get originalOrderTotal {
-    final orig = widget.delivery.originalOrderAmount;
+    final orig = _currentDelivery.originalOrderAmount;
     if (orig != null && orig > 0) {
       return orig;
     }
-    if (widget.delivery.items.isNotEmpty) {
-      return widget.delivery.items.fold<double>(0.0, (acc, i) => acc + (i.pickedQuantity * i.sellingPrice));
+    if (_currentDelivery.items.isNotEmpty) {
+      return _currentDelivery.items.fold<double>(0.0, (acc, i) => acc + (i.pickedQuantity * i.sellingPrice));
     }
-    return widget.delivery.orderAmount;
+    return _currentDelivery.orderAmount;
   }
 
   double get calculatedItemsReturnAmount {
-    if (!_withReturns || widget.delivery.items.isEmpty) return 0.0;
+    if (!_withReturns || _currentDelivery.items.isEmpty) return 0.0;
     double sum = 0.0;
-    for (final item in widget.delivery.items) {
+    for (final item in _currentDelivery.items) {
       if (_selectedReturnProductIds.contains(item.productId)) {
-        final qty = _returnQuantities[item.productId] ?? 1;
+        final qty = _returnQuantities[item.productId] ?? 0;
         sum += (item.sellingPrice * qty);
       }
     }
@@ -72,7 +73,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   double discrepancy = 0;
   double get effectiveOrderAmount =>
-      txtOrderAmount.text.isNotEmpty ? Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text) : widget.delivery.orderAmount;
+      txtOrderAmount.text.isNotEmpty ? Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text) : _currentDelivery.orderAmount;
   TextEditingController dropdownHapiStore = TextEditingController();
   TextEditingController dropdownStatus = TextEditingController();
   bool isDealer = true;
@@ -86,7 +87,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
   TextEditingController txtOnlineAmount = TextEditingController();
   TextEditingController txtOrderAmount = TextEditingController();
   TextEditingController txtRemarks = TextEditingController();
-  TextEditingController txtReturnAmount = TextEditingController();
   TextEditingController txtSMS = TextEditingController();
   List<KPlacement> listPlacement = [];
   String placementID = '';
@@ -101,7 +101,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
     txtCashAmount.dispose();
     txtOnlineAmount.dispose();
     txtCreditAmount.dispose();
-    txtReturnAmount.dispose();
     txtRemarks.dispose();
     txtSMS.dispose();
     dropdownStatus.dispose();
@@ -111,32 +110,32 @@ class _DeliveryPageState extends State<DeliveryPage> {
   @override
   void initState() {
     super.initState();
+    _currentDelivery = widget.delivery;
     if (widget.deliveryID.isNotEmpty) {
-      _selectedDate = widget.delivery.deliveryDate?.toDate() ?? DateTime.now();
-      networkImagePath = widget.delivery.imagePath;
-      dropdownHapiStore.text = widget.delivery.storeName;
-      dropdownStatus.text = widget.delivery.transactionStatus;
-      txtRemarks.text = widget.delivery.remarks;
-      txtOrderAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.orderAmount);
-      txtCashAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.cashAmount);
-      txtOnlineAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.onlineAmount);
-      txtCreditAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.creditAmount);
-      txtReturnAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.returnAmount);
+      _selectedDate = _currentDelivery.deliveryDate?.toDate() ?? DateTime.now();
+      networkImagePath = _currentDelivery.imagePath;
+      dropdownHapiStore.text = _currentDelivery.storeName;
+      dropdownStatus.text = _currentDelivery.transactionStatus;
+      txtRemarks.text = _currentDelivery.remarks;
+      txtOrderAmount.text = Helperfunctions.formatDoubleAmountForField(_currentDelivery.orderAmount);
+      txtCashAmount.text = Helperfunctions.formatDoubleAmountForField(_currentDelivery.cashAmount);
+      txtOnlineAmount.text = Helperfunctions.formatDoubleAmountForField(_currentDelivery.onlineAmount);
+      txtCreditAmount.text = Helperfunctions.formatDoubleAmountForField(_currentDelivery.creditAmount);
 
-      if (widget.delivery.items.isNotEmpty) {
-        if (widget.delivery.hasReturnedItems) {
+      if (_currentDelivery.items.isNotEmpty) {
+        if (_currentDelivery.hasReturnedItems) {
           _withReturns = true;
-          for (final item in widget.delivery.items) {
+          for (final item in _currentDelivery.items) {
             if (item.returnedQuantity > 0) {
               _selectedReturnProductIds.add(item.productId);
               _returnQuantities[item.productId] = item.returnedQuantity;
             } else {
-              _returnQuantities[item.productId] = 1;
+              _returnQuantities[item.productId] = 0;
             }
           }
         } else {
-          for (final item in widget.delivery.items) {
-            _returnQuantities[item.productId] = 1;
+          for (final item in _currentDelivery.items) {
+            _returnQuantities[item.productId] = 0;
           }
         }
       }
@@ -209,16 +208,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
     final dealer = await _controller.checkIsDealer();
 
     if (widget.deliveryID.isNotEmpty) {
-      String imgPath = widget.delivery.imagePath;
+      String imgPath = _currentDelivery.imagePath;
 
       final latest = await _controller.getDeliveryById(widget.deliveryID);
-      if (latest != null) {
-        if (latest.imagePath.isNotEmpty) {
-          imgPath = latest.imagePath;
-        }
-        if (latest.deliveryDate != null && mounted) {
-          _selectedDate = latest.deliveryDate!.toDate();
-        }
+      if (latest != null && mounted) {
+        setState(() {
+          _currentDelivery = latest;
+          if (latest.imagePath.isNotEmpty) {
+            imgPath = latest.imagePath;
+          }
+          if (latest.deliveryDate != null) {
+            _selectedDate = latest.deliveryDate!.toDate();
+          }
+        });
       }
 
       await _checkBreakdownStatus();
@@ -228,15 +230,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
         DropdownMenuEntry(label: DeliveryStatus.delivered, value: DeliveryStatus.delivered),
         DropdownMenuEntry(label: DeliveryStatus.returned, value: DeliveryStatus.returned),
       ];
-
-      dropdownHapiStore.text = widget.delivery.storeName;
-      dropdownStatus.text = widget.delivery.transactionStatus;
-      txtRemarks.text = widget.delivery.remarks;
-      txtOrderAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.orderAmount);
-      txtCashAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.cashAmount);
-      txtOnlineAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.onlineAmount);
-      txtCreditAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.creditAmount);
-      txtReturnAmount.text = Helperfunctions.formatDoubleAmountForField(widget.delivery.returnAmount);
 
       computeDiscrepancy();
 
@@ -260,9 +253,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   void onUpdate() async {
     if (isLocked) {
-      final msg = widget.delivery.isReturnApprovedByDealer
+      final msg = _currentDelivery.isReturnApprovedByDealer
           ? 'Editing is locked. This returned order has already been approved by the dealer and cannot be modified.'
-          : (widget.delivery.isInventorySettled
+          : (_currentDelivery.isInventorySettled
               ? 'Editing is locked. This delivery order has already been settled into inventory.'
               : (isDayVerified
                   ? 'Editing is locked. This day\'s cash breakdown has been verified.'
@@ -285,7 +278,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       if (confirmReconcile != true || !mounted) return;
     }
 
-    final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
+    final bool hasItemReturns = _withReturns && _currentDelivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
     final double targetOrderAmount = hasItemReturns
         ? (originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)
         : effectiveOrderAmount;
@@ -298,7 +291,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       credit: txtCreditAmount.text,
       returnAmount: hasItemReturns
           ? Helperfunctions.formatDoubleAmountForField(calculatedItemsReturnAmount)
-          : txtReturnAmount.text,
+          : '0',
       remarks: txtRemarks.text,
       withItemReturns: hasItemReturns,
       hasReturnsRecorded: hasItemReturns,
@@ -307,10 +300,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
     if (listError.isEmpty) {
       try {
         List<OrderItem>? itemsWithReturns;
-        if (widget.delivery.items.isNotEmpty) {
-          itemsWithReturns = widget.delivery.items.map((item) {
+        if (_currentDelivery.items.isNotEmpty) {
+          itemsWithReturns = _currentDelivery.items.map((item) {
             final isReturned = hasItemReturns && _selectedReturnProductIds.contains(item.productId);
-            final retQty = isReturned ? (_returnQuantities[item.productId] ?? 1) : 0;
+            final retQty = isReturned ? (_returnQuantities[item.productId] ?? 0) : 0;
             return item.copyWith(returnedQuantity: retQty);
           }).toList();
         }
@@ -318,7 +311,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         final updatedDelivery = await _controller.updateDelivery(
           context: context,
           deliveryId: widget.deliveryID,
-          currentDelivery: widget.delivery,
+          currentDelivery: _currentDelivery,
           storeName: dropdownHapiStore.text,
           status: dropdownStatus.text,
           remarks: txtRemarks.text,
@@ -330,7 +323,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           creditAmountText: txtCreditAmount.text,
           returnAmountText: hasItemReturns
               ? Helperfunctions.formatDoubleAmountForField(calculatedItemsReturnAmount)
-              : txtReturnAmount.text,
+              : '0',
           imageFile: null,
           networkImagePath: networkImagePath,
           selectedDate: _selectedDate,
@@ -362,11 +355,11 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void onDelete() async {
-    if (widget.delivery.isReturnApprovedByDealer) {
+    if (_currentDelivery.isReturnApprovedByDealer) {
       ShowMessage.error(context, 'This returned order has already been approved by the dealer and cannot be deleted.');
       return;
     }
-    if (widget.delivery.isInventorySettled) {
+    if (_currentDelivery.isInventorySettled) {
       ShowMessage.error(context, 'This delivery has been settled into inventory, and cannot be deleted.');
       return;
     }
@@ -375,10 +368,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
       return;
     }
     try {
-      await _controller.deleteDelivery(context: context, deliveryId: widget.deliveryID, delivery: widget.delivery);
+      await _controller.deleteDelivery(context: context, deliveryId: widget.deliveryID, delivery: _currentDelivery);
 
       if (mounted) {
-        ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${widget.delivery.storeName}]');
+        ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${_currentDelivery.storeName}]');
         Navigator.pop(context); // go back to previous page
       }
     } catch (e) {
@@ -393,7 +386,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
       if (!hasFocus) {
         computeDiscrepancy();
         setState(() => controller.text = Helperfunctions.formatStringAmountForDisplay(controller.text));
-        onStoreSelected();
       } else {
         setState(() => controller.text = Helperfunctions.formatStringAmountForEditing(controller.text));
       }
@@ -405,7 +397,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void computeDiscrepancy() {
-    final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
+    final bool hasItemReturns = _withReturns && _currentDelivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
     final double targetOrderAmount = hasItemReturns
         ? (originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)
         : effectiveOrderAmount;
@@ -415,7 +407,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       cash: txtCashAmount.text,
       online: txtOnlineAmount.text,
       credit: txtCreditAmount.text,
-      returnAmount: hasItemReturns ? '0' : txtReturnAmount.text,
+      returnAmount: '0',
       withItemReturns: hasItemReturns,
     );
     if (mounted) {
@@ -721,7 +713,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           border: Border.all(color: Colors.red.shade200),
         ),
         child: Text(
-          'Total Return: ₱ ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
+          'Total Return: ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
@@ -771,7 +763,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     children: [
                       const Text('Original Order Total:', style: TextStyle(fontSize: 13)),
                       Text(
-                        '₱ ${Helperfunctions.formatDoubleAmountForDisplay(originalOrderTotal)}',
+                        Helperfunctions.formatDoubleAmountForDisplay(originalOrderTotal),
                         style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                     ],
@@ -782,7 +774,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     children: [
                       Text('Return Deduction:', style: TextStyle(fontSize: 13, color: Colors.red.shade800)),
                       Text(
-                        '- ₱ ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
+                        '- ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red.shade800),
                       ),
                     ],
@@ -793,7 +785,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     children: [
                       const Text('Adjusted Delivered Total:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                       Text(
-                        '₱ ${Helperfunctions.formatDoubleAmountForDisplay((originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity))}',
+                        Helperfunctions.formatDoubleAmountForDisplay((originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)),
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
                       ),
                     ],
@@ -801,115 +793,104 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Select returned products & quantities:',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _selectedReturnProductIds.isEmpty
+                        ? 'No products marked for return.'
+                        : '${_selectedReturnProductIds.length} ${_selectedReturnProductIds.length == 1 ? 'product' : 'products'} marked (${_selectedReturnProductIds.fold<int>(0, (acc, id) => acc + (_returnQuantities[id] ?? 0))} units)',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: isLocked ? null : _openItemizedReturnsModal,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  icon: const Icon(Icons.playlist_add_check_rounded, size: 18),
+                  label: Text(
+                    _selectedReturnProductIds.isEmpty ? 'Select Returns' : 'Manage Returns',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: widget.delivery.items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final item = widget.delivery.items[index];
-                final isSelected = _selectedReturnProductIds.contains(item.productId);
-                final currentReturnQty = _returnQuantities[item.productId] ?? 1;
-                final maxQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
-
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Colors.red.shade50.withValues(alpha: 0.5) : colorScheme.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isSelected ? Colors.red.shade300 : colorScheme.outlineVariant,
-                      width: isSelected ? 1.5 : 1,
+            if (_selectedReturnProductIds.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _currentDelivery.items.where((i) => _selectedReturnProductIds.contains(i.productId)).map((item) {
+                  final qty = _returnQuantities[item.productId] ?? 0;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50.withValues(alpha: 0.8),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      Checkbox(
-                        value: isSelected,
-                        onChanged: isLocked
-                            ? null
-                            : (checked) {
-                                setState(() {
-                                  if (checked == true) {
-                                    _selectedReturnProductIds.add(item.productId);
-                                    if (!_returnQuantities.containsKey(item.productId) || _returnQuantities[item.productId]! <= 0) {
-                                      _returnQuantities[item.productId] = 1;
-                                    }
-                                  } else {
-                                    _selectedReturnProductIds.remove(item.productId);
-                                  }
-                                  computeDiscrepancy();
-                                });
-                              },
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.productName,
-                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Picked: $maxQty  ·  ₱${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} each',
-                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                            ),
-                            if (isSelected)
-                              Text(
-                                'Delivered: ${maxQty - currentReturnQty}  ·  Return: ₱${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice * currentReturnQty)}',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.red.shade800),
-                              ),
-                          ],
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${item.productName} × $qty',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.red.shade900),
                         ),
-                      ),
-                      if (isSelected) ...[
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.remove_circle_outline, size: 20),
-                              onPressed: isLocked || currentReturnQty <= 1
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _returnQuantities[item.productId] = currentReturnQty - 1;
-                                        computeDiscrepancy();
-                                      });
-                                    },
-                            ),
-                            Text(
-                              '$currentReturnQty',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add_circle_outline, size: 20),
-                              onPressed: isLocked || currentReturnQty >= maxQty
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _returnQuantities[item.productId] = currentReturnQty + 1;
-                                        computeDiscrepancy();
-                                      });
-                                    },
-                            ),
-                          ],
+                        const SizedBox(width: 6),
+                        Text(
+                          Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice * qty),
+                          style: TextStyle(fontSize: 12, color: Colors.red.shade800, fontWeight: FontWeight.w600),
                         ),
+                        if (!isLocked) ...[
+                          const SizedBox(width: 4),
+                          InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedReturnProductIds.remove(item.productId);
+                                computeDiscrepancy();
+                              });
+                            },
+                            child: Icon(Icons.close, size: 16, color: Colors.red.shade700),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                );
-              },
-            ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
           ],
         ],
       ),
+    );
+  }
+
+  void _openItemizedReturnsModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) {
+        return _ItemizedReturnsBottomSheet(
+          items: _currentDelivery.items,
+          initialSelectedIds: _selectedReturnProductIds,
+          initialQuantities: _returnQuantities,
+          isLocked: isLocked,
+          onApply: (newSelectedIds, newQuantities) {
+            setState(() {
+              _selectedReturnProductIds.clear();
+              _selectedReturnProductIds.addAll(newSelectedIds);
+              _returnQuantities.clear();
+              _returnQuantities.addAll(newQuantities);
+              computeDiscrepancy();
+            });
+          },
+        );
+      },
     );
   }
 
@@ -947,7 +928,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             isRequired: false,
             isEnabled: !isSalesmanLocked,
           ),
-          if (_withReturns && widget.delivery.items.isNotEmpty)
+          if (_withReturns && _currentDelivery.items.isNotEmpty && calculatedItemsReturnAmount > 0)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
@@ -961,12 +942,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
-                      'Calculated Return Amount',
+                      'Returned Products Amount',
                       style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
                   ),
                   Text(
-                    '₱ ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
+                    Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16.5,
@@ -975,15 +956,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   ),
                 ],
               ),
-            )
-          else
-            _buildMoneyField(
-              label: 'Return Amount',
-              controller: txtReturnAmount,
-              prefixIcon: Icons.assignment_return_outlined,
-              iconColor: Colors.red,
-              isRequired: false,
-              isEnabled: !isSalesmanLocked,
             ),
         ],
       ),
@@ -1133,7 +1105,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void _quickFillPayment({required String target}) {
-    final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
+    final bool hasItemReturns = _withReturns && _currentDelivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
     final double targetAmount = hasItemReturns
         ? (originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)
         : effectiveOrderAmount;
@@ -1143,16 +1115,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
       txtCashAmount.text = target == 'cash' ? formattedOrder : '';
       txtOnlineAmount.text = target == 'online' ? formattedOrder : '';
       txtCreditAmount.text = target == 'credit' ? formattedOrder : '';
-      if (!hasItemReturns) {
-        txtReturnAmount.text = '';
-      }
       computeDiscrepancy();
     });
   }
 
   Widget _buildPaymentSummary() {
     final colorScheme = Theme.of(context).colorScheme;
-    final bool hasItemReturns = _withReturns && widget.delivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
+    final bool hasItemReturns = _withReturns && _currentDelivery.items.isNotEmpty && _selectedReturnProductIds.isNotEmpty;
     final double targetOrderAmt = hasItemReturns
         ? (originalOrderTotal - calculatedItemsReturnAmount).clamp(0.0, double.infinity)
         : effectiveOrderAmount;
@@ -1160,7 +1129,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       cash: txtCashAmount.text,
       online: txtOnlineAmount.text,
       credit: txtCreditAmount.text,
-      returnAmount: hasItemReturns ? '0' : txtReturnAmount.text,
+      returnAmount: '0',
       withItemReturns: hasItemReturns,
     );
     double orderAmt = targetOrderAmt;
@@ -1257,7 +1226,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         minLines: 3,
         isEnabled: !isSalesmanLocked,
         isRequired:
-            (dropdownStatus.text == DeliveryStatus.returned || (dropdownStatus.text == DeliveryStatus.delivered && txtReturnAmount.text.isNotEmpty)),
+            (dropdownStatus.text == DeliveryStatus.returned || (dropdownStatus.text == DeliveryStatus.delivered && (_withReturns && _selectedReturnProductIds.isNotEmpty))),
       ),
     );
   }
@@ -1377,7 +1346,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     Expanded(
                       flex: 2,
                       child: OutlinedButton.icon(
-                        onPressed: (isDayVerified || widget.delivery.isInventorySettled || widget.delivery.isReturnApprovedByDealer)
+                        onPressed: (isDayVerified || _currentDelivery.isInventorySettled || _currentDelivery.isReturnApprovedByDealer)
                             ? null
                             : () async {
                                 final confirmed = await ShowMessage.confirm(
@@ -1395,7 +1364,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           minimumSize: const Size(0, 50.0),
                           foregroundColor: Colors.red.shade700,
                           side: BorderSide(
-                            color: (isDayVerified || widget.delivery.isInventorySettled || widget.delivery.isReturnApprovedByDealer)
+                            color: (isDayVerified || _currentDelivery.isInventorySettled || _currentDelivery.isReturnApprovedByDealer)
                                 ? Colors.grey.shade300
                                 : Colors.red.shade300,
                             width: 1.2,
@@ -1406,9 +1375,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         label: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
-                            widget.delivery.isReturnApprovedByDealer
+                            _currentDelivery.isReturnApprovedByDealer
                                 ? 'Approved'
-                                : ((isDayVerified || widget.delivery.isInventorySettled) ? 'Settled' : 'Delete'),
+                                : ((isDayVerified || _currentDelivery.isInventorySettled) ? 'Settled' : 'Delete'),
                             maxLines: 1,
                             softWrap: false,
                             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -1442,9 +1411,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       label: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          widget.delivery.isReturnApprovedByDealer
+                          _currentDelivery.isReturnApprovedByDealer
                               ? 'Locked (Return Approved)'
-                              : (widget.delivery.isInventorySettled
+                              : (_currentDelivery.isInventorySettled
                                   ? 'Locked (Inventory Settled)'
                                   : (isLocked
                                       ? 'Locked (Breakdown Verified)'
@@ -1602,18 +1571,18 @@ class _DeliveryPageState extends State<DeliveryPage> {
   Widget build(BuildContext context) {
     bool isDelivered = dropdownStatus.text == DeliveryStatus.delivered;
     bool isReturned = dropdownStatus.text == DeliveryStatus.returned;
-    bool showRemarks = isReturned || (isDelivered && (txtReturnAmount.text.isNotEmpty || (_withReturns && _selectedReturnProductIds.isNotEmpty)));
+    bool showRemarks = isReturned || (isDelivered && (_withReturns && _selectedReturnProductIds.isNotEmpty));
 
     return Scaffold(
       appBar: CustomAppbar(
         title: 'Delivery',
-        subtitle: widget.deliveryID.isEmpty ? 'New Record' : widget.delivery.storeName,
+        subtitle: widget.deliveryID.isEmpty ? 'New Record' : _currentDelivery.storeName,
         actions: [
-          if (widget.delivery.items.isNotEmpty)
+          if (_currentDelivery.items.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
               tooltip: 'Digital Receipt & Thermal Print',
-              onPressed: () => DigitalReceiptDialog.show(context, delivery: widget.delivery, deliveryId: widget.deliveryID, proceedLabel: 'Close'),
+              onPressed: () => DigitalReceiptDialog.show(context, delivery: _currentDelivery, deliveryId: widget.deliveryID, proceedLabel: 'Close'),
             ),
         ],
       ),
@@ -1633,41 +1602,41 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: widget.delivery.isReturnApprovedByDealer
+                      color: _currentDelivery.isReturnApprovedByDealer
                           ? Colors.green.shade50
-                          : (widget.delivery.isInventorySettled || isDayVerified ? Colors.red.shade50 : Colors.amber.shade50),
+                          : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade50 : Colors.amber.shade50),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: widget.delivery.isReturnApprovedByDealer
+                        color: _currentDelivery.isReturnApprovedByDealer
                             ? Colors.green.shade300
-                            : (widget.delivery.isInventorySettled || isDayVerified ? Colors.red.shade300 : Colors.amber.shade300),
+                            : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade300 : Colors.amber.shade300),
                         width: 1.2,
                       ),
                     ),
                     child: Row(
                       children: [
                         Icon(
-                          widget.delivery.isReturnApprovedByDealer ? Icons.check_circle_outline : Icons.lock_outline,
-                          color: widget.delivery.isReturnApprovedByDealer
+                          _currentDelivery.isReturnApprovedByDealer ? Icons.check_circle_outline : Icons.lock_outline,
+                          color: _currentDelivery.isReturnApprovedByDealer
                               ? Colors.green.shade900
-                              : (widget.delivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                              : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
                           size: 24,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            widget.delivery.isReturnApprovedByDealer
+                            _currentDelivery.isReturnApprovedByDealer
                                 ? 'Locked: This return order has been approved by the dealer. Returned items have been moved into Current Stock and this record cannot be modified or deleted.'
-                                : (widget.delivery.isInventorySettled
+                                : (_currentDelivery.isInventorySettled
                                     ? 'Locked: This delivery order has already been verified and settled into inventory.'
                                     : (isDayVerified
                                         ? 'Locked: The dealer has verified the daily cash breakdown and delivery records for this day are locked for salesmen.'
                                         : 'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.')),
                             style: TextStyle(
                               fontSize: 14,
-                              color: widget.delivery.isReturnApprovedByDealer
+                              color: _currentDelivery.isReturnApprovedByDealer
                                   ? Colors.green.shade900
-                                  : (widget.delivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                                  : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -1708,7 +1677,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       ],
                     ),
                   )
-                else if (widget.delivery.isReturnIncoming || widget.delivery.hasReturnedItems || widget.delivery.returnAmount > 0)
+                else if (_currentDelivery.isReturnIncoming || _currentDelivery.hasReturnedItems || _currentDelivery.returnAmount > 0)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -1742,7 +1711,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Returned items (₱${Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.returnAmount > 0 ? widget.delivery.returnAmount : widget.delivery.orderAmount)}) are tracked as Incoming Stock until approved into Current Stock by the dealer.',
+                                'Returned items (${Helperfunctions.formatDoubleAmountForDisplay(_currentDelivery.returnAmount > 0 ? _currentDelivery.returnAmount : _currentDelivery.orderAmount)}) are tracked as Incoming Stock until approved into Current Stock by the dealer.',
                                 style: const TextStyle(fontSize: 12, color: Color(0xFF0C4A6E)),
                               ),
                             ],
@@ -1753,7 +1722,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           TextButton(
                             onPressed: () => Helperfunctions.navigateTo(
                               context,
-                              ReturnPage(recID: widget.deliveryID, delivery: widget.delivery),
+                              ReturnPage(recID: widget.deliveryID, delivery: _currentDelivery),
                             ),
                             style: TextButton.styleFrom(
                               foregroundColor: const Color(0xFF0284C7),
@@ -1766,7 +1735,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     ),
                   ),
 
-                if (widget.delivery.transactionStatus == DeliveryStatus.pendingPicklist && widget.deliveryID.isNotEmpty)
+                if (_currentDelivery.transactionStatus == DeliveryStatus.pendingPicklist && widget.deliveryID.isNotEmpty)
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
@@ -1787,7 +1756,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => PicklistPage(deliveryID: widget.deliveryID, delivery: widget.delivery),
+                                builder: (_) => PicklistPage(deliveryID: widget.deliveryID, delivery: _currentDelivery),
                               ),
                             );
                           },
@@ -1804,7 +1773,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 if (widget.deliveryID.isNotEmpty) _buildProofOfDeliveryCard(),
 
                 // 3. Itemized Returns Section (when Delivered and delivery has items)
-                if (widget.deliveryID.isNotEmpty && isDelivered && widget.delivery.items.isNotEmpty)
+                if (widget.deliveryID.isNotEmpty && isDelivered && _currentDelivery.items.isNotEmpty)
                   AnimatedSize(
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
@@ -1836,6 +1805,483 @@ class _DeliveryPageState extends State<DeliveryPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ItemizedReturnsBottomSheet extends StatefulWidget {
+  final List<OrderItem> items;
+  final Set<String> initialSelectedIds;
+  final Map<String, int> initialQuantities;
+  final bool isLocked;
+  final void Function(Set<String> selectedIds, Map<String, int> quantities) onApply;
+
+  const _ItemizedReturnsBottomSheet({
+    required this.items,
+    required this.initialSelectedIds,
+    required this.initialQuantities,
+    required this.isLocked,
+    required this.onApply,
+  });
+
+  @override
+  State<_ItemizedReturnsBottomSheet> createState() => _ItemizedReturnsBottomSheetState();
+}
+
+class _ItemizedReturnsBottomSheetState extends State<_ItemizedReturnsBottomSheet> {
+  late Set<String> _selectedIds;
+  late Map<String, int> _quantities;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = Set<String>.from(widget.initialSelectedIds);
+    _quantities = Map<String, int>.from(widget.initialQuantities);
+
+    // Initialize quantities: if previously saved with returnedQuantity > 0, retain it.
+    // Otherwise, default return quantity is 0.
+    for (final item in widget.items) {
+      if (!_quantities.containsKey(item.productId)) {
+        if (item.returnedQuantity > 0) {
+          _quantities[item.productId] = item.returnedQuantity;
+          _selectedIds.add(item.productId);
+        } else {
+          _quantities[item.productId] = 0;
+        }
+      } else if ((_quantities[item.productId] ?? 0) <= 0) {
+        _selectedIds.remove(item.productId);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _increment(OrderItem item) {
+    if (widget.isLocked) return;
+    final current = _quantities[item.productId] ?? 0;
+    if (current < item.pickedQuantity) {
+      setState(() {
+        final newQty = current + 1;
+        _quantities[item.productId] = newQty;
+        _selectedIds.add(item.productId);
+      });
+    }
+  }
+
+  void _decrement(OrderItem item) {
+    if (widget.isLocked) return;
+    final current = _quantities[item.productId] ?? 0;
+    if (current > 1) {
+      setState(() {
+        _quantities[item.productId] = current - 1;
+        _selectedIds.add(item.productId);
+      });
+    } else if (current == 1) {
+      setState(() {
+        _quantities[item.productId] = 0;
+        _selectedIds.remove(item.productId);
+      });
+    }
+  }
+
+  void _setMax(OrderItem item) {
+    if (widget.isLocked) return;
+    setState(() {
+      _quantities[item.productId] = item.pickedQuantity;
+      _selectedIds.add(item.productId);
+    });
+  }
+
+  void _selectAllMax() {
+    if (widget.isLocked) return;
+    setState(() {
+      for (final item in widget.items) {
+        _selectedIds.add(item.productId);
+        _quantities[item.productId] = item.pickedQuantity;
+      }
+    });
+  }
+
+  void _clearAll() {
+    if (widget.isLocked) return;
+    setState(() {
+      _selectedIds.clear();
+      for (final item in widget.items) {
+        _quantities[item.productId] = 0;
+      }
+    });
+  }
+
+  double get _totalReturnAmount {
+    double total = 0.0;
+    for (final item in widget.items) {
+      if (_selectedIds.contains(item.productId)) {
+        final qty = _quantities[item.productId] ?? 0;
+        total += qty * item.sellingPrice;
+      }
+    }
+    return total;
+  }
+
+  int get _totalReturnUnits {
+    int units = 0;
+    for (final item in widget.items) {
+      if (_selectedIds.contains(item.productId)) {
+        units += _quantities[item.productId] ?? 0;
+      }
+    }
+    return units;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final filteredItems = widget.items.where((i) {
+      if (_searchQuery.isEmpty) return true;
+      final q = _searchQuery.toLowerCase();
+      return i.productName.toLowerCase().contains(q) || i.category.toLowerCase().contains(q);
+    }).toList();
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.85,
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Drag handle
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            width: 44,
+            height: 4.5,
+            decoration: BoxDecoration(
+              color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.assignment_return_outlined, color: Colors.red.shade700, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Itemized Returns',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        '${widget.items.length} items ordered • ${_selectedIds.length} returning',
+                        style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+
+          // Search & Quick Action Filters
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Search SKU or Category...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                  ),
+                  onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                ),
+                if (!widget.isLocked) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      ActionChip(
+                        avatar: Icon(Icons.done_all_rounded, size: 16, color: colorScheme.primary),
+                        label: const Text('Return All Max', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                        onPressed: _selectAllMax,
+                      ),
+                      const SizedBox(width: 8),
+                      ActionChip(
+                        avatar: Icon(Icons.restart_alt_rounded, size: 16, color: colorScheme.error),
+                        label: Text('Clear All', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: colorScheme.error)),
+                        onPressed: _clearAll,
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Product List
+          Expanded(
+            child: filteredItems.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.search_off_rounded, size: 48, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No products found matching "$_searchQuery"',
+                          style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: filteredItems.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = filteredItems[index];
+                      final isSelected = _selectedIds.contains(item.productId);
+                      final returnQty = _quantities[item.productId] ?? 0;
+                      final maxQty = item.pickedQuantity;
+                      final lineTotal = returnQty * item.sellingPrice;
+
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.red.shade50.withValues(alpha: 0.6) : colorScheme.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected ? Colors.red.shade300 : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                            width: isSelected ? 1.4 : 1.0,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Thumbnail
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: item.imageUrl.isNotEmpty
+                                      ? Image.network(
+                                          item.imageUrl,
+                                          width: 44,
+                                          height: 44,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) => Container(
+                                            width: 44,
+                                            height: 44,
+                                            color: colorScheme.surfaceContainerHighest,
+                                            child: Icon(Icons.icecream_outlined, color: colorScheme.onSurfaceVariant),
+                                          ),
+                                        )
+                                      : Container(
+                                          width: 44,
+                                          height: 44,
+                                          color: colorScheme.surfaceContainerHighest,
+                                          child: Icon(Icons.icecream_outlined, color: colorScheme.onSurfaceVariant),
+                                        ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Title & Pricing
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.productName,
+                                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} each • Picked: $maxQty pcs',
+                                        style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Divider(height: 16),
+                            // Stepper and Subtotal
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.8)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.remove, size: 18),
+                                            visualDensity: VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                            onPressed: (widget.isLocked || returnQty == 0) ? null : () => _decrement(item),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                                            child: Text(
+                                              '$returnQty',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                                color: returnQty > 0 ? Colors.red.shade700 : colorScheme.onSurface,
+                                              ),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.add, size: 18),
+                                            visualDensity: VisualDensity.compact,
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                            onPressed: (widget.isLocked || returnQty >= maxQty) ? null : () => _increment(item),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    if (!widget.isLocked && returnQty < maxQty)
+                                      InkWell(
+                                        onTap: () => _setMax(item),
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text('All ($maxQty)', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      'Return Value',
+                                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                    ),
+                                    Text(
+                                      Helperfunctions.formatDoubleAmountForDisplay(lineTotal),
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: lineTotal > 0 ? Colors.red.shade700 : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          // Sticky Bottom Bar
+          SafeArea(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: theme.scaffoldBackgroundColor,
+                border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 6, offset: const Offset(0, -2)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total Returns ($_totalReturnUnits units)',
+                          style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          Helperfunctions.formatDoubleAmountForDisplay(_totalReturnAmount),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: _totalReturnAmount > 0 ? Colors.red.shade700 : colorScheme.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  FilledButton.icon(
+                    onPressed: () {
+                      final validSelectedIds = _selectedIds.where((id) => (_quantities[id] ?? 0) > 0).toSet();
+                      widget.onApply(validSelectedIds, _quantities);
+                      Navigator.pop(context);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.red.shade700,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.check, size: 18),
+                    label: const Text('Apply Returns', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

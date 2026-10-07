@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
@@ -38,6 +39,8 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   final TextEditingController _searchController = TextEditingController();
 
   StreamSubscription? _storesSub;
+  StreamSubscription<int>? _returnedCountSub;
+  late Stream<QuerySnapshot<Delivery>> _deliveriesStream;
   Map<String, Hapistore> _storesByName = {};
 
   bool _isEditing = false;
@@ -48,6 +51,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   @override
   void initState() {
     super.initState();
+    _deliveriesStream = _controller.getDeliveriesStream(_selectedDate);
     prefetchData();
     _subscribeStores();
   }
@@ -55,6 +59,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   @override
   void dispose() {
     _storesSub?.cancel();
+    _returnedCountSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -79,6 +84,14 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   void prefetchData() async {
     final dealer = await _controller.checkIsDealer();
+    if (dealer && _returnedCountSub == null) {
+      _returnedCountSub = _controller.getActiveReturnedDeliveriesCountStream().listen((count) {
+        if (mounted) setState(() => returnedDeliveryCount = count);
+      });
+    } else if (!dealer) {
+      _returnedCountSub?.cancel();
+      _returnedCountSub = null;
+    }
     final count = dealer ? await _controller.getCountReturnedDeliveriesOnOtherDays() : 0;
     if (mounted) {
       setState(() {
@@ -99,6 +112,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     if (dateTime != null) {
       setState(() {
         _selectedDate = dateTime;
+        _deliveriesStream = _controller.getDeliveriesStream(_selectedDate);
         _isEditing = false;
         _editableDeliveryIDs = [];
         _editableDocsById = {};
@@ -109,6 +123,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   void _changeDate(int days) {
     setState(() {
       _selectedDate = _selectedDate.add(Duration(days: days));
+      _deliveriesStream = _controller.getDeliveriesStream(_selectedDate);
       _isEditing = false;
       _editableDeliveryIDs = [];
       _editableDocsById = {};
@@ -138,6 +153,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   void _onReorderItem(int oldIndex, int newIndex) {
+    HapticFeedback.selectionClick();
     setState(() {
       final id = _editableDeliveryIDs.removeAt(oldIndex);
       _editableDeliveryIDs.insert(newIndex, id);
@@ -427,16 +443,15 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return StreamBuilder(
-      stream: _controller.getDeliveriesStream(_selectedDate),
-      builder: (BuildContext context, AsyncSnapshot snapshot) {
-        final List allDocs = (snapshot.data?.docs ?? []).where((doc) {
-          final raw = doc.data();
-          final Delivery delivery = raw is Delivery ? raw : Delivery.fromJson(raw as Map<String, Object?>);
+    return StreamBuilder<QuerySnapshot<Delivery>>(
+      stream: _deliveriesStream,
+      builder: (BuildContext context, AsyncSnapshot<QuerySnapshot<Delivery>> snapshot) {
+        final List<QueryDocumentSnapshot<Delivery>> allDocs = (snapshot.data?.docs ?? []).where((doc) {
+          final delivery = doc.data();
           return delivery.transactionStatus != DeliveryStatus.pendingPicklist;
         }).toList();
 
-        final List<QueryDocumentSnapshot<Delivery>> allDeliveryDocs = allDocs.cast<QueryDocumentSnapshot<Delivery>>();
+        final List<QueryDocumentSnapshot<Delivery>> allDeliveryDocs = allDocs;
 
         // Filter by status tab & search query via controller
         final filteredDocs = _controller.filterDeliveries(docs: allDocs, selectedStatus: _selectedStatusFilter, searchQuery: _searchQuery);
@@ -533,6 +548,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                 itemBuilder: (context, index) {
                                   final Delivery delivery = filteredDocs[index].data();
                                   final String deliveryID = filteredDocs[index].id;
+                                  final store = _storesByName[delivery.storeName.trim().toLowerCase()];
+                                  final targetPjpDay = _controller.getPreviousPjpDayName(_selectedDate, _storesByName);
+                                  final isTodayPjp = store?.pjpSchedule?.trim().toLowerCase() == targetPjpDay.toLowerCase();
+
                                   return Material(
                                     color: theme.colorScheme.surface,
                                     shape: RoundedRectangleBorder(
@@ -540,13 +559,14 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                       side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
                                     ),
                                     child: InkWell(
-                                      onTap: () {
-                                        Navigator.push(
+                                      onTap: () async {
+                                        await Navigator.push(
                                           context,
                                           MaterialPageRoute(
                                             builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
                                           ),
                                         );
+                                        prefetchData();
                                       },
                                       borderRadius: BorderRadius.circular(12),
                                       child: Padding(
@@ -597,7 +617,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                   const SizedBox(height: 4),
                                                   Wrap(
                                                     crossAxisAlignment: WrapCrossAlignment.center,
-                                                    spacing: 8,
+                                                    spacing: 6,
                                                     runSpacing: 4,
                                                     children: [
                                                       Text(
@@ -608,6 +628,45 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                           color: theme.colorScheme.onSurfaceVariant,
                                                         ),
                                                       ),
+                                                      if (store?.pjpSchedule != null && store!.pjpSchedule!.isNotEmpty)
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: isTodayPjp ? Colors.green.withValues(alpha: 0.12) : Colors.amber.withValues(alpha: 0.15),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            isTodayPjp
+                                                                ? 'PJP Stop #${store.pjpSequence != null ? (store.pjpSequence! + 1) : (index + 1)}'
+                                                                : 'PJP: ${store.pjpSchedule}',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: isTodayPjp ? Colors.green.shade800 : Colors.amber.shade900,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      if (delivery.hasReturnedItems || delivery.returnAmount > 0)
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.red.withValues(alpha: 0.1),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                          ),
+                                                          child: Text(
+                                                            '${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)} ret.',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: Colors.red.shade800,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      if (delivery.imagePath.trim().isNotEmpty)
+                                                        Tooltip(
+                                                          message: 'Proof of delivery attached',
+                                                          child: Icon(Icons.photo_camera_outlined, size: 15, color: theme.colorScheme.primary),
+                                                        ),
                                                     ],
                                                   ),
                                                 ],

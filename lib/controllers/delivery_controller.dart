@@ -100,7 +100,7 @@ class DeliveryController {
   // ==========================================
 
   /// Returns a real-time stream of delivery records for a specific delivery date.
-  Stream<QuerySnapshot> getDeliveriesStream(DateTime date) {
+  Stream<QuerySnapshot<Delivery>> getDeliveriesStream(DateTime date) {
     return _deliveryService.getListDeliveryByDate(date);
   }
 
@@ -117,6 +117,11 @@ class DeliveryController {
   /// Fetches the count of returned deliveries from past days that need attention/rescheduling.
   Future<int?> getCountReturnedDeliveriesOnOtherDays() async {
     return await DeliveryService.getCountReturnedDeliveriesOnOtherDays();
+  }
+
+  /// Real-time stream of the count of returned deliveries requiring dealer action.
+  Stream<int> getActiveReturnedDeliveriesCountStream() {
+    return _deliveryService.getActiveReturnedDeliveriesCountStream();
   }
 
   /// Formats the selected date into a friendly navigation label (e.g. "Today, 28 Sep 2026").

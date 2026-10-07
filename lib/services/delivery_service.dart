@@ -82,7 +82,7 @@ class DeliveryService {
     return _ordersRef.orderBy(DeliveryModelString.createdDate).snapshots();
   }
 
-  Stream<QuerySnapshot> getListDeliveryByDate(DateTime deliveryDate) {
+  Stream<QuerySnapshot<Delivery>> getListDeliveryByDate(DateTime deliveryDate) {
     final startOfDay = DateTime(deliveryDate.year, deliveryDate.month, deliveryDate.day, 0, 0, 0);
     final endOfDay = DateTime(deliveryDate.year, deliveryDate.month, deliveryDate.day, 23, 59, 59);
 
