@@ -6,6 +6,7 @@ import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
@@ -150,6 +151,7 @@ class DashboardDrawer extends StatelessWidget {
           _buildDrawerSectionHeader(context, 'Applications'),
           _buildDrawerItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: 'Dealer')),
           _buildDrawerItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
+          _buildDrawerItem(context, Icons.explore_outlined, 'Prospect Scouting', const ProspectScoutPage()),
           _buildDrawerItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
           _buildDrawerItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
           _buildDrawerItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badgeCount: dashboardDTO.pendingPjpCount),

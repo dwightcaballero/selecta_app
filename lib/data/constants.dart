@@ -128,6 +128,7 @@ class AppPages {
   static const breakdown = "Breakdown";
   static const configuration = "Configuration";
   static const register = "Register";
+  static const prospectScouting = "Prospect Scouting";
 }
 
 class ProductTag {

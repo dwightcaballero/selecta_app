@@ -499,7 +499,7 @@ class _ReturnPageState extends State<ReturnPage> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '₱${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} each',
+                            '${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} each',
                             style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                           ),
                         ],
@@ -510,7 +510,7 @@ class _ReturnPageState extends State<ReturnPage> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '₱${Helperfunctions.formatDoubleAmountForDisplay(lineTotal)}',
+                          Helperfunctions.formatDoubleAmountForDisplay(lineTotal),
                           style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.bold,

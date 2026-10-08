@@ -267,11 +267,7 @@ class _PicklistPageState extends State<PicklistPage> {
   Future<void> _onSaveProgress() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
-    await Helperfunctions.showLoading(
-      context: context,
-      showLoading: true,
-      message: 'Saving picklist draft...',
-    );
+    await Helperfunctions.showLoading(context: context, showLoading: true, message: 'Saving picklist draft...');
     if (!mounted) return;
     try {
       final updated = await _controller.savePicklistProgress(
@@ -421,11 +417,7 @@ class _PicklistPageState extends State<PicklistPage> {
     if (!confirmed || !mounted) return;
 
     setState(() => _isSaving = true);
-    await Helperfunctions.showLoading(
-      context: context,
-      showLoading: true,
-      message: 'Deleting order & releasing reserved stock...',
-    );
+    await Helperfunctions.showLoading(context: context, showLoading: true, message: 'Deleting order & releasing reserved stock...');
     if (!mounted) return;
 
     try {
@@ -548,9 +540,7 @@ class _PicklistPageState extends State<PicklistPage> {
           padding: const EdgeInsets.symmetric(vertical: 7),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected
-                ? (badgeColor?.withValues(alpha: 0.12) ?? colorScheme.primaryContainer.withValues(alpha: 0.4))
-                : colorScheme.surface,
+            color: isSelected ? (badgeColor?.withValues(alpha: 0.12) ?? colorScheme.primaryContainer.withValues(alpha: 0.4)) : colorScheme.surface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isSelected ? (badgeColor ?? colorScheme.primary) : colorScheme.outlineVariant.withValues(alpha: 0.5),
@@ -598,15 +588,9 @@ class _PicklistPageState extends State<PicklistPage> {
               if (categoryIndices.isNotEmpty) ...[
                 TextButton.icon(
                   onPressed: () => _toggleCategoryPicked(categoryIndices),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  ),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
                   icon: Icon(allPicked ? Icons.remove_done_rounded : Icons.done_all_rounded, size: 15),
-                  label: Text(
-                    allPicked ? 'Uncheck' : 'Check All',
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                  ),
+                  label: Text(allPicked ? 'Uncheck' : 'Check All', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(width: 4),
               ],
@@ -1068,11 +1052,12 @@ class _PicklistPageState extends State<PicklistPage> {
           centerTitle: false,
           onBackPressed: _isSaving ? () {} : null,
           actions: [
-            _buildAppBarIconAction(
-              icon: Icons.edit_note_rounded,
-              tooltip: 'Edit Order in Book Order Page',
-              onTap: _isSaving ? null : _openEditOrderProducts,
-            ),
+            if (_isDealer)
+              _buildAppBarIconAction(
+                icon: Icons.edit_note_rounded,
+                tooltip: 'Edit Order in Book Order Page',
+                onTap: _isSaving ? null : _openEditOrderProducts,
+              ),
           ],
         ),
         bottomNavigationBar: _buildStickyBottomBar(colorScheme),
@@ -1105,68 +1090,65 @@ class _PicklistPageState extends State<PicklistPage> {
                       ),
                     )
                   : (visibleSelectaCase.isEmpty && visibleSelectaPiece.isEmpty && visibleOther.isEmpty)
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _itemFilter == 'Pending' ? Icons.task_alt_rounded : Icons.checklist_rtl_rounded,
-                                  size: 44,
-                                  color: _itemFilter == 'Pending' ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  _itemFilter == 'Pending' ? 'All items in this order have been checked!' : 'No products match this filter.',
-                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                OutlinedButton(
-                                  onPressed: () => setState(() => _itemFilter = 'All'),
-                                  child: const Text('Show All Items'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : ListView(
-                          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (visibleSelectaCase.isNotEmpty) ...[
-                              _buildGroupHeader(
-                                title: 'Selecta Products (By Case)',
-                                icon: Icons.all_inbox_rounded,
-                                color: Colors.deepOrange.shade700,
-                                totalUnits: calcUnits(visibleSelectaCase),
-                                categoryIndices: visibleSelectaCase,
-                              ),
-                              ...visibleSelectaCase.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                            ],
-                            if (visibleSelectaPiece.isNotEmpty) ...[
-                              _buildGroupHeader(
-                                title: 'Selecta Products (By Piece)',
-                                icon: Icons.icecream_outlined,
-                                color: colorScheme.primary,
-                                totalUnits: calcUnits(visibleSelectaPiece),
-                                categoryIndices: visibleSelectaPiece,
-                              ),
-                              ...visibleSelectaPiece.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                            ],
-                            if (visibleOther.isNotEmpty) ...[
-                              _buildGroupHeader(
-                                title: 'Other Products',
-                                icon: Icons.inventory_2_outlined,
-                                color: colorScheme.onSurfaceVariant,
-                                totalUnits: calcUnits(visibleOther),
-                                categoryIndices: visibleOther,
-                              ),
-                              ...visibleOther.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                            ],
-                            _buildProofOfDeliveryCard(colorScheme),
+                            Icon(
+                              _itemFilter == 'Pending' ? Icons.task_alt_rounded : Icons.checklist_rtl_rounded,
+                              size: 44,
+                              color: _itemFilter == 'Pending' ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              _itemFilter == 'Pending' ? 'All items in this order have been checked!' : 'No products match this filter.',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton(onPressed: () => setState(() => _itemFilter = 'All'), child: const Text('Show All Items')),
                           ],
                         ),
+                      ),
+                    )
+                  : ListView(
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                      children: [
+                        if (visibleSelectaCase.isNotEmpty) ...[
+                          _buildGroupHeader(
+                            title: 'Selecta Products (By Case)',
+                            icon: Icons.all_inbox_rounded,
+                            color: Colors.deepOrange.shade700,
+                            totalUnits: calcUnits(visibleSelectaCase),
+                            categoryIndices: visibleSelectaCase,
+                          ),
+                          ...visibleSelectaCase.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                        ],
+                        if (visibleSelectaPiece.isNotEmpty) ...[
+                          _buildGroupHeader(
+                            title: 'Selecta Products (By Piece)',
+                            icon: Icons.icecream_outlined,
+                            color: colorScheme.primary,
+                            totalUnits: calcUnits(visibleSelectaPiece),
+                            categoryIndices: visibleSelectaPiece,
+                          ),
+                          ...visibleSelectaPiece.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                        ],
+                        if (visibleOther.isNotEmpty) ...[
+                          _buildGroupHeader(
+                            title: 'Other Products',
+                            icon: Icons.inventory_2_outlined,
+                            color: colorScheme.onSurfaceVariant,
+                            totalUnits: calcUnits(visibleOther),
+                            categoryIndices: visibleOther,
+                          ),
+                          ...visibleOther.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                        ],
+                        _buildProofOfDeliveryCard(colorScheme),
+                      ],
+                    ),
             ),
           ],
         ),

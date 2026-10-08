@@ -10,6 +10,7 @@ import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/scanninglist_page.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
@@ -446,6 +447,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           ),
 
           // Drawer Navigation Items (Field Activities & Reports)
+          _buildDrawerItem(Icons.explore_outlined, 'Prospect Scouting', const ProspectScoutPage()),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
@@ -662,6 +664,37 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                             icon: Icons.today_outlined,
                             iconColor: const Color(0xFFD97706),
                             nextPage: const EndofdayPage(),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildQuickAccessCard(
+                            label: 'Prospect Scouting',
+                            icon: Icons.explore_outlined,
+                            iconColor: const Color(0xFFEF4444),
+                            nextPage: const ProspectScoutPage(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildQuickAccessCard(
+                            label: 'Bad Orders',
+                            icon: Icons.assignment_late_outlined,
+                            iconColor: const Color(0xFFDC2626),
+                            nextPage: BadOrderlistPage(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildQuickAccessCard(
+                            label: 'Expenses',
+                            icon: Icons.receipt_long_outlined,
+                            iconColor: const Color(0xFF4B5563),
+                            nextPage: const ExpenselistPage(),
                           ),
                         ),
                       ],
