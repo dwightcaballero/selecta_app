@@ -114,12 +114,16 @@ class PoReconciliationHeader extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isNewRecord ? 'Purchase Order Document' : 'PO #${orderNumberController.text}',
+                        orderNumberController.text.isNotEmpty
+                            ? 'PO #${orderNumberController.text}'
+                            : (isNewRecord ? 'New Purchase Order' : 'Purchase Order'),
                         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                       ),
+                      const SizedBox(height: 1),
                       Text(
-                        isNewRecord ? 'Document Verification Mode' : '🟡 Pending — Awaiting invoice arrival',
-                        style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+                        '$currentListCount items • ${currencyFormat.format(currentListTotalCost)}'
+                        '${isNewRecord ? "" : " • 🟡 Pending"}',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -132,6 +136,36 @@ class PoReconciliationHeader extends StatelessWidget {
             ),
             if (showDetailsCard) ...[
               const Divider(height: 18),
+
+              // Document References Row (P.O. Number & P.O. Date)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: orderNumberController,
+                      decoration: InputDecoration(
+                        labelText: 'P.O. Number',
+                        hintText: 'e.g. PO-2026-001',
+                        prefixIcon: const Icon(Icons.tag, size: 18),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                      onChanged: onOrderNumberChanged,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildDateField(
+                      context: context,
+                      label: 'P.O. Date',
+                      date: selectedOrderDate,
+                      onTap: onPickOrderDate,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
 
               // Screenshots / Pages Preview Strip
               if (pickedImages.isNotEmpty) ...[
@@ -224,22 +258,22 @@ class PoReconciliationHeader extends StatelessWidget {
                 const SizedBox(height: 10),
               ],
 
-              // Scan Action Button
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: isAnalyzingWithAi ? null : () => onShowImageSourcePicker(append: false, allInventory: allInventory),
-                      icon: const Icon(Icons.document_scanner_outlined, size: 18),
-                      label: Text(
-                        pickedImages.isNotEmpty
-                            ? 'Re-scan / Replace (${pickedImages.length} ${pickedImages.length == 1 ? "page" : "pages"})'
-                            : (networkImagePath.isNotEmpty ? 'Re-scan Document' : 'Scan / Upload Screenshots'),
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              // Scan Action Button (Shown when a document is attached/scanned)
+              if (pickedImages.isNotEmpty || networkImagePath.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: isAnalyzingWithAi ? null : () => onShowImageSourcePicker(append: false, allInventory: allInventory),
+                        icon: const Icon(Icons.document_scanner_outlined, size: 18),
+                        label: Text(
+                          pickedImages.isNotEmpty
+                              ? 'Re-scan / Replace (${pickedImages.length} ${pickedImages.length == 1 ? "page" : "pages"})'
+                              : 'Re-scan Document',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
                       ),
                     ),
-                  ),
-                  if (pickedImages.isNotEmpty || networkImagePath.isNotEmpty) ...[
                     const SizedBox(width: 8),
                     IconButton.outlined(
                       tooltip: 'View Document',
@@ -250,8 +284,8 @@ class PoReconciliationHeader extends StatelessWidget {
                       ),
                     ),
                   ],
-                ],
-              ),
+                ),
+              ],
 
               if (isAnalyzingWithAi) ...[
                 const SizedBox(height: 12),
@@ -268,8 +302,8 @@ class PoReconciliationHeader extends StatelessWidget {
                       Expanded(
                         child: Text(
                           pickedImages.length > 1
-                              ? 'Sedy AI is reading ${pickedImages.length} screenshots & matching catalog...'
-                              : 'Sedy AI is reading document & matching catalog...',
+                              ? 'Reading ${pickedImages.length} screenshots & matching catalog...'
+                              : 'Reading document & matching catalog...',
                           style: TextStyle(fontSize: 12.5, color: colorScheme.primary, fontStyle: FontStyle.italic),
                         ),
                       ),
@@ -302,163 +336,134 @@ class PoReconciliationHeader extends StatelessWidget {
                 ),
               ],
 
-              const SizedBox(height: 14),
-
-              // Document vs Verified List Comparison Box
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isTotalMatch
-                      ? Colors.green.withValues(alpha: 0.08)
-                      : hasDocTotal
-                          ? Colors.amber.withValues(alpha: 0.1)
-                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
+              // Document vs Verified List Comparison Box (Only shown if document exists or was read)
+              if (hasDocTotal || pickedImages.isNotEmpty || networkImagePath.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
                     color: isTotalMatch
-                        ? Colors.green.shade400
+                        ? Colors.green.withValues(alpha: 0.08)
                         : hasDocTotal
-                            ? Colors.amber.shade600
-                            : colorScheme.outlineVariant,
+                            ? Colors.amber.withValues(alpha: 0.1)
+                            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isTotalMatch
+                          ? Colors.green.shade400
+                          : hasDocTotal
+                              ? Colors.amber.shade600
+                              : colorScheme.outlineVariant,
+                    ),
                   ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              isTotalMatch
-                                  ? Icons.check_circle_rounded
-                                  : hasDocTotal
-                                      ? Icons.warning_amber_rounded
-                                      : Icons.receipt_outlined,
-                              size: 18,
-                              color: isTotalMatch
-                                  ? Colors.green.shade800
-                                  : hasDocTotal
-                                      ? Colors.amber.shade900
-                                      : colorScheme.primary,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              isTotalMatch
-                                  ? 'DOCUMENT TOTALS MATCH'
-                                  : hasDocTotal
-                                      ? 'TOTALS MISMATCH'
-                                      : 'DOCUMENT TOTALS',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.5,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                isTotalMatch
+                                    ? Icons.check_circle_rounded
+                                    : hasDocTotal
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.receipt_outlined,
+                                size: 18,
                                 color: isTotalMatch
                                     ? Colors.green.shade800
                                     : hasDocTotal
                                         ? Colors.amber.shade900
                                         : colorScheme.primary,
                               ),
-                            ),
-                          ],
-                        ),
-                        if (hasDocTotal && !isTotalMatch)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.shade200,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              'Diff: ${currencyFormat.format(diff)}',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        // AI Read Column
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Document (Read by AI)', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                              const SizedBox(height: 2),
+                              const SizedBox(width: 6),
                               Text(
-                                hasDocTotal ? currencyFormat.format(docTotalAmountRead) : '—',
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                              ),
-                              Text(
-                                docTotalUnitsRead > 0 ? '$docTotalUnitsRead units read' : '—',
-                                style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                isTotalMatch
+                                    ? 'DOCUMENT TOTALS MATCH'
+                                    : hasDocTotal
+                                        ? 'TOTALS MISMATCH'
+                                        : 'DOCUMENT TOTALS',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.5,
+                                  color: isTotalMatch
+                                      ? Colors.green.shade800
+                                      : hasDocTotal
+                                          ? Colors.amber.shade900
+                                          : colorScheme.primary,
+                                ),
                               ),
                             ],
                           ),
-                        ),
-                        Container(width: 1, height: 38, color: colorScheme.outlineVariant),
-                        // Current Verified List Column
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 12),
+                          if (hasDocTotal && !isTotalMatch)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade200,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Diff: ${currencyFormat.format(diff)}',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          // AI Read Column
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Current Verified List', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                                Text('Document Total', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                                 const SizedBox(height: 2),
                                 Text(
-                                  currencyFormat.format(currentListTotalCost),
-                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: colorScheme.primary),
+                                  hasDocTotal ? currencyFormat.format(docTotalAmountRead) : '—',
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                                 ),
                                 Text(
-                                  '$currentListCount items • $currentListUnits units',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: isUnitsMatch ? FontWeight.bold : FontWeight.normal,
-                                    color: isUnitsMatch ? Colors.green.shade700 : colorScheme.onSurfaceVariant,
-                                  ),
+                                  docTotalUnitsRead > 0 ? '$docTotalUnitsRead units read' : '—',
+                                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-              // Document References Row (P.O. Number & P.O. Date)
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: orderNumberController,
-                      decoration: InputDecoration(
-                        labelText: 'P.O. Number',
-                        hintText: 'e.g. PO-2026-001 or HM30471505',
-                        prefixIcon: const Icon(Icons.tag, size: 18),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          Container(width: 1, height: 38, color: colorScheme.outlineVariant),
+                          // Current Verified List Column
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('Current Order List', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    currencyFormat.format(currentListTotalCost),
+                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: colorScheme.primary),
+                                  ),
+                                  Text(
+                                    '$currentListCount items • $currentListUnits units',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: isUnitsMatch ? FontWeight.bold : FontWeight.normal,
+                                      color: isUnitsMatch ? Colors.green.shade700 : colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      textCapitalization: TextCapitalization.characters,
-                      onChanged: onOrderNumberChanged,
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _buildDateField(
-                      context: context,
-                      label: 'P.O. Date',
-                      date: selectedOrderDate,
-                      onTap: onPickOrderDate,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ],
           ],
         ),

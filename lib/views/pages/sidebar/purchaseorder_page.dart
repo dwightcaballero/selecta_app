@@ -92,6 +92,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   int _invoiceSelectedTab = 0;
   bool _showMatchedItems = false;
   bool _hasTriggeredInitialManualPicker = false;
+  bool _showPhase2Inline = false;
+  bool _showPreOrderChips = false;
 
   bool get _isEditing => !isNewRecord;
   bool get _isPending => widget.purchaseorder.status == 'pending';
@@ -1336,6 +1338,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           ..clear()
           ..addAll(newFiles);
       }
+      _showPhase2Inline = true;
       _comparisonResult = null;
     });
     await _runOfficialInvoiceExtraction(allInventory);
@@ -1880,6 +1883,95 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
   }
 
+  // Phase 2 Delivery Section: Collapsible & streamlined to avoid clutter on pending orders
+  Widget _buildPhase2DeliverySection(List<InventoryItem> allInventory) {
+    final hasInvoiceData = _officialInvoiceImages.isNotEmpty ||
+        _officialInvoiceNumberController.text.trim().isNotEmpty ||
+        _invoiceLines.isNotEmpty;
+
+    if (_showPhase2Inline) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: () => setState(() => _showPhase2Inline = false),
+                  icon: const Icon(Icons.expand_less, size: 18),
+                  label: const Text('Minimize Invoice Reconciler', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+            ),
+          ),
+          _buildPhase2ConfirmationCard(allInventory),
+        ],
+      );
+    }
+
+    final discrepanciesCount = _comparisonDiscrepancies.where((d) => d.type != PoDiscrepancyType.matched).length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.teal.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.teal.shade300, width: 1.2),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: [Colors.teal, Colors.green]),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.local_shipping_outlined, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasInvoiceData
+                      ? 'Invoice Attached: ${_officialInvoiceNumberController.text.isNotEmpty ? _officialInvoiceNumberController.text : "In Progress"}'
+                      : 'Stock Arrival & Invoice Verification',
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasInvoiceData
+                      ? '${_invoiceLines.length} items read • $discrepanciesCount discrepancies'
+                      : 'When delivery arrives, scan or enter supplier invoice to restock',
+                  style: TextStyle(fontSize: 11.5, color: Colors.teal.shade800),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonalIcon(
+            onPressed: () => setState(() => _showPhase2Inline = true),
+            style: FilledButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: Colors.teal.withValues(alpha: 0.15),
+              foregroundColor: Colors.teal.shade900,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            ),
+            icon: Icon(hasInvoiceData ? Icons.edit_note_rounded : Icons.document_scanner_outlined, size: 16),
+            label: Text(
+              hasInvoiceData ? 'Edit Invoice' : 'Receive Delivery',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Phase 2 Confirmation Card (when physical stocks arrive)
   Widget _buildPhase2ConfirmationCard(List<InventoryItem> allInventory) {
     return PoPhase2ConfirmationCard(
@@ -1979,12 +2071,12 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     final totalRecommendedUnits = recommendedItems.fold<int>(0, (acc, i) => acc + i.recommendedPreOrderOrderQuantity);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF6D28D9).withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF6D28D9).withValues(alpha: 0.4), width: 1.2),
+        color: const Color(0xFF6D28D9).withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF6D28D9).withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1992,22 +2084,34 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
                   color: const Color(0xFF6D28D9).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.star_rounded, color: Color(0xFF6D28D9), size: 18),
+                child: const Icon(Icons.star_rounded, color: Color(0xFF6D28D9), size: 16),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  'Recommended Pre-Orders (${recommendedItems.length})',
-                  style: const TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF5B21B6),
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Pre-Order Restock (${recommendedItems.length} items)',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF5B21B6),
+                      ),
+                    ),
+                    Text(
+                      '$totalRecommendedUnits units needed for booked customer orders',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               FilledButton.tonal(
@@ -2019,39 +2123,38 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
                 ),
-                child: const Text('Add All to PO'),
+                child: const Text('Add All'),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                icon: Icon(_showPreOrderChips ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, size: 18, color: const Color(0xFF6D28D9)),
+                onPressed: () => setState(() => _showPreOrderChips = !_showPreOrderChips),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Booked customer pre-orders require restocking across ${recommendedItems.length} products to cover shortages and prevent low stock levels ($totalRecommendedUnits units). Add them to ensure delivery fulfillment.',
-            style: TextStyle(
-              fontSize: 11.5,
-              color: colorScheme.onSurfaceVariant,
-              height: 1.3,
+          if (_showPreOrderChips) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: recommendedItems.map((item) {
+                final label = item.hasPreOrderShortage
+                    ? '${item.productName}: +${item.preOrderShortage}'
+                    : '${item.productName}: +${item.recommendedPreOrderOrderQuantity}';
+                return ActionChip(
+                  backgroundColor: Colors.white,
+                  side: BorderSide(color: const Color(0xFF6D28D9).withValues(alpha: 0.3)),
+                  avatar: const Icon(Icons.add_circle_outline, size: 14, color: Color(0xFF6D28D9)),
+                  label: Text(
+                    label,
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF5B21B6)),
+                  ),
+                  onPressed: () => _addOrUpdatePreOrderLines([item], allInventory),
+                );
+              }).toList(),
             ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: recommendedItems.map((item) {
-              final label = item.hasPreOrderShortage
-                  ? '${item.productName}: +${item.preOrderShortage} shortage'
-                  : '${item.productName}: +${item.recommendedPreOrderOrderQuantity} restock';
-              return ActionChip(
-                backgroundColor: Colors.white,
-                side: BorderSide(color: const Color(0xFF6D28D9).withValues(alpha: 0.3)),
-                avatar: const Icon(Icons.add_circle_outline, size: 14, color: Color(0xFF6D28D9)),
-                label: Text(
-                  label,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF5B21B6)),
-                ),
-                onPressed: () => _addOrUpdatePreOrderLines([item], allInventory),
-              );
-            }).toList(),
-          ),
+          ],
         ],
       ),
     );
@@ -2125,28 +2228,33 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   const SizedBox(width: 10),
                   Expanded(
                     flex: 2,
-                    child: FilledButton.icon(
-                      onPressed: (_isSaving || (_invoiceLines.isEmpty && _comparisonResult == null && _officialInvoiceNumberController.text.trim().isEmpty))
-                          ? null
-                          : onConfirmOfficialInvoice,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.teal,
-                        minimumSize: const Size(0, 48),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: _isSaving
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.fact_check_outlined),
-                      label: Text(
-                        _isSaving
-                            ? 'Attaching...'
-                            : (_invoiceLines.isNotEmpty || _comparisonResult != null)
-                                ? 'Attach Invoice & Replenish'
-                                : _officialInvoiceNumberController.text.trim().isNotEmpty
+                    child: Builder(
+                      builder: (context) {
+                        final hasInvoice = _invoiceLines.isNotEmpty || _comparisonResult != null || _officialInvoiceNumberController.text.trim().isNotEmpty;
+                        return FilledButton.icon(
+                          onPressed: _isSaving
+                              ? null
+                              : hasInvoice
+                                  ? onConfirmOfficialInvoice
+                                  : () => setState(() => _showPhase2Inline = true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.teal,
+                            minimumSize: const Size(0, 48),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: _isSaving
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Icon(hasInvoice ? Icons.fact_check_outlined : Icons.local_shipping_outlined),
+                          label: Text(
+                            _isSaving
+                                ? 'Attaching...'
+                                : hasInvoice
                                     ? 'Attach Invoice & Replenish'
-                                    : 'Scan or Enter Invoice',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                      ),
+                                    : 'Receive Delivery',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -2347,8 +2455,15 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           return Scaffold(
             appBar: CustomAppbar(
               title: 'Purchase Order',
-              subtitle: isNewRecord ? 'Step 1: Create PO (Pending)' : '🟡 Pending Delivery (Attach Invoice)',
+              subtitle: isNewRecord ? 'New Purchase Order' : '🟡 Pending Delivery',
               onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.document_scanner_outlined),
+                  tooltip: 'Scan or Attach Document',
+                  onPressed: isLocked ? null : () => _showImageSourcePicker(allInventory),
+                ),
+              ],
             ),
           bottomNavigationBar: _buildStickyBottomBar(allInventory),
           body: CustomScrollView(
@@ -2357,71 +2472,72 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               // Document Reconciliation Header
               SliverToBoxAdapter(child: _buildDocumentReconciliationHeader(allInventory)),
 
-              // Phase 2 Card (if existing pending PO)
+              // Phase 2 Delivery Section (if existing pending PO)
               if (_isEditing && _isPending)
-                SliverToBoxAdapter(child: _buildPhase2ConfirmationCard(allInventory)),
+                SliverToBoxAdapter(child: _buildPhase2DeliverySection(allInventory)),
 
               // Pre-Order Shortage Recommendations Banner
               SliverToBoxAdapter(child: _buildPreOrderRecommendationsBanner(allInventory, colorScheme)),
 
-              // If no lines extracted yet and not loading: Prompt to scan document
+              // If no items added yet and not loading: Prompt to select catalog products
               if (_documentLines.isEmpty && !_isAnalyzingWithAi)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary.withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(Icons.inventory_2_outlined, size: 44, color: colorScheme.primary),
                           ),
-                          child: Icon(Icons.document_scanner_rounded, size: 48, color: colorScheme.primary),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Create or Scan Purchase Order',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Select products manually from your catalog, scan your supplier document, or generate auto-suggestions based on inventory levels.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-                        ),
-                        const SizedBox(height: 20),
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 12,
-                          runSpacing: 10,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: () => _openManualPoPicker(allInventory),
-                              icon: const Icon(Icons.edit_note_rounded),
-                              label: const Text('Manual Order', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                            FilledButton.tonalIcon(
-                              onPressed: () => _showImageSourcePicker(allInventory),
-                              icon: const Icon(Icons.camera_alt_outlined),
-                              label: const Text('Scan / Upload Document', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                            FilledButton.tonalIcon(
-                              onPressed: () => _openAutomatedPoSuggestions(allInventory),
-                              icon: const Icon(Icons.auto_awesome_rounded),
-                              label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Start Your Purchase Order',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Select products from your catalog or generate restock suggestions based on inventory levels.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 20),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 12,
+                            runSpacing: 10,
+                            children: [
+                              FilledButton.icon(
+                                onPressed: () => _openManualPoPicker(allInventory),
+                                icon: const Icon(Icons.add_shopping_cart_rounded),
+                                label: const Text('Browse Catalog', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                              FilledButton.tonalIcon(
+                                onPressed: () => _openAutomatedPoSuggestions(allInventory),
+                                icon: const Icon(Icons.auto_awesome_rounded),
+                                label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          TextButton.icon(
+                            onPressed: () => _showImageSourcePicker(allInventory),
+                            icon: const Icon(Icons.document_scanner_outlined, size: 16),
+                            label: const Text('Prefer to scan supplier document?', style: TextStyle(fontSize: 12.5)),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              )
-            else ...[
+                )
+              else ...[
               // Section Header for Document Lines
               SliverToBoxAdapter(
                 child: Padding(
