@@ -72,6 +72,14 @@ class SelectaProductService {
     });
   }
 
+  /// Updates dealer's configured bad order price per piece for a 'By Case' product.
+  Future<void> updateBadOrderPricePerPiece(String productId, double price) async {
+    await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).update({
+      'badOrderPricePerPiece': price,
+      'updatedAt': Timestamp.now(),
+    });
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // ADMIN MODEL (`AdminSelectaProduct` in `admin_selecta_products` collection)
   // Admins have full Create, Read, Update, Delete, Import, and Export access.

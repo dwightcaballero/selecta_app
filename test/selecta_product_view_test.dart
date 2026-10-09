@@ -113,7 +113,7 @@ void main() {
       expect(find.text('48'), findsOneWidget); // stockQuantity
       expect(find.text('pcs in stock'), findsOneWidget);
       expect(find.text('Reserved: 8 pcs • Available: 40 pcs'), findsOneWidget);
-      expect(find.text('Low Stock Threshold: 12 pcs'), findsOneWidget);
+      expect(find.text('Low Stock Alert: 12 pcs'), findsOneWidget);
       expect(find.text('In Stock'), findsOneWidget);
 
       // Availability Status

@@ -182,35 +182,6 @@ class _ReturnPageState extends State<ReturnPage> {
     }
   }
 
-  void onDelete() async {
-    if (!_isDealer) {
-      ShowMessage.error(context, 'Only dealers are authorized to delete return records.');
-      return;
-    }
-    if (_delivery.isReturnApprovedByDealer) {
-      ShowMessage.error(context, 'Cannot delete a return record after it has already been approved by dealer.');
-      return;
-    }
-    if (_isProcessing) return;
-    setState(() => _isProcessing = true);
-
-    try {
-      await _controller.deleteReturn(
-        context: context,
-        deliveryId: widget.recID,
-        delivery: _delivery,
-      );
-
-      if (!mounted) return;
-      ShowMessage.success(context, 'Successfully deleted delivery record!\n[${_delivery.storeName}]');
-      Navigator.pop(context);
-    } catch (e) {
-      if (mounted) ShowMessage.error(context, 'Failed to delete record: $e');
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
-    }
-  }
-
   Future<void> _showRedeliverDialog() async {
     if (!_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to reschedule deliveries.');
@@ -699,41 +670,6 @@ class _ReturnPageState extends State<ReturnPage> {
           children: [
             if (!isApproved) ...[
               Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: (_isProcessing || _delivery.isInventorySettled)
-                      ? null
-                      : () async {
-                          final confirmed = await ShowMessage.confirm(
-                            context,
-                            title: 'Delete Return Record',
-                            message: 'Are you sure you want to permanently delete this return record for [${_delivery.storeName}]?',
-                            isDestructive: true,
-                            icon: Icons.delete_outline,
-                            confirmText: 'Delete',
-                          );
-                          if (confirmed) onDelete();
-                        },
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    minimumSize: const Size(0, 50.0),
-                    foregroundColor: Colors.red.shade700,
-                    side: BorderSide(
-                      color: _delivery.isInventorySettled ? Colors.grey.shade300 : Colors.red.shade300,
-                      width: 1.2,
-                    ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  icon: const Icon(Icons.delete_outline, size: 20),
-                  label: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 3,
                 child: FilledButton.icon(
                   onPressed: _isProcessing ? null : onApproveReturn,
                   style: FilledButton.styleFrom(

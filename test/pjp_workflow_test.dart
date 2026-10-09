@@ -9,6 +9,10 @@ import 'package:selecta_ops/services/pjp_order_decision_service.dart';
 import 'package:selecta_ops/services/proof_of_visit_service.dart';
 import 'package:selecta_ops/services/scanning_services.dart';
 import 'package:selecta_ops/services/tasks_services.dart';
+import 'package:selecta_ops/services/placement_service.dart';
+import 'package:selecta_ops/services/selecta_product_service.dart';
+import 'package:selecta_ops/services/inventory_service.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeHapiStoreService extends Fake implements HapiStoreService {}
@@ -18,6 +22,44 @@ class FakeConfigurationService extends Fake implements ConfigurationService {}
 class FakeDeliveryService extends Fake implements DeliveryService {}
 class FakeProofOfVisitService extends Fake implements ProofOfVisitService {}
 class FakePjpOrderDecisionService extends Fake implements PjpOrderDecisionService {}
+class FakePlacementService extends Fake implements PlacementService {}
+class FakeSelectaProductService extends Fake implements SelectaProductService {}
+class FakeInventoryService extends Fake implements InventoryService {}
+
+class FakeGeolocatorPlatform extends GeolocatorPlatform {
+  @override
+  Future<bool> isLocationServiceEnabled() async => true;
+
+  @override
+  Future<LocationPermission> checkPermission() async => LocationPermission.always;
+
+  @override
+  Future<LocationPermission> requestPermission() async => LocationPermission.always;
+
+  @override
+  Future<Position> getCurrentPosition({LocationSettings? locationSettings}) async {
+    return Position(
+      latitude: 14.5995,
+      longitude: 120.9842,
+      timestamp: DateTime.now(),
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+      accuracy: 5,
+    );
+  }
+
+  @override
+  double distanceBetween(
+    double startLatitude,
+    double startLongitude,
+    double endLatitude,
+    double endLongitude,
+  ) => 10.0;
+}
 
 PjpController createTestController() {
   return PjpController(
@@ -28,10 +70,16 @@ PjpController createTestController() {
     deliveryService: FakeDeliveryService(),
     proofOfVisitService: FakeProofOfVisitService(),
     orderDecisionService: FakePjpOrderDecisionService(),
+    placementService: FakePlacementService(),
+    selectaProductService: FakeSelectaProductService(),
+    inventoryService: FakeInventoryService(),
   );
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  GeolocatorPlatform.instance = FakeGeolocatorPlatform();
+
   group('PJP Checklist Workflow & Models Tests', () {
     test('ProofOfVisit model correctly serializes and deserializes', () {
       final now = Timestamp.now();
@@ -174,7 +222,7 @@ void main() {
 
       final result = await controller.checkLocation(storeWithLocation);
       expect(result.passed, isTrue, reason: 'Store with existing coordinates must be marked as passed');
-      expect(result.status, contains('Store location'));
+      expect(result.status, contains('In range'));
     });
 
     test('Location check marks as not passed if store has no location', () async {

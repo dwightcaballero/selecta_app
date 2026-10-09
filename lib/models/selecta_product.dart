@@ -16,6 +16,7 @@ class SelectaProduct {
   final int reservedQuantity;
   final int lowStockThreshold;
   final int maxStock;
+  final double? badOrderPricePerPiece;
   final Timestamp? importedAt;
   final Timestamp? updatedAt;
 
@@ -34,6 +35,7 @@ class SelectaProduct {
     this.reservedQuantity = 0,
     this.lowStockThreshold = 10,
     this.maxStock = 0,
+    this.badOrderPricePerPiece,
     this.importedAt,
     this.updatedAt,
   });
@@ -73,6 +75,16 @@ class SelectaProduct {
   /// Total inventory value at selling price.
   double get stockRetailValue => stockQuantity * sellingPrice;
 
+  /// Effective bad order price per individual piece.
+  /// For 'By Piece': equals buyingPrice.
+  /// For 'By Case': uses dealer configured badOrderPricePerPiece (or 0.0 if not set).
+  double get boPricePerPiece =>
+      category == 'By Case' ? (badOrderPricePerPiece ?? 0.0) : buyingPrice;
+
+  /// Whether the product has a valid configured bad order price.
+  bool get isBoPriceConfigured =>
+      category != 'By Case' || (badOrderPricePerPiece != null && badOrderPricePerPiece! > 0);
+
   static SelectaProduct empty() => const SelectaProduct(
         id: '',
         productName: '',
@@ -88,6 +100,7 @@ class SelectaProduct {
         reservedQuantity: 0,
         lowStockThreshold: 10,
         maxStock: 0,
+        badOrderPricePerPiece: null,
       );
 
   factory SelectaProduct.fromJson(String id, Map<String, Object?> json) {
@@ -114,6 +127,7 @@ class SelectaProduct {
       reservedQuantity: (json['reservedQuantity'] as num?)?.toInt() ?? 0,
       lowStockThreshold: (json['lowStockThreshold'] as num?)?.toInt() ?? 10,
       maxStock: (json['maxStock'] as num?)?.toInt() ?? 0,
+      badOrderPricePerPiece: (json['badOrderPricePerPiece'] as num?)?.toDouble(),
       importedAt: json['importedAt'] as Timestamp?,
       updatedAt: json['updatedAt'] as Timestamp?,
     );
@@ -141,6 +155,7 @@ class SelectaProduct {
     int? reservedQuantity,
     int? lowStockThreshold,
     int? maxStock,
+    double? badOrderPricePerPiece,
     Timestamp? importedAt,
     Timestamp? updatedAt,
   }) {
@@ -159,6 +174,7 @@ class SelectaProduct {
       reservedQuantity: reservedQuantity ?? this.reservedQuantity,
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       maxStock: maxStock ?? this.maxStock,
+      badOrderPricePerPiece: badOrderPricePerPiece ?? this.badOrderPricePerPiece,
       importedAt: importedAt ?? this.importedAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -181,6 +197,7 @@ class SelectaProduct {
     String itemCode = '',
     String category = '',
     String tag = '',
+    double? badOrderPricePerPiece,
     Timestamp? importedAt,
     Timestamp? updatedAt,
   }) {
@@ -199,6 +216,7 @@ class SelectaProduct {
       reservedQuantity: reservedQuantity,
       lowStockThreshold: lowStockThreshold,
       maxStock: maxStock,
+      badOrderPricePerPiece: badOrderPricePerPiece,
       importedAt: importedAt,
       updatedAt: updatedAt,
     );
@@ -220,6 +238,7 @@ class SelectaProduct {
       'reservedQuantity': reservedQuantity,
       'lowStockThreshold': lowStockThreshold,
       'maxStock': maxStock,
+      'badOrderPricePerPiece': badOrderPricePerPiece,
       'importedAt': importedAt,
       'updatedAt': updatedAt,
     };

@@ -6,74 +6,46 @@ const String BADORDER_COLLECTION_REF = 'badorder';
 
 class BadOrderService {
   final _firestore = FirebaseFirestore.instance;
-  late final CollectionReference _badorderRef;
+  late final CollectionReference<BadOrder> _badorderRef;
 
   BadOrderService() {
     _badorderRef = _firestore
         .collection(BADORDER_COLLECTION_REF)
         .withConverter<BadOrder>(
-          fromFirestore: (snapshots, _) => BadOrder.fromJson(snapshots.data()!),
+          fromFirestore: (snapshots, _) =>
+              BadOrder.fromJson(snapshots.data()!, snapshots.id),
           toFirestore: (badorder, _) => badorder.toJson(),
         );
   }
 
-  Stream<QuerySnapshot> getListBadOrder() {
+  Stream<QuerySnapshot<BadOrder>> getListBadOrder() {
     return _badorderRef.orderBy('badorderDate', descending: true).snapshots();
   }
 
-  Future<double?> getTotalBadOrderForSpecificDay(DateTime badorderDate) async {
-    final startOfDay = DateTime(
-      badorderDate.year,
-      badorderDate.month,
-      badorderDate.day,
-      0,
-      0,
-      0,
-    );
-
-    final endOfDay = DateTime(
-      badorderDate.year,
-      badorderDate.month,
-      badorderDate.day,
-      23,
-      59,
-      59,
-    );
-
-    try {
-      // 1. Build the filtered query
-      Query query = FirebaseFirestore.instance
-          .collection(BADORDER_COLLECTION_REF)
-          .where(
-            'badorderDate',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-          )
-          .where(
-            'badorderDate',
-            isLessThanOrEqualTo: Timestamp.fromDate(endOfDay),
-          );
-
-      // 2. Attach the sum aggregate function
-      AggregateQuerySnapshot snapshot = await query
-          .aggregate(sum('badorderAmount'))
-          .get();
-
-      // 3. Extract and return the calculation result
-      return snapshot.getSum('badorderAmount');
-    } catch (e) {
-      return null;
-    }
+  Future<String> addBadOrder(BadOrder badorder) async {
+    final docRef = await _badorderRef.add(badorder);
+    return docRef.id;
   }
 
-  void addBadOrder(BadOrder badorder) {
-    _badorderRef.add(badorder);
+  Future<void> updateBadOrder(String badorderID, BadOrder badorder) async {
+    await _badorderRef.doc(badorderID).update(badorder.toJson());
   }
 
-  void updateBadOrder(String badorderID, BadOrder badorder) {
-    _badorderRef.doc(badorderID).update(badorder.toJson());
+  Future<void> updateBadOrderStatus(
+    String badorderID,
+    String status, {
+    required String updatedBy,
+    String page = '',
+  }) async {
+    await _badorderRef.doc(badorderID).update({
+      'status': status,
+      'lastUpdatedBy': updatedBy,
+      'lastupdatedDate': Timestamp.now(),
+      'lastUpdatedPage': page,
+    });
   }
 
-  void deleteBadOrder(String badorderID) {
-    _badorderRef.doc(badorderID).delete();
+  Future<void> deleteBadOrder(String badorderID) async {
+    await _badorderRef.doc(badorderID).delete();
   }
 }

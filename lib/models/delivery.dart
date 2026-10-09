@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/placement.dart';
 
@@ -197,6 +198,9 @@ class Delivery {
   String picklistCompletedBy;
   int? picklistSequence;
   int? deliverySequence;
+  String? voidReason;
+  Timestamp? voidedDate;
+  String? voidedBy;
 
   String createdBy;
   String lastUpdatedBy;
@@ -246,7 +250,13 @@ class Delivery {
     this.picklistCompletedBy = '',
     this.picklistSequence,
     this.deliverySequence,
+    this.voidReason,
+    this.voidedDate,
+    this.voidedBy,
   });
+
+  /// True if this order/delivery has been voided.
+  bool get isVoided => transactionStatus == DeliveryStatus.voided;
 
   /// Total number of units across all ordered/picked items.
   int get totalUnits => items.fold<int>(0, (totalUnitsAcc, item) => totalUnitsAcc + item.pickedQuantity);
@@ -302,6 +312,9 @@ class Delivery {
     picklistCompletedBy: '',
     picklistSequence: null,
     deliverySequence: null,
+    voidReason: null,
+    voidedDate: null,
+    voidedBy: null,
   );
 
   static List<OrderItem> _parseItems(Object? raw) {
@@ -357,6 +370,9 @@ class Delivery {
         picklistCompletedBy: json['picklistCompletedBy'] as String? ?? '',
         picklistSequence: _parseInt(json['picklistSequence']),
         deliverySequence: _parseInt(json['deliverySequence']),
+        voidReason: json['voidReason'] as String?,
+        voidedDate: _parseTimestamp(json['voidedDate']),
+        voidedBy: json['voidedBy'] as String?,
       );
 
   factory Delivery.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -403,6 +419,9 @@ class Delivery {
     bool clearPicklistSequence = false,
     int? deliverySequence,
     bool clearDeliverySequence = false,
+    String? voidReason,
+    Timestamp? voidedDate,
+    String? voidedBy,
     String? createdBy,
     String? lastUpdatedBy,
     Timestamp? createdDate,
@@ -443,6 +462,9 @@ class Delivery {
       picklistCompletedBy: picklistCompletedBy ?? this.picklistCompletedBy,
       picklistSequence: clearPicklistSequence ? null : (picklistSequence ?? this.picklistSequence),
       deliverySequence: clearDeliverySequence ? null : (deliverySequence ?? this.deliverySequence),
+      voidReason: voidReason ?? this.voidReason,
+      voidedDate: voidedDate ?? this.voidedDate,
+      voidedBy: voidedBy ?? this.voidedBy,
       createdBy: createdBy ?? this.createdBy,
       lastUpdatedBy: lastUpdatedBy ?? this.lastUpdatedBy,
       createdDate: createdDate ?? this.createdDate,
@@ -486,6 +508,9 @@ class Delivery {
       'picklistCompletedBy': picklistCompletedBy,
       'picklistSequence': picklistSequence,
       'deliverySequence': deliverySequence,
+      'voidReason': voidReason,
+      'voidedDate': voidedDate,
+      'voidedBy': voidedBy,
       'createdBy': createdBy,
       'lastUpdatedBy': lastUpdatedBy,
       'createdDate': createdDate,
@@ -527,6 +552,9 @@ class DeliveryModelString {
   static String isReturnFinalized = 'isReturnFinalized';
   static String returnFinalizedDate = 'returnFinalizedDate';
   static String returnFinalizedBy = 'returnFinalizedBy';
+  static String voidReason = 'voidReason';
+  static String voidedDate = 'voidedDate';
+  static String voidedBy = 'voidedBy';
 
   static String createdBy = 'createdBy';
   static String lastUpdatedBy = 'lastUpdatedBy';

@@ -11,7 +11,6 @@ class EndOfDayDTO {
   double onlineamount = 0;
   double creditamount = 0;
   double returnedAmount = 0;
-  double badorderAmount = 0;
   double expenseAmount = 0;
 
   double expectedcashonhand = 0;
@@ -31,7 +30,6 @@ class EndOfDayDTO {
     required this.onlineamount,
     required this.creditamount,
     required this.returnedAmount,
-    required this.badorderAmount,
     required this.expenseAmount,
     required this.expectedcashonhand,
     required this.actualcashonhand,
@@ -51,7 +49,6 @@ class EndOfDayDTO {
     onlineamount: 0,
     creditamount: 0,
     returnedAmount: 0,
-    badorderAmount: 0,
     expenseAmount: 0,
     expectedcashonhand: 0,
     actualcashonhand: 0,

@@ -284,7 +284,6 @@ class _EndofdayPageState extends State<EndofdayPage> {
         spacing: 10,
         children: [
           _buildAmountRow('Total Returns', endOfDayData.returnedAmount, color: Colors.orange.shade800),
-          _buildAmountRow('Bad Orders', endOfDayData.badorderAmount, color: Colors.red.shade700),
           _buildAmountRow('Operating Expenses', endOfDayData.expenseAmount, color: Colors.red.shade700),
         ],
       ),

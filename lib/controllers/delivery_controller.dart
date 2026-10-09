@@ -1159,6 +1159,49 @@ class DeliveryController {
     await Helperfunctions.logDelete(delivery.storeName, delivery.toJson(), page: AppPages.delivery);
   }
 
+  /// Voids a pending picklist order, releases its floating stock reservation,
+  /// and stores the mandatory reason without deleting the document from Firestore.
+  Future<void> voidDelivery({
+    required BuildContext context,
+    required String deliveryId,
+    required Delivery delivery,
+    required String reason,
+  }) async {
+    if (delivery.isReturnApprovedByDealer) {
+      throw Exception('Cannot void an order that has already been approved by dealer.');
+    }
+    if (delivery.isInventorySettled) {
+      throw Exception('Cannot void an order for a date that has already been verified and locked.');
+    }
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw Exception('A reason is required to void this order.');
+    }
+
+    final currentUser = authService.value.currentUser?.displayName ?? 'Dealer';
+
+    // Release floating stock reservation
+    if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
+      await _inventoryService.releaseReservedStockForOrder(
+        storeName: delivery.storeName,
+        items: delivery.items,
+      );
+    }
+
+    await _deliveryService.voidDelivery(
+      deliveryID: deliveryId,
+      reason: trimmedReason,
+      voidedBy: currentUser,
+    );
+
+    await Helperfunctions.logTransaction(
+      'Void Order - ${delivery.storeName}',
+      'Voided picklist order. Reason: $trimmedReason',
+      LogAction.update,
+      page: AppPages.picklist,
+    );
+  }
+
   /// Settles inventory movements for an individual delivery that was completed after daily verification.
   Future<void> settleSingleDelivery(String deliveryId) async {
     await _inventoryService.settleSingleDelivery(deliveryId);

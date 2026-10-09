@@ -50,6 +50,7 @@ class DeliveryStatus {
   static const pending = "Pending";
   static const delivered = "Delivered";
   static const returned = "Returned";
+  static const voided = "Voided";
 }
 
 class CreditStatus {
@@ -63,6 +64,14 @@ class ScanningStatus {
   static const notScanned = "Not Scanned";
   static const pullout = "Pullout";
   static const unassigned = "Unassigned";
+}
+
+class BadOrderStatus {
+  static const storePullout = "Store Pullout";
+  static const warehousePullout = "Warehouse Pullout";
+  static const settled = "Settled";
+
+  static const List<String> all = [storePullout, warehousePullout, settled];
 }
 
 class ConfirmMessage {

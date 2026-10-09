@@ -9,7 +9,7 @@ import 'package:selecta_ops/services/hapistore_service.dart';
 
 /// Aggregation and filtering result for bad orders.
 class BadOrderFilterResult {
-  final List<QueryDocumentSnapshot> filteredDocs;
+  final List<QueryDocumentSnapshot<BadOrder>> filteredDocs;
   final double periodTotalAmount;
   final int thisMonthCount;
   final int allCount;
@@ -25,14 +25,22 @@ class BadOrderFilterResult {
 /// Controller encapsulating business logic, Firestore CRUD operations,
 /// logging, role validation, and filtering for Bad Order records.
 class BadOrderController {
-  final BadOrderService _badOrderService = BadOrderService();
-  final HapiStoreService _hapiStoreService = HapiStoreService();
+  final BadOrderService _badOrderService;
+  final HapiStoreService _hapiStoreService;
+
+  BadOrderController({
+    BadOrderService? badOrderService,
+    HapiStoreService? hapiStoreService,
+  })  : _badOrderService = badOrderService ?? BadOrderService(),
+        _hapiStoreService = hapiStoreService ?? HapiStoreService();
 
   /// Real-time stream of all bad order documents.
-  Stream<QuerySnapshot> getBadOrdersStream() => _badOrderService.getListBadOrder();
+  Stream<QuerySnapshot<BadOrder>> getBadOrdersStream() =>
+      _badOrderService.getListBadOrder();
 
   /// Real-time stream of all active stores for store selection dropdowns.
-  Stream<QuerySnapshot> getHapiStoresStream() => _hapiStoreService.getListHapiStoresAsStream();
+  Stream<QuerySnapshot> getHapiStoresStream() =>
+      _hapiStoreService.getListHapiStoresAsStream();
 
   /// Checks if the current user possesses the Dealer business role.
   Future<bool> checkIsDealer() => KVariables.getIsDealer();
@@ -42,35 +50,52 @@ class BadOrderController {
     return authService.value.currentUser?.displayName ?? 'Unknown';
   }
 
-  /// Filters and aggregates bad order documents according to period and search query.
+  /// Filters and aggregates bad order documents according to period, status, and search query.
+  /// Automatically excludes old/legacy records without items.
   BadOrderFilterResult filterBadOrders({
-    required List<QueryDocumentSnapshot> docs,
+    required List<QueryDocumentSnapshot<BadOrder>> docs,
     required String selectedPeriod,
     required String searchQuery,
     required DateTime now,
+    String? statusFilter,
   }) {
     int thisMonthCount = 0;
+    int validTotalCount = 0;
     double periodTotalAmount = 0;
-    final List<QueryDocumentSnapshot> filteredDocs = [];
+    final List<QueryDocumentSnapshot<BadOrder>> filteredDocs = [];
     final cleanQuery = searchQuery.trim().toLowerCase();
 
     for (final doc in docs) {
-      final badorder = doc.data() as BadOrder;
+      final badorder = doc.data();
+
+      // Rule: Do not show old bad order records without items
+      if (!badorder.isNewRecord || badorder.items.isEmpty) {
+        continue;
+      }
+
+      validTotalCount++;
       final date = badorder.badorderDate.toDate();
       final isThisMonth = date.year == now.year && date.month == now.month;
 
       if (isThisMonth) thisMonthCount++;
 
       final matchesPeriod = selectedPeriod == 'All' || isThisMonth;
+      final matchesStatus = statusFilter == null ||
+          statusFilter == 'All' ||
+          badorder.status.toLowerCase() == statusFilter.toLowerCase();
+
       final matchesSearch = cleanQuery.isEmpty ||
           badorder.hapistore.toLowerCase().contains(cleanQuery) ||
-          badorder.description.toLowerCase().contains(cleanQuery);
+          badorder.notes.toLowerCase().contains(cleanQuery) ||
+          badorder.status.toLowerCase().contains(cleanQuery) ||
+          badorder.items.any((item) =>
+              item.productName.toLowerCase().contains(cleanQuery));
 
       if (matchesPeriod) {
-        periodTotalAmount += badorder.badorderAmount;
+        periodTotalAmount += badorder.totalAmount;
       }
 
-      if (matchesPeriod && matchesSearch) {
+      if (matchesPeriod && matchesStatus && matchesSearch) {
         filteredDocs.add(doc);
       }
     }
@@ -79,64 +104,64 @@ class BadOrderController {
       filteredDocs: filteredDocs,
       periodTotalAmount: periodTotalAmount,
       thisMonthCount: thisMonthCount,
-      allCount: docs.length,
+      allCount: validTotalCount,
     );
   }
 
   /// Creates a new bad order record and logs the transaction.
-  Future<void> createBadOrder({
+  Future<String> createBadOrder({
     required String hapistore,
-    required String description,
-    required double amount,
     required DateTime selectedDate,
+    required String imagePath,
+    required List<BadOrderItem> items,
+    String notes = '',
+    String page = AppPages.delivery,
   }) async {
     final user = getCurrentUserDisplayName();
     final newRecord = BadOrder(
-      description: description,
       hapistore: hapistore,
-      badorderAmount: amount,
       badorderDate: Timestamp.fromDate(selectedDate),
+      imagePath: imagePath,
+      status: BadOrderStatus.storePullout,
+      notes: notes,
+      items: items,
+      schemaVersion: 2,
       createdBy: user,
       lastUpdatedBy: user,
       createdDate: Timestamp.now(),
       lastupdatedDate: Timestamp.now(),
-      createdPage: AppPages.badOrder,
-      lastUpdatedPage: AppPages.badOrder,
+      createdPage: page,
+      lastUpdatedPage: page,
     );
 
-    _badOrderService.addBadOrder(newRecord);
-    Helperfunctions.logCreate(hapistore, newRecord.toJson(), page: AppPages.badOrder);
+    final id = await _badOrderService.addBadOrder(newRecord);
+    Helperfunctions.logCreate(hapistore, newRecord.toJson(), page: page);
+    return id;
   }
 
-  /// Updates an existing bad order record and logs the transaction.
-  Future<void> updateBadOrder({
+  /// Updates the status of an existing bad order record (Dealer only).
+  Future<void> updateStatus({
     required String recID,
     required BadOrder existingRecord,
-    required String hapistore,
-    required String description,
-    required double amount,
-    required DateTime selectedDate,
+    required String newStatus,
+    String page = AppPages.badOrder,
   }) async {
+    final isDealer = await checkIsDealer();
+    if (!isDealer) {
+      throw Exception('Only dealers can update bad order status.');
+    }
     final user = getCurrentUserDisplayName();
-    final updatedRecord = existingRecord.copyWith(
-      description: description,
-      hapistore: hapistore,
-      badorderAmount: amount,
-      badorderDate: Timestamp.fromDate(selectedDate),
-      createdBy: existingRecord.createdBy,
-      lastUpdatedBy: user,
-      createdDate: existingRecord.createdDate,
-      lastupdatedDate: Timestamp.now(),
-      createdPage: existingRecord.createdPage,
-      lastUpdatedPage: AppPages.badOrder,
+    await _badOrderService.updateBadOrderStatus(
+      recID,
+      newStatus,
+      updatedBy: user,
+      page: page,
     );
-
-    _badOrderService.updateBadOrder(recID, updatedRecord);
     Helperfunctions.logUpdate(
-      hapistore,
+      existingRecord.hapistore,
       existingRecord.toJson(),
-      updatedRecord.toJson(),
-      page: AppPages.badOrder,
+      {...existingRecord.toJson(), 'status': newStatus},
+      page: page,
     );
   }
 
@@ -145,7 +170,7 @@ class BadOrderController {
     required String recID,
     required BadOrder existingRecord,
   }) async {
-    _badOrderService.deleteBadOrder(recID);
+    await _badOrderService.deleteBadOrder(recID);
     Helperfunctions.logDelete(
       existingRecord.hapistore,
       existingRecord.toJson(),

@@ -32,6 +32,23 @@ class DeliveryService {
     await _ordersRef.doc(deliveryID).delete();
   }
 
+  /// Updates an order to Voided status, clears reserved inventory flag, and stores the audit reason.
+  Future<void> voidDelivery({
+    required String deliveryID,
+    required String reason,
+    required String voidedBy,
+  }) async {
+    await _ordersRef.doc(deliveryID).update({
+      DeliveryModelString.transactionStatus: DeliveryStatus.voided,
+      DeliveryModelString.isInventoryReserved: false,
+      DeliveryModelString.voidReason: reason,
+      DeliveryModelString.voidedBy: voidedBy,
+      DeliveryModelString.voidedDate: Timestamp.now(),
+      'lastupdatedDate': Timestamp.now(),
+      'lastUpdatedBy': voidedBy,
+    });
+  }
+
   Future<Delivery?> getDeliveryById(String deliveryID) async {
     final doc = await _ordersRef.doc(deliveryID).get();
     return doc.data();

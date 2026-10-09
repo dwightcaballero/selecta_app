@@ -369,7 +369,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
       badgeIcon = Icons.check_circle_outline_rounded;
     } else if (order.overpayment > 0) {
       badgeColor = Colors.red.shade700;
-      badgeText = 'Overpayment: ${Helperfunctions.formatDoubleAmountForDisplay(order.overpayment)}';
+      badgeText = 'Overpaid: ${Helperfunctions.formatDoubleAmountForDisplay(order.overpayment)}';
       badgeIcon = Icons.arrow_outward_rounded;
     } else {
       badgeColor = Colors.blue.shade700;
@@ -396,33 +396,47 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 4),
-                      Text(
-                        isPending ? 'P.O. Date: $orderDateStr' : 'Inv Date: $invoiceDateStr',
-                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: badgeColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
-                    ),
+                  Flexible(
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(badgeIcon, size: 12, color: badgeColor),
+                        Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
-                        Text(
-                          badgeText,
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: badgeColor),
+                        Flexible(
+                          child: Text(
+                            isPending ? 'P.O. Date: $orderDateStr' : 'Inv Date: $invoiceDateStr',
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(badgeIcon, size: 12, color: badgeColor),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              badgeText,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: badgeColor),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

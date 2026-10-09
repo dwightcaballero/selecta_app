@@ -24,6 +24,10 @@ class SelectaProductController {
   Future<void> toggleActive(String productId, bool isActive) =>
       _service.toggleProductActive(productId, isActive);
 
+  /// Updates dealer configured bad order price per piece for a 'By Case' product.
+  Future<void> updateBadOrderPricePerPiece(String productId, double price) =>
+      _service.updateBadOrderPricePerPiece(productId, price);
+
   /// Checks if the dealer's local catalog is empty or out-of-sync with the Admin API.
   Future<({bool needsSync, List<AdminSelectaProduct> remoteProducts, String reason})> checkSyncNeeded() =>
       _service.checkSyncNeeded();

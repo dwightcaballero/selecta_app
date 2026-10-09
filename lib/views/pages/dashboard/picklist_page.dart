@@ -404,35 +404,111 @@ class _PicklistPageState extends State<PicklistPage> {
     }
   }
 
-  Future<void> _onDeleteOrder() async {
+  Future<void> _onVoidOrder() async {
     if (_isSaving) return;
-    final confirmed = await ShowMessage.confirm(
-      context,
-      title: 'Delete Order',
-      message: 'Delete this booked order for [${_currentDelivery.storeName}]? Reserved stock will be released back to inventory.',
-      isDestructive: true,
-      icon: Icons.delete_outline,
-      confirmText: 'Delete',
-    );
-    if (!confirmed || !mounted) return;
 
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.block, color: Colors.red.shade700, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Text('Void Picklist Order', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Voiding this order for [${_currentDelivery.storeName}] will cancel the picklist and release all reserved stock back to available inventory. The record will be permanently saved with your reason.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: reasonController,
+                  autofocus: true,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: 'Reason for Voiding *',
+                    hintText: 'e.g. Duplicate order, store cancelled before packing...',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) {
+                      return 'A reason is required to void this order.';
+                    }
+                    if (val.trim().length < 5) {
+                      return 'Please provide a descriptive reason (at least 5 characters).';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+              ),
+              onPressed: () {
+                if (formKey.currentState?.validate() == true) {
+                  Navigator.pop(dialogCtx, true);
+                }
+              },
+              child: const Text('Void Order'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final reason = reasonController.text.trim();
     setState(() => _isSaving = true);
-    await Helperfunctions.showLoading(context: context, showLoading: true, message: 'Deleting order & releasing reserved stock...');
+    await Helperfunctions.showLoading(context: context, showLoading: true, message: 'Voiding order & releasing reserved stock...');
     if (!mounted) return;
 
     try {
-      await _controller.deleteDelivery(context: context, deliveryId: widget.deliveryID, delivery: _currentDelivery);
+      await _controller.voidDelivery(
+        context: context,
+        deliveryId: widget.deliveryID,
+        delivery: _currentDelivery,
+        reason: reason,
+      );
       if (mounted) {
         await Helperfunctions.showLoading(showLoading: false);
         if (mounted) {
-          ShowMessage.success(context, 'Deleted order for [${_currentDelivery.storeName}].');
+          ShowMessage.success(context, 'Voided picklist order for [${_currentDelivery.storeName}]. Reserved stock has been released.');
           Navigator.pop(context, true);
         }
       }
     } catch (e) {
       await Helperfunctions.showLoading(showLoading: false);
       if (mounted) {
-        ShowMessage.error(context, 'Failed to delete order: $e');
+        ShowMessage.error(context, 'Failed to void order: $e');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -950,15 +1026,15 @@ class _PicklistPageState extends State<PicklistPage> {
               children: [
                 if (_isDealer) ...[
                   IconButton.outlined(
-                    onPressed: _isSaving ? null : _onDeleteOrder,
-                    tooltip: 'Delete Order',
+                    onPressed: _isSaving ? null : _onVoidOrder,
+                    tooltip: 'Void Order',
                     style: IconButton.styleFrom(
                       minimumSize: const Size(48, 48),
                       foregroundColor: Colors.red.shade700,
                       side: BorderSide(color: Colors.red.shade300),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    icon: const Icon(Icons.delete_outline, size: 22),
+                    icon: const Icon(Icons.block, size: 22),
                   ),
                   const SizedBox(width: 8),
                 ],

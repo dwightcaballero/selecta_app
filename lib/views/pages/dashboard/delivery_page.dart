@@ -1,10 +1,17 @@
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:selecta_ops/controllers/badorder_controller.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
+import 'package:selecta_ops/controllers/selecta_product_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/return_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -47,6 +54,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   bool _withReturns = false;
   final Map<String, int> _returnQuantities = {};
   final Set<String> _selectedReturnProductIds = {};
+  int _recordedBadOrdersCount = 0;
 
   double get originalOrderTotal {
     final orig = _currentDelivery.originalOrderAmount;
@@ -351,33 +359,6 @@ class _DeliveryPageState extends State<DeliveryPage> {
       }
     } else {
       if (mounted) ShowMessage.listError(context, listError);
-    }
-  }
-
-  void onDelete() async {
-    if (_currentDelivery.isReturnApprovedByDealer) {
-      ShowMessage.error(context, 'This returned order has already been approved by the dealer and cannot be deleted.');
-      return;
-    }
-    if (_currentDelivery.isInventorySettled) {
-      ShowMessage.error(context, 'This delivery has been settled into inventory, and cannot be deleted.');
-      return;
-    }
-    if (!isDealer && isDayVerified) {
-      ShowMessage.error(context, 'This delivery date has been verified and settled. Only dealers can manage records for this day.');
-      return;
-    }
-    try {
-      await _controller.deleteDelivery(context: context, deliveryId: widget.deliveryID, delivery: _currentDelivery);
-
-      if (mounted) {
-        ShowMessage.success(context, 'Successfully deleted a delivery record!\n[${_currentDelivery.storeName}]');
-        Navigator.pop(context); // go back to previous page
-      }
-    } catch (e) {
-      if (mounted) {
-        ShowMessage.error(context, 'Error deleting delivery record: $e');
-      }
     }
   }
 
@@ -888,9 +869,114 @@ class _DeliveryPageState extends State<DeliveryPage> {
               _returnQuantities.addAll(newQuantities);
               computeDiscrepancy();
             });
+            // After asking if there are returned products, also prompt if there are bad orders from the store
+            if (!isPermanentlySettled) {
+              Future.delayed(const Duration(milliseconds: 350), () {
+                if (mounted) _promptForBadOrders();
+              });
+            }
           },
         );
       },
+    );
+  }
+
+  void _openBadOrderModal() {
+    if (isPermanentlySettled) {
+      ShowMessage.error(context, 'Bad orders cannot be recorded for a delivery that has already been settled.');
+      return;
+    }
+    if (dropdownHapiStore.text.isEmpty) {
+      ShowMessage.error(context, 'Please select a store first before recording bad orders.');
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) {
+        return _DeliveryBadOrderBottomSheet(
+          storeName: dropdownHapiStore.text,
+          deliveryDate: _selectedDate,
+          onBadOrderSaved: () {
+            setState(() {
+              _recordedBadOrdersCount++;
+            });
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _promptForBadOrders() async {
+    if (isPermanentlySettled || dropdownHapiStore.text.isEmpty) return;
+    final askBo = await ShowMessage.confirm(
+      context,
+      title: 'Bad Orders from Store?',
+      message: 'Are there any bad orders (damaged or expired products) to pull out from [${dropdownHapiStore.text}]?',
+      icon: Icons.remove_shopping_cart_outlined,
+      confirmText: 'Yes, Record Bad Order',
+      cancelText: 'No Bad Orders',
+    );
+    if (askBo == true && mounted) {
+      _openBadOrderModal();
+    }
+  }
+
+  Widget _buildBadOrdersSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bool cannotRecord = isPermanentlySettled;
+
+    return _buildSectionCard(
+      title: 'Bad Orders from Store',
+      icon: Icons.remove_shopping_cart_outlined,
+      trailing: _recordedBadOrdersCount > 0
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Text(
+                '$_recordedBadOrdersCount Recorded',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange.shade800,
+                ),
+              ),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            cannotRecord
+                ? 'This delivery is already settled. Bad orders can no longer be recorded.'
+                : 'Pull out and record damaged or expired Selecta products directly from ${dropdownHapiStore.text}.',
+            style: TextStyle(
+              fontSize: 13,
+              color: cannotRecord ? Colors.red.shade700 : colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: cannotRecord ? null : _openBadOrderModal,
+            icon: const Icon(Icons.add_photo_alternate_outlined),
+            label: Text(_recordedBadOrdersCount > 0 ? 'Record Another Bad Order' : 'Record Bad Orders'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: cannotRecord ? Colors.grey : Colors.orange.shade800,
+              side: BorderSide(
+                color: cannotRecord ? Colors.grey.shade300 : Colors.orange.shade300,
+                width: 1.2,
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1342,53 +1428,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
               )
             : Row(
                 children: [
-                  if (isDealer) ...[
-                    Expanded(
-                      flex: 2,
-                      child: OutlinedButton.icon(
-                        onPressed: (isDayVerified || _currentDelivery.isInventorySettled || _currentDelivery.isReturnApprovedByDealer)
-                            ? null
-                            : () async {
-                                final confirmed = await ShowMessage.confirm(
-                                  context,
-                                  title: ConfirmTitle.delete,
-                                  message: ConfirmMessage.delete,
-                                  isDestructive: true,
-                                  icon: Icons.delete_outline,
-                                  confirmText: 'Delete',
-                                );
-                                if (confirmed) onDelete();
-                              },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          minimumSize: const Size(0, 50.0),
-                          foregroundColor: Colors.red.shade700,
-                          side: BorderSide(
-                            color: (isDayVerified || _currentDelivery.isInventorySettled || _currentDelivery.isReturnApprovedByDealer)
-                                ? Colors.grey.shade300
-                                : Colors.red.shade300,
-                            width: 1.2,
-                          ),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        icon: const Icon(Icons.delete_outline, size: 20),
-                        label: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            _currentDelivery.isReturnApprovedByDealer
-                                ? 'Approved'
-                                : ((isDayVerified || _currentDelivery.isInventorySettled) ? 'Settled' : 'Delete'),
-                            maxLines: 1,
-                            softWrap: false,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
                   Expanded(
-                    flex: isDealer ? 3 : 1,
                     child: FilledButton.icon(
                       onPressed: isLocked
                           ? null
@@ -1779,6 +1819,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     curve: Curves.easeInOut,
                     child: _buildWithReturnsSection(),
                   ),
+
+                // 3.1 Bad Orders from Store Section
+                if (widget.deliveryID.isNotEmpty && dropdownHapiStore.text.isNotEmpty)
+                  _buildBadOrdersSection(),
 
                 // 4. Payment Breakdown Card (Animated for Delivered status)
                 if (widget.deliveryID.isNotEmpty)
@@ -2279,6 +2323,606 @@ class _ItemizedReturnsBottomSheetState extends State<_ItemizedReturnsBottomSheet
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom sheet modal enabling salesmen to record itemized bad orders
+/// with photo capture and notes during delivery.
+class _DeliveryBadOrderBottomSheet extends StatefulWidget {
+  final String storeName;
+  final DateTime deliveryDate;
+  final VoidCallback onBadOrderSaved;
+
+  const _DeliveryBadOrderBottomSheet({
+    required this.storeName,
+    required this.deliveryDate,
+    required this.onBadOrderSaved,
+  });
+
+  @override
+  State<_DeliveryBadOrderBottomSheet> createState() => _DeliveryBadOrderBottomSheetState();
+}
+
+class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomSheet> {
+  final SelectaProductController _productController = SelectaProductController();
+  final BadOrderController _boController = BadOrderController();
+  final ImagePicker _picker = ImagePicker();
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
+
+  final Map<String, int> _quantities = {};
+  File? _imageFile;
+  String _searchQuery = '';
+  String _categoryFilter = 'All'; // 'All', 'By Piece', 'By Case'
+  bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked != null) {
+        setState(() => _imageFile = File(picked.path));
+      }
+    } catch (e) {
+      if (mounted) ShowMessage.error(context, 'Failed to pick image: $e');
+    }
+  }
+
+  int get _totalUnits {
+    return _quantities.values.fold<int>(0, (acc, q) => acc + q);
+  }
+
+  double _computeTotalAmount(List<SelectaProduct> products) {
+    double total = 0.0;
+    for (final p in products) {
+      final q = _quantities[p.id] ?? 0;
+      if (q > 0) {
+        total += q * p.boPricePerPiece;
+      }
+    }
+    return total;
+  }
+
+  Future<void> _submit(List<SelectaProduct> allProducts) async {
+    final selectedItems = <BadOrderItem>[];
+    for (final p in allProducts) {
+      final q = _quantities[p.id] ?? 0;
+      if (q > 0) {
+        if (p.category == 'By Case' && !p.isBoPriceConfigured) {
+          ShowMessage.error(
+            context,
+            'Cannot submit: "${p.productName}" is By Case and has no B.O. price configured by dealer.',
+          );
+          return;
+        }
+        selectedItems.add(BadOrderItem(
+          productId: p.id,
+          productName: p.productName,
+          category: p.category,
+          quantity: q,
+          pricePerPiece: p.boPricePerPiece,
+          subtotal: q * p.boPricePerPiece,
+          imageUrl: p.imageUrl,
+        ));
+      }
+    }
+
+    if (selectedItems.isEmpty) {
+      ShowMessage.error(context, 'Please specify quantities for at least one bad order product.');
+      return;
+    }
+
+    if (_imageFile == null) {
+      ShowMessage.error(context, 'A photo of the bad order is required.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      // 1. Upload photo to Firebase Storage
+      final uploadedUrl = await Helperfunctions.saveImage(context, _imageFile!);
+
+      // 2. Create Bad Order record
+      await _boController.createBadOrder(
+        hapistore: widget.storeName,
+        selectedDate: widget.deliveryDate,
+        imagePath: uploadedUrl,
+        items: selectedItems,
+        notes: _notesController.text.trim(),
+        page: AppPages.delivery,
+      );
+
+      if (mounted) {
+        ShowMessage.success(context, 'Bad order record successfully submitted and recorded!');
+        widget.onBadOrderSaved();
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to save bad order record: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.90,
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: 8, bottom: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Record Bad Order: ${widget.storeName}',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'Pullout damaged or expired Selecta products',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+
+          // Search and Category Filter
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+                      decoration: InputDecoration(
+                        hintText: 'Search products...',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 16),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        filled: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('All', style: TextStyle(fontSize: 11.5)),
+                  selected: _categoryFilter == 'All',
+                  onSelected: (_) => setState(() => _categoryFilter = 'All'),
+                  visualDensity: VisualDensity.compact,
+                  showCheckmark: false,
+                ),
+                const SizedBox(width: 4),
+                ChoiceChip(
+                  label: const Text('Piece', style: TextStyle(fontSize: 11.5)),
+                  selected: _categoryFilter == 'By Piece',
+                  onSelected: (_) => setState(() => _categoryFilter = 'By Piece'),
+                  visualDensity: VisualDensity.compact,
+                  showCheckmark: false,
+                ),
+                const SizedBox(width: 4),
+                ChoiceChip(
+                  label: const Text('Case', style: TextStyle(fontSize: 11.5)),
+                  selected: _categoryFilter == 'By Case',
+                  onSelected: (_) => setState(() => _categoryFilter = 'By Case'),
+                  visualDensity: VisualDensity.compact,
+                  showCheckmark: false,
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 12),
+
+          // Stream of Selecta products
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _productController.getProductsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final docs = snapshot.data?.docs ?? [];
+                final allProducts = docs
+                    .map((d) => SelectaProduct.fromSnapshot(d))
+                    .where((p) => p.isActive)
+                    .toList();
+
+                final filteredProducts = allProducts.where((p) {
+                  final matchesCat = _categoryFilter == 'All' || p.category == _categoryFilter;
+                  final matchesQuery = _searchQuery.isEmpty ||
+                      p.productName.toLowerCase().contains(_searchQuery) ||
+                      p.itemCode.toLowerCase().contains(_searchQuery);
+                  return matchesCat && matchesQuery;
+                }).toList();
+
+                return Column(
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        children: [
+                          // 1. Photo Picker Card (Required)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 12, top: 4),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: _imageFile == null
+                                  ? Colors.red.shade50.withValues(alpha: 0.5)
+                                  : Colors.green.shade50.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: _imageFile == null ? Colors.red.shade300 : Colors.green.shade400,
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.photo_camera_outlined,
+                                      size: 18,
+                                      color: _imageFile == null ? Colors.red.shade800 : Colors.green.shade800,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Incident Photo (Required)',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _imageFile == null ? Colors.red.shade800 : Colors.green.shade800,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    if (_imageFile != null)
+                                      TextButton.icon(
+                                        onPressed: () => setState(() => _imageFile = null),
+                                        icon: const Icon(Icons.close, size: 16, color: Colors.red),
+                                        label: const Text('Remove', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                if (_imageFile != null)
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(
+                                      _imageFile!,
+                                      height: 140,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  )
+                                else
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () => _pickImage(ImageSource.camera),
+                                          icon: const Icon(Icons.camera_alt, size: 18),
+                                          label: const Text('Camera'),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed: () => _pickImage(ImageSource.gallery),
+                                          icon: const Icon(Icons.photo_library, size: 18),
+                                          label: const Text('Gallery'),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                          ),
+
+                          // 2. Remarks / Notes TextField
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12.0),
+                            child: TextField(
+                              controller: _notesController,
+                              maxLines: 2,
+                              decoration: InputDecoration(
+                                labelText: 'Notes / Remarks (Optional)',
+                                hintText: 'Reason: expired, melted, damaged packaging...',
+                                prefixIcon: const Icon(Icons.edit_note, size: 20),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              ),
+                            ),
+                          ),
+
+                          const Text(
+                            'Select Products & Quantities',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          const SizedBox(height: 6),
+
+                          if (filteredProducts.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(24.0),
+                              child: Center(child: Text('No active Selecta products found matching filter.')),
+                            )
+                          else
+                            ...filteredProducts.map((product) {
+                              final qty = _quantities[product.id] ?? 0;
+                              final isCase = product.category == 'By Case';
+                              final hasValidPrice = product.isBoPriceConfigured;
+                              final unitPrice = product.boPricePerPiece;
+                              final subtotal = qty * unitPrice;
+
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  side: BorderSide(
+                                    color: qty > 0
+                                        ? colorScheme.primary
+                                        : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                    width: qty > 0 ? 1.5 : 1.0,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(10.0),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      // Image
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: Colors.purple.shade50,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: product.imageUrl.isNotEmpty
+                                            ? ClipRRect(
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Image.network(
+                                                  product.imageUrl,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (_, _, _) => const Icon(Icons.icecream, color: Colors.purple, size: 20),
+                                                ),
+                                              )
+                                            : const Icon(Icons.icecream, color: Colors.purple, size: 20),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      // Product Info
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              product.productName,
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                  decoration: BoxDecoration(
+                                                    color: isCase ? Colors.purple.shade50 : Colors.blue.shade50,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text(
+                                                    product.category,
+                                                    style: TextStyle(
+                                                      fontSize: 10.5,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isCase ? Colors.purple.shade700 : Colors.blue.shade700,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                if (!hasValidPrice)
+                                                  const Text(
+                                                    '⚠️ Price not set by dealer',
+                                                    style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold),
+                                                  )
+                                                else
+                                                  Text(
+                                                    '@ ${Helperfunctions.formatDoubleAmountForDisplay(unitPrice)} / pc',
+                                                    style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                                  ),
+                                              ],
+                                            ),
+                                            if (qty > 0) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                'Subtotal: ${Helperfunctions.formatDoubleAmountForDisplay(subtotal)}',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: colorScheme.primary,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                      // Stepper
+                                      if (!hasValidPrice)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.shade50,
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Text('Blocked', style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
+                                        )
+                                      else
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(Icons.remove_circle_outline, size: 22),
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(),
+                                              color: qty > 0 ? Colors.red.shade700 : Colors.grey.shade400,
+                                              onPressed: qty > 0
+                                                  ? () => setState(() => _quantities[product.id] = qty - 1)
+                                                  : null,
+                                            ),
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                              child: Text(
+                                                '$qty',
+                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.add_circle_outline, size: 22),
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(),
+                                              color: colorScheme.primary,
+                                              onPressed: () => setState(() => _quantities[product.id] = qty + 1),
+                                            ),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
+                    ),
+
+                    // Sticky Bottom Bar
+                    SafeArea(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: theme.scaffoldBackgroundColor,
+                          border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, -2))],
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Total: $_totalUnits pcs',
+                                    style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                                  ),
+                                  Text(
+                                    Helperfunctions.formatDoubleAmountForDisplay(_computeTotalAmount(allProducts)),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            FilledButton.icon(
+                              onPressed: _isSubmitting ? null : () => _submit(allProducts),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.orange.shade800,
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              icon: _isSubmitting
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : const Icon(Icons.check, size: 18),
+                              label: Text(
+                                _isSubmitting ? 'Submitting...' : 'Save Bad Order',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ],

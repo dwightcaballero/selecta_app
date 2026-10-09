@@ -3,7 +3,6 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/dto/endofday_dto.dart';
-import 'package:selecta_ops/services/badorder_service.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/expenses_services.dart';
@@ -57,9 +56,6 @@ class EndofdayServices {
       }
     }
 
-    BadOrderService dbBO = BadOrderService();
-    endofday.badorderAmount = await dbBO.getTotalBadOrderForSpecificDay(deliveryDate) ?? 0;
-
     ExpensesService dbXP = ExpensesService();
     endofday.expenseAmount = await dbXP.getTotalExpensesForEndOfDay(deliveryDate) ?? 0;
 
@@ -72,7 +68,7 @@ class EndofdayServices {
       endofday.bankdeposit = breakdown.bankDepositAmount;
     }
 
-    endofday.expectedcashonhand = endofday.cashamount - endofday.badorderAmount - endofday.expenseAmount;
+    endofday.expectedcashonhand = endofday.cashamount - endofday.expenseAmount;
 
     return endofday;
   }
