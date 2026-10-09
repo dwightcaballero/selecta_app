@@ -29,6 +29,7 @@ class InventoryItem {
   final int stockQuantity;
   final int incomingQuantity;
   final int reservedQuantity;
+  final int preOrderQuantity;
   final int lowStockThreshold;
   final int maxStock;
   final InventoryProductSource source;
@@ -47,6 +48,7 @@ class InventoryItem {
     required this.stockQuantity,
     this.incomingQuantity = 0,
     this.reservedQuantity = 0,
+    this.preOrderQuantity = 0,
     required this.lowStockThreshold,
     this.maxStock = 0,
     required this.source,
@@ -66,6 +68,7 @@ class InventoryItem {
     int? stockQuantity,
     int? incomingQuantity,
     int? reservedQuantity,
+    int? preOrderQuantity,
     int? lowStockThreshold,
     int? maxStock,
     InventoryProductSource? source,
@@ -84,6 +87,7 @@ class InventoryItem {
       stockQuantity: stockQuantity ?? this.stockQuantity,
       incomingQuantity: incomingQuantity ?? this.incomingQuantity,
       reservedQuantity: reservedQuantity ?? this.reservedQuantity,
+      preOrderQuantity: preOrderQuantity ?? this.preOrderQuantity,
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       maxStock: maxStock ?? this.maxStock,
       source: source ?? this.source,
@@ -105,6 +109,7 @@ class InventoryItem {
       stockQuantity: product.stockQuantity,
       incomingQuantity: product.incomingQuantity,
       reservedQuantity: product.reservedQuantity,
+      preOrderQuantity: 0,
       lowStockThreshold: product.lowStockThreshold,
       maxStock: product.maxStock,
       source: InventoryProductSource.selecta,
@@ -125,6 +130,7 @@ class InventoryItem {
       stockQuantity: product.stockQuantity,
       incomingQuantity: 0,
       reservedQuantity: product.reservedQuantity,
+      preOrderQuantity: 0,
       lowStockThreshold: product.lowStockThreshold,
       maxStock: 0,
       source: InventoryProductSource.other,
@@ -136,17 +142,55 @@ class InventoryItem {
 
   double get margin => sellingPrice - buyingPrice;
 
-  double get marginPercent =>
-      buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
+  double get marginPercent => buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
   /// Physical unreserved stock in the warehouse (Current Stock - Reserved Stock).
   int get netPhysicalStock => stockQuantity - reservedQuantity;
 
   /// Available stock = Current stock + Incoming Stock - Reserved stock.
+  /// NOTE: As intended, pre-orders for future delivery do NOT deduct from available quantity.
   int get availableQuantity =>
-      ((stockQuantity + incomingQuantity) - reservedQuantity) < 0
-          ? 0
-          : ((stockQuantity + incomingQuantity) - reservedQuantity);
+      ((stockQuantity + incomingQuantity) - reservedQuantity) < 0 ? 0 : ((stockQuantity + incomingQuantity) - reservedQuantity);
+
+  /// Shortage quantity based on pre-orders minus current stock on the warehouse (actual stock).
+  int get preOrderShortage => (preOrderQuantity - stockQuantity) > 0 ? (preOrderQuantity - stockQuantity) : 0;
+
+  /// True if pre-ordered quantity exceeds current warehouse stock.
+  bool get hasPreOrderShortage => preOrderQuantity > stockQuantity;
+
+  /// Remaining stock in warehouse after pre-orders are fulfilled.
+  int get remainingStockAfterPreOrder => stockQuantity - preOrderQuantity;
+
+  /// True if product is recommended in Purchase Order due to pre-orders:
+  /// 1. Outright shortage: preOrderQuantity > stockQuantity (shortage > 0)
+  /// 2. Low stock threshold alert: (stockQuantity - preOrderQuantity) <= lowStockThreshold
+  bool get isPreOrderRecommended => preOrderQuantity > 0 && (stockQuantity - preOrderQuantity) <= lowStockThreshold;
+
+  /// True if item is recommended for PO due to pre-orders (shortage or low stock alert).
+  bool get hasPreOrderDeficit => isPreOrderRecommended;
+
+  /// Shortage quantity for PO (pre-order minus current warehouse stock).
+  int get preOrderDeficit => preOrderShortage;
+
+  /// Quantity recommended to order on Purchase Order:
+  /// - If max stock exists (> 0 and > lowStockThreshold): prefills with quantity needed
+  ///   to reach the midpoint level between low stock threshold and max stock.
+  /// - Else: only prefills what is needed to restore stock to the low-stock threshold.
+  int get recommendedPreOrderOrderQuantity {
+    final int targetStock;
+    if (maxStock > 0 && maxStock > lowStockThreshold) {
+      targetStock = ((lowStockThreshold + maxStock) / 2).round();
+    } else {
+      targetStock = lowStockThreshold;
+    }
+
+    final remaining = stockQuantity - preOrderQuantity;
+    final needed = targetStock - remaining;
+    if (hasPreOrderShortage) {
+      return needed > preOrderShortage ? needed : preOrderShortage;
+    }
+    return needed > 0 ? needed : 1;
+  }
 
   bool get isOutOfStock => stockQuantity <= 0;
 
@@ -219,9 +263,7 @@ class InventoryMovement {
     );
   }
 
-  factory InventoryMovement.fromSnapshot(
-    DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
+  factory InventoryMovement.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
     if (data == null) {
       return InventoryMovement(

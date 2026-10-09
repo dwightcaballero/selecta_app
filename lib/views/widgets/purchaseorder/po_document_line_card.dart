@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/po_extracted_line.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 
@@ -8,6 +9,7 @@ import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 class PoDocumentLineCard extends StatelessWidget {
   final int index;
   final PoExtractedLine line;
+  final InventoryItem? inventoryItem;
   final VoidCallback onToggleFlag;
   final VoidCallback onCorrect;
   final NumberFormat? currencyFormat;
@@ -16,6 +18,7 @@ class PoDocumentLineCard extends StatelessWidget {
     super.key,
     required this.index,
     required this.line,
+    this.inventoryItem,
     required this.onToggleFlag,
     required this.onCorrect,
     this.currencyFormat,
@@ -38,6 +41,10 @@ class PoDocumentLineCard extends StatelessWidget {
       cardBg = Colors.blue.withValues(alpha: 0.04);
       borderColor = Colors.blue.shade400;
       borderWidth = 1.5;
+    } else if (inventoryItem != null && inventoryItem!.hasPreOrderDeficit) {
+      cardBg = const Color(0xFF7C3AED).withValues(alpha: 0.04);
+      borderColor = const Color(0xFF8B5CF6).withValues(alpha: 0.5);
+      borderWidth = 1.4;
     }
 
     return Card(
@@ -93,6 +100,23 @@ class PoDocumentLineCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (inventoryItem != null && inventoryItem!.isPreOrderRecommended) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEDE9FE),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
+                          ),
+                          child: Text(
+                            inventoryItem!.hasPreOrderShortage
+                                ? '⭐ Recommended Pre-Order • Shortage: ${inventoryItem!.preOrderShortage} (Pre-order: ${inventoryItem!.preOrderQuantity} > Stock: ${inventoryItem!.stockQuantity})'
+                                : '⭐ Recommended Pre-Order • Low Stock Alert (Pre-order: ${inventoryItem!.preOrderQuantity}, Stock: ${inventoryItem!.stockQuantity} leaves ${inventoryItem!.remainingStockAfterPreOrder} ≤ ${inventoryItem!.lowStockThreshold})',
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF6D28D9)),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                      ],
                       Text(
                         line.productName,
                         style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, height: 1.2),

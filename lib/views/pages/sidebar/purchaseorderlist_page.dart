@@ -555,13 +555,87 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     );
   }
 
+  void _showNewOrderOptionsModal() {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Create Purchase Order',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Choose how you want to build this restock order:',
+                  style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: colorScheme.primaryContainer,
+                    child: Icon(Icons.edit_note_rounded, color: colorScheme.primary),
+                  ),
+                  title: const Text('Manual Order (Catalog)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Pick items directly from the catalog (Best Sellers, Case, Piece)'),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    Helperfunctions.navigateTo(
+                      context,
+                      PurchaseorderPage(
+                        purchaseorderID: '',
+                        purchaseorder: Purchaseorder.empty(),
+                        initialOpenManualPicker: true,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: colorScheme.secondaryContainer,
+                    child: Icon(Icons.document_scanner_rounded, color: colorScheme.secondary),
+                  ),
+                  title: const Text('Scan or Upload Document', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Scan supplier invoice or upload photo with Gemini AI'),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    Helperfunctions.navigateTo(
+                      context,
+                      PurchaseorderPage(
+                        purchaseorderID: '',
+                        purchaseorder: Purchaseorder.empty(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const CustomAppbar(title: 'Restock (PO)', subtitle: 'Restock from Selecta • Invoices & Tracking'),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: null,
-        onPressed: () => Helperfunctions.navigateTo(context, PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty())),
+        onPressed: _showNewOrderOptionsModal,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(
           'Add Order',

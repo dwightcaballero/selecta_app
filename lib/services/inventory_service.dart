@@ -49,6 +49,8 @@ class InventoryService {
     Map<String, int> pendingIncomingByName = {};
     Map<String, int> pendingReturnById = {};
     Map<String, int> pendingReturnByName = {};
+    Map<String, int> pendingPreOrderById = {};
+    Map<String, int> pendingPreOrderByName = {};
     Set<String> allLocalSelectaIds = {};
     Set<String> allLocalSelectaNames = {};
     bool selectaLoaded = false;
@@ -68,10 +70,19 @@ class InventoryService {
         return liveTotal > 0 ? liveTotal : item.incomingQuantity;
       }
 
+      int resolveLivePreOrder(InventoryItem item) {
+        final nameKey = item.productName.trim().toLowerCase();
+        return pendingPreOrderById[item.id] ?? pendingPreOrderByName[nameKey] ?? 0;
+      }
+
       final resolvedSelecta = selectaItems.map((item) {
         final nameKey = item.productName.trim().toLowerCase();
         final effectiveIncoming = resolveLiveIncoming(item);
-        var current = item.copyWith(incomingQuantity: effectiveIncoming);
+        final livePreOrder = resolveLivePreOrder(item);
+        var current = item.copyWith(
+          incomingQuantity: effectiveIncoming,
+          preOrderQuantity: livePreOrder,
+        );
 
         if (current.tag.isNotEmpty) return current;
         final fallbackTag = adminTagMap[item.id] ?? adminTagByName[nameKey] ?? '';
@@ -89,6 +100,7 @@ class InventoryService {
             !allLocalSelectaNames.contains(nameKey)) {
           final liveIncoming = (pendingIncomingById[adminProd.id] ?? pendingIncomingByName[nameKey] ?? 0) +
               (pendingReturnById[adminProd.id] ?? pendingReturnByName[nameKey] ?? 0);
+          final livePreOrder = pendingPreOrderById[adminProd.id] ?? pendingPreOrderByName[nameKey] ?? 0;
           resolvedSelecta.add(
             InventoryItem(
               id: adminProd.id,
@@ -100,6 +112,7 @@ class InventoryService {
               stockQuantity: 0,
               incomingQuantity: liveIncoming,
               reservedQuantity: 0,
+              preOrderQuantity: livePreOrder,
               lowStockThreshold: 10,
               source: InventoryProductSource.selecta,
               category: adminProd.category,
@@ -112,7 +125,11 @@ class InventoryService {
 
       final resolvedOther = otherItems.map((item) {
         final effectiveIncoming = resolveLiveIncoming(item);
-        return item.copyWith(incomingQuantity: effectiveIncoming);
+        final livePreOrder = resolveLivePreOrder(item);
+        return item.copyWith(
+          incomingQuantity: effectiveIncoming,
+          preOrderQuantity: livePreOrder,
+        );
       }).toList();
 
       final combined = <InventoryItem>[
@@ -250,6 +267,11 @@ class InventoryService {
           (snap) {
             final Map<String, int> rById = {};
             final Map<String, int> rByName = {};
+            final Map<String, int> preById = {};
+            final Map<String, int> preByName = {};
+
+            final now = DateTime.now();
+            final today = DateTime(now.year, now.month, now.day);
 
             for (final doc in snap.docs) {
               final data = doc.data();
@@ -257,8 +279,11 @@ class InventoryService {
               final status = data['transactionStatus'] as String? ?? '';
               final isReturnIncoming = data['isReturnIncoming'] as bool? ?? false;
               final isFullReturn = status == DeliveryStatus.returned;
+              final isVoided = status == DeliveryStatus.voided;
+              final isSettled = data['isInventorySettled'] as bool? ?? false;
+              final isDelivered = status == DeliveryStatus.delivered;
 
-              // Only include unapproved returns (full order return or explicit partial return incoming)
+              // 1. Returns calculation
               if (!isApproved && (isFullReturn || isReturnIncoming)) {
                 final itemsList = data['items'] as List<dynamic>? ?? [];
                 for (final raw in itemsList) {
@@ -279,10 +304,41 @@ class InventoryService {
                   }
                 }
               }
+
+              // 2. Pre-orders calculation (orders booked for tomorrow or any future dates)
+              final deliveryDateTs = data['deliveryDate'] as Timestamp?;
+              if (deliveryDateTs != null) {
+                final deliveryDate = deliveryDateTs.toDate();
+                final deliveryDay = DateTime(deliveryDate.year, deliveryDate.month, deliveryDate.day);
+                final isFuture = deliveryDay.isAfter(today);
+
+                if (isFuture && !isVoided && !isFullReturn && !isSettled && !isDelivered) {
+                  final itemsList = data['items'] as List<dynamic>? ?? [];
+                  for (final raw in itemsList) {
+                    if (raw is Map) {
+                      final pid = (raw['productId'] as String? ?? '').trim();
+                      final pName = (raw['productName'] as String? ?? '').trim().toLowerCase();
+                      final orderedQty = (raw['orderedQuantity'] as num?)?.toInt() ?? 0;
+                      final pickedQty = (raw['pickedQuantity'] as num?)?.toInt() ?? 0;
+                      final qty = pickedQty > 0 ? pickedQty : orderedQty;
+                      if (qty > 0) {
+                        if (pid.isNotEmpty) {
+                          preById[pid] = (preById[pid] ?? 0) + qty;
+                        }
+                        if (pName.isNotEmpty) {
+                          preByName[pName] = (preByName[pName] ?? 0) + qty;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
 
             pendingReturnById = rById;
             pendingReturnByName = rByName;
+            pendingPreOrderById = preById;
+            pendingPreOrderByName = preByName;
             returnLoaded = true;
             emitCombined();
           },

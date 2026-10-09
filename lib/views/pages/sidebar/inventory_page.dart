@@ -90,6 +90,7 @@ class _InventoryPageState extends State<InventoryPage> {
         'Other' => item.source == InventoryProductSource.other,
         'Incoming' => item.incomingQuantity > 0,
         'Reserved' => item.reservedQuantity > 0,
+        'Pre-orders' => item.preOrderQuantity > 0,
         'Needs Restock' => item.isNeedsRestock,
         'Low Stock' => item.isLowStock,
         'Out of Stock' => item.isOutOfStock,
@@ -148,6 +149,7 @@ class _InventoryPageState extends State<InventoryPage> {
         final otherCount = allItems.where((i) => i.source == InventoryProductSource.other).length;
         final incomingCount = allItems.where((i) => i.incomingQuantity > 0).length;
         final reservedCount = allItems.where((i) => i.reservedQuantity > 0).length;
+        final preOrderCount = allItems.where((i) => i.preOrderQuantity > 0).length;
 
         // Contextual subtitle
         final isFiltered = _searchQuery.isNotEmpty || _selectedFilter != 'All' || _selectedSort != InventorySortOption.defaultSrp;
@@ -240,6 +242,13 @@ class _InventoryPageState extends State<InventoryPage> {
                       reservedCount,
                       colorScheme,
                       alertColor: const Color(0xFF7C3AED),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(
+                      'Pre-orders',
+                      preOrderCount,
+                      colorScheme,
+                      alertColor: const Color(0xFF6D28D9),
                     ),
                     const SizedBox(width: 8),
                     _buildFilterChip(

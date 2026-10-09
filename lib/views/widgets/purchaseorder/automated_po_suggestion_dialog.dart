@@ -192,14 +192,16 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
       };
 
       final activeNeedingRestock = selectaCatalog
-          .where((i) => i.isActive && i.isNeedsRestock)
+          .where((i) => i.isActive && (i.isNeedsRestock || i.hasPreOrderDeficit))
           .toList();
 
       final List<SuggestedPoItem> suggestions = [];
       final List<SupplierOosItem> oosList = [];
 
       for (final item in activeNeedingRestock) {
-        final needed = item.suggestedRestockQuantity;
+        final restockQty = item.suggestedRestockQuantity;
+        final deficitQty = item.isPreOrderRecommended ? item.recommendedPreOrderOrderQuantity : 0;
+        final needed = restockQty > deficitQty ? restockQty : deficitQty;
         if (needed <= 0) continue;
 
         final supplierInfo = supplierStatusByProduct[item.id];
@@ -219,10 +221,15 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
           // Supplier has stock
           int suggestQty = needed;
           String note = '';
+          if (item.hasPreOrderShortage) {
+            note = 'Pre-order shortage (${item.preOrderShortage} pcs)';
+          } else if (item.isPreOrderRecommended) {
+            note = 'Pre-order low stock (${item.remainingStockAfterPreOrder} left)';
+          }
           final cap = supplierInfo?.supplierAvailableQuantity;
           if (cap != null && cap > 0 && cap < needed) {
             suggestQty = cap;
-            note = 'Capped at supplier max ($cap pcs)';
+            note = note.isNotEmpty ? '$note • Capped at max ($cap)' : 'Capped at supplier max ($cap pcs)';
           }
 
           suggestions.add(
@@ -236,6 +243,23 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
           );
         }
       }
+
+      // Pre-order recommended items float to the very top of suggestions
+      suggestions.sort((a, b) {
+        if (a.item.hasPreOrderShortage && !b.item.hasPreOrderShortage) return -1;
+        if (!a.item.hasPreOrderShortage && b.item.hasPreOrderShortage) return 1;
+        if (a.item.hasPreOrderShortage && b.item.hasPreOrderShortage) {
+          final cmp = b.item.preOrderShortage.compareTo(a.item.preOrderShortage);
+          if (cmp != 0) return cmp;
+        }
+        if (a.item.isPreOrderRecommended && !b.item.isPreOrderRecommended) return -1;
+        if (!a.item.isPreOrderRecommended && b.item.isPreOrderRecommended) return 1;
+        if (a.item.isPreOrderRecommended && b.item.isPreOrderRecommended) {
+          final cmp = a.item.remainingStockAfterPreOrder.compareTo(b.item.remainingStockAfterPreOrder);
+          if (cmp != 0) return cmp;
+        }
+        return b.neededQuantity.compareTo(a.neededQuantity);
+      });
 
       if (mounted) {
         setState(() {
@@ -609,11 +633,18 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
             separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (ctx, index) {
               final s = _suggestedItems[index];
+              final isDeficit = s.item.hasPreOrderDeficit;
               return Card(
                 elevation: 0,
+                color: isDeficit ? const Color(0xFF6D28D9).withValues(alpha: 0.05) : null,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.green.withValues(alpha: 0.3)),
+                  side: BorderSide(
+                    color: isDeficit
+                        ? const Color(0xFF6D28D9).withValues(alpha: 0.6)
+                        : Colors.green.withValues(alpha: 0.3),
+                    width: isDeficit ? 1.5 : 1,
+                  ),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(10),
@@ -629,6 +660,26 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (isDeficit) ...[
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 3),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6D28D9).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  s.item.hasPreOrderShortage
+                                      ? '⭐ Recommended Pre-order • Shortage: ${s.item.preOrderShortage}'
+                                      : '⭐ Recommended Pre-order • Low stock alert (${s.item.remainingStockAfterPreOrder} left)',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF6D28D9),
+                                  ),
+                                ),
+                              ),
+                            ],
                             Text(
                               s.item.productName,
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
@@ -644,7 +695,11 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
                               const SizedBox(height: 2),
                               Text(
                                 s.note,
-                                style: TextStyle(fontSize: 11, color: Colors.orange.shade800, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDeficit ? const Color(0xFF6D28D9) : Colors.orange.shade800,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ],
                           ],

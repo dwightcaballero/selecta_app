@@ -27,11 +27,18 @@ import 'package:selecta_ops/views/widgets/purchaseorder/po_document_line_card.da
 import 'package:selecta_ops/views/widgets/purchaseorder/po_reconciliation_header.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/po_phase2_confirmation_card.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/automated_po_suggestion_dialog.dart';
+import 'package:selecta_ops/views/widgets/purchaseorder/manual_po_product_picker_dialog.dart';
 
 class PurchaseorderPage extends StatefulWidget {
-  const PurchaseorderPage({super.key, required this.purchaseorderID, required this.purchaseorder});
+  const PurchaseorderPage({
+    super.key,
+    required this.purchaseorderID,
+    required this.purchaseorder,
+    this.initialOpenManualPicker = false,
+  });
   final Purchaseorder purchaseorder;
   final String purchaseorderID;
+  final bool initialOpenManualPicker;
 
   @override
   State<PurchaseorderPage> createState() => _PurchaseorderPageState();
@@ -84,6 +91,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   double _calculatedOverpayment = 0.0;
   int _invoiceSelectedTab = 0;
   bool _showMatchedItems = false;
+  bool _hasTriggeredInitialManualPicker = false;
 
   bool get _isEditing => !isNewRecord;
   bool get _isPending => widget.purchaseorder.status == 'pending';
@@ -182,8 +190,73 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   // ============================================================
-  // AI Document Scanner & Automated P.O. Suggestion
+  // AI Document Scanner, Manual Selection & Automated P.O.
   // ============================================================
+
+  Future<void> _openManualPoPicker(List<InventoryItem> allInventory) async {
+    final selectedLines = await ManualPoProductPickerDialog.show(
+      context: context,
+      allInventory: allInventory,
+      existingLines: _documentLines,
+      currencyFormat: _currencyFormat,
+    );
+
+    if (selectedLines != null && mounted) {
+      setState(() {
+        _documentLines
+          ..clear()
+          ..addAll(selectedLines);
+        _prioritizePreOrderDeficitLines(allInventory);
+        _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
+        _docTotalAmountRead = _currentListTotalCost;
+        orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
+        _aiExtractionSummary = _documentLines.isNotEmpty
+            ? '📋 Manually selected ${_documentLines.length} products ($_currentListUnits units)'
+            : null;
+      });
+      if (_documentLines.isNotEmpty && mounted) {
+        ShowMessage.success(
+          context,
+          'Selected ${_documentLines.length} products ($_currentListUnits units) for Purchase Order.',
+        );
+      }
+    }
+  }
+
+  /// Prioritizes products where customer pre-order quantity exceeds available inventory
+  /// by moving them to the very top of the items list.
+  void _prioritizePreOrderDeficitLines(List<InventoryItem> allInventory) {
+    if (_documentLines.isEmpty) return;
+    final Map<String, InventoryItem> invById = {for (final i in allInventory) i.id: i};
+    final Map<String, InventoryItem> invByName = {
+      for (final i in allInventory) i.productName.trim().toLowerCase(): i,
+    };
+
+    _documentLines.sort((a, b) {
+      final invA = invById[a.productId] ?? invByName[a.productName.trim().toLowerCase()];
+      final invB = invById[b.productId] ?? invByName[b.productName.trim().toLowerCase()];
+
+      final isRecA = invA != null && invA.isPreOrderRecommended;
+      final isRecB = invB != null && invB.isPreOrderRecommended;
+
+      if (isRecA && !isRecB) return -1;
+      if (!isRecA && isRecB) return 1;
+
+      if (isRecA && isRecB) {
+        final shortA = invA.hasPreOrderShortage ? invA.preOrderShortage : 0;
+        final shortB = invB.hasPreOrderShortage ? invB.preOrderShortage : 0;
+        if (shortA > 0 && shortB == 0) return -1;
+        if (shortA == 0 && shortB > 0) return 1;
+        if (shortA > 0 && shortB > 0 && shortA != shortB) {
+          return shortB.compareTo(shortA); // highest shortage first
+        }
+        final remA = invA.remainingStockAfterPreOrder;
+        final remB = invB.remainingStockAfterPreOrder;
+        if (remA != remB) return remA.compareTo(remB); // lowest remaining stock first
+      }
+      return 0;
+    });
+  }
 
   Future<void> _openAutomatedPoSuggestions(List<InventoryItem> allInventory) async {
     final suggestedLines = await AutomatedPoSuggestionDialog.show(
@@ -197,6 +270,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         _documentLines
           ..clear()
           ..addAll(suggestedLines);
+        _prioritizePreOrderDeficitLines(allInventory);
         _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
         _docTotalAmountRead = _currentListTotalCost;
         orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
@@ -210,6 +284,44 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         );
       }
     }
+  }
+
+  void _addOrUpdatePreOrderLines(List<InventoryItem> deficitItems, List<InventoryItem> allInventory) {
+    setState(() {
+      for (final item in deficitItems) {
+        final existingIndex = _documentLines.indexWhere(
+          (l) => l.productId == item.id || l.productName.trim().toLowerCase() == item.productName.trim().toLowerCase(),
+        );
+        final neededQty = item.isPreOrderRecommended ? item.recommendedPreOrderOrderQuantity : 1;
+        if (existingIndex >= 0) {
+          if (_documentLines[existingIndex].quantity < neededQty) {
+            _documentLines[existingIndex].quantity = neededQty;
+          }
+        } else {
+          _documentLines.add(PoExtractedLine(
+            productId: item.id,
+            productName: item.productName,
+            imageUrl: item.imageUrl,
+            productSource: item.source.name,
+            category: item.category,
+            tag: item.tag,
+            buyingPrice: item.buyingPrice,
+            sellingPrice: item.sellingPrice,
+            quantity: neededQty,
+            rawDocText: item.productName,
+          ));
+        }
+      }
+      _prioritizePreOrderDeficitLines(allInventory);
+      _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
+      _docTotalAmountRead = _currentListTotalCost;
+      orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
+      _aiExtractionSummary = '⭐ Added ${deficitItems.length} recommended pre-order items';
+    });
+    ShowMessage.success(
+      context,
+      'Added pre-order shortage items to Purchase Order at top priority.',
+    );
   }
 
   Future<void> _showImageSourcePicker(List<InventoryItem> allInventory, {bool append = false}) async {
@@ -363,15 +475,17 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             _documentLines
               ..clear()
               ..addAll(currentLines);
+            _prioritizePreOrderDeficitLines(allInventory);
             orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
           });
         },
       );
 
-      // Populate document lines in document sequence
+      // Populate document lines in document sequence with pre-orders prioritized at top
       _documentLines
         ..clear()
         ..addAll(lines);
+      _prioritizePreOrderDeficitLines(allInventory);
 
       // Record document totals read by AI
       _docTotalAmountRead = result.totalAmount;
@@ -1857,11 +1971,106 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     if (picked != null) setState(() => _officialInvoiceDate = picked);
   }
 
+  // Recommendations Banner for Products with Pre-Order Stock Deficits & Low Stock Alerts
+  Widget _buildPreOrderRecommendationsBanner(List<InventoryItem> allInventory, ColorScheme colorScheme) {
+    final recommendedItems = allInventory.where((i) => i.isPreOrderRecommended).toList();
+    if (recommendedItems.isEmpty) return const SizedBox.shrink();
+
+    final totalRecommendedUnits = recommendedItems.fold<int>(0, (acc, i) => acc + i.recommendedPreOrderOrderQuantity);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF6D28D9).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF6D28D9).withValues(alpha: 0.4), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6D28D9).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.star_rounded, color: Color(0xFF6D28D9), size: 18),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Recommended Pre-Orders (${recommendedItems.length})',
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF5B21B6),
+                  ),
+                ),
+              ),
+              FilledButton.tonal(
+                onPressed: () => _addOrUpdatePreOrderLines(recommendedItems, allInventory),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF6D28D9),
+                  foregroundColor: Colors.white,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                ),
+                child: const Text('Add All to PO'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Booked customer pre-orders require restocking across ${recommendedItems.length} products to cover shortages and prevent low stock levels ($totalRecommendedUnits units). Add them to ensure delivery fulfillment.',
+            style: TextStyle(
+              fontSize: 11.5,
+              color: colorScheme.onSurfaceVariant,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: recommendedItems.map((item) {
+              final label = item.hasPreOrderShortage
+                  ? '${item.productName}: +${item.preOrderShortage} shortage'
+                  : '${item.productName}: +${item.recommendedPreOrderOrderQuantity} restock';
+              return ActionChip(
+                backgroundColor: Colors.white,
+                side: BorderSide(color: const Color(0xFF6D28D9).withValues(alpha: 0.3)),
+                avatar: const Icon(Icons.add_circle_outline, size: 14, color: Color(0xFF6D28D9)),
+                label: Text(
+                  label,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF5B21B6)),
+                ),
+                onPressed: () => _addOrUpdatePreOrderLines([item], allInventory),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Single Item Card in the Document-Ordered List
   Widget _buildDocumentLineCard(int index, PoExtractedLine line, ColorScheme colorScheme, List<InventoryItem> allInventory) {
+    InventoryItem? matchedItem;
+    for (final item in allInventory) {
+      if (item.id == line.productId || item.productName.trim().toLowerCase() == line.productName.trim().toLowerCase()) {
+        matchedItem = item;
+        break;
+      }
+    }
+
     return PoDocumentLineCard(
       index: index,
       line: line,
+      inventoryItem: matchedItem,
       currencyFormat: _currencyFormat,
       onToggleFlag: () => setState(() => line.isIncorrect = !line.isIncorrect),
       onCorrect: () => _showCorrectionDialog(index, allInventory),
@@ -2123,6 +2332,18 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               .where((item) => item.source == InventoryProductSource.selecta)
               .toList();
 
+          if (widget.initialOpenManualPicker &&
+              !_hasTriggeredInitialManualPicker &&
+              allInventory.isNotEmpty &&
+              _documentLines.isEmpty) {
+            _hasTriggeredInitialManualPicker = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _openManualPoPicker(allInventory);
+              }
+            });
+          }
+
           return Scaffold(
             appBar: CustomAppbar(
               title: 'Purchase Order',
@@ -2140,6 +2361,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               if (_isEditing && _isPending)
                 SliverToBoxAdapter(child: _buildPhase2ConfirmationCard(allInventory)),
 
+              // Pre-Order Shortage Recommendations Banner
+              SliverToBoxAdapter(child: _buildPreOrderRecommendationsBanner(allInventory, colorScheme)),
+
               // If no lines extracted yet and not loading: Prompt to scan document
               if (_documentLines.isEmpty && !_isAnalyzingWithAi)
                 SliverFillRemaining(
@@ -2147,91 +2371,105 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   child: Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(Icons.document_scanner_rounded, size: 48, color: colorScheme.primary),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Scan Document to Begin',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Take a photo or upload your supplier digital invoice/receipt. The AI will extract and sort items in the exact document order.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 20),
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 12,
-                            runSpacing: 10,
-                            children: [
-                              FilledButton.icon(
-                                onPressed: () => _showImageSourcePicker(allInventory),
-                                icon: const Icon(Icons.camera_alt_outlined),
-                                label: const Text('Scan / Upload Document', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                              FilledButton.tonalIcon(
-                                onPressed: () => _openAutomatedPoSuggestions(allInventory),
-                                icon: const Icon(Icons.auto_awesome_rounded),
-                                label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                )
-              else ...[
-                // Section Header for Document Lines
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                    child: Row(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.format_list_numbered_rounded, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Document Order (${_documentLines.length})',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
                           ),
+                          child: Icon(Icons.document_scanner_rounded, size: 48, color: colorScheme.primary),
                         ),
-                        TextButton.icon(
-                          onPressed: () => _openAutomatedPoSuggestions(allInventory),
-                          style: TextButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          ),
-                          icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-                          label: const Text('Auto-Suggest', style: TextStyle(fontSize: 12)),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Create or Scan Purchase Order',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
-                        const SizedBox(width: 4),
-                        TextButton.icon(
-                          onPressed: () => _showAddMissingLineDialog(allInventory),
-                          style: TextButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          ),
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text('Add Missing Line', style: TextStyle(fontSize: 12)),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Select products manually from your catalog, scan your supplier document, or generate auto-suggestions based on inventory levels.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 20),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 12,
+                          runSpacing: 10,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: () => _openManualPoPicker(allInventory),
+                              icon: const Icon(Icons.edit_note_rounded),
+                              label: const Text('Manual Order', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                            FilledButton.tonalIcon(
+                              onPressed: () => _showImageSourcePicker(allInventory),
+                              icon: const Icon(Icons.camera_alt_outlined),
+                              label: const Text('Scan / Upload Document', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                            FilledButton.tonalIcon(
+                              onPressed: () => _openAutomatedPoSuggestions(allInventory),
+                              icon: const Icon(Icons.auto_awesome_rounded),
+                              label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
+              )
+            else ...[
+              // Section Header for Document Lines
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.format_list_numbered_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Items (${_documentLines.length})',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => _openManualPoPicker(allInventory),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        ),
+                        icon: const Icon(Icons.edit_note_rounded, size: 16),
+                        label: const Text('Catalog', style: TextStyle(fontSize: 12)),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => _openAutomatedPoSuggestions(allInventory),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        ),
+                        icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                        label: const Text('Suggest', style: TextStyle(fontSize: 12)),
+                      ),
+                      const SizedBox(width: 4),
+                      TextButton.icon(
+                        onPressed: () => _showAddMissingLineDialog(allInventory),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        ),
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('Add', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
                 // Extracted Document Lines List (Numbered in exact document sequence)
                 SliverPadding(

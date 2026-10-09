@@ -32,7 +32,7 @@ class InventoryCard extends StatelessWidget {
     final bool isBestSeller = ProductTag.isBestSeller(item.tag);
     final bool isNewProduct = ProductTag.isNewProduct(item.tag);
     final bool isOther = item.source == InventoryProductSource.other;
-    final bool hasFloating = item.incomingQuantity > 0 || item.reservedQuantity > 0;
+    final bool hasFloating = item.incomingQuantity > 0 || item.reservedQuantity > 0 || item.preOrderQuantity > 0;
 
     final Color stockColor = isOut
         ? colorScheme.error
@@ -78,12 +78,36 @@ class InventoryCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (isBestSeller || isNewProduct || isOther || item.itemCode.isNotEmpty) ...[
+                        if (isBestSeller || isNewProduct || isOther || item.itemCode.isNotEmpty || item.preOrderQuantity > 0) ...[
                           Wrap(
                             spacing: 6,
                             runSpacing: 4,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
+                              if (item.preOrderQuantity > 0)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEDE9FE),
+                                    borderRadius: BorderRadius.circular(5),
+                                    border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.event_note_rounded, size: 12, color: Color(0xFF6D28D9)),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        'Pre-order: ${item.preOrderQuantity}',
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF6D28D9),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               if (isBestSeller)
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
@@ -364,6 +388,26 @@ class InventoryCard extends StatelessWidget {
                               const Text(
                                 'PO',
                                 style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF0284C7)),
+                              ),
+                            ],
+
+                            // If pre-orders exist: show Pre-order
+                            if (item.preOrderQuantity > 0) ...[
+                              _buildPipelineDivider(colorScheme),
+                              const Icon(Icons.event_note_rounded, size: 12.5, color: Color(0xFF6D28D9)),
+                              const SizedBox(width: 2.5),
+                              Text(
+                                '${item.preOrderQuantity}',
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF6D28D9),
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              const Text(
+                                'Pre-order',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF6D28D9)),
                               ),
                             ],
                           ],
