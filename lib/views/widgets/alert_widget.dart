@@ -16,12 +16,12 @@ class ShowMessage {
             decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), shape: BoxShape.circle),
             child: const Icon(Icons.error_outline_rounded, color: Colors.red, size: 32),
           ),
-          title: const Text('Validation Errors', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          title: const Text('Validation Errors', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, decoration: TextDecoration.none)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Please resolve the following issues before continuing:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+              Text('Please resolve the following issues before continuing:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant, decoration: TextDecoration.none)),
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
@@ -41,10 +41,10 @@ class ShowMessage {
                         children: [
                           const Text(
                             '• ',
-                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, decoration: TextDecoration.none),
                           ),
                           Expanded(
-                            child: Text(err, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                            child: Text(err, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, decoration: TextDecoration.none)),
                           ),
                         ],
                       ),
@@ -104,8 +104,8 @@ class ShowMessage {
                   child: Icon(icon, color: isDestructive ? Colors.red : colorScheme.primary, size: 32),
                 )
               : null,
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          content: Text(message, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, decoration: TextDecoration.none)),
+          content: Text(message, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant, decoration: TextDecoration.none)),
           actions: [
             TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(cancelText)),
             FilledButton(
@@ -143,8 +143,8 @@ class ShowMessage {
                   child: Icon(icon, color: colorScheme.primary, size: 32),
                 )
               : null,
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          content: Text(message, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant)),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, decoration: TextDecoration.none)),
+          content: Text(message, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant, decoration: TextDecoration.none)),
           actions: [
             FilledButton(
               style: FilledButton.styleFrom(

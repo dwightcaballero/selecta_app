@@ -221,7 +221,8 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: lightCard,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        titleTextStyle: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: lightTextPrimary),
+        titleTextStyle: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: lightTextPrimary, decoration: TextDecoration.none),
+        contentTextStyle: GoogleFonts.inter(fontSize: 14, color: lightTextSecondary, decoration: TextDecoration.none),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: lightCard,
@@ -400,7 +401,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(20),
           side: const BorderSide(color: darkBorder, width: 1.2),
         ),
-        titleTextStyle: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: darkTextPrimary),
+        titleTextStyle: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700, color: darkTextPrimary, decoration: TextDecoration.none),
+        contentTextStyle: GoogleFonts.inter(fontSize: 14, color: darkTextSecondary, decoration: TextDecoration.none),
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: darkCard,

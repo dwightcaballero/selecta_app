@@ -343,75 +343,81 @@ class Helperfunctions {
           return PopScope(
             canPop: false, // Prevents closing via the physical back button or swipe
             child: Center(
-              child: Container(
-                constraints: BoxConstraints(maxWidth: hasMessage ? 320 : 88),
-                margin: const EdgeInsets.symmetric(horizontal: 28),
-                padding: EdgeInsets.symmetric(
-                  horizontal: hasMessage ? 24 : 16,
-                  vertical: hasMessage ? 24 : 16,
-                ),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.18),
-                      blurRadius: 24,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: CircularProgressIndicator.adaptive(
-                        strokeWidth: 3.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  constraints: BoxConstraints(maxWidth: hasMessage ? 320 : 88),
+                  margin: const EdgeInsets.symmetric(horizontal: 28),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: hasMessage ? 24 : 16,
+                    vertical: hasMessage ? 24 : 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.18),
+                        blurRadius: 24,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
-                    if (hasMessage) ...[
-                      const SizedBox(height: 18),
-                      if (statusNotifier != null)
-                        ValueListenableBuilder<String>(
-                          valueListenable: statusNotifier,
-                          builder: (context, currentText, _) {
-                            final displayTitle = currentText.isNotEmpty ? currentText : message;
-                            return Text(
-                              displayTitle,
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                              textAlign: TextAlign.center,
-                            );
-                          },
-                        )
-                      else
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: CircularProgressIndicator.adaptive(
+                          strokeWidth: 3.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                        ),
+                      ),
+                      if (hasMessage) ...[
+                        const SizedBox(height: 18),
+                        if (statusNotifier != null)
+                          ValueListenableBuilder<String>(
+                            valueListenable: statusNotifier,
+                            builder: (context, currentText, _) {
+                              final displayTitle = currentText.isNotEmpty ? currentText : message;
+                              return Text(
+                                displayTitle,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.onSurface,
+                                  decoration: TextDecoration.none,
+                                ),
+                                textAlign: TextAlign.center,
+                              );
+                            },
+                          )
+                        else
+                          Text(
+                            message,
+                            style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
+                              decoration: TextDecoration.none,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        const SizedBox(height: 8),
                         Text(
-                          message,
+                          subtitle.isNotEmpty ? subtitle : 'Please wait, do not close or exit the app.',
                           style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onSurface,
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            height: 1.3,
+                            decoration: TextDecoration.none,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                      const SizedBox(height: 8),
-                      Text(
-                        subtitle.isNotEmpty ? subtitle : 'Please wait, do not close or exit the app.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: theme.colorScheme.onSurfaceVariant,
-                          height: 1.3,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
