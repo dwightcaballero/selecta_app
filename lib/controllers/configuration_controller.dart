@@ -63,6 +63,7 @@ class ConfigurationController {
     double? scanningTargetPercentage,
     int? expansionTarget,
     String? superAdminPasswordHash,
+    bool? enablePicklistBarcodeScanner,
   }) async {
     if (endDate.isBefore(startDate)) {
       throw ArgumentError('Merch Blitz End Date must be after or equal to the Start Date.');
@@ -77,6 +78,7 @@ class ConfigurationController {
     final finalScanningPct = scanningTargetPercentage ?? originalConfig?.scanningTargetPercentage ?? 100.0;
     final finalExpansionTarget = expansionTarget ?? originalConfig?.expansionTarget ?? 10;
     final finalSuperAdminHash = superAdminPasswordHash ?? originalConfig?.superAdminPasswordHash ?? '';
+    final finalEnableScanner = enablePicklistBarcodeScanner ?? originalConfig?.enablePicklistBarcodeScanner ?? true;
 
     final config = Configuration(
       merchBlitzStartDate: newStartDateTs,
@@ -91,6 +93,8 @@ class ConfigurationController {
       placementTargetPercentage: finalPlacementPct,
       scanningTargetPercentage: finalScanningPct,
       expansionTarget: finalExpansionTarget,
+      placementPairs: originalConfig?.placementPairs ?? const [],
+      enablePicklistBarcodeScanner: finalEnableScanner,
     );
 
     await _configService.saveConfiguration(config);

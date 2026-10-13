@@ -52,6 +52,7 @@ class OrderItem {
   final String productId;
   final String productName;
   final String imageUrl;
+  final String barcode;
   final String productSource; // 'selecta' | 'other'
   final String category; // 'By Piece' | 'By Case' (for Selecta)
   final String tag; // 'Best Seller' | 'New Product' | ''
@@ -66,6 +67,7 @@ class OrderItem {
     required this.productId,
     required this.productName,
     this.imageUrl = '',
+    this.barcode = '',
     this.productSource = 'selecta',
     this.category = '',
     this.tag = '',
@@ -99,6 +101,7 @@ class OrderItem {
     String? productId,
     String? productName,
     String? imageUrl,
+    String? barcode,
     String? productSource,
     String? category,
     String? tag,
@@ -113,6 +116,7 @@ class OrderItem {
       productId: productId ?? this.productId,
       productName: productName ?? this.productName,
       imageUrl: imageUrl ?? this.imageUrl,
+      barcode: barcode ?? this.barcode,
       productSource: productSource ?? this.productSource,
       category: category ?? this.category,
       tag: tag ?? this.tag,
@@ -133,6 +137,7 @@ class OrderItem {
       productId: json['productId'] as String? ?? '',
       productName: json['productName'] as String? ?? '',
       imageUrl: json['imageUrl'] as String? ?? '',
+      barcode: (json['barcode'] as String? ?? '').trim(),
       productSource: json['productSource'] as String? ?? 'selecta',
       category: json['category'] as String? ?? '',
       tag: (json['tag'] as String? ?? '').trim(),
@@ -150,6 +155,7 @@ class OrderItem {
       'productId': productId,
       'productName': productName,
       'imageUrl': imageUrl,
+      'barcode': barcode,
       'productSource': productSource,
       'category': category,
       'tag': tag,

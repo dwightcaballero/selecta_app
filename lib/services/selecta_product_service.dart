@@ -159,6 +159,7 @@ class SelectaProductService {
         'sellingPrice': product.sellingPrice,
         'price': product.sellingPrice,
         'itemCode': '',
+        'barcode': product.barcode,
         'category': product.category,
         'tag': product.tag,
         'isActive': true,
@@ -171,7 +172,7 @@ class SelectaProductService {
     return docRef.id;
   }
 
-  /// Updates an existing [AdminSelectaProduct] (Admin only) and updates local dealer catalog prices/name/image/category.
+  /// Updates an existing [AdminSelectaProduct] (Admin only) and updates local dealer catalog prices/name/image/category/barcode.
   Future<void> updateAdminProduct(String productId, AdminSelectaProduct product) async {
     final now = Timestamp.now();
     await _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).set(
@@ -182,6 +183,7 @@ class SelectaProductService {
         'sellingPrice': product.sellingPrice,
         'category': product.category,
         'tag': product.tag,
+        'barcode': product.barcode,
         'updatedAt': now,
       },
       SetOptions(merge: true),
@@ -197,7 +199,19 @@ class SelectaProductService {
         'price': product.sellingPrice,
         'category': product.category,
         'tag': product.tag,
+        'barcode': product.barcode,
         'updatedAt': now,
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Updates only the barcode for a local dealer's [SelectaProduct].
+  Future<void> updateDealerProductBarcode(String productId, String barcode) async {
+    await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).set(
+      {
+        'barcode': barcode.trim(),
+        'updatedAt': Timestamp.now(),
       },
       SetOptions(merge: true),
     );
@@ -613,6 +627,7 @@ class SelectaProductService {
     int tagCol = -1;
     int imageCol = -1;
     int idCol = -1;
+    int barcodeCol = -1;
 
     String normalize(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
@@ -651,6 +666,10 @@ class SelectaProductService {
           header == 'label' ||
           header == 'badge') {
         tagCol = i;
+      } else if (header.contains('barcode') ||
+          header == 'upc' ||
+          header == 'ean') {
+        barcodeCol = i;
       } else if (header.contains('image') ||
           header.contains('photo') ||
           header.contains('picture') ||
@@ -714,6 +733,7 @@ class SelectaProductService {
 
       final imageUrl = imageCol >= 0 ? getCol(imageCol) : '';
       final tag = tagCol >= 0 ? getCol(tagCol) : '';
+      final barcode = barcodeCol >= 0 ? getCol(barcodeCol) : '';
       final id = idCol >= 0 ? getCol(idCol) : '';
 
       products.add(
@@ -721,6 +741,7 @@ class SelectaProductService {
           id: id,
           productName: name,
           imageUrl: imageUrl,
+          barcode: barcode,
           buyingPrice: buyingPrice,
           sellingPrice: sellingPrice,
           category: category,
@@ -906,6 +927,9 @@ class SelectaProductService {
         final String preservedItemCode = existingData != null
             ? (existingData['itemCode'] as String? ?? '')
             : '';
+        final String preservedBarcode = existingData != null
+            ? (existingData['barcode'] as String? ?? '')
+            : '';
         final String preservedCategory = existingData != null
             ? (existingData['category'] as String? ?? '')
             : '';
@@ -923,13 +947,15 @@ class SelectaProductService {
 
           final oldCat = (existingData['category'] as String? ?? '').trim();
           final oldTag = (existingData['tag'] as String? ?? '').trim();
+          final oldBarcode = (existingData['barcode'] as String? ?? '').trim();
 
           if (oldName != adminProd.productName ||
               oldImg != adminProd.imageUrl ||
               oldBuy != adminProd.buyingPrice ||
               oldSell != adminProd.sellingPrice ||
               oldCat != adminProd.category ||
-              oldTag != adminProd.tag) {
+              oldTag != adminProd.tag ||
+              (adminProd.barcode.isNotEmpty && oldBarcode != adminProd.barcode)) {
             updatedCount++;
           }
         }
@@ -937,6 +963,10 @@ class SelectaProductService {
         final targetCategory = adminProd.category.isNotEmpty
             ? adminProd.category
             : (preservedCategory.isNotEmpty ? preservedCategory : 'By Piece');
+
+        final targetBarcode = adminProd.barcode.isNotEmpty
+            ? adminProd.barcode
+            : preservedBarcode;
 
         final dealerProduct = SelectaProduct.fromAdminProduct(
           id: targetId,
@@ -948,6 +978,7 @@ class SelectaProductService {
           stockQuantity: preservedStockQuantity,
           lowStockThreshold: preservedLowStockThreshold,
           itemCode: preservedItemCode,
+          barcode: targetBarcode,
           category: targetCategory,
           tag: adminProd.tag,
           importedAt: importedAt,

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class OtherProduct {
   String productName;
   String imageUrl;
+  String barcode;
   double buyingPrice;
   double sellingPrice;
   bool isActive;
@@ -15,6 +16,7 @@ class OtherProduct {
   OtherProduct({
     required this.productName,
     required this.imageUrl,
+    this.barcode = '',
     required this.buyingPrice,
     required this.sellingPrice,
     this.isActive = true,
@@ -28,6 +30,7 @@ class OtherProduct {
   static OtherProduct empty() => OtherProduct(
         productName: '',
         imageUrl: '',
+        barcode: '',
         buyingPrice: 0.0,
         sellingPrice: 0.0,
         isActive: true,
@@ -40,6 +43,7 @@ class OtherProduct {
     return OtherProduct(
       productName: json['productName'] as String? ?? '',
       imageUrl: json['imageUrl'] as String? ?? '',
+      barcode: (json['barcode'] as String? ?? '').trim(),
       buyingPrice: (json['buyingPrice'] as num?)?.toDouble() ?? 0.0,
       sellingPrice: (json['sellingPrice'] as num?)?.toDouble() ?? 0.0,
       isActive: json['isActive'] as bool? ?? true,
@@ -57,6 +61,7 @@ class OtherProduct {
       return OtherProduct(
         productName: data['productName'] ?? '',
         imageUrl: data['imageUrl'] ?? '',
+        barcode: (data['barcode'] as String? ?? '').trim(),
         buyingPrice: (data['buyingPrice'] as num?)?.toDouble() ?? 0.0,
         sellingPrice: (data['sellingPrice'] as num?)?.toDouble() ?? 0.0,
         isActive: data['isActive'] as bool? ?? true,
@@ -73,6 +78,7 @@ class OtherProduct {
   OtherProduct copyWith({
     String? productName,
     String? imageUrl,
+    String? barcode,
     double? buyingPrice,
     double? sellingPrice,
     bool? isActive,
@@ -85,6 +91,7 @@ class OtherProduct {
     return OtherProduct(
       productName: productName ?? this.productName,
       imageUrl: imageUrl ?? this.imageUrl,
+      barcode: barcode ?? this.barcode,
       buyingPrice: buyingPrice ?? this.buyingPrice,
       sellingPrice: sellingPrice ?? this.sellingPrice,
       isActive: isActive ?? this.isActive,
@@ -100,6 +107,7 @@ class OtherProduct {
     return {
       'productName': productName,
       'imageUrl': imageUrl,
+      'barcode': barcode,
       'buyingPrice': buyingPrice,
       'sellingPrice': sellingPrice,
       'isActive': isActive,

@@ -9,6 +9,7 @@ import 'package:selecta_ops/models/admin_selecta_product.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -39,6 +40,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
   final _formKey = GlobalKey<FormState>();
 
   late final TextEditingController _nameController;
+  late final TextEditingController _barcodeController;
   late final TextEditingController _buyingPriceController;
   late final TextEditingController _sellingPriceController;
   String _category = 'By Piece';
@@ -70,6 +72,9 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     final initialName = adminP?.productName ?? dealerP?.productName ?? '';
     _nameController = TextEditingController(text: initialName);
 
+    final initialBarcode = adminP?.barcode ?? dealerP?.barcode ?? '';
+    _barcodeController = TextEditingController(text: initialBarcode);
+
     final rawCat = (adminP?.category ?? dealerP?.category ?? '').trim();
     final isCase = rawCat.toLowerCase() == 'by case' || rawCat.toLowerCase() == 'case';
     _category = isCase ? 'By Case' : 'By Piece';
@@ -92,10 +97,26 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _barcodeController.dispose();
     _buyingPriceController.dispose();
     _sellingPriceController.dispose();
     super.dispose();
   }
+
+  Future<void> _scanBarcode() async {
+    final scanned = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerWidget()),
+    );
+    if (scanned != null && scanned.trim().isNotEmpty && mounted) {
+      setState(() {
+        _barcodeController.text = scanned.trim();
+      });
+      HapticFeedback.lightImpact();
+      ShowMessage.success(context, 'Barcode scanned: ${scanned.trim()}');
+    }
+  }
+
 
   double get _buyingPrice => double.tryParse(_buyingPriceController.text.trim()) ?? 0.0;
   double get _sellingPrice => double.tryParse(_sellingPriceController.text.trim()) ?? 0.0;
@@ -191,6 +212,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     final tempProduct = AdminSelectaProduct(
       id: widget.productId ?? '',
       productName: _nameController.text.trim(),
+      barcode: _barcodeController.text.trim(),
       imageUrl: '',
       buyingPrice: _buyingPrice,
       sellingPrice: _sellingPrice,
@@ -225,6 +247,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
       final product = AdminSelectaProduct(
         id: widget.productId ?? '',
         productName: _nameController.text.trim(),
+        barcode: _barcodeController.text.trim(),
         imageUrl: finalImageUrl,
         buyingPrice: _buyingPrice,
         sellingPrice: _sellingPrice,
@@ -371,6 +394,18 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
                     icon: Icons.label_outline_rounded,
                     textCapitalization: TextCapitalization.characters,
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Product name is required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildField(
+                    label: 'Barcode (Optional)',
+                    controller: _barcodeController,
+                    hint: 'Scan or enter product barcode',
+                    icon: Icons.qr_code_2_rounded,
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.qr_code_scanner_rounded),
+                      tooltip: 'Scan Barcode',
+                      onPressed: _scanBarcode,
+                    ),
                   ),
                 ],
               ),
@@ -842,6 +877,15 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
                   colorScheme: colorScheme,
                 ),
               ],
+              const SizedBox(height: 10),
+              _buildReadOnlyTile(
+                label: 'Barcode',
+                value: _barcodeController.text.trim().isNotEmpty
+                    ? _barcodeController.text.trim()
+                    : 'No barcode assigned',
+                icon: Icons.qr_code_2_rounded,
+                colorScheme: colorScheme,
+              ),
             ],
           ),
 
@@ -1106,6 +1150,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     required String value,
     required IconData icon,
     required ColorScheme colorScheme,
+    Widget? trailing,
   }) {
     return Container(
       width: double.infinity,
@@ -1135,6 +1180,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
               ],
             ),
           ),
+          ?trailing,
         ],
       ),
     );
@@ -1390,6 +1436,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     TextCapitalization textCapitalization = TextCapitalization.sentences,
     String? Function(String?)? validator,
     void Function(String)? onChanged,
+    Widget? suffixIcon,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     return Column(
@@ -1406,6 +1453,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: Icon(icon, size: 20),
+            suffixIcon: suffixIcon,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           ),

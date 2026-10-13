@@ -11,6 +11,10 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/services/sound_feedback_service.dart';
+import 'package:selecta_ops/views/pages/dashboard/picklist_continuous_scanner_page.dart';
 import 'package:image_picker/image_picker.dart';
 
 class PicklistPage extends StatefulWidget {
@@ -39,6 +43,14 @@ class _PicklistPageState extends State<PicklistPage> {
   List<int> _selectaPieceIndices = [];
   List<int> _otherIndices = [];
 
+  final FocusNode _scannerFocusNode = FocusNode();
+  final StringBuffer _scannerBuffer = StringBuffer();
+  DateTime? _lastKeystrokeTime;
+
+  bool _enableBarcodeScanner = true;
+  final Map<String, String> _productIdToBarcode = {};
+  final Map<String, Map<String, String>> _barcodeToProductInfo = {};
+
   @override
   void initState() {
     super.initState();
@@ -47,6 +59,16 @@ class _PicklistPageState extends State<PicklistPage> {
     _networkImagePath = widget.delivery.imagePath;
     _groupAndSortItemIndices();
     _prefetchData();
+    SoundFeedbackService().init();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scannerFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scannerFocusNode.dispose();
+    super.dispose();
   }
 
   void _groupAndSortItemIndices() {
@@ -96,6 +118,329 @@ class _PicklistPageState extends State<PicklistPage> {
         _isDealer = dealer;
       });
     }
+
+    try {
+      final config = await ConfigurationService().getConfiguration();
+      if (mounted) {
+        setState(() {
+          _enableBarcodeScanner = config.enablePicklistBarcodeScanner;
+        });
+      }
+    } catch (_) {}
+
+    try {
+      final selectaDocs = await FirebaseFirestore.instance.collection('selecta_products').get();
+      for (final doc in selectaDocs.docs) {
+        final data = doc.data();
+        final barcode = (data['barcode'] as String? ?? '').trim();
+        final name = (data['productName'] as String? ?? '').trim();
+        if (barcode.isNotEmpty) {
+          _productIdToBarcode[doc.id] = barcode;
+          _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};
+        }
+      }
+
+      final adminDocs = await FirebaseFirestore.instance.collection('admin_selecta_products').get();
+      for (final doc in adminDocs.docs) {
+        final data = doc.data();
+        final barcode = (data['barcode'] as String? ?? '').trim();
+        final name = (data['productName'] as String? ?? '').trim();
+        if (barcode.isNotEmpty) {
+          _productIdToBarcode[doc.id] = barcode;
+          _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};
+        }
+      }
+
+      final otherDocs = await FirebaseFirestore.instance.collection('other_products').get();
+      for (final doc in otherDocs.docs) {
+        final data = doc.data();
+        final barcode = (data['barcode'] as String? ?? '').trim();
+        final name = (data['productName'] as String? ?? '').trim();
+        if (barcode.isNotEmpty) {
+          _productIdToBarcode[doc.id] = barcode;
+          _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};
+        }
+      }
+
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  String _getEffectiveBarcode(OrderItem item) {
+    if (item.barcode.trim().isNotEmpty) return item.barcode.trim();
+    if (item.productId.isNotEmpty && _productIdToBarcode.containsKey(item.productId)) {
+      return _productIdToBarcode[item.productId]!;
+    }
+    return '';
+  }
+
+  int _findMatchingOrderItemIndex(String rawBarcode) {
+    final clean = rawBarcode.trim().toLowerCase();
+    if (clean.isEmpty) return -1;
+
+    for (int i = 0; i < _items.length; i++) {
+      final item = _items[i];
+      final itemBarcode = _getEffectiveBarcode(item).toLowerCase();
+      if (itemBarcode.isNotEmpty && itemBarcode == clean) {
+        return i;
+      }
+      if (item.productId.toLowerCase() == clean) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+        final scanned = _scannerBuffer.toString().trim();
+        _scannerBuffer.clear();
+        if (scanned.isNotEmpty) {
+          _handleScannedBarcode(scanned);
+        }
+      } else if (event.character != null && event.character!.isNotEmpty) {
+        final now = DateTime.now();
+        if (_lastKeystrokeTime != null && now.difference(_lastKeystrokeTime!).inMilliseconds > 1500) {
+          _scannerBuffer.clear();
+        }
+        _lastKeystrokeTime = now;
+        _scannerBuffer.write(event.character);
+      }
+    }
+  }
+
+  Future<void> _openCameraScanner() async {
+    final updatedItems = await Navigator.push<List<OrderItem>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PicklistContinuousScannerPage(
+          storeName: _currentDelivery.storeName,
+          items: _items,
+          productIdToBarcode: _productIdToBarcode,
+          barcodeToProductInfo: _barcodeToProductInfo,
+        ),
+      ),
+    );
+    if (updatedItems != null && mounted) {
+      setState(() {
+        _items = updatedItems;
+        _groupAndSortItemIndices();
+      });
+    }
+    if (mounted) {
+      _scannerFocusNode.requestFocus();
+    }
+  }
+
+  Future<void> _handleScannedBarcode(String rawBarcode) async {
+    final barcode = rawBarcode.trim();
+    if (barcode.isEmpty) return;
+
+    final matchIndex = _findMatchingOrderItemIndex(barcode);
+
+    if (matchIndex == -1) {
+      // WRONG SKU: Trigger loud error buzzer + long vibration & red warning dialog
+      SoundFeedbackService().playErrorBuzzer();
+
+      final catalogMatch = _barcodeToProductInfo[barcode.toLowerCase()];
+      final scannedProductName = catalogMatch?['name'] ?? '';
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 26),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'WRONG ITEM SCANNED',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'This product is NOT part of [${_currentDelivery.storeName}]\'s delivery order.',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.red.shade900),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'DO NOT PACK THIS ITEM!',
+                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Colors.red.shade700),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Barcode: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  Expanded(
+                    child: Text(barcode, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                  ),
+                ],
+              ),
+              if (scannedProductName.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Catalog Item: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    Expanded(
+                      child: Text(scannedProductName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Dismiss'),
+            ),
+          ],
+        ),
+      );
+
+      if (mounted) _scannerFocusNode.requestFocus();
+      return;
+    }
+
+    final item = _items[matchIndex];
+
+    // If item is already picked:
+    if (item.isPicked) {
+      HapticFeedback.lightImpact();
+      ShowMessage.info(context, '${item.productName} is already checked.');
+      if (mounted) _scannerFocusNode.requestFocus();
+      return;
+    }
+
+    final qty = item.pickedQuantity;
+
+    // If orderedQuantity == 1:
+    if (qty <= 1) {
+      setState(() {
+        _items[matchIndex] = item.copyWith(isPicked: true);
+      });
+      SoundFeedbackService().playSuccessChime();
+      ShowMessage.success(context, 'Checked: ${item.productName} (1 unit)');
+      if (mounted) _scannerFocusNode.requestFocus();
+      return;
+    }
+
+    // If orderedQuantity > 1: Fast confirmation modal
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+              child: Icon(Icons.check_circle_outline_rounded, color: Colors.green.shade700, size: 24),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text('Verify Pick Quantity', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CachedProductImage(imageUrl: item.imageUrl, size: 48, borderRadius: 8),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.productName, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Text('Category: ${item.category}', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Text('Ordered Quantity:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  Text(
+                    '×$qty ${item.category.toLowerCase().contains('case') ? 'Cases' : 'Units'}',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.green.shade800),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Please confirm that all $qty ${item.category.toLowerCase().contains('case') ? 'cases' : 'units'} are picked and placed into the delivery order.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.green.shade700),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: Text('Confirm Picked ($qty)'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() {
+        _items[matchIndex] = item.copyWith(isPicked: true);
+      });
+      SoundFeedbackService().playSuccessChime();
+      ShowMessage.success(context, 'Checked: ${item.productName} ($qty units)');
+    }
+
+    if (mounted) _scannerFocusNode.requestFocus();
   }
 
   bool get _hasProofOfDelivery => _pickedImage != null || _networkImagePath.trim().isNotEmpty;
@@ -199,7 +544,7 @@ class _PicklistPageState extends State<PicklistPage> {
   }
 
   int get _totalUnits {
-    return _items.fold<int>(0, (sum, item) => sum + item.pickedQuantity);
+    return _items.fold<int>(0, (total, item) => total + item.pickedQuantity);
   }
 
   int get _pickedLinesCount {
@@ -233,10 +578,15 @@ class _PicklistPageState extends State<PicklistPage> {
   }
 
   void _toggleItemPicked(int index) {
-    HapticFeedback.lightImpact();
     setState(() {
       final item = _items[index];
-      _items[index] = item.copyWith(isPicked: !item.isPicked);
+      final newStatus = !item.isPicked;
+      _items[index] = item.copyWith(isPicked: newStatus);
+      if (newStatus) {
+        SoundFeedbackService().playSuccessChime();
+      } else {
+        HapticFeedback.lightImpact();
+      }
     });
   }
 
@@ -420,10 +770,7 @@ class _PicklistPageState extends State<PicklistPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
                 child: Icon(Icons.block, color: Colors.red.shade700, size: 22),
               ),
               const SizedBox(width: 12),
@@ -464,14 +811,9 @@ class _PicklistPageState extends State<PicklistPage> {
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx, false),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancel')),
             FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.shade700,
-              ),
+              style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
               onPressed: () {
                 if (formKey.currentState?.validate() == true) {
                   Navigator.pop(dialogCtx, true);
@@ -492,12 +834,7 @@ class _PicklistPageState extends State<PicklistPage> {
     if (!mounted) return;
 
     try {
-      await _controller.voidDelivery(
-        context: context,
-        deliveryId: widget.deliveryID,
-        delivery: _currentDelivery,
-        reason: reason,
-      );
+      await _controller.voidDelivery(context: context, deliveryId: widget.deliveryID, delivery: _currentDelivery, reason: reason);
       if (mounted) {
         await Helperfunctions.showLoading(showLoading: false);
         if (mounted) {
@@ -562,6 +899,19 @@ class _PicklistPageState extends State<PicklistPage> {
                   style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                 ),
               ),
+              if (_enableBarcodeScanner) ...[
+                TextButton.icon(
+                  onPressed: _openCameraScanner,
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    foregroundColor: const Color(0xFF0284C7),
+                  ),
+                  icon: const Icon(Icons.qr_code_scanner_rounded, size: 17),
+                  label: const Text('Scan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(width: 4),
+              ],
               TextButton.icon(
                 onPressed: _items.isEmpty ? null : _toggleAllPicked,
                 style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6)),
@@ -725,16 +1075,45 @@ class _PicklistPageState extends State<PicklistPage> {
               CachedProductImage(imageUrl: item.imageUrl, size: 44, borderRadius: 8),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  item.productName,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    height: 1.3,
-                    color: isPicked ? Colors.green.shade800 : colorScheme.onSurface,
-                    decoration: isPicked ? TextDecoration.lineThrough : null,
-                    decorationColor: Colors.green.shade700,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.productName,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1.3,
+                        color: isPicked ? Colors.green.shade800 : colorScheme.onSurface,
+                        decoration: isPicked ? TextDecoration.lineThrough : null,
+                        decorationColor: Colors.green.shade700,
+                      ),
+                    ),
+                    Builder(
+                      builder: (context) {
+                        final barcode = _getEffectiveBarcode(item);
+                        if (barcode.isEmpty) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.qr_code_2_rounded, size: 13, color: isPicked ? Colors.green.shade600 : colorScheme.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Text(
+                                barcode,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: isPicked ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 10),
@@ -1103,7 +1482,7 @@ class _PicklistPageState extends State<PicklistPage> {
     final visibleSelectaPiece = filterIndices(_selectaPieceIndices);
     final visibleOther = filterIndices(_otherIndices);
 
-    int calcUnits(List<int> idxs) => idxs.fold<int>(0, (sum, i) => sum + _items[i].pickedQuantity);
+    int calcUnits(List<int> idxs) => idxs.fold<int>(0, (total, i) => total + _items[i].pickedQuantity);
 
     return PopScope(
       canPop: !_isSaving && !_hasUnsavedChanges,
@@ -1121,112 +1500,121 @@ class _PicklistPageState extends State<PicklistPage> {
           Navigator.pop(context);
         }
       },
-      child: Scaffold(
-        appBar: CustomAppbar(
-          title: _currentDelivery.storeName,
-          subtitle: 'Picklist • ${Helperfunctions.formatDateForDisplay(deliveryDate)}',
-          centerTitle: false,
-          onBackPressed: _isSaving ? () {} : null,
-          actions: [
-            if (_isDealer)
-              _buildAppBarIconAction(
-                icon: Icons.edit_note_rounded,
-                tooltip: 'Edit Order in Book Order Page',
-                onTap: _isSaving ? null : _openEditOrderProducts,
+      child: KeyboardListener(
+        focusNode: _scannerFocusNode,
+        autofocus: true,
+        onKeyEvent: _handleKeyEvent,
+        child: Scaffold(
+          appBar: CustomAppbar(
+            title: _currentDelivery.storeName,
+            subtitle: 'Picklist • ${Helperfunctions.formatDateForDisplay(deliveryDate)}',
+            centerTitle: false,
+            onBackPressed: _isSaving ? () {} : null,
+            actions: [
+              if (_enableBarcodeScanner)
+                _buildAppBarIconAction(icon: Icons.qr_code_scanner_rounded, tooltip: 'Scan Barcode', onTap: _isSaving ? null : _openCameraScanner),
+              if (_isDealer) ...[
+                if (_enableBarcodeScanner) const SizedBox(width: 6),
+                _buildAppBarIconAction(
+                  icon: Icons.edit_note_rounded,
+                  tooltip: 'Edit Order in Book Order Page',
+                  onTap: _isSaving ? null : _openEditOrderProducts,
+                ),
+              ],
+            ],
+          ),
+          bottomNavigationBar: _buildStickyBottomBar(colorScheme),
+          body: Column(
+            children: [
+              _buildProgressHeader(colorScheme),
+              if (_items.isNotEmpty) _buildFilterChips(colorScheme),
+              Expanded(
+                child: _items.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.shopping_basket_outlined, size: 44, color: colorScheme.onSurfaceVariant),
+                              const SizedBox(height: 10),
+                              Text(
+                                'No products in this order yet.',
+                                style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13.5, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 10),
+                              OutlinedButton.icon(
+                                onPressed: _openEditOrderProducts,
+                                icon: const Icon(Icons.edit_note_rounded, size: 20),
+                                label: const Text('Edit Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : (visibleSelectaCase.isEmpty && visibleSelectaPiece.isEmpty && visibleOther.isEmpty)
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _itemFilter == 'Pending' ? Icons.task_alt_rounded : Icons.checklist_rtl_rounded,
+                                size: 44,
+                                color: _itemFilter == 'Pending' ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                _itemFilter == 'Pending' ? 'All items in this order have been checked!' : 'No products match this filter.',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              OutlinedButton(onPressed: () => setState(() => _itemFilter = 'All'), child: const Text('Show All Items')),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        children: [
+                          if (visibleSelectaCase.isNotEmpty) ...[
+                            _buildGroupHeader(
+                              title: 'By Case',
+                              icon: Icons.all_inbox_rounded,
+                              color: Colors.deepOrange.shade700,
+                              totalUnits: calcUnits(visibleSelectaCase),
+                              categoryIndices: visibleSelectaCase,
+                            ),
+                            ...visibleSelectaCase.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                          ],
+                          if (visibleSelectaPiece.isNotEmpty) ...[
+                            _buildGroupHeader(
+                              title: 'By Piece',
+                              icon: Icons.icecream_outlined,
+                              color: colorScheme.primary,
+                              totalUnits: calcUnits(visibleSelectaPiece),
+                              categoryIndices: visibleSelectaPiece,
+                            ),
+                            ...visibleSelectaPiece.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                          ],
+                          if (visibleOther.isNotEmpty) ...[
+                            _buildGroupHeader(
+                              title: 'Other Products',
+                              icon: Icons.inventory_2_outlined,
+                              color: colorScheme.onSurfaceVariant,
+                              totalUnits: calcUnits(visibleOther),
+                              categoryIndices: visibleOther,
+                            ),
+                            ...visibleOther.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                          ],
+                          _buildProofOfDeliveryCard(colorScheme),
+                        ],
+                      ),
               ),
-          ],
-        ),
-        bottomNavigationBar: _buildStickyBottomBar(colorScheme),
-        body: Column(
-          children: [
-            _buildProgressHeader(colorScheme),
-            if (_items.isNotEmpty) _buildFilterChips(colorScheme),
-            Expanded(
-              child: _items.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.shopping_basket_outlined, size: 44, color: colorScheme.onSurfaceVariant),
-                            const SizedBox(height: 10),
-                            Text(
-                              'No products in this order yet.',
-                              style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13.5, fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 10),
-                            OutlinedButton.icon(
-                              onPressed: _openEditOrderProducts,
-                              icon: const Icon(Icons.edit_note_rounded, size: 20),
-                              label: const Text('Edit Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : (visibleSelectaCase.isEmpty && visibleSelectaPiece.isEmpty && visibleOther.isEmpty)
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _itemFilter == 'Pending' ? Icons.task_alt_rounded : Icons.checklist_rtl_rounded,
-                              size: 44,
-                              color: _itemFilter == 'Pending' ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              _itemFilter == 'Pending' ? 'All items in this order have been checked!' : 'No products match this filter.',
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            OutlinedButton(onPressed: () => setState(() => _itemFilter = 'All'), child: const Text('Show All Items')),
-                          ],
-                        ),
-                      ),
-                    )
-                  : ListView(
-                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                      children: [
-                        if (visibleSelectaCase.isNotEmpty) ...[
-                          _buildGroupHeader(
-                            title: 'Selecta Products (By Case)',
-                            icon: Icons.all_inbox_rounded,
-                            color: Colors.deepOrange.shade700,
-                            totalUnits: calcUnits(visibleSelectaCase),
-                            categoryIndices: visibleSelectaCase,
-                          ),
-                          ...visibleSelectaCase.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                        ],
-                        if (visibleSelectaPiece.isNotEmpty) ...[
-                          _buildGroupHeader(
-                            title: 'Selecta Products (By Piece)',
-                            icon: Icons.icecream_outlined,
-                            color: colorScheme.primary,
-                            totalUnits: calcUnits(visibleSelectaPiece),
-                            categoryIndices: visibleSelectaPiece,
-                          ),
-                          ...visibleSelectaPiece.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                        ],
-                        if (visibleOther.isNotEmpty) ...[
-                          _buildGroupHeader(
-                            title: 'Other Products',
-                            icon: Icons.inventory_2_outlined,
-                            color: colorScheme.onSurfaceVariant,
-                            totalUnits: calcUnits(visibleOther),
-                            categoryIndices: visibleOther,
-                          ),
-                          ...visibleOther.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                        ],
-                        _buildProofOfDeliveryCard(colorScheme),
-                      ],
-                    ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

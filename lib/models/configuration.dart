@@ -23,6 +23,9 @@ class Configuration {
   // Placement product pairs (when either is delivered, both are placed)
   List<PlacementPair> placementPairs;
 
+  /// Whether barcode scanning is enabled for picklists
+  bool enablePicklistBarcodeScanner;
+
   Configuration({
     required this.merchBlitzStartDate,
     required this.merchBlitzEndDate,
@@ -37,6 +40,7 @@ class Configuration {
     this.scanningTargetPercentage = 100.0,
     this.expansionTarget = 10,
     this.placementPairs = const [],
+    this.enablePicklistBarcodeScanner = true,
   });
 
   /// Returns true if [plainTextPassword] matches the stored SHA-256 hash.
@@ -71,6 +75,7 @@ class Configuration {
         scanningTargetPercentage: 100.0,
         expansionTarget: 10,
         placementPairs: const [],
+        enablePicklistBarcodeScanner: true,
       );
 
   Configuration.fromJson(Map<String, Object?> json)
@@ -101,6 +106,7 @@ class Configuration {
                   .map((m) => PlacementPair.fromJson(Map<String, Object?>.from(m)))
                   .toList()
               : const [],
+          enablePicklistBarcodeScanner: json['enablePicklistBarcodeScanner'] as bool? ?? true,
         );
 
   Configuration copyWith({
@@ -117,6 +123,7 @@ class Configuration {
     double? scanningTargetPercentage,
     int? expansionTarget,
     List<PlacementPair>? placementPairs,
+    bool? enablePicklistBarcodeScanner,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -132,6 +139,7 @@ class Configuration {
       scanningTargetPercentage: scanningTargetPercentage ?? this.scanningTargetPercentage,
       expansionTarget: expansionTarget ?? this.expansionTarget,
       placementPairs: placementPairs ?? List.from(this.placementPairs),
+      enablePicklistBarcodeScanner: enablePicklistBarcodeScanner ?? this.enablePicklistBarcodeScanner,
     );
   }
 
@@ -151,6 +159,7 @@ class Configuration {
       'scanningTargetPercentage': scanningTargetPercentage,
       'expansionTarget': expansionTarget,
       'placementPairs': placementPairs.map((p) => p.toJson()).toList(),
+      'enablePicklistBarcodeScanner': enablePicklistBarcodeScanner,
     };
   }
 }

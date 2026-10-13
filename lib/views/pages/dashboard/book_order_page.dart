@@ -335,6 +335,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
             productId: invItem.id,
             productName: invItem.productName,
             imageUrl: invItem.imageUrl,
+            barcode: invItem.barcode,
             productSource: invItem.source.key,
             category: invItem.category,
             tag: invItem.tag,

@@ -7,6 +7,7 @@ class AdminSelectaProduct {
   final String id;
   final String productName;
   final String imageUrl;
+  final String barcode;
   final double buyingPrice;
   final double sellingPrice;
   final String category; // 'By Piece' or 'By Case'
@@ -18,6 +19,7 @@ class AdminSelectaProduct {
     required this.id,
     required this.productName,
     required this.imageUrl,
+    this.barcode = '',
     this.buyingPrice = 0.0,
     this.sellingPrice = 0.0,
     this.category = 'By Piece',
@@ -37,6 +39,7 @@ class AdminSelectaProduct {
         id: '',
         productName: '',
         imageUrl: '',
+        barcode: '',
         buyingPrice: 0.0,
         sellingPrice: 0.0,
         category: 'By Piece',
@@ -67,6 +70,7 @@ class AdminSelectaProduct {
       id: id,
       productName: (json['productName'] as String? ?? '').trim(),
       imageUrl: (json['imageUrl'] as String? ?? '').trim(),
+      barcode: (json['barcode'] as String? ?? '').trim(),
       buyingPrice: buyingPrice,
       sellingPrice: sellingPrice,
       category: category,
@@ -128,6 +132,7 @@ class AdminSelectaProduct {
       id: id,
       productName: readString('productName'),
       imageUrl: readString('imageUrl'),
+      barcode: readString('barcode'),
       buyingPrice: buyingPrice,
       sellingPrice: sellingPrice,
       category: category,
@@ -148,6 +153,7 @@ class AdminSelectaProduct {
     String? id,
     String? productName,
     String? imageUrl,
+    String? barcode,
     double? buyingPrice,
     double? sellingPrice,
     String? category,
@@ -159,6 +165,7 @@ class AdminSelectaProduct {
       id: id ?? this.id,
       productName: productName ?? this.productName,
       imageUrl: imageUrl ?? this.imageUrl,
+      barcode: barcode ?? this.barcode,
       buyingPrice: buyingPrice ?? this.buyingPrice,
       sellingPrice: sellingPrice ?? this.sellingPrice,
       category: category ?? this.category,
@@ -172,6 +179,7 @@ class AdminSelectaProduct {
     return {
       'productName': productName,
       'imageUrl': imageUrl,
+      'barcode': barcode,
       'buyingPrice': buyingPrice,
       'sellingPrice': sellingPrice,
       'category': category,
@@ -187,6 +195,7 @@ class AdminSelectaProduct {
       'id': id,
       'productName': productName,
       'imageUrl': imageUrl,
+      'barcode': barcode,
       'buyingPrice': buyingPrice,
       'sellingPrice': sellingPrice,
       'category': category,

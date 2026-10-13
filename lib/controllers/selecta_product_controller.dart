@@ -28,6 +28,10 @@ class SelectaProductController {
   Future<void> updateBadOrderPricePerPiece(String productId, double price) =>
       _service.updateBadOrderPricePerPiece(productId, price);
 
+  /// Updates dealer configured barcode for a Selecta product.
+  Future<void> updateDealerBarcode(String productId, String barcode) =>
+      _service.updateDealerProductBarcode(productId, barcode);
+
   /// Checks if the dealer's local catalog is empty or out-of-sync with the Admin API.
   Future<({bool needsSync, List<AdminSelectaProduct> remoteProducts, String reason})> checkSyncNeeded() =>
       _service.checkSyncNeeded();

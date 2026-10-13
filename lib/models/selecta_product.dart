@@ -6,6 +6,7 @@ class SelectaProduct {
   final String productName;
   final String imageUrl;
   final String itemCode;
+  final String barcode;
   final double buyingPrice;
   final double sellingPrice;
   final String category;
@@ -25,6 +26,7 @@ class SelectaProduct {
     required this.productName,
     required this.imageUrl,
     required this.itemCode,
+    this.barcode = '',
     this.buyingPrice = 0.0,
     this.sellingPrice = 0.0,
     required this.category,
@@ -90,6 +92,7 @@ class SelectaProduct {
         productName: '',
         imageUrl: '',
         itemCode: '',
+        barcode: '',
         buyingPrice: 0.0,
         sellingPrice: 0.0,
         category: '',
@@ -117,6 +120,7 @@ class SelectaProduct {
       productName: json['productName'] as String? ?? '',
       imageUrl: json['imageUrl'] as String? ?? '',
       itemCode: json['itemCode'] as String? ?? '',
+      barcode: (json['barcode'] as String? ?? '').trim(),
       buyingPrice: buyingPrice,
       sellingPrice: sellingPrice,
       category: category,
@@ -145,6 +149,7 @@ class SelectaProduct {
     String? productName,
     String? imageUrl,
     String? itemCode,
+    String? barcode,
     double? buyingPrice,
     double? sellingPrice,
     String? category,
@@ -164,6 +169,7 @@ class SelectaProduct {
       productName: productName ?? this.productName,
       imageUrl: imageUrl ?? this.imageUrl,
       itemCode: itemCode ?? this.itemCode,
+      barcode: barcode ?? this.barcode,
       buyingPrice: buyingPrice ?? this.buyingPrice,
       sellingPrice: sellingPrice ?? this.sellingPrice,
       category: category ?? this.category,
@@ -195,6 +201,7 @@ class SelectaProduct {
     int lowStockThreshold = 10,
     int maxStock = 0,
     String itemCode = '',
+    String barcode = '',
     String category = '',
     String tag = '',
     double? badOrderPricePerPiece,
@@ -206,6 +213,7 @@ class SelectaProduct {
       productName: productName,
       imageUrl: imageUrl,
       itemCode: itemCode,
+      barcode: barcode,
       buyingPrice: buyingPrice,
       sellingPrice: sellingPrice,
       category: category,
@@ -227,6 +235,7 @@ class SelectaProduct {
       'productName': productName,
       'imageUrl': imageUrl,
       'itemCode': itemCode,
+      'barcode': barcode,
       'buyingPrice': buyingPrice,
       'sellingPrice': sellingPrice,
       'price': sellingPrice, // backward compatibility

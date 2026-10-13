@@ -29,6 +29,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   bool _isLoading = true;
   bool _isSaving = false;
 
+  bool _enablePicklistBarcodeScanner = true;
+
   ThermalPaperSize _thermalPaperSize = ThermalPaperSize.mm58;
   String? _printerName;
   bool _isPrinterConnected = false;
@@ -76,6 +78,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           _salesTargetController.text = result.config.salesTarget.toStringAsFixed(0);
           _throughputTargetController.text = result.config.throughputTarget.toStringAsFixed(0);
           _expansionTargetController.text = result.config.expansionTarget.toString();
+          _enablePicklistBarcodeScanner = result.config.enablePicklistBarcodeScanner;
           _thermalPaperSize = paperSize;
           _printerName = pName;
           _isPrinterConnected = isConnected;
@@ -171,6 +174,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         placementTargetPercentage: 80.0,
         scanningTargetPercentage: 100.0,
         expansionTarget: expansionTarget,
+        enablePicklistBarcodeScanner: _enablePicklistBarcodeScanner,
       );
 
       _configExistsInDb = true;
@@ -536,6 +540,67 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     }
   }
 
+  Widget _buildWarehouseBarcodeCard(ColorScheme colorScheme) {
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.qr_code_scanner_rounded, size: 22, color: Color(0xFF0284C7)),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Warehouse & Picking', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 2),
+                      Text(
+                        'Barcode verification settings for delivery picklist preparation',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Picklist Barcode Verification', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              subtitle: const Text(
+                'Require scanning outer carton / tub barcodes or checking items to prevent picking incorrect products.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              value: _enablePicklistBarcodeScanner,
+              activeTrackColor: const Color(0xFF0284C7),
+              onChanged: (val) {
+                setState(() {
+                  _enablePicklistBarcodeScanner = val;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildThermalPrinterCard(ColorScheme colorScheme) {
     return Card(
       elevation: 0,
@@ -786,6 +851,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
                   // KPI Monthly Targets Card
                   _buildKpiTargetsCard(),
+
+                  const SizedBox(height: 16),
+
+                  // Warehouse Picklist Verification Card
+                  _buildWarehouseBarcodeCard(colorScheme),
 
                   const SizedBox(height: 16),
 

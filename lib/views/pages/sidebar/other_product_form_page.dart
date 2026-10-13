@@ -6,6 +6,7 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/other_product.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -35,6 +36,7 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
   final _formKey = GlobalKey<FormState>();
 
   late final TextEditingController _nameController;
+  late final TextEditingController _barcodeController;
   late final TextEditingController _buyingPriceController;
   late final TextEditingController _sellingPriceController;
 
@@ -54,6 +56,7 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
     super.initState();
     final p = widget.existingProduct;
     _nameController = TextEditingController(text: p?.productName ?? '');
+    _barcodeController = TextEditingController(text: p?.barcode ?? '');
     _networkImagePath = p?.imageUrl ?? '';
     _buyingPriceController = TextEditingController(
       text: p != null && p.buyingPrice > 0 ? p.buyingPrice.toStringAsFixed(2) : '',
@@ -67,9 +70,24 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _barcodeController.dispose();
     _buyingPriceController.dispose();
     _sellingPriceController.dispose();
     super.dispose();
+  }
+
+  Future<void> _scanBarcode() async {
+    final scanned = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerWidget()),
+    );
+    if (scanned != null && scanned.trim().isNotEmpty && mounted) {
+      setState(() {
+        _barcodeController.text = scanned.trim();
+      });
+      HapticFeedback.lightImpact();
+      ShowMessage.success(context, 'Barcode scanned: ${scanned.trim()}');
+    }
   }
 
   double get _buyingPrice => double.tryParse(_buyingPriceController.text.trim()) ?? 0.0;
@@ -197,6 +215,7 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
       final product = OtherProduct(
         productName: _nameController.text.trim(),
         imageUrl: finalImageUrl,
+        barcode: _barcodeController.text.trim(),
         buyingPrice: _buyingPrice,
         sellingPrice: _sellingPrice,
         isActive: _isActive,
@@ -296,6 +315,21 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
                     icon: Icons.label_outline_rounded,
                     textCapitalization: TextCapitalization.characters,
                     validator: (v) => (v == null || v.trim().isEmpty) ? 'Product name is required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildField(
+                    label: 'Barcode',
+                    controller: _barcodeController,
+                    hint: 'Scan or type product barcode',
+                    icon: Icons.qr_code_rounded,
+                    keyboardType: TextInputType.text,
+                    textCapitalization: TextCapitalization.none,
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.qr_code_scanner_rounded),
+                      tooltip: 'Scan Barcode',
+                      color: colorScheme.primary,
+                      onPressed: _scanBarcode,
+                    ),
                   ),
                 ],
               ),
@@ -612,6 +646,7 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
     required TextEditingController controller,
     required String hint,
     required IconData icon,
+    Widget? suffixIcon,
     TextInputType keyboardType = TextInputType.text,
     TextCapitalization textCapitalization = TextCapitalization.sentences,
     String? Function(String?)? validator,
@@ -632,6 +667,7 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: Icon(icon, size: 20),
+            suffixIcon: suffixIcon,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           ),
