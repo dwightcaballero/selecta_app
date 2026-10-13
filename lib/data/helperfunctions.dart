@@ -226,6 +226,31 @@ class Helperfunctions {
     }
   }
 
+  /// Prepares image bytes for multimodal AI document extraction (OCR).
+  ///
+  /// Since document images analyzed by the AI (such as receipts and purchase orders)
+  /// are ephemeral and not saved to the database or storage, they are kept
+  /// uncompressed at full native resolution to maximize text and digit recognition accuracy.
+  ///
+  /// A gentle compression ceiling is only applied if an individual image
+  /// exceeds [maxSizeBytes] (default 6MB) to ensure the total Gemini request
+  /// stays safely below the API's 20MB payload limit.
+  static Future<Uint8List> prepareImageBytesForAi(
+    Uint8List rawBytes, {
+    int maxSizeBytes = 6 * 1024 * 1024,
+    int maxDimensionIfOversized = 2560,
+    int qualityIfOversized = 88,
+  }) async {
+    if (rawBytes.lengthInBytes <= maxSizeBytes) {
+      return rawBytes;
+    }
+    return await compressImageBytes(
+      rawBytes,
+      maxDimension: maxDimensionIfOversized,
+      quality: qualityIfOversized,
+    );
+  }
+
   /// Adjusts image EXIF date/time metadata to [targetDateTime] (defaults to [DateTime.now()])
   /// so that Android Gallery, Google Photos, etc. sort the downloaded image at the very top.
   static Future<Uint8List> prepareImageBytesWithCurrentTimestamp(

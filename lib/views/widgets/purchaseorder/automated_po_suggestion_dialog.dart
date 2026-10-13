@@ -157,8 +157,8 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
       final List<String> mimeTypes = [];
       for (final file in _pickedImages) {
         final rawBytes = await file.readAsBytes();
-        final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
-        bytesList.add(compressedBytes);
+        final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
+        bytesList.add(preparedBytes);
         final ext = file.path.split('.').last.toLowerCase();
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }

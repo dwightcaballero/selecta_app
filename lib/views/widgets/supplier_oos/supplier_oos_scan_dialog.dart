@@ -159,10 +159,10 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
 
       for (int i = 0; i < _images.length; i++) {
         final file = _images[i];
-        statusNotifier.value = 'Step 1/2: Compressing image ${i + 1} of ${_images.length}...';
+        statusNotifier.value = 'Step 1/2: Preparing image ${i + 1} of ${_images.length}...';
         final rawBytes = await file.readAsBytes();
-        final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
-        bytesList.add(compressedBytes);
+        final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
+        bytesList.add(preparedBytes);
         final ext = file.path.split('.').last.toLowerCase();
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }

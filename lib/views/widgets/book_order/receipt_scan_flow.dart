@@ -179,10 +179,10 @@ class ReceiptScanFlow {
     final List<String> mimeTypes = [];
     for (int i = 0; i < files.length; i++) {
       final file = files[i];
-      onProgress?.call('Step 1/3: Compressing receipt image ${i + 1} of ${files.length}...');
+      onProgress?.call('Step 1/3: Preparing receipt image ${i + 1} of ${files.length}...');
       final rawBytes = await file.readAsBytes();
-      final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
-      bytesList.add(compressedBytes);
+      final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
+      bytesList.add(preparedBytes);
       final ext = file.path.split('.').last.toLowerCase();
       mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
     }

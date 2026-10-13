@@ -432,7 +432,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       _aiExtractionSummary = null;
     });
 
-    final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing & compressing document images...');
+    final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing document images...');
     Helperfunctions.showLoading(
       context: context,
       showLoading: true,
@@ -447,10 +447,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       final List<String> mimeTypes = [];
       for (int i = 0; i < files.length; i++) {
         final file = files[i];
-        statusNotifier.value = 'Step 1/3: Compressing image ${i + 1} of ${files.length}...';
+        statusNotifier.value = 'Step 1/3: Preparing document image ${i + 1} of ${files.length}...';
         final rawBytes = await file.readAsBytes();
-        final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
-        bytesList.add(compressedBytes);
+        final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
+        bytesList.add(preparedBytes);
         final ext = file.path.split('.').last.toLowerCase();
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }
@@ -1354,7 +1354,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       _comparisonResult = null;
     });
 
-    final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing & compressing invoice images...');
+    final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing invoice images...');
     Helperfunctions.showLoading(
       context: context,
       showLoading: true,
@@ -1369,10 +1369,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       final List<String> mimeTypes = [];
       for (int i = 0; i < _officialInvoiceImages.length; i++) {
         final file = _officialInvoiceImages[i];
-        statusNotifier.value = 'Step 1/3: Compressing invoice image ${i + 1} of ${_officialInvoiceImages.length}...';
+        statusNotifier.value = 'Step 1/3: Preparing invoice image ${i + 1} of ${_officialInvoiceImages.length}...';
         final rawBytes = await file.readAsBytes();
-        final compressedBytes = await Helperfunctions.compressImageBytes(rawBytes);
-        bytesList.add(compressedBytes);
+        final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
+        bytesList.add(preparedBytes);
         final ext = file.path.split('.').last.toLowerCase();
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }
