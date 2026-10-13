@@ -10,6 +10,7 @@ import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
@@ -24,10 +25,12 @@ class _PicklistListPageState extends State<PicklistListPage> {
   final DeliveryController _controller = DeliveryController();
   final TextEditingController _searchController = TextEditingController();
   bool isDealer = false;
+  int? returnedDeliveryCount;
   DateTime _selectedDate = DateTime.now();
   String _searchQuery = '';
 
   StreamSubscription? _storesSub;
+  StreamSubscription<int>? _returnedCountSub;
   Map<String, Hapistore> _storesByName = {};
   Map<String, String> _storeDocIdsByName = {};
 
@@ -46,6 +49,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
   @override
   void dispose() {
     _storesSub?.cancel();
+    _returnedCountSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -71,9 +75,19 @@ class _PicklistListPageState extends State<PicklistListPage> {
 
   void prefetchData() async {
     final dealer = await _controller.checkIsDealer();
+    if (dealer && _returnedCountSub == null) {
+      _returnedCountSub = _controller.getActiveReturnedDeliveriesCountStream().listen((count) {
+        if (mounted) setState(() => returnedDeliveryCount = count);
+      });
+    } else if (!dealer) {
+      _returnedCountSub?.cancel();
+      _returnedCountSub = null;
+    }
+    final count = dealer ? await _controller.getCountReturnedDeliveriesOnOtherDays() : 0;
     if (mounted) {
       setState(() {
         isDealer = dealer;
+        returnedDeliveryCount = count;
       });
     }
   }
@@ -247,6 +261,46 @@ class _PicklistListPageState extends State<PicklistListPage> {
     );
   }
 
+  Widget _buildReturnedAlertBanner() {
+    if (!isDealer || returnedDeliveryCount == null || returnedDeliveryCount == 0) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Material(
+        color: Colors.red.shade50,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: Colors.red.shade200),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () async {
+            await Navigator.push(context, MaterialPageRoute(builder: (context) => const ReturnlistPage()));
+            prefetchData();
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(Icons.assignment_return_outlined, color: Colors.red.shade700, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$returnedDeliveryCount returned ${returnedDeliveryCount == 1 ? 'delivery needs' : 'deliveries need'} rescheduling',
+                    style: TextStyle(color: Colors.red.shade800, fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: Colors.red.shade700, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -346,6 +400,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
     return Column(
       children: [
         Padding(padding: const EdgeInsets.fromLTRB(16, 10, 16, 4), child: _buildDateNavigator(Theme.of(context))),
+        _buildReturnedAlertBanner(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
           child: SizedBox(
