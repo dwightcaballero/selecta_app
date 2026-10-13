@@ -4,8 +4,16 @@ class KPlacement {
   bool isPlaced;
   bool isPlacedFromDB;
   String itemImagePath;
+  String? pairedProductName;
 
-  KPlacement({required this.itemName, required this.itemCode, required this.isPlaced, required this.isPlacedFromDB, required this.itemImagePath});
+  KPlacement({
+    required this.itemName,
+    required this.itemCode,
+    required this.isPlaced,
+    required this.isPlacedFromDB,
+    required this.itemImagePath,
+    this.pairedProductName,
+  });
 }
 
 class KData {

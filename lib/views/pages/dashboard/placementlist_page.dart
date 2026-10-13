@@ -21,6 +21,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
   final PlacementController _controller = PlacementController();
   int _currentIndex = 0; // 0 = Complete, 1 = Incomplete
   List<Placement> listPlacement = [];
+  int _totalTargetCount = 12;
   PlacementSort _sort = PlacementSort.storeNameAscending;
   bool _isLoading = true;
   String? _errorMessage;
@@ -48,9 +49,11 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
     }
     try {
       final placements = await _controller.loadAllPlacements();
+      final totalTargets = await _controller.getTotalTargetCount();
       if (!mounted) return;
       setState(() {
         listPlacement = placements;
+        _totalTargetCount = totalTargets;
         _isLoading = false;
       });
     } catch (e) {
@@ -67,19 +70,11 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
   int get _incompleteCount => listPlacement.where((p) => !p.isFinished).length;
 
   List<Placement> _filteredAndSorted(bool isFinished) {
-    return _controller.filterAndSortPlacements(
-      placements: listPlacement,
-      isFinished: isFinished,
-      searchQuery: _searchQuery,
-      sort: _sort,
-    );
+    return _controller.filterAndSortPlacements(placements: listPlacement, isFinished: isFinished, searchQuery: _searchQuery, sort: _sort);
   }
 
   void _openPlacement(Placement placement) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => PlacementPage(placement: placement)),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => PlacementPage(placement: placement)));
     prefetchData();
   }
 
@@ -97,12 +92,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
     );
   }
 
-  PopupMenuItem<PlacementSort> _buildSortOption(
-    PlacementSort sort,
-    String label,
-    String subtitle,
-    IconData icon,
-  ) {
+  PopupMenuItem<PlacementSort> _buildSortOption(PlacementSort sort, String label, String subtitle, IconData icon) {
     final isSelected = _sort == sort;
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -119,15 +109,9 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
               children: [
                 Text(
                   label,
-                  style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                    color: isSelected ? colorScheme.primary : null,
-                  ),
+                  style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: isSelected ? colorScheme.primary : null),
                 ),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                ),
+                Text(subtitle, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
               ],
             ),
           ),
@@ -195,10 +179,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
                 Container(
                   width: 42,
                   height: 42,
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -208,19 +189,13 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
                       Container(
                         width: 140,
                         height: 16,
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                        decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
                       ),
                       const SizedBox(height: 6),
                       Container(
                         width: 90,
                         height: 12,
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                        decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(4)),
                       ),
                     ],
                   ),
@@ -229,10 +204,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
             ),
             Container(
               height: 6,
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(3),
-              ),
+              decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(3)),
             ),
           ],
         ),
@@ -252,10 +224,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
             children: [
               Icon(Icons.search_off_rounded, size: 56, color: colorScheme.onSurfaceVariant),
               const SizedBox(height: 12),
-              Text(
-                'No stores found',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
+              Text('No stores found', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
               Text(
                 'No store matching "$_searchQuery"',
@@ -283,11 +252,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isFinished ? Icons.assignment_turned_in_outlined : Icons.pending_actions_outlined,
-              size: 56,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            Icon(isFinished ? Icons.assignment_turned_in_outlined : Icons.pending_actions_outlined, size: 56, color: colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(
               isFinished ? 'No completed placements' : 'No incomplete placements',
@@ -295,9 +260,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
             ),
             const SizedBox(height: 6),
             Text(
-              isFinished
-                  ? 'Completed store placements will appear here.'
-                  : 'Great job! All store placements are currently complete.',
+              isFinished ? 'Completed store placements will appear here.' : 'Great job! All store placements are currently complete.',
               textAlign: TextAlign.center,
               style: TextStyle(color: colorScheme.onSurfaceVariant),
             ),
@@ -307,14 +270,9 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
     );
   }
 
-  Widget _buildSummaryBanner({
-    required int count,
-    required double averageProgress,
-    required bool isFinished,
-    required Color statusColor,
-  }) {
+  Widget _buildSummaryBanner({required int count, required double averageProgress, required bool isFinished, required Color statusColor}) {
     final colorScheme = Theme.of(context).colorScheme;
-    final averagePercent = (averageProgress / 12 * 100).round();
+    final averagePercent = _totalTargetCount > 0 ? (averageProgress / _totalTargetCount * 100).round() : 0;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -327,15 +285,8 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isFinished ? Icons.task_alt_rounded : Icons.pending_actions_rounded,
-              color: statusColor,
-              size: 24,
-            ),
+            decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.15), shape: BoxShape.circle),
+            child: Icon(isFinished ? Icons.task_alt_rounded : Icons.pending_actions_rounded, color: statusColor, size: 24),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -361,14 +312,11 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
               const SizedBox(height: 2),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(8)),
                 child: Text(
                   isFinished
                       ? '$count/${_completedCount + _incompleteCount} (${((count / ((_completedCount + _incompleteCount) == 0 ? 1 : (_completedCount + _incompleteCount))) * 100).round()}%)'
-                      : '${averageProgress.toStringAsFixed(1)}/12 ($averagePercent%)',
+                      : '${averageProgress.toStringAsFixed(1)}/$_totalTargetCount ($averagePercent%)',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: statusColor),
                 ),
               ),
@@ -404,16 +352,11 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
         separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           if (index == 0) {
-            return _buildSummaryBanner(
-              count: placements.length,
-              averageProgress: averageProgress,
-              isFinished: isFinished,
-              statusColor: statusColor,
-            );
+            return _buildSummaryBanner(count: placements.length, averageProgress: averageProgress, isFinished: isFinished, statusColor: statusColor);
           }
 
           final placement = placements[index - 1];
-          final progress = (placement.progressCount / 12).clamp(0.0, 1.0);
+          final progress = _totalTargetCount > 0 ? (placement.progressCount / _totalTargetCount).clamp(0.0, 1.0) : 0.0;
           final progressPercent = (progress * 100).round();
           final formattedDate = DateFormat('MMM d, yyyy').format(placement.deliveryDate.toDate());
 
@@ -439,15 +382,8 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
                         Container(
                           width: 44,
                           height: 44,
-                          decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            isFinished ? Icons.check_circle_rounded : Icons.storefront_rounded,
-                            color: statusColor,
-                            size: 24,
-                          ),
+                          decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+                          child: Icon(isFinished ? Icons.check_circle_rounded : Icons.storefront_rounded, color: statusColor, size: 24),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -456,33 +392,16 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
                             children: [
                               Text(
                                 placement.storeName,
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                    ),
+                                style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, fontSize: 15),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  Icon(Icons.event_outlined, size: 13, color: colorScheme.onSurfaceVariant),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    formattedDate,
-                                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text('•', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    isFinished ? 'Complete' : 'In Progress',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: statusColor,
-                                    ),
-                                  ),
+                                    Icon(Icons.event_outlined, size: 13, color: colorScheme.onSurfaceVariant),
+                                    const SizedBox(width: 4),
+                                    Text(formattedDate, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                                 ],
                               ),
                             ],
@@ -490,17 +409,10 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                          decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
                           child: Text(
-                            '${placement.progressCount}/12 ($progressPercent%)',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                              color: statusColor,
-                            ),
+                            '${placement.progressCount}/$_totalTargetCount ($progressPercent%)',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: statusColor),
                           ),
                         ),
                       ],
@@ -535,9 +447,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
       appBar: widget.showAppBar
           ? CustomAppbar(
               title: 'Placement List',
-              subtitle: isCompleteTab
-                  ? 'Completed • $overallPercent% of stores finished'
-                  : 'Pending • $_incompleteCount stores need follow-up',
+              subtitle: isCompleteTab ? 'Completed • $overallPercent% of stores finished' : 'Pending • $_incompleteCount stores need follow-up',
               actions: [_buildSortMenu()],
             )
           : null,
@@ -552,11 +462,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
                     const SizedBox(height: 10),
                     Text(_errorMessage!, textAlign: TextAlign.center),
                     const SizedBox(height: 16),
-                    FilledButton.tonalIcon(
-                      onPressed: prefetchData,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Retry'),
-                    ),
+                    FilledButton.tonalIcon(onPressed: prefetchData, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
                   ],
                 ),
               ),
@@ -564,9 +470,7 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
           : Column(
               children: [
                 _buildSearchBar(),
-                Expanded(
-                  child: _placementListView(isCompleteTab),
-                ),
+                Expanded(child: _placementListView(isCompleteTab)),
               ],
             ),
       bottomNavigationBar: NavigationBar(

@@ -10,6 +10,7 @@ import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/services/offline_sync_service.dart';
 import 'package:selecta_ops/services/placement_service.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
@@ -156,12 +157,64 @@ class _BookOrderPageState extends State<BookOrderPage> {
     try {
       final placement = await PlacementService().getPlacementByStoreAndDate(storeName.trim(), date);
       if (!mounted) return;
-      setState(() {
-        if (placement != null) {
-          _placedProductNames = placement.placedProductNames.map((n) => n.trim().toLowerCase()).toSet();
-        } else {
-          _placedProductNames = {};
+      final placed = <String>{};
+      if (placement != null) {
+        for (final n in placement.placedProductNames) {
+          placed.add(n.trim().toLowerCase());
         }
+        final legacyNames = [
+          "Mag Vanilla",
+          "Mag Almond",
+          "Cornetto Choc",
+          "Cornetto Vanilla",
+          "Paddle Pop Choc",
+          "Paddle Pop Straw",
+          "Solero Split",
+          "Calippo",
+          "Sup Double Dutch",
+          "Sup Queso Real",
+          "Sup Rocky Road",
+          "Sup Cookies & Cream",
+        ];
+        final flags = [
+          placement.cotc1,
+          placement.cotc2,
+          placement.cotc3,
+          placement.cotc4,
+          placement.cotc5,
+          placement.cotc6,
+          placement.cotc7,
+          placement.cotc8,
+          placement.cotc9,
+          placement.cotc10,
+          placement.cotc11,
+          placement.cotc12,
+        ];
+        for (int i = 0; i < legacyNames.length && i < flags.length; i++) {
+          if (flags[i]) {
+            placed.add(legacyNames[i].trim().toLowerCase());
+          }
+        }
+      }
+
+      // Expand with active placement pairs (if either product in a pair is placed, both are considered placed)
+      try {
+        final config = await ConfigurationService().getConfiguration();
+        for (final pair in config.placementPairs) {
+          final p1 = pair.product1.trim().toLowerCase();
+          final p2 = pair.product2.trim().toLowerCase();
+          final hasP1 = placed.contains(p1);
+          final hasP2 = placed.contains(p2);
+          if (hasP1 || hasP2) {
+            placed.add(p1);
+            placed.add(p2);
+          }
+        }
+      } catch (_) {}
+
+      if (!mounted) return;
+      setState(() {
+        _placedProductNames = placed;
       });
     } catch (_) {}
   }
@@ -389,7 +442,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     Text('•', style: TextStyle(color: colorScheme.outline)),
                                     Text(
                                       _isFutureDeliveryDate
-                                          ? (item.availableQuantity > 0 ? '${item.availableQuantity} in stock • Advance Order' : 'Advance Order (Restock via PO)')
+                                          ? (item.availableQuantity > 0
+                                                ? '${item.availableQuantity} in stock • Advance Order'
+                                                : 'Advance Order (Restock via PO)')
                                           : '$maxAllowed available',
                                       style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                                     ),
@@ -1021,9 +1076,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       context: context,
       showLoading: true,
       message: _isEditing ? 'Updating Order' : 'Saving Order',
-      subtitle: _isFutureDeliveryDate
-          ? 'Booking advance order for $storeName...'
-          : 'Reserving inventory stock for $storeName...',
+      subtitle: _isFutureDeliveryDate ? 'Booking advance order for $storeName...' : 'Reserving inventory stock for $storeName...',
     );
     try {
       final isOnline = await OfflineSyncService.isOnline();
@@ -1707,266 +1760,261 @@ class _BookOrderPageState extends State<BookOrderPage> {
               onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
               actions: [_buildOverflowMenuAction(allInventory: allInventory, unplacedCount: unplacedCount, colorScheme: colorScheme)],
             ),
-          bottomNavigationBar: hasSelectedStore
-              ? _buildStickyOrderSummaryBar(
-                  colorScheme: colorScheme,
-                  allInventory: allInventory,
-                  skuCount: orderItems.length,
-                  totalUnits: totalUnits,
-                  totalAmount: totalAmount,
-                )
-              : null,
-          body: Stack(
-            children: [
-              Column(
-                children: [
-                  if (!hasSelectedStore)
-                    Expanded(child: _buildSelectStorePrompt(colorScheme, allInventory))
-                  else ...[
-                    // ── Search & Selected Filter Bar ────────────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SizedBox(
-                                  height: 48,
-                                  child: TextField(
-                                    controller: _searchController,
-                                    focusNode: _searchFocusNode,
-                                    autofocus: false,
-                                    onTapOutside: (_) => _searchFocusNode.unfocus(),
-                                    onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
-                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                                    decoration: InputDecoration(
-                                      hintText: 'Search product, SKU, or category...',
-                                      hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
-                                      prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
-                                      suffixIcon: _searchQuery.isNotEmpty
-                                          ? IconButton(
-                                              icon: const Icon(Icons.clear, size: 20),
-                                              onPressed: () {
-                                                _searchController.clear();
-                                                _searchFocusNode.unfocus();
-                                                setState(() => _searchQuery = '');
-                                              },
-                                            )
-                                          : null,
-                                      filled: true,
-                                      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: BorderSide(color: colorScheme.outlineVariant),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                        borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
+            bottomNavigationBar: hasSelectedStore
+                ? _buildStickyOrderSummaryBar(
+                    colorScheme: colorScheme,
+                    allInventory: allInventory,
+                    skuCount: orderItems.length,
+                    totalUnits: totalUnits,
+                    totalAmount: totalAmount,
+                  )
+                : null,
+            body: Stack(
+              children: [
+                Column(
+                  children: [
+                    if (!hasSelectedStore)
+                      Expanded(child: _buildSelectStorePrompt(colorScheme, allInventory))
+                    else ...[
+                      // ── Search & Selected Filter Bar ────────────────────────────────
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
                               children: [
-                                FilterChip(
-                                  selected: _selectedCategoryFilter == 'all',
-                                  label: Text(
-                                    'All',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: _selectedCategoryFilter == 'all' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  selectedColor: colorScheme.primary,
-                                  showCheckmark: false,
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  onSelected: (_) => setState(() => _selectedCategoryFilter = 'all'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilterChip(
-                                  selected: _selectedCategoryFilter == 'selected',
-                                  label: Text(
-                                    'Selected (${orderItems.length})',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: _selectedCategoryFilter == 'selected' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  selectedColor: colorScheme.primary,
-                                  showCheckmark: false,
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'selected' : 'all'),
-                                ),
-                                if (unplacedCount > 0) ...[
-                                  const SizedBox(width: 8),
-                                  FilterChip(
-                                    key: const Key('unplaced_recommendations_chip'),
-                                    selected: _selectedCategoryFilter == 'unplaced',
-                                    avatar: Icon(
-                                      Icons.lightbulb_outline_rounded,
-                                      size: 15,
-                                      color: _selectedCategoryFilter == 'unplaced' ? colorScheme.onPrimary : const Color(0xFFD97706),
-                                    ),
-                                    label: Text(
-                                      'Unplaced ($unplacedCount)',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _selectedCategoryFilter == 'unplaced' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 48,
+                                    child: TextField(
+                                      controller: _searchController,
+                                      focusNode: _searchFocusNode,
+                                      autofocus: false,
+                                      onTapOutside: (_) => _searchFocusNode.unfocus(),
+                                      onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                      decoration: InputDecoration(
+                                        hintText: 'Search product, SKU, or category...',
+                                        hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
+                                        prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
+                                        suffixIcon: _searchQuery.isNotEmpty
+                                            ? IconButton(
+                                                icon: const Icon(Icons.clear, size: 20),
+                                                onPressed: () {
+                                                  _searchController.clear();
+                                                  _searchFocusNode.unfocus();
+                                                  setState(() => _searchQuery = '');
+                                                },
+                                              )
+                                            : null,
+                                        filled: true,
+                                        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                          borderSide: BorderSide(color: colorScheme.outlineVariant),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(10),
+                                          borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                                        ),
                                       ),
                                     ),
-                                    selectedColor: const Color(0xFFD97706),
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'unplaced' : 'all'),
                                   ),
-                                ],
-                                const SizedBox(width: 8),
-                                FilterChip(
-                                  selected: _selectedCategoryFilter == 'best_sellers',
-                                  label: Text(
-                                    '⭐ Best Sellers',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: _selectedCategoryFilter == 'best_sellers' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  selectedColor: colorScheme.primary,
-                                  showCheckmark: false,
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'best_sellers' : 'all'),
                                 ),
-                                const SizedBox(width: 8),
-                                FilterChip(
-                                  selected: _selectedCategoryFilter == 'by_case',
-                                  label: Text(
-                                    '📦 By Case',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: _selectedCategoryFilter == 'by_case' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  selectedColor: colorScheme.primary,
-                                  showCheckmark: false,
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_case' : 'all'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilterChip(
-                                  selected: _selectedCategoryFilter == 'by_piece',
-                                  label: Text(
-                                    '🍦 By Piece',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: _selectedCategoryFilter == 'by_piece' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  selectedColor: colorScheme.primary,
-                                  showCheckmark: false,
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_piece' : 'all'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilterChip(
-                                  selected: _selectedCategoryFilter == 'other',
-                                  label: Text(
-                                    '🛒 Other Products',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: _selectedCategoryFilter == 'other' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  selectedColor: colorScheme.primary,
-                                  showCheckmark: false,
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'other' : 'all'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilterChip(
-                                  key: const Key('hide_out_of_stock_chip'),
-                                  selected: _hideOutOfStock,
-                                  avatar: Icon(
-                                    _hideOutOfStock ? Icons.visibility_off_rounded : Icons.visibility_outlined,
-                                    size: 16,
-                                    color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
-                                  ),
-                                  label: Text(
-                                    'Hide Out of Stock',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  selectedColor: colorScheme.primary,
-                                  showCheckmark: false,
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  onSelected: (val) => setState(() => _hideOutOfStock = val),
-                                ),
-                                if (_scannedReceiptOrder.isNotEmpty) ...[
-                                  const SizedBox(width: 8),
-                                  FilterChip(
-                                    key: const Key('receipt_order_toggle_chip'),
-                                    selected: _sortByReceiptOrder,
-                                    avatar: Icon(
-                                      _sortByReceiptOrder ? Icons.receipt_long_outlined : Icons.category_outlined,
-                                      size: 15,
-                                      color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurfaceVariant,
-                                    ),
-                                    label: Text(
-                                      _sortByReceiptOrder ? 'Receipt Sequence (#1–#${_scannedReceiptOrder.length})' : 'Catalog Grouping',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    selectedColor: Colors.amber.shade100,
-                                    side: BorderSide(
-                                      color: _sortByReceiptOrder ? Colors.amber.shade400 : colorScheme.outlineVariant.withValues(alpha: 0.6),
-                                    ),
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (val) => setState(() => _sortByReceiptOrder = val),
-                                  ),
-                                ],
                               ],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 6),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  FilterChip(
+                                    selected: _selectedCategoryFilter == 'all',
+                                    label: Text(
+                                      'All',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedCategoryFilter == 'all' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: colorScheme.primary,
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (_) => setState(() => _selectedCategoryFilter = 'all'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilterChip(
+                                    selected: _selectedCategoryFilter == 'selected',
+                                    label: Text(
+                                      'Selected (${orderItems.length})',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedCategoryFilter == 'selected' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: colorScheme.primary,
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'selected' : 'all'),
+                                  ),
+                                  if (unplacedCount > 0) ...[
+                                    const SizedBox(width: 8),
+                                    FilterChip(
+                                      key: const Key('unplaced_recommendations_chip'),
+                                      selected: _selectedCategoryFilter == 'unplaced',
+                                      label: Text(
+                                        'Unplaced ($unplacedCount)',
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: _selectedCategoryFilter == 'unplaced' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                        ),
+                                      ),
+                                      selectedColor: const Color(0xFFD97706),
+                                      showCheckmark: false,
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'unplaced' : 'all'),
+                                    ),
+                                  ],
+                                  const SizedBox(width: 8),
+                                  FilterChip(
+                                    selected: _selectedCategoryFilter == 'best_sellers',
+                                    label: Text(
+                                      '⭐ Best Sellers',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedCategoryFilter == 'best_sellers' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: colorScheme.primary,
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'best_sellers' : 'all'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilterChip(
+                                    selected: _selectedCategoryFilter == 'by_case',
+                                    label: Text(
+                                      '📦 By Case',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedCategoryFilter == 'by_case' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: colorScheme.primary,
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_case' : 'all'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilterChip(
+                                    selected: _selectedCategoryFilter == 'by_piece',
+                                    label: Text(
+                                      '🍦 By Piece',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedCategoryFilter == 'by_piece' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: colorScheme.primary,
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_piece' : 'all'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilterChip(
+                                    selected: _selectedCategoryFilter == 'other',
+                                    label: Text(
+                                      '🛒 Other Products',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _selectedCategoryFilter == 'other' ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: colorScheme.primary,
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'other' : 'all'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilterChip(
+                                    key: const Key('hide_out_of_stock_chip'),
+                                    selected: _hideOutOfStock,
+                                    avatar: Icon(
+                                      _hideOutOfStock ? Icons.visibility_off_rounded : Icons.visibility_outlined,
+                                      size: 16,
+                                      color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
+                                    ),
+                                    label: Text(
+                                      'Hide Out of Stock',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurface,
+                                      ),
+                                    ),
+                                    selectedColor: colorScheme.primary,
+                                    showCheckmark: false,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    onSelected: (val) => setState(() => _hideOutOfStock = val),
+                                  ),
+                                  if (_scannedReceiptOrder.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    FilterChip(
+                                      key: const Key('receipt_order_toggle_chip'),
+                                      selected: _sortByReceiptOrder,
+                                      avatar: Icon(
+                                        _sortByReceiptOrder ? Icons.receipt_long_outlined : Icons.category_outlined,
+                                        size: 15,
+                                        color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurfaceVariant,
+                                      ),
+                                      label: Text(
+                                        _sortByReceiptOrder ? 'Receipt Sequence (#1–#${_scannedReceiptOrder.length})' : 'Catalog Grouping',
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurface,
+                                        ),
+                                      ),
+                                      selectedColor: Colors.amber.shade100,
+                                      side: BorderSide(
+                                        color: _sortByReceiptOrder ? Colors.amber.shade400 : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                                      ),
+                                      showCheckmark: false,
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      onSelected: (val) => setState(() => _sortByReceiptOrder = val),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
 
-                    // ── Unified Product List (Selecta first, Other Products at bottom) ──
-                    Expanded(
-                      child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
-                          ? const Center(child: CircularProgressIndicator())
-                          : _buildUnifiedProductList(allInventory: allInventory, colorScheme: colorScheme),
-                    ),
+                      // ── Unified Product List (Selecta first, Other Products at bottom) ──
+                      Expanded(
+                        child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
+                            ? const Center(child: CircularProgressIndicator())
+                            : _buildUnifiedProductList(allInventory: allInventory, colorScheme: colorScheme),
+                      ),
+                    ],
                   ],
-                ],
-              ),
-              if (_isScanning) Positioned.fill(child: _buildScanningOverlay(colorScheme)),
-            ],
+                ),
+                if (_isScanning) Positioned.fill(child: _buildScanningOverlay(colorScheme)),
+              ],
+            ),
           ),
-        ),
-      );
-    },
+        );
+      },
     );
   }
 

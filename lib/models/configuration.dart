@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:selecta_ops/models/placement_pair.dart';
 
 class Configuration {
   Timestamp merchBlitzStartDate;
@@ -19,6 +20,9 @@ class Configuration {
   double scanningTargetPercentage;
   int expansionTarget;
 
+  // Placement product pairs (when either is delivered, both are placed)
+  List<PlacementPair> placementPairs;
+
   Configuration({
     required this.merchBlitzStartDate,
     required this.merchBlitzEndDate,
@@ -32,6 +36,7 @@ class Configuration {
     this.placementTargetPercentage = 80.0,
     this.scanningTargetPercentage = 100.0,
     this.expansionTarget = 10,
+    this.placementPairs = const [],
   });
 
   /// Returns true if [plainTextPassword] matches the stored SHA-256 hash.
@@ -65,6 +70,7 @@ class Configuration {
         placementTargetPercentage: 80.0,
         scanningTargetPercentage: 100.0,
         expansionTarget: 10,
+        placementPairs: const [],
       );
 
   Configuration.fromJson(Map<String, Object?> json)
@@ -89,6 +95,12 @@ class Configuration {
           placementTargetPercentage: (json['placementTargetPercentage'] as num?)?.toDouble() ?? 80.0,
           scanningTargetPercentage: (json['scanningTargetPercentage'] as num?)?.toDouble() ?? 100.0,
           expansionTarget: (json['expansionTarget'] as num?)?.toInt() ?? 10,
+          placementPairs: (json['placementPairs'] is List)
+              ? (json['placementPairs'] as List)
+                  .whereType<Map>()
+                  .map((m) => PlacementPair.fromJson(Map<String, Object?>.from(m)))
+                  .toList()
+              : const [],
         );
 
   Configuration copyWith({
@@ -104,6 +116,7 @@ class Configuration {
     double? placementTargetPercentage,
     double? scanningTargetPercentage,
     int? expansionTarget,
+    List<PlacementPair>? placementPairs,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -118,6 +131,7 @@ class Configuration {
       placementTargetPercentage: placementTargetPercentage ?? this.placementTargetPercentage,
       scanningTargetPercentage: scanningTargetPercentage ?? this.scanningTargetPercentage,
       expansionTarget: expansionTarget ?? this.expansionTarget,
+      placementPairs: placementPairs ?? List.from(this.placementPairs),
     );
   }
 
@@ -136,6 +150,7 @@ class Configuration {
       'placementTargetPercentage': placementTargetPercentage,
       'scanningTargetPercentage': scanningTargetPercentage,
       'expansionTarget': expansionTarget,
+      'placementPairs': placementPairs.map((p) => p.toJson()).toList(),
     };
   }
 }

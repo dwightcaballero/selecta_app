@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/placement_controller.dart';
 import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/models/placement.dart';
+import 'package:selecta_ops/models/placement_pair.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
 
@@ -21,6 +23,7 @@ class _PlacementPageState extends State<PlacementPage> {
   final PlacementController _controller = PlacementController();
   late Placement _currentPlacement;
   List<KPlacement> listPlacement = [];
+  List<PlacementPair> _placementPairs = [];
   bool _isLoading = true;
 
   @override
@@ -40,6 +43,11 @@ class _PlacementPageState extends State<PlacementPage> {
       } catch (_) {}
     }
 
+    try {
+      final config = await ConfigurationService().getConfiguration();
+      _placementPairs = config.placementPairs;
+    } catch (_) {}
+
     final loaded = await _controller.loadBestSellerPlacements(placement: _currentPlacement);
     if (mounted) {
       setState(() {
@@ -50,6 +58,11 @@ class _PlacementPageState extends State<PlacementPage> {
   }
 
   Future<void> prefetchData() async {
+    try {
+      final config = await ConfigurationService().getConfiguration();
+      _placementPairs = config.placementPairs;
+    } catch (_) {}
+
     final loaded = await _controller.loadBestSellerPlacements(placement: _currentPlacement);
     if (mounted) {
       setState(() {
@@ -60,10 +73,11 @@ class _PlacementPageState extends State<PlacementPage> {
 
   Widget _buildProgressHeader(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final placedCount = listPlacement.where((p) => p.isPlaced).length;
-    final totalCount = listPlacement.length;
-    final isFinished = totalCount > 0 && placedCount == totalCount;
-    final progress = totalCount > 0 ? (placedCount / totalCount).clamp(0.0, 1.0) : 0.0;
+    final summary = PlacementController.computeProgressFromPlacements(placements: listPlacement, placementPairs: _placementPairs);
+    final placedCount = summary.placedTargets;
+    final totalCount = summary.totalTargets;
+    final isFinished = summary.isFinished;
+    final progress = summary.progressRatio;
     final statusColor = isFinished ? colorScheme.primary : colorScheme.tertiary;
     final currentMonthLabel = DateFormat('MMMM yyyy').format(DateTime.now());
 
@@ -98,7 +112,7 @@ class _PlacementPageState extends State<PlacementPage> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      isFinished ? 'All products placed ($currentMonthLabel)' : 'Placement status ($currentMonthLabel)',
+                      isFinished ? 'All targets placed ($currentMonthLabel)' : 'Placement status ($currentMonthLabel)',
                       style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12),
                     ),
                   ],
@@ -123,7 +137,12 @@ class _PlacementPageState extends State<PlacementPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('$placedCount of $totalCount products placed', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+              Text(
+                _placementPairs.isNotEmpty
+                    ? '$placedCount of $totalCount targets placed (pairs count as 1)'
+                    : '$placedCount of $totalCount products placed',
+                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+              ),
               Text(
                 '${(progress * 100).toInt()}%',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: statusColor),
@@ -138,17 +157,7 @@ class _PlacementPageState extends State<PlacementPage> {
   Widget _buildChecklistHeader(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Monthly Product Checklist',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Read-only view of products placed for the current month',
-          style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-      ],
+      children: [Text('Monthly Product Checklist', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold))],
     );
   }
 
@@ -176,10 +185,7 @@ class _PlacementPageState extends State<PlacementPage> {
               width: 52,
               height: 52,
               padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(10),
-              ),
+              decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(10)),
               child: placement.itemImagePath.startsWith('http')
                   ? Image.network(
                       placement.itemImagePath,
@@ -215,12 +221,25 @@ class _PlacementPageState extends State<PlacementPage> {
                       children: [
                         Icon(Icons.radio_button_unchecked_rounded, size: 12, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
-                        Text(
-                          'Not placed',
-                          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                        Text('Not placed', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                      ],
+                    ),
+                  if (placement.pairedProductName != null && placement.pairedProductName!.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Icon(Icons.link_rounded, size: 12, color: colorScheme.tertiary),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'Paired with: ${placement.pairedProductName} • Counts as 1 with pair',
+                            style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: colorScheme.tertiary, fontWeight: FontWeight.w500),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
+                  ],
                 ],
               ),
             ),
@@ -274,10 +293,7 @@ class _PlacementPageState extends State<PlacementPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Placement',
-        subtitle: _currentPlacement.storeName,
-      ),
+      appBar: CustomAppbar(title: 'Placement', subtitle: _currentPlacement.storeName),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.separated(

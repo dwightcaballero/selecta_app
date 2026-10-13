@@ -1061,6 +1061,21 @@ class PjpController {
         }
       }
 
+      // Expand with active placement pairs (if either product in a pair is placed, both are placed)
+      try {
+        final config = await ConfigurationService().getConfiguration();
+        for (final pair in config.placementPairs) {
+          final p1 = pair.product1.trim().toLowerCase();
+          final p2 = pair.product2.trim().toLowerCase();
+          if (placedLowerNames.contains(p1)) {
+            placedLowerNames.add(p2);
+          }
+          if (placedLowerNames.contains(p2)) {
+            placedLowerNames.add(p1);
+          }
+        }
+      } catch (_) {}
+
       // 2. Fetch inventory list
       List<InventoryItem> allInventory = [];
       try {

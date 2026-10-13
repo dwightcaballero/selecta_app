@@ -3,9 +3,28 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/placement.dart';
+import 'package:selecta_ops/models/placement_pair.dart';
 import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/services/selecta_product_service.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:intl/intl.dart';
+
+/// Summary representing placement targets and fulfillment,
+/// where paired products count as ONE target if either product in the pair is placed.
+class PlacementProgressSummary {
+  final int totalTargets;
+  final int placedTargets;
+  final bool isFinished;
+
+  const PlacementProgressSummary({
+    required this.totalTargets,
+    required this.placedTargets,
+    required this.isFinished,
+  });
+
+  double get progressRatio => totalTargets > 0 ? (placedTargets / totalTargets).clamp(0.0, 1.0) : 0.0;
+  int get progressPercent => (progressRatio * 100).round();
+}
 
 /// Available sorting options for the placement checklist overview.
 enum PlacementSort {
@@ -30,12 +49,143 @@ class PlacementController {
         _selectaProductService = selectaProductService ?? SelectaProductService();
 
   // ==========================================
+  // Placement Target Grouping & Progress Math
+  // ==========================================
+
+  /// Computes placement progress where paired products count as ONE target
+  /// as long as either of the pair is placed.
+  static PlacementProgressSummary computeProgress({
+    required Iterable<String> allProductNames,
+    required Iterable<String> placedProductNames,
+    required List<PlacementPair> placementPairs,
+  }) {
+    final allList = allProductNames.map((n) => n.trim()).where((n) => n.isNotEmpty).toSet().toList();
+    if (allList.isEmpty) {
+      return const PlacementProgressSummary(totalTargets: 0, placedTargets: 0, isFinished: false);
+    }
+
+    final placedLower = placedProductNames.map((n) => n.trim().toLowerCase()).toSet();
+
+    // Group products into target slots.
+    // Each pair whose products intersect allList forms 1 target slot.
+    final visited = <String>{};
+    final groups = <Set<String>>[];
+
+    for (final pair in placementPairs) {
+      final p1Lower = pair.product1.trim().toLowerCase();
+      final p2Lower = pair.product2.trim().toLowerCase();
+
+      final inAll1 = allList.where((p) => p.toLowerCase() == p1Lower).toList();
+      final inAll2 = allList.where((p) => p.toLowerCase() == p2Lower).toList();
+
+      if (inAll1.isNotEmpty || inAll2.isNotEmpty) {
+        final group = <String>{};
+        if (inAll1.isNotEmpty) {
+          group.add(inAll1.first);
+          visited.add(p1Lower);
+        }
+        if (inAll2.isNotEmpty) {
+          group.add(inAll2.first);
+          visited.add(p2Lower);
+        }
+        if (group.isNotEmpty) {
+          groups.add(group);
+        }
+      }
+    }
+
+    // Unpaired products: each forms its own target slot
+    for (final prod in allList) {
+      if (!visited.contains(prod.toLowerCase())) {
+        groups.add({prod});
+        visited.add(prod.toLowerCase());
+      }
+    }
+
+    final totalTargets = groups.length;
+    int placedTargets = 0;
+    for (final group in groups) {
+      final isGroupPlaced = group.any((p) => placedLower.contains(p.toLowerCase()));
+      if (isGroupPlaced) {
+        placedTargets++;
+      }
+    }
+
+    final isFinished = totalTargets > 0 && placedTargets >= totalTargets;
+
+    return PlacementProgressSummary(
+      totalTargets: totalTargets,
+      placedTargets: placedTargets,
+      isFinished: isFinished,
+    );
+  }
+
+  /// Computes placement progress directly from a hydrated [KPlacement] checklist.
+  static PlacementProgressSummary computeProgressFromPlacements({
+    required List<KPlacement> placements,
+    required List<PlacementPair> placementPairs,
+  }) {
+    return computeProgress(
+      allProductNames: placements.map((p) => p.itemName),
+      placedProductNames: placements.where((p) => p.isPlaced).map((p) => p.itemName),
+      placementPairs: placementPairs,
+    );
+  }
+
+  /// Returns the total unique placement targets after accounting for active pairs.
+  Future<int> getTotalTargetCount() async {
+    final bestSellers = await _selectaProductService.getBestSellerProducts();
+    final allNames = bestSellers.isNotEmpty
+        ? bestSellers.map((p) => p.productName).toList()
+        : KData.getListPlacement().map((p) => p.itemName).toList();
+    final config = await ConfigurationService().getConfiguration();
+    final summary = computeProgress(
+      allProductNames: allNames,
+      placedProductNames: const [],
+      placementPairs: config.placementPairs,
+    );
+    return summary.totalTargets > 0 ? summary.totalTargets : 12;
+  }
+
+  // ==========================================
   // List Operations (PlacementlistPage)
   // ==========================================
 
-  /// Loads all placement records across all active stores.
+  /// Loads all placement records across all active stores, normalized with any active SKU pairs.
+  /// Paired products count as ONE target as long as either of the pair is placed.
   Future<List<Placement>> loadAllPlacements() async {
-    return await PlacementService.getListPlacementForAllStores();
+    final placements = await PlacementService.getListPlacementForAllStores();
+    final config = await ConfigurationService().getConfiguration();
+    final bestSellers = await _selectaProductService.getBestSellerProducts();
+    final allNames = bestSellers.isNotEmpty
+        ? bestSellers.map((p) => p.productName).toList()
+        : KData.getListPlacement().map((p) => p.itemName).toList();
+
+    for (final p in placements) {
+      final names = p.placedProductNames.map((n) => n.trim().toLowerCase()).toSet();
+      for (final pair in config.placementPairs) {
+        final p1 = pair.product1.trim().toLowerCase();
+        final p2 = pair.product2.trim().toLowerCase();
+        if (names.contains(p1) && !names.contains(p2)) {
+          names.add(p2);
+          p.placedProductNames.add(pair.product2);
+        } else if (names.contains(p2) && !names.contains(p1)) {
+          names.add(p1);
+          p.placedProductNames.add(pair.product1);
+        }
+      }
+
+      // Compute progress count where paired products count as one
+      final summary = computeProgress(
+        allProductNames: allNames,
+        placedProductNames: p.placedProductNames,
+        placementPairs: config.placementPairs,
+      );
+      p.progressCount = summary.placedTargets;
+      p.isFinished = summary.isFinished;
+    }
+
+    return placements;
   }
 
   /// Filters placement records by completion status and search query, then sorts them.
@@ -162,14 +312,35 @@ class PlacementController {
       }
     }
 
+    final config = await ConfigurationService().getConfiguration();
+    // Expand with active placement pairs (if either is placed, both are placed)
+    for (final pair in config.placementPairs) {
+      final p1 = pair.product1.trim().toLowerCase();
+      final p2 = pair.product2.trim().toLowerCase();
+      if (placedLowerNames.contains(p1)) {
+        placedLowerNames.add(p2);
+      }
+      if (placedLowerNames.contains(p2)) {
+        placedLowerNames.add(p1);
+      }
+    }
+
     return bestSellers.map((prod) {
       final isPlaced = placedLowerNames.contains(prod.productName.trim().toLowerCase());
+      String? pairedWith;
+      for (final pair in config.placementPairs) {
+        if (pair.matches(prod.productName)) {
+          pairedWith = pair.getOther(prod.productName);
+          break;
+        }
+      }
       return KPlacement(
         itemName: prod.productName,
         itemCode: prod.id,
         isPlaced: isPlaced,
         isPlacedFromDB: isPlaced,
         itemImagePath: prod.imageUrl.isNotEmpty ? prod.imageUrl : 'assets/images/placement/watermelon.png',
+        pairedProductName: pairedWith,
       );
     }).toList();
   }
@@ -181,9 +352,12 @@ class PlacementController {
     required Placement currentPlacement,
     required List<KPlacement> placements,
   }) async {
+    final config = await ConfigurationService().getConfiguration();
+    final summary = computeProgressFromPlacements(
+      placements: placements,
+      placementPairs: config.placementPairs,
+    );
     final placedItems = placements.where((p) => p.isPlaced).toList();
-    final placedCount = placedItems.length;
-    final isFinished = placements.isNotEmpty && placedCount == placements.length;
     final placedNames = placedItems.map((p) => p.itemName).toList();
 
     // Map to legacy cotc flags if any matching names exist
@@ -210,8 +384,8 @@ class PlacementController {
       cotc10: legacyMap['cotc10'] ?? false,
       cotc11: legacyMap['cotc11'] ?? false,
       cotc12: legacyMap['cotc12'] ?? false,
-      isFinished: isFinished,
-      progressCount: placedCount,
+      isFinished: summary.isFinished,
+      progressCount: summary.placedTargets,
     );
 
     await _placementService.savePlacement(updated);
@@ -219,7 +393,7 @@ class PlacementController {
     final currentMonthLabel = DateFormat('MMMM yyyy').format(DateTime.now());
     await Helperfunctions.logTransaction(
       'Placement Update - ${updated.storeName}',
-      'Placed $placedCount of ${placements.length} products for $currentMonthLabel.',
+      'Placed ${summary.placedTargets} of ${summary.totalTargets} targets for $currentMonthLabel.',
       LogAction.update,
       page: AppPages.placement,
     );

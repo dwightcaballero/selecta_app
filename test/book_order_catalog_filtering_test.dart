@@ -156,5 +156,43 @@ void main() {
 
       expect(unplacedWithoutPlacement.map((i) => i.id), ['1']);
     });
+
+    test('Placement Pairs: if pair product is placed, both are considered placed and "Not Placed" is cleared', () {
+      // Catalog has item 1: 'P20 CREAMDAE CUPS CHOCO' (Best Seller)
+      // Say item 1 is paired with 'P10 CHOCKY STICK'
+      // If store placed 'P10 CHOCKY STICK', expanded placed set includes both
+      final rawPlaced = {'p10 chocky stick'};
+      final pairs = [
+        {'p1': 'p20 creamdae cups choco', 'p2': 'p10 chocky stick'},
+      ];
+
+      final expandedPlaced = Set<String>.from(rawPlaced);
+      for (final pair in pairs) {
+        final p1 = pair['p1']!;
+        final p2 = pair['p2']!;
+        if (expandedPlaced.contains(p1) || expandedPlaced.contains(p2)) {
+          expandedPlaced.add(p1);
+          expandedPlaced.add(p2);
+        }
+      }
+
+      // Verify item 1 is now in expandedPlaced
+      final item1 = catalog.firstWhere((i) => i.id == '1');
+      final isItem1Placed = expandedPlaced.contains(item1.productName.trim().toLowerCase());
+      expect(isItem1Placed, isTrue);
+
+      // Verify item 1 showNotPlacedMark (isBestSeller && !isPlaced) is false
+      final showNotPlacedMark = ProductTag.isBestSeller(item1.tag) && !isItem1Placed;
+      expect(showNotPlacedMark, isFalse);
+
+      // Verify unplaced list does NOT include item 1
+      final unplaced = catalog.where((item) {
+        return item.source == InventoryProductSource.selecta &&
+            ProductTag.isBestSeller(item.tag) &&
+            !expandedPlaced.contains(item.productName.trim().toLowerCase());
+      }).toList();
+      expect(unplaced.contains(item1), isFalse);
+    });
   });
 }
+

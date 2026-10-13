@@ -5,12 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:selecta_ops/controllers/badorder_controller.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
+import 'package:selecta_ops/controllers/placement_controller.dart';
 import 'package:selecta_ops/controllers/selecta_product_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/placement_pair.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/return_page.dart';
@@ -97,6 +99,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   TextEditingController txtRemarks = TextEditingController();
   TextEditingController txtSMS = TextEditingController();
   List<KPlacement> listPlacement = [];
+  List<PlacementPair> _placementPairs = [];
   String placementID = '';
 
   final _formkey = GlobalKey<FormState>();
@@ -419,6 +422,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         setState(() {
           placementID = result.placementId;
           listPlacement = result.placements;
+          _placementPairs = result.placementPairs;
         });
       }
     } else {
@@ -426,6 +430,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         setState(() {
           placementID = '';
           listPlacement = [];
+          _placementPairs = [];
         });
       }
     }
@@ -1475,8 +1480,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   Widget _buildPlacementCard() {
     final colorScheme = Theme.of(context).colorScheme;
-    final placedCount = listPlacement.where((placement) => placement.isPlaced).length;
-    final unplacedCount = listPlacement.where((placement) => !placement.isPlaced).length;
+    final summary = PlacementController.computeProgressFromPlacements(
+      placements: listPlacement,
+      placementPairs: _placementPairs,
+    );
+    final totalCount = summary.totalTargets;
+    final placedCount = summary.placedTargets;
+    final isAllPlaced = summary.isFinished;
 
     return _buildSectionCard(
       title: 'Placement Checklist',
@@ -1484,12 +1494,16 @@ class _DeliveryPageState extends State<DeliveryPage> {
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: (placedCount == 12 ? colorScheme.primary : colorScheme.onSurfaceVariant).withValues(alpha: 0.1),
+          color: (isAllPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant).withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
-          '$placedCount/12 placed',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: placedCount == 12 ? colorScheme.primary : colorScheme.onSurfaceVariant),
+          _placementPairs.isNotEmpty ? '$placedCount/$totalCount targets placed' : '$placedCount/$totalCount placed',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: isAllPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
       child: Column(
@@ -1497,39 +1511,31 @@ class _DeliveryPageState extends State<DeliveryPage> {
         children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      value: listPlacement.isEmpty ? 0 : placedCount / listPlacement.length,
-                      minHeight: 6,
-                      backgroundColor: colorScheme.surfaceContainerHighest,
-                      color: placedCount == 12 ? Colors.green : colorScheme.primary,
-                    ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: summary.progressRatio,
+                    minHeight: 6,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    color: isAllPlaced ? Colors.green : colorScheme.primary,
                   ),
                 ),
-                if (unplacedCount > 0) ...[
-                  const SizedBox(width: 10),
-                  FilledButton.tonalIcon(
-                    onPressed: isSalesmanLocked
-                        ? null
-                        : () {
-                            setState(() {
-                              for (var placement in listPlacement) {
-                                placement.isPlaced = true;
-                              }
-                            });
-                          },
-                    style: FilledButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 13, color: colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 4),
+                    Text(
+                      _placementPairs.isNotEmpty
+                          ? 'Placements update automatically. Paired products count as 1 target.'
+                          : 'Placements are automatically updated based on delivered products.',
+                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                     ),
-                    icon: const Icon(Icons.done_all_rounded, size: 16),
-                    label: const Text('Place All', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
-                  ),
-                ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -1541,29 +1547,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
             itemBuilder: (context, index) {
               final item = listPlacement[index];
               final isPlaced = item.isPlaced;
-              final isLocked = item.isPlacedFromDB;
 
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 margin: const EdgeInsets.symmetric(vertical: 3),
                 decoration: BoxDecoration(
-                  color: isLocked
-                      ? colorScheme.primary.withValues(alpha: 0.08)
-                      : (isPlaced ? colorScheme.primary.withValues(alpha: 0.04) : Colors.transparent),
+                  color: isPlaced ? colorScheme.primary.withValues(alpha: 0.05) : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isLocked
-                        ? colorScheme.primary.withValues(alpha: 0.35)
-                        : (isPlaced ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent),
+                    color: isPlaced ? colorScheme.primary.withValues(alpha: 0.25) : Colors.transparent,
                   ),
                 ),
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  onTap: isSalesmanLocked
-                      ? null
-                      : (isLocked
-                            ? () => ShowMessage.error(context, '${item.itemName} is already placed for this month.')
-                            : () => setState(() => item.isPlaced = !item.isPlaced)),
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.asset(
@@ -1579,24 +1575,75 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       ),
                     ),
                   ),
-                  title: Text(item.itemName, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
-                  subtitle: Text(
-                    isLocked ? 'Locked (saved in DB)' : (isPlaced ? 'Placed and ready' : 'Pending placement'),
-                    style: TextStyle(fontSize: 13, color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                  title: Text(item.itemName, style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isPlaced ? 'Placed for this month' : 'Not yet delivered this month',
+                        style: TextStyle(fontSize: 12, color: isPlaced ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                      ),
+                      if (item.pairedProductName != null && item.pairedProductName!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(Icons.link_rounded, size: 12, color: colorScheme.tertiary),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                'Paired with: ${item.pairedProductName}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                  color: colorScheme.tertiary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
-                  trailing: isLocked
-                      ? Icon(Icons.lock_outline, size: 20, color: colorScheme.primary)
-                      : Checkbox(
-                          value: isPlaced,
-                          activeColor: colorScheme.primary,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                          onChanged: isSalesmanLocked
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    item.isPlaced = value ?? false;
-                                  });
-                                },
+                  trailing: isPlaced
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: colorScheme.primary.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_rounded, size: 14, color: colorScheme.primary),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Placed',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                              ),
+                            ],
+                          ),
+                        )
+                      : Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.radio_button_unchecked_rounded, size: 14, color: colorScheme.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Unplaced',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
                         ),
                 ),
               );

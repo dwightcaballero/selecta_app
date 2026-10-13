@@ -10,6 +10,7 @@ import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/placement.dart';
+import 'package:selecta_ops/models/placement_pair.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
@@ -17,6 +18,8 @@ import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/services/inventory_service.dart';
 import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/services/selecta_product_service.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/controllers/placement_controller.dart';
 import 'package:intl/intl.dart';
 
 /// Aggregated counts by delivery status for summary widgets.
@@ -47,7 +50,14 @@ class PlacementLoadResult {
   /// List of placement items with state populated from the database.
   final List<KPlacement> placements;
 
-  const PlacementLoadResult({required this.placementId, required this.placements});
+  /// Active placement pairs configured in app settings.
+  final List<PlacementPair> placementPairs;
+
+  const PlacementLoadResult({
+    required this.placementId,
+    required this.placements,
+    this.placementPairs = const [],
+  });
 }
 
 /// Controller managing business logic, computations, validations, and service orchestration
@@ -561,18 +571,6 @@ class DeliveryController {
 
     await _deliveryService.updateDelivery(deliveryId, updated);
 
-    if (placements.isNotEmpty && updated.deliveryDate != null) {
-      final placement = Placement.fromFlags(
-        storeName: updated.storeName,
-        deliveryDate: updated.deliveryDate!,
-        flags: placements.map((p) => p.isPlaced).toList(),
-        id: placementId,
-      );
-      placement.progressCount = placements.where((p) => p.isPlaced).length;
-      placement.isFinished = placement.progressCount == 12;
-      await _placementService.savePlacement(placement);
-    }
-
     await Helperfunctions.logUpdate(storeName, currentDelivery.toJson(), updated.toJson(), page: AppPages.picklist);
 
     return updated;
@@ -647,20 +645,7 @@ class DeliveryController {
         lastUpdatedPage: AppPages.picklist,
       );
 
-      // 3. Prepare placement model if present
-      Placement? placement;
-      if (placements.isNotEmpty && updated.deliveryDate != null) {
-        placement = Placement.fromFlags(
-          storeName: updated.storeName,
-          deliveryDate: updated.deliveryDate!,
-          flags: placements.map((p) => p.isPlaced).toList(),
-          id: placementId,
-        );
-        placement.progressCount = placements.where((p) => p.isPlaced).length;
-        placement.isFinished = placement.progressCount == 12;
-      }
-
-      // 4. ATOMIC DATABASE TRANSACTION (All or Nothing: Stock + Movements + Delivery + Placement)
+      // 4. ATOMIC DATABASE TRANSACTION (All or Nothing: Stock + Movements + Delivery)
       onProgress?.call('Verifying stock & marking for delivery...');
       await _inventoryService.completePicklistAtomicTransaction(
         deliveryId: deliveryId,
@@ -668,7 +653,6 @@ class DeliveryController {
         reservedItems: currentDelivery.items,
         pickedItems: cleanItems,
         wasReserved: currentDelivery.isInventoryReserved,
-        placement: placement,
       );
 
       // 5. Write audit trail
@@ -808,6 +792,7 @@ class DeliveryController {
       listPlacement = KData.getListPlacement();
     }
 
+    final config = await ConfigurationService().getConfiguration();
     String placementId = '';
 
     if (storeName.isNotEmpty) {
@@ -838,16 +823,56 @@ class DeliveryController {
           }
         }
 
+        // Expand with active placement pairs (if either is placed, both are placed)
+        for (final pair in config.placementPairs) {
+          final p1 = pair.product1.trim().toLowerCase();
+          final p2 = pair.product2.trim().toLowerCase();
+          if (placedLowerNames.contains(p1)) {
+            placedLowerNames.add(p2);
+          }
+          if (placedLowerNames.contains(p2)) {
+            placedLowerNames.add(p1);
+          }
+        }
+
         for (final item in listPlacement) {
+          for (final pair in config.placementPairs) {
+            if (pair.matches(item.itemName)) {
+              item.pairedProductName = pair.getOther(item.itemName);
+              break;
+            }
+          }
           if (placedLowerNames.contains(item.itemName.trim().toLowerCase())) {
             item.isPlaced = true;
             item.isPlacedFromDB = true;
           }
         }
+      } else {
+        for (final item in listPlacement) {
+          for (final pair in config.placementPairs) {
+            if (pair.matches(item.itemName)) {
+              item.pairedProductName = pair.getOther(item.itemName);
+              break;
+            }
+          }
+        }
+      }
+    } else {
+      for (final item in listPlacement) {
+        for (final pair in config.placementPairs) {
+          if (pair.matches(item.itemName)) {
+            item.pairedProductName = pair.getOther(item.itemName);
+            break;
+          }
+        }
       }
     }
 
-    return PlacementLoadResult(placementId: placementId, placements: listPlacement);
+    return PlacementLoadResult(
+      placementId: placementId,
+      placements: listPlacement,
+      placementPairs: config.placementPairs,
+    );
   }
 
   /// Creates a new delivery record directly (legacy helper).
@@ -897,15 +922,9 @@ class DeliveryController {
 
     await _deliveryService.addDelivery(newRecord);
 
-    final placement = Placement.fromFlags(
-      storeName: newRecord.storeName,
-      deliveryDate: newRecord.deliveryDate!,
-      flags: placements.map((placement) => placement.isPlaced).toList(),
-      id: placementId,
-    );
-    placement.progressCount = placements.where((placement) => placement.isPlaced).length;
-    placement.isFinished = placement.progressCount == 12;
-    await _placementService.savePlacement(placement);
+    if (newRecord.transactionStatus == DeliveryStatus.delivered) {
+      await reflectBestSellerPlacementsForDelivery(newRecord);
+    }
 
     await Helperfunctions.logCreate(storeName, newRecord.toJson(), page: AppPages.delivery);
 
@@ -1055,35 +1074,6 @@ class DeliveryController {
       await reflectBestSellerPlacementsForDelivery(updatedDelivery);
     }
 
-    if (placements != null && placements.isNotEmpty && updatedDelivery.deliveryDate != null) {
-      final placedNames = placements.where((p) => p.isPlaced).map((p) => p.itemName).toList();
-      final totalBestSellers = await SelectaProductService().getBestSellerProducts();
-      final totalExpected = totalBestSellers.isNotEmpty ? totalBestSellers.length : placements.length;
-      final isFinished = totalExpected > 0 && placedNames.length >= totalExpected;
-
-      final placement = Placement(
-        id: placementId ?? '',
-        storeName: updatedDelivery.storeName,
-        deliveryDate: updatedDelivery.deliveryDate!,
-        placedProductNames: placedNames,
-        cotc1: placements.isNotEmpty ? placements[0].isPlaced : false,
-        cotc2: placements.length > 1 ? placements[1].isPlaced : false,
-        cotc3: placements.length > 2 ? placements[2].isPlaced : false,
-        cotc4: placements.length > 3 ? placements[3].isPlaced : false,
-        cotc5: placements.length > 4 ? placements[4].isPlaced : false,
-        cotc6: placements.length > 5 ? placements[5].isPlaced : false,
-        cotc7: placements.length > 6 ? placements[6].isPlaced : false,
-        cotc8: placements.length > 7 ? placements[7].isPlaced : false,
-        cotc9: placements.length > 8 ? placements[8].isPlaced : false,
-        cotc10: placements.length > 9 ? placements[9].isPlaced : false,
-        cotc11: placements.length > 10 ? placements[10].isPlaced : false,
-        cotc12: placements.length > 11 ? placements[11].isPlaced : false,
-        isFinished: isFinished,
-        progressCount: placedNames.length,
-      );
-      await _placementService.savePlacement(placement);
-    }
-
     // Audit log
     await Helperfunctions.logUpdate(storeName, currentDelivery.toJson(), updatedDelivery.toJson(), page: AppPages.delivery);
 
@@ -1126,9 +1116,37 @@ class DeliveryController {
 
     final placement = existingPlacement ?? Placement.empty().copyWith(storeName: delivery.storeName, deliveryDate: delivery.deliveryDate!);
 
+    // Fetch placement pairs configuration (if either product in a pair is delivered, both are placed)
+    final config = await ConfigurationService().getConfiguration();
+    final Set<String> pairedToAdd = {};
+    for (final delivered in deliveredBestSellerNames) {
+      for (final pair in config.placementPairs) {
+        if (pair.matches(delivered)) {
+          final other = pair.getOther(delivered);
+          if (other != null && other.isNotEmpty) {
+            pairedToAdd.add(other);
+          }
+        }
+      }
+    }
+    deliveredBestSellerNames.addAll(pairedToAdd);
+
     // 3. Union existing placed product names with newly delivered Best Sellers
     final currentPlaced = Set<String>.from(placement.placedProductNames);
     currentPlaced.addAll(deliveredBestSellerNames);
+
+    // Also expand any existing placed items with newly configured pairs
+    for (final pair in config.placementPairs) {
+      final p1 = pair.product1.trim().toLowerCase();
+      final p2 = pair.product2.trim().toLowerCase();
+      final currentLower = currentPlaced.map((n) => n.trim().toLowerCase()).toSet();
+      if (currentLower.contains(p1)) {
+        currentPlaced.add(pair.product2);
+      }
+      if (currentLower.contains(p2)) {
+        currentPlaced.add(pair.product1);
+      }
+    }
     placement.placedProductNames = currentPlaced.toList();
 
     // Map to legacy cotc flags if any matching names exist
@@ -1152,9 +1170,16 @@ class DeliveryController {
     placement.cotc11 = legacyMap['cotc11'] ?? placement.cotc11;
     placement.cotc12 = legacyMap['cotc12'] ?? placement.cotc12;
 
-    final totalBestSellerCount = allBestSellers.isNotEmpty ? allBestSellers.length : 12;
-    placement.progressCount = placement.placedProductNames.length;
-    placement.isFinished = totalBestSellerCount > 0 && placement.progressCount >= totalBestSellerCount;
+    final allNames = allBestSellers.isNotEmpty
+        ? allBestSellers.map((p) => p.productName).toList()
+        : legacyList.map((p) => p.itemName).toList();
+    final summary = PlacementController.computeProgress(
+      allProductNames: allNames,
+      placedProductNames: placement.placedProductNames,
+      placementPairs: config.placementPairs,
+    );
+    placement.progressCount = summary.placedTargets;
+    placement.isFinished = summary.isFinished;
 
     // 4. Persist to Firestore
     await _placementService.savePlacement(placement);

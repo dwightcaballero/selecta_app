@@ -15,6 +15,7 @@ import 'package:selecta_ops/views/pages/sidebar/selecta_product_form_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/views/widgets/products/placement_pairs_dialog.dart';
 
 /// Unified Products Page merging Selecta Products and Other Products into a single,
 /// tabbed catalog experience.
@@ -30,11 +31,7 @@ class ProductsPage extends StatefulWidget {
   final String userRole;
   final int initialIndex;
 
-  const ProductsPage({
-    super.key,
-    this.userRole = 'Dealer',
-    this.initialIndex = 0,
-  });
+  const ProductsPage({super.key, this.userRole = 'Dealer', this.initialIndex = 0});
 
   @override
   State<ProductsPage> createState() => _ProductsPageState();
@@ -72,11 +69,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(
-      length: 2,
-      vsync: this,
-      initialIndex: widget.initialIndex.clamp(0, 1),
-    );
+    _tabController = TabController(length: 2, vsync: this, initialIndex: widget.initialIndex.clamp(0, 1));
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
@@ -117,18 +110,11 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
       await _checkForAdminCatalogUpdates();
       if (!mounted) return;
       if (result.totalFetched == 0) {
-        ShowMessage.alert(
-          context,
-          title: 'Sync Selecta Catalog',
-          message: 'No products found in the master Admin catalog yet.',
-        );
+        ShowMessage.alert(context, title: 'Sync Selecta Catalog', message: 'No products found in the master Admin catalog yet.');
       } else if (result.addedCount == 0 && result.updatedCount == 0) {
         ShowMessage.success(context, 'Catalog is up to date (${result.totalFetched} products).');
       } else {
-        ShowMessage.success(
-          context,
-          'Synced ${result.totalFetched} products (${result.addedCount} new, ${result.updatedCount} updated).',
-        );
+        ShowMessage.success(context, 'Synced ${result.totalFetched} products (${result.addedCount} new, ${result.updatedCount} updated).');
       }
     } catch (e) {
       if (mounted) {
@@ -177,7 +163,10 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                   children: [
                     Row(
                       children: [
-                        Text('Format:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                        Text(
+                          'Format:',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                        ),
                         const SizedBox(width: 8),
                         ChoiceChip(
                           label: const Text('CSV (Spreadsheet)'),
@@ -185,11 +174,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                           onSelected: (_) => setDialogState(() => exportFormat = 'CSV'),
                         ),
                         const SizedBox(width: 8),
-                        ChoiceChip(
-                          label: const Text('JSON (Raw)'),
-                          selected: !isCsv,
-                          onSelected: (_) => setDialogState(() => exportFormat = 'JSON'),
-                        ),
+                        ChoiceChip(label: const Text('JSON (Raw)'), selected: !isCsv, onSelected: (_) => setDialogState(() => exportFormat = 'JSON')),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -284,7 +269,10 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Text('Format:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                          Text(
+                            'Format:',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: SingleChildScrollView(
@@ -316,7 +304,10 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                           hintText: 'https://example.com/selecta_catalog.csv',
                           prefixIcon: const Icon(Icons.link, size: 18),
                           suffixIcon: isFetchingUrl
-                              ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
+                              ? const Padding(
+                                  padding: EdgeInsets.all(10),
+                                  child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                )
                               : IconButton(
                                   icon: const Icon(Icons.cloud_download_outlined, size: 20),
                                   tooltip: 'Fetch URL content',
@@ -349,7 +340,10 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Catalog Data:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                          Text(
+                            'Catalog Data:',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                          ),
                           Row(
                             children: [
                               TextButton.icon(
@@ -359,7 +353,10 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                                 },
                                 icon: const Icon(Icons.description_outlined, size: 14),
                                 label: const Text('Sample CSV', style: TextStyle(fontSize: 11)),
-                                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), visualDensity: VisualDensity.compact),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  visualDensity: VisualDensity.compact,
+                                ),
                               ),
                               TextButton.icon(
                                 onPressed: () async {
@@ -371,7 +368,10 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                                 },
                                 icon: const Icon(Icons.paste_rounded, size: 14),
                                 label: const Text('Paste', style: TextStyle(fontSize: 11)),
-                                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), visualDensity: VisualDensity.compact),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  visualDensity: VisualDensity.compact,
+                                ),
                               ),
                             ],
                           ),
@@ -395,10 +395,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: isImporting ? null : () => Navigator.pop(ctx),
-                  child: const Text('Cancel'),
-                ),
+                TextButton(onPressed: isImporting ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
                 FilledButton.icon(
                   onPressed: isImporting
                       ? null
@@ -419,10 +416,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                                 : await _selectaController.importAdminCatalog(text);
                             if (ctx.mounted) Navigator.pop(ctx);
                             if (mounted) {
-                              ShowMessage.success(
-                                context,
-                                'Imported $count products successfully.',
-                              );
+                              ShowMessage.success(context, 'Imported $count products successfully.');
                             }
                           } catch (e) {
                             if (ctx.mounted) ShowMessage.error(ctx, 'Import failed: $e');
@@ -448,12 +442,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SelectaProductFormPage(
-          productId: productId,
-          existingProduct: product,
-          isReadOnly: false,
-          userRole: widget.userRole,
-        ),
+        builder: (_) => SelectaProductFormPage(productId: productId, existingProduct: product, isReadOnly: false, userRole: widget.userRole),
       ),
     );
   }
@@ -462,12 +451,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SelectaProductFormPage(
-          productId: productId,
-          existingDealerProduct: product,
-          isReadOnly: true,
-          userRole: widget.userRole,
-        ),
+        builder: (_) => SelectaProductFormPage(productId: productId, existingDealerProduct: product, isReadOnly: true, userRole: widget.userRole),
       ),
     );
   }
@@ -488,12 +472,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => OtherProductFormPage(
-          productId: productId,
-          existingProduct: product,
-          isReadOnly: _isSalesman,
-          userRole: widget.userRole,
-        ),
+        builder: (_) => OtherProductFormPage(productId: productId, existingProduct: product, isReadOnly: _isSalesman, userRole: widget.userRole),
       ),
     );
   }
@@ -510,48 +489,34 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
   }
 
   // ── Filter helpers ────────────────────────────────────────────────────────
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _applySelectaFilters(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _applySelectaFilters(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
     return docs.where((doc) {
       final data = doc.data();
       final name = (data['productName'] as String? ?? '').toLowerCase();
       final code = (data['itemCode'] as String? ?? '').toLowerCase();
-      final matchesSearch = _selectaSearchQuery.isEmpty ||
-          name.contains(_selectaSearchQuery) ||
-          code.contains(_selectaSearchQuery);
+      final matchesSearch = _selectaSearchQuery.isEmpty || name.contains(_selectaSearchQuery) || code.contains(_selectaSearchQuery);
 
       final isActive = data['isActive'] as bool? ?? true;
-      final matchesStatus = _selectaFilterStatus == 'All' ||
-          (_selectaFilterStatus == 'Active' && isActive) ||
-          (_selectaFilterStatus == 'Inactive' && !isActive);
+      final matchesStatus =
+          _selectaFilterStatus == 'All' || (_selectaFilterStatus == 'Active' && isActive) || (_selectaFilterStatus == 'Inactive' && !isActive);
 
       return matchesSearch && matchesStatus;
     }).toList();
   }
 
-  List<QueryDocumentSnapshot<OtherProduct>> _applyOtherFilters(
-    List<QueryDocumentSnapshot<OtherProduct>> docs,
-  ) {
+  List<QueryDocumentSnapshot<OtherProduct>> _applyOtherFilters(List<QueryDocumentSnapshot<OtherProduct>> docs) {
     final filtered = docs.where((doc) {
       final p = doc.data();
-      final matchesSearch = _otherSearchQuery.isEmpty ||
-          p.productName.toLowerCase().contains(_otherSearchQuery);
-      final matchesStatus = _otherFilterStatus == 'All' ||
-          (_otherFilterStatus == 'Active' && p.isActive) ||
-          (_otherFilterStatus == 'Inactive' && !p.isActive);
+      final matchesSearch = _otherSearchQuery.isEmpty || p.productName.toLowerCase().contains(_otherSearchQuery);
+      final matchesStatus =
+          _otherFilterStatus == 'All' || (_otherFilterStatus == 'Active' && p.isActive) || (_otherFilterStatus == 'Inactive' && !p.isActive);
       return matchesSearch && matchesStatus;
     }).toList();
 
     filtered.sort((a, b) {
       final pA = a.data();
       final pB = b.data();
-      return Helperfunctions.compareBySrpAndName(
-        nameA: pA.productName,
-        priceA: pA.sellingPrice,
-        nameB: pB.productName,
-        priceB: pB.sellingPrice,
-      );
+      return Helperfunctions.compareBySrpAndName(nameA: pA.productName, priceA: pA.sellingPrice, nameB: pB.productName, priceB: pB.sellingPrice);
     });
 
     return filtered;
@@ -571,25 +536,68 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
             : (_isSalesman ? 'Selecta & Other Products Reference' : 'Dealer Products Catalog'),
         actions: isSelectaTab && _isAdmin
             ? [
-                IconButton(
-                  icon: const Icon(Icons.file_download_outlined, color: Colors.white, size: 20),
-                  tooltip: 'Import Catalog Data',
-                  onPressed: _handleAdminImport,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.file_upload_outlined, color: Colors.white, size: 20),
-                  tooltip: 'Export Catalog Data',
-                  onPressed: _handleAdminExport,
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 20),
+                  tooltip: 'Options',
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  color: colorScheme.surface,
+                  elevation: 8,
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'pairs':
+                        PlacementPairsDialog.show(context);
+                        break;
+                      case 'import':
+                        _handleAdminImport();
+                        break;
+                      case 'export':
+                        _handleAdminExport();
+                        break;
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    PopupMenuItem(
+                      value: 'pairs',
+                      child: Row(
+                        children: [
+                          Icon(Icons.link_rounded, size: 18, color: colorScheme.onSurface),
+                          const SizedBox(width: 10),
+                          Text('Placement Pairs', style: TextStyle(fontSize: 13, color: colorScheme.onSurface)),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'import',
+                      child: Row(
+                        children: [
+                          Icon(Icons.file_download_outlined, size: 18, color: colorScheme.onSurface),
+                          const SizedBox(width: 10),
+                          Text('Import Catalog Data', style: TextStyle(fontSize: 13, color: colorScheme.onSurface)),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'export',
+                      child: Row(
+                        children: [
+                          Icon(Icons.file_upload_outlined, size: 18, color: colorScheme.onSurface),
+                          const SizedBox(width: 10),
+                          Text('Export Catalog Data', style: TextStyle(fontSize: 13, color: colorScheme.onSurface)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ]
             : [
-                IconButton(
-                  icon: const Icon(Icons.warehouse_outlined, color: Colors.white, size: 20),
-                  tooltip: 'Manage Inventory',
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryPage()));
-                  },
-                ),
+                if (!_isAdmin)
+                  IconButton(
+                    icon: const Icon(Icons.warehouse_outlined, color: Colors.white, size: 20),
+                    tooltip: 'Manage Inventory',
+                    onPressed: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryPage()));
+                    },
+                  ),
               ],
         bottom: TabBar(
           controller: _tabController,
@@ -600,24 +608,12 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
           unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 13.5),
           tabs: const [
-            Tab(
-              icon: Icon(Icons.icecream_outlined, size: 20),
-              text: 'Selecta Products',
-            ),
-            Tab(
-              icon: Icon(Icons.inventory_2_outlined, size: 20),
-              text: 'Other Products',
-            ),
+            Tab(icon: Icon(Icons.icecream_outlined, size: 20), text: 'Selecta Products'),
+            Tab(icon: Icon(Icons.inventory_2_outlined, size: 20), text: 'Other Products'),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildSelectaProductsTab(colorScheme),
-          _buildOtherProductsTab(colorScheme),
-        ],
-      ),
+      body: TabBarView(controller: _tabController, children: [_buildSelectaProductsTab(colorScheme), _buildOtherProductsTab(colorScheme)]),
       floatingActionButton: _buildFloatingActionButton(colorScheme),
     );
   }
@@ -664,14 +660,14 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
           Container(
             width: double.infinity,
             color: Colors.amber.withValues(alpha: 0.12),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: const Row(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
               children: [
-                Icon(Icons.admin_panel_settings_rounded, size: 18, color: Colors.amber),
-                SizedBox(width: 8),
-                Expanded(
+                const Icon(Icons.admin_panel_settings_rounded, size: 18, color: Colors.amber),
+                const SizedBox(width: 8),
+                const Expanded(
                   child: Text(
-                    'Admin Mode: Create, edit, delete, import, and export master Selecta products.',
+                    'Admin Mode: Master catalog management & placement pairs configuration.',
                     style: TextStyle(fontSize: 11, color: Colors.amber, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -727,9 +723,18 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                     )
                   : null,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outlineVariant)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.primary, width: 1.5)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+              ),
             ),
           ),
         ),
@@ -809,10 +814,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                 }
               }
 
-              int compareProducts(
-                QueryDocumentSnapshot<Map<String, dynamic>> a,
-                QueryDocumentSnapshot<Map<String, dynamic>> b,
-              ) {
+              int compareProducts(QueryDocumentSnapshot<Map<String, dynamic>> a, QueryDocumentSnapshot<Map<String, dynamic>> b) {
                 final dataA = a.data();
                 final dataB = b.data();
                 final nameA = dataA['productName'] as String? ?? '';
@@ -870,13 +872,15 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                   ),
                   Expanded(
                     child: filtered.isEmpty
-                        ? _buildNoResultsState(onReset: () {
-                            _selectaSearchController.clear();
-                            setState(() {
-                              _selectaSearchQuery = '';
-                              _selectaFilterStatus = 'All';
-                            });
-                          })
+                        ? _buildNoResultsState(
+                            onReset: () {
+                              _selectaSearchController.clear();
+                              setState(() {
+                                _selectaSearchQuery = '';
+                                _selectaFilterStatus = 'All';
+                              });
+                            },
+                          )
                         : ListView(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
                             children: [
@@ -953,19 +957,28 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                     ),
                     if (product.category.isNotEmpty) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        product.category,
-                        style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
-                      ),
+                      Text(product.category, style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
                     ],
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Text('Buy: ', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant)),
-                        Text(currencyFormat.format(product.buyingPrice), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant)),
+                        Text(
+                          'Buy: ',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          currencyFormat.format(product.buyingPrice),
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+                        ),
                         const SizedBox(width: 16),
-                        Text('Sell: ', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant)),
-                        Text(currencyFormat.format(product.sellingPrice), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: colorScheme.onSurface)),
+                        Text(
+                          'Sell: ',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                        ),
+                        Text(
+                          currencyFormat.format(product.sellingPrice),
+                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: colorScheme.onSurface),
+                        ),
                       ],
                     ),
                   ],
@@ -1019,10 +1032,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                     ),
                     if (product.itemCode.isNotEmpty) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        'Item Code: ${product.itemCode}',
-                        style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
-                      ),
+                      Text('Item Code: ${product.itemCode}', style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
                     ],
                     const SizedBox(height: 6),
                     Row(
@@ -1128,9 +1138,18 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                     )
                   : null,
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outlineVariant)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: colorScheme.primary, width: 1.5)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.outlineVariant),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+              ),
             ),
           ),
         ),
@@ -1241,13 +1260,15 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                   ),
                   Expanded(
                     child: filtered.isEmpty
-                        ? _buildNoResultsState(onReset: () {
-                            _otherSearchController.clear();
-                            setState(() {
-                              _otherSearchQuery = '';
-                              _otherFilterStatus = 'All';
-                            });
-                          })
+                        ? _buildNoResultsState(
+                            onReset: () {
+                              _otherSearchController.clear();
+                              setState(() {
+                                _otherSearchQuery = '';
+                                _otherFilterStatus = 'All';
+                              });
+                            },
+                          )
                         : ListView(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 88),
                             children: [
@@ -1257,12 +1278,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                                 color: colorScheme.onSurfaceVariant,
                                 count: filtered.length,
                               ),
-                              ...filtered.map(
-                                (doc) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: _buildOtherProductCard(doc),
-                                ),
-                              ),
+                              ...filtered.map((doc) => Padding(padding: const EdgeInsets.only(bottom: 8), child: _buildOtherProductCard(doc))),
                             ],
                           ),
                   ),
@@ -1388,12 +1404,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
   }
 
   // ── Common Shared Widgets ─────────────────────────────────────────────────
-  Widget _buildGroupHeader({
-    required String title,
-    required IconData icon,
-    required Color color,
-    required int count,
-  }) {
+  Widget _buildGroupHeader({required String title, required IconData icon, required Color color, required int count}) {
     return Padding(
       padding: const EdgeInsets.only(top: 14, bottom: 6),
       child: Column(
@@ -1470,11 +1481,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
               style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: onReset,
-              icon: const Icon(Icons.filter_alt_off_rounded, size: 16),
-              label: const Text('Reset Filters'),
-            ),
+            OutlinedButton.icon(onPressed: onReset, icon: const Icon(Icons.filter_alt_off_rounded, size: 16), label: const Text('Reset Filters')),
           ],
         ),
       ),
