@@ -11,7 +11,11 @@ class EndOfDayDTO {
   double onlineamount = 0;
   double creditamount = 0;
   double returnedAmount = 0;
-  double expenseAmount = 0;
+  double expenseAmount = 0; // Total cash expenses deducted from expected cash
+  double salesmanExpenseAmount = 0; // Salesman expenses (always cash)
+  double dealerExpenseAmount = 0; // Total dealer expenses (cash + online)
+  double dealerExpenseCashAmount = 0; // Dealer expenses paid in cash (deducted)
+  double dealerExpenseOnlineAmount = 0; // Dealer expenses paid online (not deducted)
 
   double expectedcashonhand = 0;
   double actualcashonhand = 0;
@@ -31,6 +35,10 @@ class EndOfDayDTO {
     required this.creditamount,
     required this.returnedAmount,
     required this.expenseAmount,
+    this.salesmanExpenseAmount = 0,
+    this.dealerExpenseAmount = 0,
+    this.dealerExpenseCashAmount = 0,
+    this.dealerExpenseOnlineAmount = 0,
     required this.expectedcashonhand,
     required this.actualcashonhand,
     required this.discrepancy,
@@ -50,6 +58,10 @@ class EndOfDayDTO {
     creditamount: 0,
     returnedAmount: 0,
     expenseAmount: 0,
+    salesmanExpenseAmount: 0,
+    dealerExpenseAmount: 0,
+    dealerExpenseCashAmount: 0,
+    dealerExpenseOnlineAmount: 0,
     expectedcashonhand: 0,
     actualcashonhand: 0,
     discrepancy: 0,

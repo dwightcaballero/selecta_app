@@ -91,6 +91,20 @@ class BusinessRole {
   static const salesman = "Salesman";
 }
 
+class ExpenseType {
+  static const salesman = "Salesman";
+  static const dealer = "Dealer";
+
+  static const List<String> all = [salesman, dealer];
+}
+
+class ExpensePaymentMethod {
+  static const cash = "Cash";
+  static const online = "Online";
+
+  static const List<String> all = [cash, online];
+}
+
 class SharedPrefKeys {
   static const role = 'role';
 }

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:selecta_ops/data/constants.dart';
 
 class Expenses {
   String description;
@@ -10,6 +11,8 @@ class Expenses {
   Timestamp lastupdatedDate;
   String createdPage;
   String lastUpdatedPage;
+  String expenseType; // ExpenseType.salesman or ExpenseType.dealer
+  String paymentMethod; // ExpensePaymentMethod.cash or ExpensePaymentMethod.online
 
   Expenses({
     required this.description,
@@ -21,9 +24,16 @@ class Expenses {
     required this.lastupdatedDate,
     this.createdPage = '',
     this.lastUpdatedPage = '',
+    this.expenseType = ExpenseType.dealer,
+    this.paymentMethod = ExpensePaymentMethod.cash,
   });
 
-  static Expenses empty() => Expenses(
+  bool get isSalesmanExpense => expenseType == ExpenseType.salesman;
+  bool get isDealerExpense => expenseType != ExpenseType.salesman;
+  bool get isCash => paymentMethod != ExpensePaymentMethod.online;
+  bool get isOnline => paymentMethod == ExpensePaymentMethod.online;
+
+  static Expenses empty({String? expenseType, String? paymentMethod}) => Expenses(
     description: '',
     expenseAmount: 0,
     expenseDate: Timestamp.now(),
@@ -33,12 +43,14 @@ class Expenses {
     lastupdatedDate: Timestamp.now(),
     createdPage: '',
     lastUpdatedPage: '',
+    expenseType: expenseType ?? ExpenseType.dealer,
+    paymentMethod: paymentMethod ?? ExpensePaymentMethod.cash,
   );
 
   Expenses.fromJson(Map<String, Object?> json)
     : this(
         description: json['description']! as String,
-        expenseAmount: json['expenseAmount']! as double,
+        expenseAmount: (json['expenseAmount']! as num).toDouble(),
         expenseDate: json['expenseDate']! as Timestamp,
         createdBy: json['createdBy']! as String,
         lastUpdatedBy: json['lastUpdatedBy']! as String,
@@ -46,21 +58,25 @@ class Expenses {
         lastupdatedDate: json['lastupdatedDate']! as Timestamp,
         createdPage: json['createdPage'] as String? ?? '',
         lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
+        expenseType: json['expenseType'] as String? ?? ExpenseType.dealer,
+        paymentMethod: json['paymentMethod'] as String? ?? ExpensePaymentMethod.cash,
       );
 
   factory Expenses.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     if (document.data() != null) {
       final data = document.data();
       return Expenses(
-        description: data?['description'],
-        expenseAmount: data?['expenseAmount'],
-        expenseDate: data?['expenseDate'],
-        createdBy: data?['createdBy'],
-        lastUpdatedBy: data?['lastUpdatedBy'],
-        createdDate: data?['createdDate'],
-        lastupdatedDate: data?['lastupdatedDate'],
+        description: data?['description'] ?? '',
+        expenseAmount: (data?['expenseAmount'] as num?)?.toDouble() ?? 0.0,
+        expenseDate: data?['expenseDate'] ?? Timestamp.now(),
+        createdBy: data?['createdBy'] ?? '',
+        lastUpdatedBy: data?['lastUpdatedBy'] ?? '',
+        createdDate: data?['createdDate'] ?? Timestamp.now(),
+        lastupdatedDate: data?['lastupdatedDate'] ?? Timestamp.now(),
         createdPage: data?['createdPage'] as String? ?? '',
         lastUpdatedPage: data?['lastUpdatedPage'] as String? ?? '',
+        expenseType: data?['expenseType'] as String? ?? ExpenseType.dealer,
+        paymentMethod: data?['paymentMethod'] as String? ?? ExpensePaymentMethod.cash,
       );
     } else {
       return Expenses.empty();
@@ -77,6 +93,8 @@ class Expenses {
     Timestamp? lastupdatedDate,
     String? createdPage,
     String? lastUpdatedPage,
+    String? expenseType,
+    String? paymentMethod,
   }) {
     return Expenses(
       description: description ?? this.description,
@@ -88,6 +106,8 @@ class Expenses {
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
       createdPage: createdPage ?? this.createdPage,
       lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
+      expenseType: expenseType ?? this.expenseType,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
     );
   }
 
@@ -102,6 +122,8 @@ class Expenses {
       'lastupdatedDate': lastupdatedDate,
       'createdPage': createdPage,
       'lastUpdatedPage': lastUpdatedPage,
+      'expenseType': expenseType,
+      'paymentMethod': paymentMethod,
     };
   }
 }

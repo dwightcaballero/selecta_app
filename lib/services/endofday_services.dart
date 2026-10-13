@@ -57,7 +57,30 @@ class EndofdayServices {
     }
 
     ExpensesService dbXP = ExpensesService();
-    endofday.expenseAmount = await dbXP.getTotalExpensesForEndOfDay(deliveryDate) ?? 0;
+    final dayExpenses = await dbXP.getExpensesForEndOfDay(deliveryDate);
+
+    double salesmanExp = 0.0;
+    double dealerCashExp = 0.0;
+    double dealerOnlineExp = 0.0;
+
+    for (final exp in dayExpenses) {
+      if (exp.isSalesmanExpense) {
+        salesmanExp += exp.expenseAmount;
+      } else {
+        if (exp.isOnline) {
+          dealerOnlineExp += exp.expenseAmount;
+        } else {
+          dealerCashExp += exp.expenseAmount;
+        }
+      }
+    }
+
+    endofday.salesmanExpenseAmount = salesmanExp;
+    endofday.dealerExpenseCashAmount = dealerCashExp;
+    endofday.dealerExpenseOnlineAmount = dealerOnlineExp;
+    endofday.dealerExpenseAmount = dealerCashExp + dealerOnlineExp;
+    // Only cash expenses (salesman cash + dealer cash) are deducted from expected cash on hand:
+    endofday.expenseAmount = salesmanExp + dealerCashExp;
 
     BreakdownService dbBD = BreakdownService();
     Breakdown? breakdown = await dbBD.getDocumentsBySpecificDate(deliveryDate);

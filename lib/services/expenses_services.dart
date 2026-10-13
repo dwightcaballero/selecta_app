@@ -21,6 +21,46 @@ class ExpensesService {
     return _expensesRef.orderBy('expenseDate', descending: true).snapshots();
   }
 
+  Future<List<Expenses>> getExpensesForEndOfDay(DateTime expenseDate) async {
+    final startOfDay = DateTime(
+      expenseDate.year,
+      expenseDate.month,
+      expenseDate.day,
+      0,
+      0,
+      0,
+    );
+
+    final endOfDay = DateTime(
+      expenseDate.year,
+      expenseDate.month,
+      expenseDate.day,
+      23,
+      59,
+      59,
+    );
+
+    try {
+      final snapshot = await _firestore
+          .collection(EXPENSES_COLLECTION_REF)
+          .where(
+            'expenseDate',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+          )
+          .where(
+            'expenseDate',
+            isLessThanOrEqualTo: Timestamp.fromDate(endOfDay),
+          )
+          .get();
+
+      return snapshot.docs
+          .map((doc) => Expenses.fromJson(doc.data()))
+          .toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
   Future<double?> getTotalExpensesForEndOfDay(DateTime expenseDate) async {
     final startOfDay = DateTime(
       expenseDate.year,

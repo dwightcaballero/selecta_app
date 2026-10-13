@@ -87,8 +87,10 @@ class ProfitLossController {
     // 1. Fetch delivered deliveries within range
     final deliveries = await _fetchDeliveredOrders(start, end);
 
-    // 2. Fetch expenses within range
-    final expenses = await _fetchExpenses(start, end);
+    // 2. Fetch expenses within range and filter to Dealer expenses only
+    // Salesman expenses (e.g. driver snacks) are excluded from business analytics
+    final allExpenses = await _fetchExpenses(start, end);
+    final expenses = allExpenses.where((exp) => exp.isDealerExpense).toList();
 
     // 3. Fetch bad orders within range
     final badOrders = await _fetchBadOrders(start, end);

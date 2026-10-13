@@ -7,17 +7,26 @@ import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/expenses_services.dart';
 
 /// Aggregation and filtering result for operating expenses.
+/// Aggregation and filtering result for operating expenses.
 class ExpenseFilterResult {
   final List<QueryDocumentSnapshot> filteredDocs;
   final double periodTotalAmount;
+  final double periodCashAmount;
+  final double periodOnlineAmount;
   final int thisMonthCount;
   final int allCount;
+  final int salesmanCount;
+  final int dealerCount;
 
   const ExpenseFilterResult({
     required this.filteredDocs,
     required this.periodTotalAmount,
+    this.periodCashAmount = 0.0,
+    this.periodOnlineAmount = 0.0,
     required this.thisMonthCount,
     required this.allCount,
+    this.salesmanCount = 0,
+    this.dealerCount = 0,
   });
 }
 
@@ -37,15 +46,21 @@ class ExpensesController {
     return authService.value.currentUser?.displayName ?? 'Unknown';
   }
 
-  /// Filters and aggregates expense documents according to selected period and search query.
+  /// Filters and aggregates expense documents according to selected tab type, period, and search query.
   ExpenseFilterResult filterExpenses({
     required List<QueryDocumentSnapshot> docs,
+    required String selectedExpenseType, // ExpenseType.salesman or ExpenseType.dealer
     required String selectedPeriod,
     required String searchQuery,
     required DateTime now,
   }) {
     int thisMonthCount = 0;
+    int allTabCount = 0;
+    int salesmanTotalCount = 0;
+    int dealerTotalCount = 0;
     double periodTotalAmount = 0;
+    double periodCashAmount = 0;
+    double periodOnlineAmount = 0;
     final List<QueryDocumentSnapshot> filteredDocs = [];
     final cleanQuery = searchQuery.trim().toLowerCase();
 
@@ -54,6 +69,19 @@ class ExpensesController {
       final date = expense.expenseDate.toDate();
       final isThisMonth = date.year == now.year && date.month == now.month;
 
+      if (expense.isSalesmanExpense) {
+        salesmanTotalCount++;
+      } else {
+        dealerTotalCount++;
+      }
+
+      final matchesType = (selectedExpenseType == ExpenseType.salesman)
+          ? expense.isSalesmanExpense
+          : expense.isDealerExpense;
+
+      if (!matchesType) continue;
+
+      allTabCount++;
       if (isThisMonth) thisMonthCount++;
 
       final matchesPeriod = selectedPeriod == 'All' || isThisMonth;
@@ -61,6 +89,11 @@ class ExpensesController {
 
       if (matchesPeriod) {
         periodTotalAmount += expense.expenseAmount;
+        if (expense.isOnline) {
+          periodOnlineAmount += expense.expenseAmount;
+        } else {
+          periodCashAmount += expense.expenseAmount;
+        }
       }
 
       if (matchesPeriod && matchesSearch) {
@@ -71,8 +104,12 @@ class ExpensesController {
     return ExpenseFilterResult(
       filteredDocs: filteredDocs,
       periodTotalAmount: periodTotalAmount,
+      periodCashAmount: periodCashAmount,
+      periodOnlineAmount: periodOnlineAmount,
       thisMonthCount: thisMonthCount,
-      allCount: docs.length,
+      allCount: allTabCount,
+      salesmanCount: salesmanTotalCount,
+      dealerCount: dealerTotalCount,
     );
   }
 
@@ -81,6 +118,8 @@ class ExpensesController {
     required String description,
     required double amount,
     required DateTime selectedDate,
+    required String expenseType,
+    required String paymentMethod,
   }) async {
     final user = getCurrentUserDisplayName();
     final newRecord = Expenses(
@@ -93,6 +132,8 @@ class ExpensesController {
       lastupdatedDate: Timestamp.now(),
       createdPage: AppPages.expenses,
       lastUpdatedPage: AppPages.expenses,
+      expenseType: expenseType,
+      paymentMethod: paymentMethod,
     );
 
     _expensesService.addExpenses(newRecord);
@@ -106,6 +147,8 @@ class ExpensesController {
     required String description,
     required double amount,
     required DateTime selectedDate,
+    required String expenseType,
+    required String paymentMethod,
   }) async {
     final user = getCurrentUserDisplayName();
     final updatedRecord = existingRecord.copyWith(
@@ -118,6 +161,8 @@ class ExpensesController {
       lastupdatedDate: Timestamp.now(),
       createdPage: existingRecord.createdPage,
       lastUpdatedPage: AppPages.expenses,
+      expenseType: expenseType,
+      paymentMethod: paymentMethod,
     );
 
     _expensesService.updateExpenses(recID, updatedRecord);

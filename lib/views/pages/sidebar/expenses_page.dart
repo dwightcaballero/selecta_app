@@ -10,10 +10,16 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 
 class ExpensesPage extends StatefulWidget {
-  const ExpensesPage({super.key, required this.recID, required this.expense});
+  const ExpensesPage({
+    super.key,
+    required this.recID,
+    required this.expense,
+    this.initialExpenseType,
+  });
 
   final Expenses expense;
   final String recID;
+  final String? initialExpenseType;
 
   @override
   State<ExpensesPage> createState() => _ExpensesPageState();
@@ -29,8 +35,20 @@ class _ExpensesPageState extends State<ExpensesPage> {
   final _formKey = GlobalKey<FormState>();
   bool _isDealer = false;
   DateTime _selectedDate = DateTime.now();
+  String _selectedExpenseType = ExpenseType.dealer;
+  String _selectedPaymentMethod = ExpensePaymentMethod.cash;
 
-  bool get isReadOnly => widget.recID.isNotEmpty && !_isDealer;
+  bool get isReadOnly {
+    if (widget.recID.isNotEmpty) {
+      // Existing records can only be edited or deleted by dealers
+      return !_isDealer;
+    }
+    // New records: salesmen can only create Salesman expenses
+    if (!_isDealer && _selectedExpenseType != ExpenseType.salesman) {
+      return true;
+    }
+    return false;
+  }
 
   @override
   void dispose() {
@@ -52,16 +70,31 @@ class _ExpensesPageState extends State<ExpensesPage> {
       txtDescription.text = widget.expense.description;
       txtAmount.text = Helperfunctions.formatDoubleAmountForField(widget.expense.expenseAmount);
       final date = widget.expense.expenseDate.toDate();
+      final expType = widget.expense.expenseType;
+      final payMethod = (expType == ExpenseType.salesman)
+          ? ExpensePaymentMethod.cash
+          : widget.expense.paymentMethod;
+
       if (mounted) {
         setState(() {
           _isDealer = isDealer;
           _selectedDate = date;
+          _selectedExpenseType = expType;
+          _selectedPaymentMethod = payMethod;
         });
       }
     } else {
+      // New record creation
+      final expType = isDealer
+          ? (widget.initialExpenseType ?? ExpenseType.dealer)
+          : ExpenseType.salesman;
+      final payMethod = ExpensePaymentMethod.cash;
+
       if (mounted) {
         setState(() {
           _isDealer = isDealer;
+          _selectedExpenseType = expType;
+          _selectedPaymentMethod = payMethod;
         });
       }
     }
@@ -75,6 +108,10 @@ class _ExpensesPageState extends State<ExpensesPage> {
           description: txtDescription.text,
           amount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
           selectedDate: _selectedDate,
+          expenseType: _selectedExpenseType,
+          paymentMethod: _selectedExpenseType == ExpenseType.salesman
+              ? ExpensePaymentMethod.cash
+              : _selectedPaymentMethod,
         );
         if (mounted) {
           ShowMessage.success(context, 'Successfully created expense record for [${txtDescription.text}]!');
@@ -86,7 +123,12 @@ class _ExpensesPageState extends State<ExpensesPage> {
           action: 'Create Expense Record',
           error: e,
           stackTrace: s,
-          extraData: {'description': txtDescription.text, 'amount': txtAmount.text},
+          extraData: {
+            'description': txtDescription.text,
+            'amount': txtAmount.text,
+            'expenseType': _selectedExpenseType,
+            'paymentMethod': _selectedPaymentMethod,
+          },
         );
         if (mounted) {
           ShowMessage.error(context, 'Failed to create record: $e');
@@ -111,6 +153,10 @@ class _ExpensesPageState extends State<ExpensesPage> {
           description: txtDescription.text,
           amount: Helperfunctions.formatStringAmountToDouble(txtAmount.text),
           selectedDate: _selectedDate,
+          expenseType: _selectedExpenseType,
+          paymentMethod: _selectedExpenseType == ExpenseType.salesman
+              ? ExpensePaymentMethod.cash
+              : _selectedPaymentMethod,
         );
         if (mounted) {
           ShowMessage.success(context, 'Successfully updated expense record for [${txtDescription.text}]!');
@@ -122,7 +168,12 @@ class _ExpensesPageState extends State<ExpensesPage> {
           action: 'Update Expense Record',
           error: e,
           stackTrace: s,
-          extraData: {'recID': widget.recID, 'description': txtDescription.text},
+          extraData: {
+            'recID': widget.recID,
+            'description': txtDescription.text,
+            'expenseType': _selectedExpenseType,
+            'paymentMethod': _selectedPaymentMethod,
+          },
         );
         if (mounted) {
           ShowMessage.error(context, 'Failed to update record: $e');
@@ -220,8 +271,240 @@ class _ExpensesPageState extends State<ExpensesPage> {
     );
   }
 
+  Widget _buildExpenseTypeSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isSalesmanType = _selectedExpenseType == ExpenseType.salesman;
+
+    if (!_isDealer || isReadOnly) {
+      // Read-only indicator for salesman or view-only mode
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSalesmanType
+              ? Colors.orange.withValues(alpha: 0.08)
+              : colorScheme.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSalesmanType
+                ? Colors.orange.shade300
+                : colorScheme.primary.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSalesmanType ? Icons.lunch_dining_outlined : Icons.storefront_outlined,
+              size: 20,
+              color: isSalesmanType ? Colors.orange.shade800 : colorScheme.primary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Expense Category',
+                    style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                  ),
+                  Text(
+                    isSalesmanType
+                        ? 'Salesman Expense (Snacks / Meals)'
+                        : 'Dealer Expense (Operations / Fuel)',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: isSalesmanType ? Colors.orange.shade900 : colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Dealer has full toggle ability between Salesman Expense and Dealer Expense
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Expense Category',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: ExpenseType.salesman,
+              icon: Icon(Icons.lunch_dining_outlined, size: 18),
+              label: Text('Salesman (Snacks)'),
+            ),
+            ButtonSegment(
+              value: ExpenseType.dealer,
+              icon: Icon(Icons.storefront_outlined, size: 18),
+              label: Text('Dealer (Ops/Gas)'),
+            ),
+          ],
+          selected: {_selectedExpenseType},
+          onSelectionChanged: (newSelection) {
+            setState(() {
+              _selectedExpenseType = newSelection.first;
+              if (_selectedExpenseType == ExpenseType.salesman) {
+                _selectedPaymentMethod = ExpensePaymentMethod.cash;
+              }
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentMethodSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isSalesmanType = _selectedExpenseType == ExpenseType.salesman;
+
+    if (isSalesmanType) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.payments_outlined, size: 20, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'Payment Method: ',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Cash (Fixed)',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Salesman expenses are always paid in cash and deducted from End of Day cash on hand.',
+                    style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isReadOnly) {
+      final isOnline = _selectedPaymentMethod == ExpensePaymentMethod.online;
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isOnline ? Colors.blue.withValues(alpha: 0.08) : Colors.green.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: isOnline ? Colors.blue.shade300 : Colors.green.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isOnline ? Icons.account_balance_outlined : Icons.payments_outlined,
+              size: 20,
+              color: isOnline ? Colors.blue.shade700 : Colors.green.shade700,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Payment Method', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                  Text(
+                    _selectedPaymentMethod,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: isOnline ? Colors.blue.shade800 : Colors.green.shade800,
+                    ),
+                  ),
+                  Text(
+                    isOnline
+                        ? 'Non-cash: Not deducted from End of Day cash. Reflected in Business Analytics.'
+                        : 'Cash: Deducted from End of Day cash & reflected in Business Analytics.',
+                    style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Payment Method',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: ExpensePaymentMethod.cash,
+              icon: Icon(Icons.payments_outlined, size: 18),
+              label: Text('Cash'),
+            ),
+            ButtonSegment(
+              value: ExpensePaymentMethod.online,
+              icon: Icon(Icons.account_balance_outlined, size: 18),
+              label: Text('Online / Bank'),
+            ),
+          ],
+          selected: {_selectedPaymentMethod},
+          onSelectionChanged: (newSelection) {
+            setState(() {
+              _selectedPaymentMethod = newSelection.first;
+            });
+          },
+        ),
+        const SizedBox(height: 6),
+        Text(
+          _selectedPaymentMethod == ExpensePaymentMethod.cash
+              ? '• Deducted from End of Day cash-on-hand & reflected in Business Analytics.'
+              : '• Non-cash: NOT deducted from End of Day cash-on-hand. Reflected in Business Analytics.',
+          style: TextStyle(
+            fontSize: 11.5,
+            color: _selectedPaymentMethod == ExpensePaymentMethod.cash ? Colors.green.shade700 : Colors.blue.shade700,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildExpenseDetailsCard() {
     final colorScheme = Theme.of(context).colorScheme;
+    final isSalesmanType = _selectedExpenseType == ExpenseType.salesman;
 
     return _buildSectionCard(
       title: 'Expense Information',
@@ -230,12 +513,18 @@ class _ExpensesPageState extends State<ExpensesPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 16,
         children: [
+          _buildExpenseTypeSelector(),
+          _buildPaymentMethodSelector(),
           TextFormField(
             controller: txtDescription,
             readOnly: isReadOnly,
             decoration: InputDecoration(
               labelText: 'Expense Description',
-              hintText: isReadOnly ? '' : 'e.g. Fuel, Toll, Vehicle maintenance, Meals...',
+              hintText: isReadOnly
+                  ? ''
+                  : (isSalesmanType
+                      ? 'e.g. Driver snacks, Meals, Refreshments...'
+                      : 'e.g. Fuel, Toll, Vehicle maintenance, Utilities...'),
               prefixIcon: Icon(Icons.edit_note_outlined, size: 20, color: colorScheme.primary),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -311,15 +600,17 @@ class _ExpensesPageState extends State<ExpensesPage> {
     );
   }
 
-
-
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
     bool isUpdating = widget.recID.isNotEmpty;
 
-    if (isUpdating && !_isDealer) {
+    if (isReadOnly) {
       return const SizedBox.shrink();
     }
+
+    final saveButtonLabel = _selectedExpenseType == ExpenseType.salesman
+        ? 'Save Salesman Expense'
+        : 'Save Dealer Expense';
 
     return SafeArea(
       child: Container(
@@ -334,7 +625,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                 children: [
                   if (_isDealer) ...[
                     Expanded(
-                      flex: 1,
+                      flex: 2,
                       child: OutlinedButton.icon(
                         onPressed: () async {
                           final confirmed = await ShowMessage.confirm(
@@ -349,18 +640,27 @@ class _ExpensesPageState extends State<ExpensesPage> {
                         },
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size(0, 50.0),
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
                           foregroundColor: Colors.red.shade700,
                           side: BorderSide(color: Colors.red.shade300, width: 1.2),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        icon: const Icon(Icons.delete_outline, size: 20),
-                        label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Delete',
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                   ],
                   Expanded(
-                    flex: _isDealer ? 2 : 1,
+                    flex: _isDealer ? 3 : 1,
                     child: FilledButton.icon(
                       onPressed: () async {
                         final confirmed = await ShowMessage.confirm(
@@ -374,10 +674,19 @@ class _ExpensesPageState extends State<ExpensesPage> {
                       },
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      icon: const Icon(Icons.check_circle_outline, size: 20),
-                      label: const Text('Update Expense', style: TextStyle(fontWeight: FontWeight.bold)),
+                      icon: const Icon(Icons.check_circle_outline, size: 18),
+                      label: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Update Expense',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -398,7 +707,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: const Icon(Icons.save_outlined),
-                label: const Text('Save Expense', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                label: Text(saveButtonLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
       ),
     );
@@ -407,7 +716,12 @@ class _ExpensesPageState extends State<ExpensesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: CustomAppbar(title: 'Expense Details', subtitle: widget.recID.isEmpty ? 'New Record' : widget.expense.description),
+      appBar: CustomAppbar(
+        title: 'Expense Details',
+        subtitle: widget.recID.isEmpty
+            ? 'New ${_selectedExpenseType == ExpenseType.salesman ? "Salesman" : "Dealer"} Record'
+            : widget.expense.description,
+      ),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: Form(
         key: _formKey,
@@ -432,7 +746,9 @@ class _ExpensesPageState extends State<ExpensesPage> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'View-Only: Only dealers are authorized to edit or delete existing expense records.',
+                          widget.recID.isNotEmpty
+                              ? 'View-Only: Only dealers are authorized to edit or delete existing expense records.'
+                              : 'View-Only: Salesmen are only permitted to log Salesman Expenses.',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.amber.shade900,

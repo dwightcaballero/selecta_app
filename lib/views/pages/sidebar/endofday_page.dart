@@ -284,7 +284,25 @@ class _EndofdayPageState extends State<EndofdayPage> {
         spacing: 10,
         children: [
           _buildAmountRow('Total Returns', endOfDayData.returnedAmount, color: Colors.orange.shade800),
-          _buildAmountRow('Operating Expenses', endOfDayData.expenseAmount, color: Colors.red.shade700),
+          _buildAmountRow(
+            'Salesman Expenses (Cash)',
+            endOfDayData.salesmanExpenseAmount,
+            icon: Icons.badge_outlined,
+            color: Colors.red.shade700,
+          ),
+          _buildAmountRow(
+            'Dealer Expenses (Cash)',
+            endOfDayData.dealerExpenseCashAmount,
+            icon: Icons.storefront_outlined,
+            color: Colors.red.shade700,
+          ),
+          if (endOfDayData.dealerExpenseOnlineAmount > 0)
+            _buildAmountRow(
+              'Dealer Expenses (Online - Non-cash)',
+              endOfDayData.dealerExpenseOnlineAmount,
+              icon: Icons.account_balance_outlined,
+              color: Colors.blue.shade700,
+            ),
         ],
       ),
     );

@@ -1,11 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/expenses_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/expenses.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenses_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
-import 'package:intl/intl.dart';
 
 class ExpenselistPage extends StatefulWidget {
   const ExpenselistPage({super.key});
@@ -14,86 +15,190 @@ class ExpenselistPage extends StatefulWidget {
   State<ExpenselistPage> createState() => _ExpenselistPageState();
 }
 
-class _ExpenselistPageState extends State<ExpenselistPage> {
+class _ExpenselistPageState extends State<ExpenselistPage> with SingleTickerProviderStateMixin {
   // Controller managing expense streams, filtering, and data aggregation
   final ExpensesController _controller = ExpensesController();
 
   late final Stream<QuerySnapshot> _expensesStream;
+  late final TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+
   String _searchQuery = '';
   String _selectedPeriod = 'All'; // 'All' or 'This Month'
+  bool _isDealer = false;
+  int _currentTabIndex = 0; // 0: Salesman, 1: Dealer
 
   @override
   void initState() {
     super.initState();
     _expensesStream = _controller.getExpensesStream();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging || _tabController.index != _currentTabIndex) {
+        setState(() {
+          _currentTabIndex = _tabController.index;
+        });
+      }
+    });
+    _loadUserRole();
+  }
+
+  Future<void> _loadUserRole() async {
+    final isDealer = await _controller.checkIsDealer();
+    if (mounted) {
+      setState(() {
+        _isDealer = isDealer;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
   }
 
-  Widget _buildSummaryCard({required double totalAmount, required int totalCount}) {
+  String get _currentExpenseType =>
+      _currentTabIndex == 0 ? ExpenseType.salesman : ExpenseType.dealer;
+
+  Widget _buildSummaryCard({
+    required double totalAmount,
+    required double cashAmount,
+    required double onlineAmount,
+    required int totalCount,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isSalesmanTab = _currentTabIndex == 0;
     final String periodLabel = _selectedPeriod == 'This Month'
-        ? 'Expenses (${DateFormat('MMMM yyyy').format(DateTime.now())})'
-        : 'Total Operating Expenses (All Time)';
+        ? (isSalesmanTab
+            ? 'Salesman Expenses (${DateFormat('MMMM yyyy').format(DateTime.now())})'
+            : 'Dealer Expenses (${DateFormat('MMMM yyyy').format(DateTime.now())})')
+        : (isSalesmanTab
+            ? 'Total Salesman Expenses (All Time)'
+            : 'Total Dealer Operating Expenses (All Time)');
+
+    final gradientColors = isSalesmanTab
+        ? [Colors.deepOrange.shade600, Colors.orange.shade800]
+        : [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.85)];
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.85)],
+          colors: gradientColors,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: colorScheme.primary.withValues(alpha: 0.25),
+            color: (isSalesmanTab ? Colors.orange : colorScheme.primary).withValues(alpha: 0.25),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                periodLabel,
-                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      periodLabel,
+                      style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
+                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
-                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  children: [
+                    const Text('Entries', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                    Text(
+                      '$totalCount',
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(10),
+          if (!isSalesmanTab && totalCount > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.payments_outlined, color: Colors.white70, size: 14),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'Cash: ${Helperfunctions.formatDoubleAmountForDisplay(cashAmount)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(height: 12, width: 1, color: Colors.white24, margin: const EdgeInsets.symmetric(horizontal: 4)),
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.account_balance_outlined, color: Colors.white70, size: 14),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'Online: ${Helperfunctions.formatDoubleAmountForDisplay(onlineAmount)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              children: [
-                const Text('Entries', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                Text(
-                  '$totalCount',
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -168,6 +273,11 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
 
   Widget _buildExpenseCard({required String expenseID, required Expenses expense}) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isSalesmanExpense = expense.isSalesmanExpense;
+    final isOnline = expense.isOnline;
+
+    final leadingColor = isSalesmanExpense ? Colors.orange : colorScheme.primary;
+    final leadingIcon = isSalesmanExpense ? Icons.lunch_dining_outlined : Icons.local_gas_station_outlined;
 
     return Card(
       elevation: 0,
@@ -180,7 +290,11 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
         borderRadius: BorderRadius.circular(12),
         onTap: () => Helperfunctions.navigateTo(
           context,
-          ExpensesPage(recID: expenseID, expense: expense),
+          ExpensesPage(
+            recID: expenseID,
+            expense: expense,
+            initialExpenseType: expense.expenseType,
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -190,21 +304,43 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  color: leadingColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(Icons.receipt_long_outlined, color: colorScheme.primary, size: 20),
+                child: Icon(leadingIcon, color: leadingColor, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      expense.description,
-                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            expense.description,
+                            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (isOnline ? Colors.blue : Colors.green).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            isOnline ? 'Online' : 'Cash',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: isOnline ? Colors.blue.shade800 : Colors.green.shade800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Row(
@@ -215,6 +351,19 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
                           Helperfunctions.formatTimestampForDisplay(expense.expenseDate),
                           style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
                         ),
+                        if (expense.createdBy.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Icon(Icons.person_outline, size: 13, color: colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 2),
+                          Flexible(
+                            child: Text(
+                              expense.createdBy,
+                              style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
@@ -226,7 +375,7 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
                 children: [
                   Text(
                     Helperfunctions.formatDoubleAmountForDisplay(expense.expenseAmount),
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: leadingColor),
                   ),
                 ],
               ),
@@ -240,6 +389,7 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
   }
 
   Widget _buildEmptyState() {
+    final isSalesmanTab = _currentTabIndex == 0;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -249,17 +399,28 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.1),
+                color: (isSalesmanTab ? Colors.orange : Colors.green).withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 44),
+              child: Icon(
+                isSalesmanTab ? Icons.lunch_dining_outlined : Icons.check_circle_outline_rounded,
+                color: isSalesmanTab ? Colors.orange : Colors.green,
+                size: 44,
+              ),
             ),
             const SizedBox(height: 16),
-            const Text('No Expenses Recorded', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              isSalesmanTab ? 'No Salesman Expenses Recorded' : 'No Dealer Expenses Recorded',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 6),
             Text(
-              'Tap the "Add Expense" button below to log your first expense.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
+              isSalesmanTab
+                  ? 'Tap "Add Salesman Expense" to log driver snacks and meals.'
+                  : (_isDealer
+                      ? 'Tap "Add Dealer Expense" to log operations, fuel, or repairs.'
+                      : 'Dealer operations expenses will appear here once recorded.'),
+              style: const TextStyle(fontSize: 13, color: Colors.black54),
               textAlign: TextAlign.center,
             ),
           ],
@@ -296,21 +457,57 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
     );
   }
 
+  Widget? _buildFloatingActionButton() {
+    final isSalesmanTab = _currentTabIndex == 0;
+
+    // In dealer tab, salesmen cannot create dealer expenses
+    if (!isSalesmanTab && !_isDealer) {
+      return null;
+    }
+
+    final buttonLabel = isSalesmanTab
+        ? (_isDealer ? 'Add Salesman Expense' : 'Add Expense')
+        : 'Add Dealer Expense';
+
+    return FloatingActionButton.extended(
+      onPressed: () => Helperfunctions.navigateTo(
+        context,
+        ExpensesPage(
+          recID: '',
+          expense: Expenses.empty(
+            expenseType: isSalesmanTab ? ExpenseType.salesman : ExpenseType.dealer,
+          ),
+          initialExpenseType: isSalesmanTab ? ExpenseType.salesman : ExpenseType.dealer,
+        ),
+      ),
+      icon: const Icon(Icons.add, color: Colors.white),
+      label: Text(buttonLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      backgroundColor: isSalesmanTab ? Colors.orange.shade800 : Theme.of(context).colorScheme.primary,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
 
     return Scaffold(
-      appBar: const CustomAppbar(title: 'Expenses', subtitle: 'Operating & Delivery Expenses'),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Helperfunctions.navigateTo(
-          context,
-          ExpensesPage(recID: '', expense: Expenses.empty()),
+      appBar: CustomAppbar(
+        title: 'Expenses',
+        subtitle: 'Salesman (Snacks) & Dealer (Ops/Gas)',
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorWeight: 3,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          tabs: const [
+            Tab(icon: Icon(Icons.lunch_dining_outlined), text: 'Salesman Expenses'),
+            Tab(icon: Icon(Icons.storefront_outlined), text: 'Dealer Expenses'),
+          ],
         ),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Add Expense', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Theme.of(context).colorScheme.primary,
       ),
+      floatingActionButton: _buildFloatingActionButton(),
       body: StreamBuilder<QuerySnapshot>(
         stream: _expensesStream,
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
@@ -322,28 +519,44 @@ class _ExpenselistPageState extends State<ExpenselistPage> {
           }
 
           final allDocs = snapshot.data?.docs ?? [];
-          if (allDocs.isEmpty) {
-            return _buildEmptyState();
-          }
-
           final filterResult = _controller.filterExpenses(
             docs: allDocs,
+            selectedExpenseType: _currentExpenseType,
             selectedPeriod: _selectedPeriod,
             searchQuery: _searchQuery,
             now: now,
           );
           final filteredDocs = filterResult.filteredDocs;
           final periodTotalAmount = filterResult.periodTotalAmount;
+          final periodCashAmount = filterResult.periodCashAmount;
+          final periodOnlineAmount = filterResult.periodOnlineAmount;
           final thisMonthCount = filterResult.thisMonthCount;
+          final allCount = filterResult.allCount;
+
+          if (allCount == 0 && _searchQuery.isEmpty) {
+            return Column(
+              children: [
+                _buildSummaryCard(
+                  totalAmount: 0,
+                  cashAmount: 0,
+                  onlineAmount: 0,
+                  totalCount: 0,
+                ),
+                Expanded(child: _buildEmptyState()),
+              ],
+            );
+          }
 
           return Column(
             children: [
               _buildSummaryCard(
                 totalAmount: periodTotalAmount,
-                totalCount: _selectedPeriod == 'All' ? allDocs.length : thisMonthCount,
+                cashAmount: periodCashAmount,
+                onlineAmount: periodOnlineAmount,
+                totalCount: _selectedPeriod == 'All' ? allCount : thisMonthCount,
               ),
               _buildPeriodChips(
-                allCount: allDocs.length,
+                allCount: allCount,
                 thisMonthCount: thisMonthCount,
               ),
               _buildSearchBar(),
