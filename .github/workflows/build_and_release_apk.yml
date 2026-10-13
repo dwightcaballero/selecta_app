@@ -93,16 +93,14 @@ jobs:
           fi
 
           if [ "$IS_FORCE" = true ]; then
-            RELEASE_BODY="[force-update] Critical update required for all users.
-
-$CLEAN_NOTES"
+            RELEASE_BODY=$(printf "%s\n\n%s" "[force-update] Critical update required for all users." "$CLEAN_NOTES")
           else
             RELEASE_BODY="$CLEAN_NOTES"
           fi
 
           {
             echo "body<<EOF"
-            echo "$BODY"
+            echo "$RELEASE_BODY"
             echo "EOF"
           } >> $GITHUB_OUTPUT
 
