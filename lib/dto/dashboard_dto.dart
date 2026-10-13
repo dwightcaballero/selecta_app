@@ -17,6 +17,7 @@ class DashboardDTO {
   int totalNotScannedCount;
   int pendingPjpCount;
   int totalUnassignedCount;
+  int unverifiedBreakdownCount;
 
   DashboardDTO({
     required this.buyingCount,
@@ -37,6 +38,7 @@ class DashboardDTO {
     required this.totalNotScannedCount,
     this.pendingPjpCount = 0,
     this.totalUnassignedCount = 0,
+    this.unverifiedBreakdownCount = 0,
   });
 
   int get pendingScanningCount => totalNotScannedCount + totalUnassignedCount;
@@ -61,6 +63,7 @@ class DashboardDTO {
       totalNotScannedCount: 0,
       pendingPjpCount: 0,
       totalUnassignedCount: 0,
+      unverifiedBreakdownCount: 0,
     );
   }
 
@@ -84,6 +87,7 @@ class DashboardDTO {
         totalNotScannedCount: json['totalNotScannedCount']! as int,
         pendingPjpCount: (json['pendingPjpCount'] as num?)?.toInt() ?? 0,
         totalUnassignedCount: (json['totalUnassignedCount'] as num?)?.toInt() ?? 0,
+        unverifiedBreakdownCount: (json['unverifiedBreakdownCount'] as num?)?.toInt() ?? 0,
       );
 
   Map<String, Object?> toJson() {
@@ -106,6 +110,7 @@ class DashboardDTO {
       'totalNotScannedCount': totalNotScannedCount,
       'pendingPjpCount': pendingPjpCount,
       'totalUnassignedCount': totalUnassignedCount,
+      'unverifiedBreakdownCount': unverifiedBreakdownCount,
     };
   }
 }

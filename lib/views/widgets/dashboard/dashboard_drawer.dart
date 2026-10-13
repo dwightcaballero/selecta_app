@@ -36,6 +36,7 @@ class DashboardDrawer extends StatelessWidget {
   final Stream<int> merchBlitzCountStream;
   final Stream<int> tasksCountStream;
   final Stream<int>? activeReturnsCountStream;
+  final Stream<int>? unverifiedBreakdownCountStream;
   final VoidCallback onSync;
   final VoidCallback onLogout;
   final Future<void> Function(Widget page) onNavigate;
@@ -49,6 +50,7 @@ class DashboardDrawer extends StatelessWidget {
     required this.merchBlitzCountStream,
     required this.tasksCountStream,
     this.activeReturnsCountStream,
+    this.unverifiedBreakdownCountStream,
     required this.onSync,
     required this.onLogout,
     required this.onNavigate,
@@ -141,7 +143,17 @@ class DashboardDrawer extends StatelessWidget {
           ),
           _buildDrawerItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
-          _buildDrawerItem(context, Icons.today_outlined, 'End of Day Report', const EndofdayPage()),
+          StreamBuilder<int>(
+            stream: unverifiedBreakdownCountStream,
+            initialData: dashboardDTO.unverifiedBreakdownCount,
+            builder: (ctx, snap) => _buildDrawerItem(
+              context,
+              Icons.today_outlined,
+              'End of Day Report',
+              const EndofdayPage(),
+              badgeCount: snap.data ?? dashboardDTO.unverifiedBreakdownCount,
+            ),
+          ),
           _buildDrawerItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
           _buildDrawerItem(context, Icons.file_download_outlined, 'Export Reports (Excel/CSV)', const ExportReportsPage()),
           _buildDrawerItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: dashboardDTO)),

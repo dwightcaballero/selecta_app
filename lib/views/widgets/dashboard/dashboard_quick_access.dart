@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 
-/// Operational 2x3 quick action cards grid for core workflow entry points:
-/// Book Order, Picklists, Deliveries, Purchase Orders, Credit, and Returns.
+/// Operational quick action cards grid for core workflow entry points:
+/// Store Order, Credit, and End of Day Report.
 class DashboardQuickAccessGrid extends StatelessWidget {
   final DashboardDTO dashboardDTO;
   final Stream<int>? pendingPicklistsCountStream;
   final Stream<int>? purchaseOrdersAwaitingCountStream;
   final Stream<int>? activeReturnsCountStream;
+  final Stream<int>? unverifiedBreakdownsCountStream;
   final Future<void> Function(Widget page) onNavigate;
 
   const DashboardQuickAccessGrid({
@@ -19,6 +20,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
     required this.pendingPicklistsCountStream,
     required this.purchaseOrdersAwaitingCountStream,
     this.activeReturnsCountStream,
+    this.unverifiedBreakdownsCountStream,
     required this.onNavigate,
   });
 
@@ -43,12 +45,12 @@ class DashboardQuickAccessGrid extends StatelessWidget {
             const SizedBox(width: 10),
             _buildCard(
               context,
-              label: 'Returns',
-              icon: Icons.assignment_return_outlined,
-              count: dashboardDTO.returnedDeliveryCount,
-              stream: activeReturnsCountStream,
+              label: 'End of Day Report',
+              icon: Icons.today_outlined,
+              count: dashboardDTO.unverifiedBreakdownCount,
+              stream: unverifiedBreakdownsCountStream,
               color: primaryColor,
-              nextPage: const ReturnlistPage(),
+              nextPage: const EndofdayPage(),
             ),
           ],
         ),

@@ -6,6 +6,7 @@ import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/auth_service.dart';
+import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/services/placement_service.dart';
@@ -25,6 +26,10 @@ class DashboardController {
   final DeliveryService _deliveryService = DeliveryService();
   final UserService _userService = UserService();
   final ScanningServices _scanningService = ScanningServices();
+  final BreakdownService _breakdownService = BreakdownService();
+
+  /// Live count stream for breakdown records not yet verified by the dealer within the current month.
+  Stream<int> getUnverifiedBreakdownsCountStream({DateTime? month}) => _breakdownService.getUnverifiedBreakdownsCountStream(month: month);
 
   /// Live count stream for pending and overdue tasks.
   Stream<int> getTasksPendingAndOverdueCountStream() => _tasksService.getPendingAndOverdueCountStream();
@@ -200,6 +205,7 @@ class DashboardController {
     dashboardDTO.pendingPicklistCount = await DeliveryService.getCountPendingPicklistsForDate(DateTime.now());
     dashboardDTO.pendingDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending) ?? 0;
     dashboardDTO.returnedDeliveryCount = await DeliveryService.getCountActiveReturnedDeliveries();
+    dashboardDTO.unverifiedBreakdownCount = await BreakdownService.getCountUnverifiedBreakdowns();
     dashboardDTO.overpaymentCount = await PurchaseOrderService.getCountDeliveriesNotYetSettled() ?? 0;
 
     // DASHBOARD: buying and non Buying

@@ -105,4 +105,56 @@ class BreakdownService {
   void deleteBreakdown(String breakdownID) {
     _breakdownRef.doc(breakdownID).delete();
   }
+
+  /// Real-time stream of the count of breakdown records not yet verified by the dealer within the current month.
+  Stream<int> getUnverifiedBreakdownsCountStream({DateTime? month}) {
+    return _firestore
+        .collection(BREAKDOWN_COLLECTION_REF)
+        .snapshots()
+        .map((snapshot) {
+      final target = month ?? DateTime.now();
+      return snapshot.docs.where((doc) {
+        final data = doc.data();
+        if ((data['isVerifiedByDealer'] as bool?) == true) return false;
+
+        final rawDate = data['breakdownDate'];
+        DateTime? date;
+        if (rawDate is Timestamp) {
+          date = rawDate.toDate();
+        } else if (rawDate is String) {
+          date = DateTime.tryParse(rawDate);
+        }
+        if (date == null) return false;
+
+        return date.year == target.year && date.month == target.month;
+      }).length;
+    });
+  }
+
+  /// One-time count of breakdown records not yet verified by the dealer within the current month.
+  static Future<int> getCountUnverifiedBreakdowns({DateTime? month}) async {
+    try {
+      final target = month ?? DateTime.now();
+      final snapshot = await FirebaseFirestore.instance
+          .collection(BREAKDOWN_COLLECTION_REF)
+          .get();
+      return snapshot.docs.where((doc) {
+        final data = doc.data();
+        if ((data['isVerifiedByDealer'] as bool?) == true) return false;
+
+        final rawDate = data['breakdownDate'];
+        DateTime? date;
+        if (rawDate is Timestamp) {
+          date = rawDate.toDate();
+        } else if (rawDate is String) {
+          date = DateTime.tryParse(rawDate);
+        }
+        if (date == null) return false;
+
+        return date.year == target.year && date.month == target.month;
+      }).length;
+    } catch (e) {
+      return 0;
+    }
+  }
 }

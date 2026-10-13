@@ -47,6 +47,7 @@ class _DashboardPageState extends State<DashboardPage> {
   late final Stream<int> _pendingPicklistsCountStream;
   late final Stream<int> _pendingDeliveriesCountStream;
   late final Stream<int> _activeReturnsCountStream;
+  late final Stream<int> _unverifiedBreakdownsCountStream;
   DashboardDTO dashboardDTO = DashboardDTO.empty();
   Users? _currentUser;
   Configuration? _configuration;
@@ -65,6 +66,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _pendingPicklistsCountStream = _controller.getPendingPicklistsCountStream();
     _pendingDeliveriesCountStream = _controller.getPendingDeliveriesCountStream();
     _activeReturnsCountStream = _controller.getActiveReturnsCountStream();
+    _unverifiedBreakdownsCountStream = _controller.getUnverifiedBreakdownsCountStream();
     _configSubscription = ConfigurationService().getConfigurationStream().listen((config) {
       if (mounted && config != null) {
         setState(() {
@@ -328,6 +330,7 @@ class _DashboardPageState extends State<DashboardPage> {
     merchBlitzCountStream: _merchBlitzCountStream,
     tasksCountStream: _tasksCountStream,
     activeReturnsCountStream: _activeReturnsCountStream,
+    unverifiedBreakdownCountStream: _unverifiedBreakdownsCountStream,
     onSync: () => syncDashboard(force: true),
     onLogout: onLogout,
     onNavigate: _navigateToPage,
@@ -364,6 +367,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     pendingPicklistsCountStream: _pendingPicklistsCountStream,
                     purchaseOrdersAwaitingCountStream: _purchaseOrdersAwaitingCountStream,
                     activeReturnsCountStream: _activeReturnsCountStream,
+                    unverifiedBreakdownsCountStream: _unverifiedBreakdownsCountStream,
                     onNavigate: _navigateToPage,
                   ),
 
@@ -540,6 +544,7 @@ class _DashboardPageState extends State<DashboardPage> {
         merchBlitzCountStream: _merchBlitzCountStream,
         tasksCountStream: _tasksCountStream,
         activeReturnsCountStream: _activeReturnsCountStream,
+        unverifiedBreakdownCountStream: _unverifiedBreakdownsCountStream,
         onSync: () => syncDashboard(force: true),
         onLogout: onLogout,
         onNavigate: _navigateToPage,

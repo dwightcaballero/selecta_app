@@ -40,6 +40,7 @@ class DashboardSidebar extends StatelessWidget {
   final Stream<int> merchBlitzCountStream;
   final Stream<int> tasksCountStream;
   final Stream<int>? activeReturnsCountStream;
+  final Stream<int>? unverifiedBreakdownCountStream;
   final VoidCallback onSync;
   final VoidCallback onLogout;
   final Future<void> Function(Widget page) onNavigate;
@@ -55,6 +56,7 @@ class DashboardSidebar extends StatelessWidget {
     required this.merchBlitzCountStream,
     required this.tasksCountStream,
     this.activeReturnsCountStream,
+    this.unverifiedBreakdownCountStream,
     required this.onSync,
     required this.onLogout,
     required this.onNavigate,
@@ -112,7 +114,17 @@ class DashboardSidebar extends StatelessWidget {
                   _buildItem(context, Icons.account_balance_wallet_outlined, 'Credit List', const CreditlistPage(), badge: dashboardDTO.unpaidCreditCount),
                   _buildItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
                   _buildItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
-                  _buildItem(context, Icons.today_outlined, 'End of Day', const EndofdayPage()),
+                  StreamBuilder<int>(
+                    stream: unverifiedBreakdownCountStream,
+                    initialData: dashboardDTO.unverifiedBreakdownCount,
+                    builder: (ctx, snap) => _buildItem(
+                      ctx,
+                      Icons.today_outlined,
+                      'End of Day',
+                      const EndofdayPage(),
+                      badge: snap.data ?? dashboardDTO.unverifiedBreakdownCount,
+                    ),
+                  ),
                   _buildItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
                   _buildItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: isDealer ? 'Dealer' : (currentUser?.role ?? 'Salesman'))),
                   _buildItem(context, Icons.file_download_outlined, 'Export Reports', const ExportReportsPage()),
