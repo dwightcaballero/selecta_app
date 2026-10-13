@@ -32,6 +32,29 @@ class AppVersionInfo {
         fileSize: 0,
       );
 
+  AppVersionInfo copyWith({
+    int? latestVersionCode,
+    String? latestVersionName,
+    String? apkUrl,
+    String? releaseNotes,
+    bool? forceUpdate,
+    int? minSupportedVersionCode,
+    DateTime? publishedAt,
+    int? fileSize,
+  }) {
+    return AppVersionInfo(
+      latestVersionCode: latestVersionCode ?? this.latestVersionCode,
+      latestVersionName: latestVersionName ?? this.latestVersionName,
+      apkUrl: apkUrl ?? this.apkUrl,
+      releaseNotes: releaseNotes ?? this.releaseNotes,
+      forceUpdate: forceUpdate ?? this.forceUpdate,
+      minSupportedVersionCode:
+          minSupportedVersionCode ?? this.minSupportedVersionCode,
+      publishedAt: publishedAt ?? this.publishedAt,
+      fileSize: fileSize ?? this.fileSize,
+    );
+  }
+
   factory AppVersionInfo.fromJson(Map<String, dynamic> json) {
     DateTime? publishedDate;
     final rawPublished = json['publishedAt'];

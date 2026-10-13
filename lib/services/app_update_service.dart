@@ -543,6 +543,10 @@ class AppUpdateService {
     }
   }
 
+  @visibleForTesting
+  static AppVersionInfo pickNewer(AppVersionInfo a, AppVersionInfo b) =>
+      _pickNewer(a, b);
+
   static AppVersionInfo _pickNewer(AppVersionInfo a, AppVersionInfo b) {
     if (a.apkUrl.isEmpty) return b;
     if (b.apkUrl.isEmpty) return a;
@@ -553,25 +557,38 @@ class AppUpdateService {
     final aCode = AppVersionInfo.normalizeBuildNumber(a.latestVersionCode);
     final bCode = AppVersionInfo.normalizeBuildNumber(b.latestVersionCode);
 
+    AppVersionInfo chosen;
+
     // If version codes differ significantly
     if (aCode > bCode) {
       // If version code of a is higher, but b is the same semver and hosted on fast Firebase CDN
       if (a.latestVersionName == b.latestVersionName && isBFastCdn && !isAFastCdn) {
-        return b;
+        chosen = b;
+      } else {
+        chosen = a;
       }
-      return a;
-    }
-    if (bCode > aCode) {
-      return b;
+    } else if (bCode > aCode) {
+      chosen = b;
+    } else if (isBFastCdn && !isAFastCdn) {
+      // When versions are tied, ALWAYS prefer the Firebase Storage / Google CDN URL over GitHub
+      chosen = b;
+    } else if (isAFastCdn && !isBFastCdn) {
+      chosen = a;
+    } else if (AppVersionInfo.isVersionHigher(a.latestVersionName, b.latestVersionName)) {
+      chosen = a;
+    } else if (AppVersionInfo.isVersionHigher(b.latestVersionName, a.latestVersionName)) {
+      chosen = b;
+    } else {
+      chosen = a;
     }
 
-    // When versions are tied, ALWAYS prefer the Firebase Storage / Google CDN URL over GitHub
-    if (isBFastCdn && !isAFastCdn) return b;
-    if (isAFastCdn && !isBFastCdn) return a;
+    // Preserve release notes if the chosen candidate has none but the other has them
+    final other = identical(chosen, a) ? b : a;
+    if (chosen.releaseNotes.trim().isEmpty && other.releaseNotes.trim().isNotEmpty) {
+      return chosen.copyWith(releaseNotes: other.releaseNotes);
+    }
 
-    if (AppVersionInfo.isVersionHigher(a.latestVersionName, b.latestVersionName)) return a;
-    if (AppVersionInfo.isVersionHigher(b.latestVersionName, a.latestVersionName)) return b;
-    return a;
+    return chosen;
   }
 
   Future<AppVersionInfo> _fetchFromFirestore() async {

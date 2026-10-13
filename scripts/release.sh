@@ -21,13 +21,25 @@ fi
 
 IS_FORCE=false
 SPECIFIC_VERSION=""
+RELEASE_NOTES=""
 
-for arg in "$@"; do
-  if [ "$arg" == "--force" ] || [ "$arg" == "-f" ]; then
-    IS_FORCE=true
-  elif [ -z "$SPECIFIC_VERSION" ]; then
-    SPECIFIC_VERSION="$arg"
-  fi
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force|-f)
+      IS_FORCE=true
+      shift
+      ;;
+    -m|--notes|--message)
+      RELEASE_NOTES="$2"
+      shift 2
+      ;;
+    *)
+      if [ -z "$SPECIFIC_VERSION" ]; then
+        SPECIFIC_VERSION="$1"
+      fi
+      shift
+      ;;
+  esac
 done
 
 CURRENT_VERSION_LINE=$(grep '^version:' "$PUBSPEC")
@@ -47,6 +59,36 @@ else
   NEW_VERSION="${BASE_VERSION}+${NEW_BUILD}"
 fi
 
+# Auto-generate release notes from git commits since the last release tag if not provided
+if [ -z "$RELEASE_NOTES" ]; then
+  LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+  if [ -n "$LAST_TAG" ]; then
+    AUTO_NOTES=$(git log "${LAST_TAG}..HEAD" --no-merges --invert-grep --grep="^chore(release)" --pretty=format:"• %s" 2>/dev/null || echo "")
+  else
+    AUTO_NOTES=$(git log -n 5 --no-merges --invert-grep --grep="^chore(release)" --pretty=format:"• %s" 2>/dev/null || echo "")
+  fi
+
+  if [ -z "$AUTO_NOTES" ]; then
+    AUTO_NOTES="• Performance improvements and bug fixes"
+  fi
+
+  if [ -t 0 ]; then
+    echo "=========================================="
+    echo "📋 Auto-detected release notes from commits:"
+    echo "------------------------------------------"
+    echo "$AUTO_NOTES"
+    echo "------------------------------------------"
+    read -r -p "Use these release notes? [Press ENTER for yes, or type custom notes]: " USER_INPUT
+    if [ -z "$USER_INPUT" ] || [ "$USER_INPUT" = "y" ] || [ "$USER_INPUT" = "Y" ]; then
+      RELEASE_NOTES="$AUTO_NOTES"
+    else
+      RELEASE_NOTES="$USER_INPUT"
+    fi
+  else
+    RELEASE_NOTES="$AUTO_NOTES"
+  fi
+fi
+
 echo "=========================================="
 echo "Selecta Ops Release Workflow"
 echo "Current Version: $CURRENT_FULL_VERSION"
@@ -57,6 +99,8 @@ if [ "$IS_FORCE" = true ]; then
 else
   echo "Update Type:     Standard (Optional)"
 fi
+echo "Release Notes:"
+echo "$RELEASE_NOTES"
 echo "=========================================="
 
 # 1. Update pubspec.yaml
@@ -76,11 +120,17 @@ if [ "$IS_FORCE" = true ]; then
 fi
 
 git add "$PUBSPEC" "$README"
-git commit -m "$COMMIT_MSG"
+git commit -m "$COMMIT_MSG" -m "$RELEASE_NOTES"
 
-# 4. Create git tag
-git tag "v$NEW_VERSION"
-echo "[✓] Created git tag v$NEW_VERSION"
+# 4. Create annotated git tag containing the release notes
+TAG_MSG="$RELEASE_NOTES"
+if [ "$IS_FORCE" = true ]; then
+  TAG_MSG="[force-update]
+$TAG_MSG"
+fi
+
+git tag -a "v$NEW_VERSION" -m "$TAG_MSG"
+echo "[✓] Created annotated git tag v$NEW_VERSION with release notes"
 
 # 5. Push to GitHub
 echo "Pushing commits and tags to GitHub..."

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:selecta_ops/models/app_version_info.dart';
+import 'package:selecta_ops/services/app_update_service.dart';
 
 void main() {
   group('AppVersionInfo Tests', () {
@@ -161,6 +162,48 @@ void main() {
 
       // Phone has 2029 (normalized to 29) which is >= minSupported 29 -> not mandatory
       expect(mandatoryInfo.isMandatory(2029), isFalse);
+    });
+
+    test('copyWith updates specified fields correctly', () {
+      final original = AppVersionInfo(
+        latestVersionCode: 10,
+        latestVersionName: '1.0.0',
+        apkUrl: 'https://example.com/app.apk',
+        releaseNotes: 'Original notes',
+        forceUpdate: false,
+      );
+
+      final modified = original.copyWith(releaseNotes: 'New notes', forceUpdate: true);
+      expect(modified.releaseNotes, equals('New notes'));
+      expect(modified.forceUpdate, isTrue);
+      expect(modified.latestVersionCode, equals(10));
+      expect(modified.latestVersionName, equals('1.0.0'));
+      expect(modified.apkUrl, equals('https://example.com/app.apk'));
+    });
+  });
+
+  group('AppUpdateService Tests', () {
+    test('pickNewer preserves release notes from candidate when fast CDN candidate has empty notes', () {
+      final githubInfo = AppVersionInfo(
+        latestVersionCode: 42,
+        latestVersionName: '1.0.0',
+        apkUrl: 'https://github.com/releases/download/v1.0.0%2B42/app.apk',
+        releaseNotes: '• Added financial dashboard\n• Fixed offline bug',
+      );
+
+      final firebaseStorageInfo = AppVersionInfo(
+        latestVersionCode: 2042, // arm64-v8a offset code for 42
+        latestVersionName: '1.0.0',
+        apkUrl: 'https://firebasestorage.googleapis.com/releases/app.apk',
+        releaseNotes: '', // empty metadata
+      );
+
+      final chosen = AppUpdateService.pickNewer(firebaseStorageInfo, githubInfo);
+
+      // Should choose fast CDN URL
+      expect(chosen.apkUrl, contains('firebasestorage.googleapis.com'));
+      // And should retain release notes from GitHub
+      expect(chosen.releaseNotes, equals('• Added financial dashboard\n• Fixed offline bug'));
     });
   });
 }

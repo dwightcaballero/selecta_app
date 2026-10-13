@@ -67,19 +67,54 @@ jobs:
           echo "name=$VERSION_NAME" >> $GITHUB_OUTPUT
           echo "build=$BUILD_NUMBER" >> $GITHUB_OUTPUT
           echo "arm64_build=$ARM64_BUILD" >> $GITHUB_OUTPUT
+
           COMMIT_MSG=$(git log -1 --pretty=%B)
-          BODY=""
-          if echo "$COMMIT_MSG" | grep -qi "\[force-update\]"; then
-            BODY="[force-update] Critical update required for all users."
-          elif echo "$COMMIT_MSG" | grep -qi "\[mandatory\]"; then
-            BODY="[mandatory] This update is required to continue using Selecta Ops."
+          TAG_MSG=$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null || echo "")
+
+          # Detect force update
+          IS_FORCE=false
+          if echo "$COMMIT_MSG" | grep -qi "\[force-update\]" || echo "$COMMIT_MSG" | grep -qi "\[mandatory\]" || echo "$TAG_MSG" | grep -qi "\[force-update\]" || echo "$TAG_MSG" | grep -qi "\[mandatory\]"; then
+            IS_FORCE=true
           fi
-          echo "body=$BODY" >> $GITHUB_OUTPUT
-          if [ -n "$BODY" ]; then
-            echo "force=true" >> $GITHUB_OUTPUT
+          echo "force=$IS_FORCE" >> $GITHUB_OUTPUT
+
+          # Extract release notes: prefer tag message body, fallback to commit body
+          RAW_NOTES=""
+          if [ -n "$TAG_MSG" ]; then
+            RAW_NOTES="$TAG_MSG"
           else
-            echo "force=false" >> $GITHUB_OUTPUT
+            RAW_NOTES=$(git log -1 --pretty=%b)
           fi
+
+          # Strip internal force/mandatory flags and clean leading/trailing whitespace
+          CLEAN_NOTES=$(echo "$RAW_NOTES" | sed 's/\[force-update\]//gi; s/\[mandatory\]//gi' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          if [ -z "$CLEAN_NOTES" ] || echo "$CLEAN_NOTES" | grep -qi "^chore(release): bump version"; then
+            CLEAN_NOTES="• Performance improvements and bug fixes."
+          fi
+
+          if [ "$IS_FORCE" = true ]; then
+            RELEASE_BODY="[force-update] Critical update required for all users.
+
+$CLEAN_NOTES"
+          else
+            RELEASE_BODY="$CLEAN_NOTES"
+          fi
+
+          {
+            echo "body<<EOF"
+            echo "$BODY"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo "release_notes<<EOF"
+            echo "$CLEAN_NOTES"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+          # Sanitize single-line header for HTTP metadata (RFC prohibits unescaped newlines)
+          HEADER_NOTES=$(echo "$CLEAN_NOTES" | tr '\n' ' ' | sed 's/  */ /g' | cut -c1-500)
+          echo "release_notes_header=$HEADER_NOTES" >> $GITHUB_OUTPUT
 
       - name: Configure Keystore & Signing Properties
         env:
@@ -107,7 +142,7 @@ jobs:
           name: "Release ${{ steps.version_step.outputs.tag }}"
           body: ${{ steps.version_step.outputs.body }}
           files: build/app/outputs/flutter-apk/*.apk
-          generate_release_notes: true
+          generate_release_notes: false
           draft: false
           prerelease: false
         env:
@@ -128,12 +163,12 @@ jobs:
           path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           destination: selectaapp.firebasestorage.app/releases/
           # Custom metadata read by AppUpdateService._fetchFromFirebaseStorage.
-          # Without it the app sees build 0 and cannot detect the update.
           headers: |-
             cache-control: no-cache, max-age=0
             x-goog-meta-versionCode: ${{ steps.version_step.outputs.arm64_build }}
             x-goog-meta-versionName: ${{ steps.version_step.outputs.name }}
             x-goog-meta-forceUpdate: ${{ steps.version_step.outputs.force }}
+            x-goog-meta-releaseNotes: ${{ steps.version_step.outputs.release_notes_header }}
         env:
           FIREBASE_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.GCP_SA_KEY }}
 
@@ -146,6 +181,7 @@ jobs:
           VERSION_NAME: ${{ steps.version_step.outputs.name }}
           BUILD_NUMBER: ${{ steps.version_step.outputs.arm64_build }}
           FORCE_UPDATE: ${{ steps.version_step.outputs.force }}
+          RELEASE_NOTES: ${{ steps.version_step.outputs.release_notes }}
           TAG: ${{ steps.version_step.outputs.tag }}
         run: |
           TOKEN=$(gcloud auth print-access-token)
@@ -153,20 +189,26 @@ jobs:
           APK_URL="https://github.com/${{ github.repository }}/releases/download/${TAG_ENC}/app-arm64-v8a-release.apk"
           FILE_SIZE=$(stat -c%s build/app/outputs/flutter-apk/app-arm64-v8a-release.apk)
           NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          BODY=$(cat <<EOF
-          {
-            "fields": {
-              "latestVersionCode": {"integerValue": "${BUILD_NUMBER}"},
-              "latestVersionName": {"stringValue": "${VERSION_NAME}"},
-              "apkUrl": {"stringValue": "${APK_URL}"},
-              "forceUpdate": {"booleanValue": ${FORCE_UPDATE}},
-              "fileSize": {"integerValue": "${FILE_SIZE}"},
-              "publishedAt": {"timestampValue": "${NOW}"}
-            }
-          }
-          EOF
-          )
-          MASK="updateMask.fieldPaths=latestVersionCode&updateMask.fieldPaths=latestVersionName&updateMask.fieldPaths=apkUrl&updateMask.fieldPaths=forceUpdate&updateMask.fieldPaths=fileSize&updateMask.fieldPaths=publishedAt"
+          BODY=$(jq -n \
+            --arg b "$BUILD_NUMBER" \
+            --arg vn "$VERSION_NAME" \
+            --arg url "$APK_URL" \
+            --argjson f "$FORCE_UPDATE" \
+            --arg fs "$FILE_SIZE" \
+            --arg now "$NOW" \
+            --arg rn "$RELEASE_NOTES" \
+            '{
+              fields: {
+                latestVersionCode: {integerValue: $b},
+                latestVersionName: {stringValue: $vn},
+                apkUrl: {stringValue: $url},
+                forceUpdate: {booleanValue: $f},
+                fileSize: {integerValue: $fs},
+                publishedAt: {timestampValue: $now},
+                releaseNotes: {stringValue: $rn}
+              }
+            }')
+          MASK="updateMask.fieldPaths=latestVersionCode&updateMask.fieldPaths=latestVersionName&updateMask.fieldPaths=apkUrl&updateMask.fieldPaths=forceUpdate&updateMask.fieldPaths=fileSize&updateMask.fieldPaths=publishedAt&updateMask.fieldPaths=releaseNotes"
           curl -sS --fail-with-body -X PATCH \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json" \
