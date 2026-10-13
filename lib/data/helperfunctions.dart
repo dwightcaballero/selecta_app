@@ -14,7 +14,57 @@ import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/transactionlog_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:gal/gal.dart';
 import 'package:intl/intl.dart';
+
+/// Background worker function executed in an isolate via [compute] to inject current EXIF timestamp.
+Uint8List _injectTimestampWorker(Map<String, dynamic> params) {
+  final Uint8List rawBytes = params['bytes'] as Uint8List;
+  final int epochMs = params['epochMs'] as int;
+  final int tzOffsetMinutes = params['tzOffsetMinutes'] as int;
+
+  final dt = DateTime.fromMillisecondsSinceEpoch(epochMs);
+  final dateStr =
+      '${dt.year.toString().padLeft(4, '0')}:${dt.month.toString().padLeft(2, '0')}:${dt.day.toString().padLeft(2, '0')} '
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
+
+  final offsetHours = tzOffsetMinutes ~/ 60;
+  final offsetMinutes = (tzOffsetMinutes % 60).abs();
+  final offsetSign = offsetHours >= 0 ? '+' : '-';
+  final offsetStr =
+      '$offsetSign${offsetHours.abs().toString().padLeft(2, '0')}:${offsetMinutes.toString().padLeft(2, '0')}';
+
+  try {
+    final existingExif = img.decodeJpgExif(rawBytes) ?? img.ExifData();
+    existingExif.imageIfd['DateTime'] = dateStr;
+    existingExif.exifIfd['DateTimeOriginal'] = dateStr;
+    existingExif.exifIfd['DateTimeDigitized'] = dateStr;
+    existingExif.imageIfd['OffsetTime'] = offsetStr;
+    existingExif.exifIfd['OffsetTimeOriginal'] = offsetStr;
+    existingExif.exifIfd['OffsetTimeDigitized'] = offsetStr;
+
+    final injected = img.injectJpgExif(rawBytes, existingExif);
+    if (injected != null) {
+      return injected;
+    }
+  } catch (_) {}
+
+  try {
+    final decoded = img.decodeImage(rawBytes);
+    if (decoded != null) {
+      decoded.exif.imageIfd['DateTime'] = dateStr;
+      decoded.exif.exifIfd['DateTimeOriginal'] = dateStr;
+      decoded.exif.exifIfd['DateTimeDigitized'] = dateStr;
+      decoded.exif.imageIfd['OffsetTime'] = offsetStr;
+      decoded.exif.exifIfd['OffsetTimeOriginal'] = offsetStr;
+      decoded.exif.exifIfd['OffsetTimeDigitized'] = offsetStr;
+
+      return Uint8List.fromList(img.encodeJpg(decoded, quality: 95));
+    }
+  } catch (_) {}
+
+  return rawBytes;
+}
 
 /// Background worker function executed in an isolate via [compute].
 Uint8List _compressImageWorker(Map<String, dynamic> params) {
@@ -174,6 +224,48 @@ class Helperfunctions {
     } catch (_) {
       return rawBytes;
     }
+  }
+
+  /// Adjusts image EXIF date/time metadata to [targetDateTime] (defaults to [DateTime.now()])
+  /// so that Android Gallery, Google Photos, etc. sort the downloaded image at the very top.
+  static Future<Uint8List> prepareImageBytesWithCurrentTimestamp(
+    Uint8List rawBytes, {
+    DateTime? targetDateTime,
+  }) async {
+    try {
+      final dt = targetDateTime ?? DateTime.now();
+      return await compute(_injectTimestampWorker, {
+        'bytes': rawBytes,
+        'epochMs': dt.millisecondsSinceEpoch,
+        'tzOffsetMinutes': dt.timeZoneOffset.inMinutes,
+      });
+    } catch (_) {
+      return rawBytes;
+    }
+  }
+
+  /// Saves the given image [bytes] to the device gallery, requesting permission if needed
+  /// and adjusting EXIF date and time to the current moment so it appears at the very top
+  /// in Android gallery.
+  static Future<void> saveImageToGallery(
+    Uint8List bytes, {
+    required String name,
+    DateTime? targetDateTime,
+  }) async {
+    final hasAccess = await Gal.hasAccess();
+    if (!hasAccess) {
+      final accessGranted = await Gal.requestAccess();
+      if (!accessGranted) {
+        throw Exception('Gallery permission was denied');
+      }
+    }
+
+    final preparedBytes = await prepareImageBytesWithCurrentTimestamp(
+      bytes,
+      targetDateTime: targetDateTime,
+    );
+
+    await Gal.putImageBytes(preparedBytes, name: name);
   }
 
   static Future<String> saveImage(

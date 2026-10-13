@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/data/forms.dart';
-import 'package:gal/gal.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:http/http.dart' as http;
 
 class ImageViewerPage extends StatefulWidget {
@@ -38,15 +38,10 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
         bytes = response.bodyBytes;
       }
 
-      final hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        final accessGranted = await Gal.requestAccess();
-        if (!accessGranted) {
-          throw Exception('Gallery permission was denied');
-        }
-      }
-
-      await Gal.putImageBytes(bytes, name: 'selecta_${DateTime.now().millisecondsSinceEpoch}');
+      await Helperfunctions.saveImageToGallery(
+        bytes,
+        name: 'selecta_${DateTime.now().millisecondsSinceEpoch}',
+      );
 
       if (!mounted) return;
 

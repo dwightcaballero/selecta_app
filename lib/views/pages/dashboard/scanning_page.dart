@@ -11,7 +11,6 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
-import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -206,16 +205,8 @@ class _ScanningPageState extends State<ScanningPage> {
         bytes = response.bodyBytes;
       }
 
-      final hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        final accessGranted = await Gal.requestAccess();
-        if (!accessGranted) {
-          throw Exception('Gallery permission was denied.');
-        }
-      }
-
       final storeTag = _dropdownHapiStore.text.replaceAll(RegExp(r'\s+'), '_');
-      await Gal.putImageBytes(
+      await Helperfunctions.saveImageToGallery(
         bytes,
         name: 'freezer_${storeTag}_${DateTime.now().millisecondsSinceEpoch}',
       );
