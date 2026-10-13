@@ -21,6 +21,7 @@ import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/profit_loss_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -144,6 +145,7 @@ class DashboardDrawer extends StatelessWidget {
           _buildDrawerItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
           _buildDrawerItem(context, Icons.file_download_outlined, 'Export Reports (Excel/CSV)', const ExportReportsPage()),
           _buildDrawerItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: dashboardDTO)),
+          if (isDealer) _buildDrawerItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
 
           const Divider(indent: 16, endIndent: 16),
 

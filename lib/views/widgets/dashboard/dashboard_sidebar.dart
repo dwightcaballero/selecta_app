@@ -21,6 +21,7 @@ import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/profit_loss_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -120,6 +121,7 @@ class DashboardSidebar extends StatelessWidget {
 
                   _buildSection(context, 'KPI & Analytics'),
                   _buildItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: dashboardDTO)),
+                  if (isDealer) _buildItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
 
                   const _SidebarDivider(),
 
