@@ -86,7 +86,10 @@ class _PicklistPageState extends State<PicklistPage> {
       final nameMap = <String, int>{};
       for (final it in items) {
         idMap[it.id] = it.stockQuantity;
-        nameMap[it.productName.trim().toLowerCase()] = it.stockQuantity;
+        final nameKey = it.productName.trim().toLowerCase();
+        if (it.stockQuantity > 0 || !nameMap.containsKey(nameKey)) {
+          nameMap[nameKey] = it.stockQuantity;
+        }
       }
       setState(() {
         _productIdToStock.clear();
@@ -98,14 +101,18 @@ class _PicklistPageState extends State<PicklistPage> {
   }
 
   int _getOnHandStock(OrderItem item) {
+    int stock = 0;
     if (item.productId.isNotEmpty && _productIdToStock.containsKey(item.productId)) {
-      return _productIdToStock[item.productId]!;
+      stock = _productIdToStock[item.productId]!;
     }
     final nameKey = item.productName.trim().toLowerCase();
     if (_productNameToStock.containsKey(nameKey)) {
-      return _productNameToStock[nameKey]!;
+      final nameStock = _productNameToStock[nameKey]!;
+      if (nameStock > stock) {
+        stock = nameStock;
+      }
     }
-    return 0;
+    return stock;
   }
 
   int _getRequiredQty(OrderItem item) {
@@ -309,7 +316,12 @@ class _PicklistPageState extends State<PicklistPage> {
         final name = (data['productName'] as String? ?? '').trim();
         final stock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
         _productIdToStock[doc.id] = stock;
-        if (name.isNotEmpty) _productNameToStock[name.toLowerCase()] = stock;
+        if (name.isNotEmpty) {
+          final nameKey = name.toLowerCase();
+          if (stock > 0 || !_productNameToStock.containsKey(nameKey)) {
+            _productNameToStock[nameKey] = stock;
+          }
+        }
         if (barcode.isNotEmpty) {
           _productIdToBarcode[doc.id] = barcode;
           _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};
@@ -321,9 +333,12 @@ class _PicklistPageState extends State<PicklistPage> {
         final data = doc.data();
         final barcode = (data['barcode'] as String? ?? '').trim();
         final name = (data['productName'] as String? ?? '').trim();
-        final stock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-        _productIdToStock[doc.id] = stock;
-        if (name.isNotEmpty) _productNameToStock[name.toLowerCase()] = stock;
+        // admin_selecta_products is the master catalog without dealer stockQuantity.
+        // Link doc ID to existing stock by product name if available from selecta_products.
+        final nameKey = name.toLowerCase();
+        if (_productNameToStock.containsKey(nameKey)) {
+          _productIdToStock[doc.id] = _productNameToStock[nameKey]!;
+        }
         if (barcode.isNotEmpty) {
           _productIdToBarcode[doc.id] = barcode;
           _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};
@@ -337,7 +352,12 @@ class _PicklistPageState extends State<PicklistPage> {
         final name = (data['productName'] as String? ?? '').trim();
         final stock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
         _productIdToStock[doc.id] = stock;
-        if (name.isNotEmpty) _productNameToStock[name.toLowerCase()] = stock;
+        if (name.isNotEmpty) {
+          final nameKey = name.toLowerCase();
+          if (stock > 0 || !_productNameToStock.containsKey(nameKey)) {
+            _productNameToStock[nameKey] = stock;
+          }
+        }
         if (barcode.isNotEmpty) {
           _productIdToBarcode[doc.id] = barcode;
           _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};

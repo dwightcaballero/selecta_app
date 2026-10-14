@@ -26,6 +26,9 @@ class EndofdayServices {
       Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
       final status = data[DeliveryModelString.transactionStatus];
 
+      if (status == DeliveryStatus.voided) {
+        continue;
+      }
       // Exclude orders pending picklist: they are still in order booking/picking queue
       // (for today or future dates) and have not yet been dispatched for delivery.
       if (status == DeliveryStatus.pendingPicklist) {

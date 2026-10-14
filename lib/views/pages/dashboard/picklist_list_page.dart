@@ -88,7 +88,10 @@ class _PicklistListPageState extends State<PicklistListPage> {
       final byName = <String, int>{};
       for (final item in items) {
         byId[item.id] = item.stockQuantity;
-        byName[item.productName.trim().toLowerCase()] = item.stockQuantity;
+        final nameKey = item.productName.trim().toLowerCase();
+        if (item.stockQuantity > 0 || !byName.containsKey(nameKey)) {
+          byName[nameKey] = item.stockQuantity;
+        }
       }
       setState(() {
         _inventoryStockById = byId;
@@ -103,7 +106,9 @@ class _PicklistListPageState extends State<PicklistListPage> {
       final reqQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
       if (reqQty <= 0) continue;
       final nameKey = item.productName.trim().toLowerCase();
-      final onHand = _inventoryStockById[item.productId] ?? _inventoryStockByName[nameKey] ?? 0;
+      final idStock = _inventoryStockById[item.productId] ?? 0;
+      final nameStock = _inventoryStockByName[nameKey] ?? 0;
+      final onHand = idStock > nameStock ? idStock : nameStock;
       if (onHand < reqQty) {
         shortages.add((item: item, requiredQty: reqQty, onHandQty: onHand < 0 ? 0 : onHand));
       }

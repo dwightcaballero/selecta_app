@@ -180,6 +180,7 @@ class DeliveryController {
     int pending = 0;
     int delivered = 0;
     int returned = 0;
+    int validAllCount = 0;
     double totalExpectedAmount = 0.0;
     double deliveredAmount = 0.0;
     double pendingAmount = 0.0;
@@ -188,10 +189,14 @@ class DeliveryController {
     for (final item in docs) {
       final raw = item.data();
       final Delivery delivery = raw is Delivery ? raw : Delivery.fromJson(raw as Map<String, Object?>);
+      if (delivery.transactionStatus == DeliveryStatus.voided) {
+        continue;
+      }
       if (delivery.transactionStatus == DeliveryStatus.pendingPicklist) {
         pendingPicklist++;
         continue;
       }
+      validAllCount++;
 
       final double expected = delivery.originalOrderAmount ?? delivery.orderAmount;
       totalExpectedAmount += expected;
@@ -215,7 +220,7 @@ class DeliveryController {
     }
 
     return DeliverySummaryCounts(
-      all: docs.length,
+      all: validAllCount,
       pendingPicklist: pendingPicklist,
       delivered: delivered,
       pending: pending,
@@ -239,7 +244,8 @@ class DeliveryController {
     final filtered = docs.where((doc) {
       final raw = doc.data();
       final Delivery delivery = raw is Delivery ? raw : Delivery.fromJson(raw as Map<String, Object?>);
-      if (delivery.transactionStatus == DeliveryStatus.pendingPicklist) {
+      if (delivery.transactionStatus == DeliveryStatus.pendingPicklist ||
+          delivery.transactionStatus == DeliveryStatus.voided) {
         return false;
       }
       final matchesStatus = selectedStatus == 'All' || delivery.transactionStatus == selectedStatus;

@@ -387,6 +387,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       DeliveryStatus.pendingPicklist => (const Color(0xFF7C3AED), Icons.fact_check_outlined, 'Booked'),
       DeliveryStatus.delivered => (Colors.green.shade700, Icons.check_circle_outline, 'Delivered'),
       DeliveryStatus.returned => (Colors.red.shade700, Icons.cancel_outlined, 'Returned'),
+      DeliveryStatus.voided => (Colors.grey.shade600, Icons.block_outlined, 'Voided'),
       _ => (Colors.orange.shade800, Icons.local_shipping_outlined, 'For Delivery'),
     };
 
@@ -433,7 +434,8 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       builder: (BuildContext context, AsyncSnapshot<QuerySnapshot<Delivery>> snapshot) {
         final List<QueryDocumentSnapshot<Delivery>> allDocs = (snapshot.data?.docs ?? []).where((doc) {
           final delivery = doc.data();
-          return delivery.transactionStatus != DeliveryStatus.pendingPicklist;
+          return delivery.transactionStatus != DeliveryStatus.pendingPicklist &&
+              delivery.transactionStatus != DeliveryStatus.voided;
         }).toList();
 
         final List<QueryDocumentSnapshot<Delivery>> allDeliveryDocs = allDocs;
