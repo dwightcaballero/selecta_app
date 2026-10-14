@@ -23,9 +23,35 @@ void main() {
       expect(aiService.isRetryableError(Exception('HandshakeException: Connection terminated')), isTrue);
     });
 
-    test('isRetryableError rejects unrelated fatal errors', () {
+    test('isRetryableError rejects unrelated fatal errors and non-existent models', () {
       expect(aiService.isRetryableError(Exception('Invalid API Key provided')), isFalse);
+      expect(aiService.isRetryableError(Exception('ClientException: models/gemini-3.5-flash-lite is not found')), isFalse);
+      expect(aiService.isRetryableError(Exception('ClientException: 404 Not Found')), isFalse);
+      expect(aiService.isRetryableError(Exception('ClientException: 400 Bad Request')), isFalse);
       expect(aiService.isRetryableError(FormatException('Invalid JSON')), isFalse);
+    });
+
+    test('formatAiError returns clear, actionable error messages for various failure types', () {
+      expect(
+        GeminiAiService.formatAiError(Exception('TimeoutException after 0:00:25.000000')),
+        contains('Request timed out after 25 seconds'),
+      );
+      expect(
+        GeminiAiService.formatAiError(Exception('ClientException: models/gemini-3.5-flash is not found')),
+        contains('AI model not found'),
+      );
+      expect(
+        GeminiAiService.formatAiError(Exception('API key not valid')),
+        contains('Invalid or missing Gemini API Key'),
+      );
+      expect(
+        GeminiAiService.formatAiError(Exception('ResourceExhausted: 429 Quota exceeded')),
+        contains('AI rate limit or quota exceeded'),
+      );
+      expect(
+        GeminiAiService.formatAiError(Exception('503 Service Unavailable')),
+        contains('Google Gemini servers are temporarily experiencing high demand'),
+      );
     });
 
     test('notifyRetryForTesting triggers onRetryNotification with exact user reassurance message', () {

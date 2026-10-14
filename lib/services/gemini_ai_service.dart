@@ -176,10 +176,11 @@ class AiStatusCheck {
 /// including remote key fetching, master enable/disable, and quota tracking/enforcement.
 class GeminiAiService {
   static const List<String> _candidateModels = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
+    'gemini-1.5-flash',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
   ];
+  static const Duration requestTimeout = Duration(seconds: 25);
   static const String _usageCollection = 'ai_usage_metrics';
   static const String defaultApiKey = '';
 
@@ -401,8 +402,60 @@ class GeminiAiService {
     }
   }
 
+  /// Translates raw exceptions into user-friendly and actionable error messages.
+  static String formatAiError(dynamic e) {
+    final errStr = e.toString();
+    final lower = errStr.toLowerCase();
+
+    if (lower.contains('timeoutexception') || lower.contains('timed out')) {
+      return 'Request timed out after 25 seconds. Please check your network connection and try again.';
+    }
+    if (lower.contains('api key') || lower.contains('api_key') || lower.contains('unauthenticated')) {
+      return 'Invalid or missing Gemini API Key. Please verify your API key in Configurations.';
+    }
+    if (lower.contains('not found') || lower.contains('404')) {
+      return 'AI model not found: ${errStr.replaceFirst(RegExp(r'^(Exception|ClientException):\s*'), '')}';
+    }
+    if (lower.contains('429') ||
+        lower.contains('quota') ||
+        lower.contains('resourceexhausted') ||
+        lower.contains('resource_exhausted')) {
+      return 'AI rate limit or quota exceeded. Please wait a moment before trying again.';
+    }
+    if (lower.contains('503') ||
+        lower.contains('high demand') ||
+        lower.contains('overloaded') ||
+        lower.contains('temporarily unavailable')) {
+      return 'Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.';
+    }
+    if (lower.contains('socketexception') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('connection closed') ||
+        lower.contains('connection reset') ||
+        lower.contains('connection refused') ||
+        lower.contains('broken pipe')) {
+      return 'Network connection failed. Please check your internet connection.';
+    }
+    return errStr.replaceFirst(RegExp(r'^(Exception|ClientException):\s*'), '');
+  }
+
   bool _isOverloadedError(dynamic e) {
     final errStr = e.toString().toLowerCase();
+
+    // Fatal or client errors that should never be retried or masked as high demand
+    if (errStr.contains('not found') ||
+        errStr.contains('404') ||
+        errStr.contains('api key') ||
+        errStr.contains('api_key') ||
+        errStr.contains('unauthenticated') ||
+        errStr.contains('permissiondenied') ||
+        errStr.contains('permission_denied') ||
+        errStr.contains('invalid argument') ||
+        errStr.contains('bad request') ||
+        errStr.contains('formatexception')) {
+      return false;
+    }
+
     return errStr.contains('high demand') ||
         errStr.contains('overloaded') ||
         errStr.contains('503') ||
@@ -418,7 +471,6 @@ class GeminiAiService {
         errStr.contains('connection reset') ||
         errStr.contains('connection refused') ||
         errStr.contains('handshake') ||
-        errStr.contains('clientexception') ||
         errStr.contains('failed host lookup') ||
         errStr.contains('broken pipe') ||
         errStr.contains('try again later') ||
@@ -437,16 +489,20 @@ class GeminiAiService {
       await startChat(contextPrompt: _cachedContextPrompt);
     }
 
+    dynamic lastError;
     for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
       try {
         if (_chatSession == null) {
           throw Exception('Failed to initialize AI model session.');
         }
 
-        final response = await _chatSession!.sendMessage(Content.text(userMessage));
+        final response = await _chatSession!
+            .sendMessage(Content.text(userMessage))
+            .timeout(requestTimeout);
         await recordAiUsage();
         return response.text ?? 'No response received from Gemini.';
       } catch (e) {
+        lastError = e;
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
           await _handleRetry(
             attempt: attempt,
@@ -455,16 +511,11 @@ class GeminiAiService {
           continue;
         }
 
-        if (_isOverloadedError(e)) {
-          throw Exception(
-            'Google Gemini servers are temporarily experiencing high demand. Please tap send again in a moment.',
-          );
-        }
-        rethrow;
+        throw Exception(formatAiError(e));
       }
     }
 
-    throw Exception('Unable to reach Google Gemini. Please try again.');
+    throw Exception(formatAiError(lastError ?? 'Unable to reach Google Gemini. Please try again.'));
   }
 
   /// Single-turn prompt generation with automatic failover.
@@ -474,6 +525,7 @@ class GeminiAiService {
       throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
     }
 
+    dynamic lastError;
     for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
       try {
         final model = await getModel(contextPrompt: contextPrompt, modelIndex: _activeModelIndex);
@@ -481,25 +533,23 @@ class GeminiAiService {
           throw Exception('Failed to initialize AI model session.');
         }
 
-        final response = await model.generateContent([Content.text(prompt)]);
+        final response = await model
+            .generateContent([Content.text(prompt)])
+            .timeout(requestTimeout);
         await recordAiUsage();
         return response.text ?? 'No response generated.';
       } catch (e) {
+        lastError = e;
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
           await _handleRetry(attempt: attempt);
           continue;
         }
 
-        if (_isOverloadedError(e)) {
-          throw Exception(
-            'Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.',
-          );
-        }
-        rethrow;
+        throw Exception(formatAiError(e));
       }
     }
 
-    throw Exception('Unable to generate response. Please try again.');
+    throw Exception(formatAiError(lastError ?? 'Unable to generate response. Please try again.'));
   }
 
   /// Extracts purchase order details, invoice number, date, and product quantities from one or multiple images/screenshots,
@@ -566,7 +616,7 @@ class GeminiAiService {
       if (slices.length > 1) {
         for (final slice in slices) {
           processedBytesList.add(slice);
-          processedMimeTypes.add('image/png');
+          processedMimeTypes.add('image/jpeg');
         }
       } else {
         processedBytesList.add(originalBytes);
@@ -676,6 +726,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
 }
 ''';
 
+    dynamic lastError;
     for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
       try {
         final model = await getModel(modelIndex: _activeModelIndex);
@@ -690,26 +741,22 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
 
         final content = [Content.multi(parts)];
 
-        final response = await model.generateContent(content);
+        final response = await model.generateContent(content).timeout(requestTimeout);
         await recordAiUsage();
         final rawText = response.text ?? '';
         return _parseExtractedPurchaseOrderData(rawText, catalog, knownMappings);
       } catch (e) {
+        lastError = e;
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
           await _handleRetry(attempt: attempt);
           continue;
         }
 
-        if (_isOverloadedError(e)) {
-          throw Exception(
-            'Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.',
-          );
-        }
-        rethrow;
+        throw Exception(formatAiError(e));
       }
     }
 
-    throw Exception('Failed to process invoice images.');
+    throw Exception(formatAiError(lastError ?? 'Failed to process invoice images.'));
   }
 
   /// Single image convenience method
@@ -853,6 +900,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
 }
 ''';
 
+    dynamic lastError;
     for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
       try {
         final model = await getModel(modelIndex: _activeModelIndex);
@@ -865,24 +913,23 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
           parts.add(DataPart(processedMimeTypes[i], processedBytesList[i]));
         }
 
-        final response = await model.generateContent([Content.multi(parts)]);
+        final response = await model
+            .generateContent([Content.multi(parts)])
+            .timeout(requestTimeout);
         await recordAiUsage();
         return _parseExtractedPurchaseOrderData(response.text ?? '', catalog, knownMappings);
       } catch (e) {
+        lastError = e;
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
           await _handleRetry(attempt: attempt);
           continue;
         }
-        if (_isOverloadedError(e)) {
-          throw Exception(
-            'Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.',
-          );
-        }
-        rethrow;
+
+        throw Exception(formatAiError(e));
       }
     }
 
-    throw Exception('Failed to process receipt images.');
+    throw Exception(formatAiError(lastError ?? 'Failed to process receipt images.'));
   }
 
   /// Compares one or more official paper invoice images against the original PO items.
@@ -960,6 +1007,7 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
 }
 ''';
 
+    dynamic lastError;
     for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
       try {
         final model = await getModel(modelIndex: _activeModelIndex);
@@ -971,23 +1019,24 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
           parts.add(DataPart(processedMimeTypes[i], processedBytesList[i]));
         }
 
-        final response = await model.generateContent([Content.multi(parts)]);
+        final response = await model
+            .generateContent([Content.multi(parts)])
+            .timeout(requestTimeout);
         await recordAiUsage();
         final rawText = response.text ?? '';
         return _parseInvoiceComparisonResult(rawText, originalPoItems);
       } catch (e) {
+        lastError = e;
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
           await _handleRetry(attempt: attempt);
           continue;
         }
-        if (_isOverloadedError(e)) {
-          throw Exception('Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.');
-        }
-        rethrow;
+
+        throw Exception(formatAiError(e));
       }
     }
 
-    throw Exception('Unable to compare official invoice with PO. Please try again.');
+    throw Exception(formatAiError(lastError ?? 'Unable to compare official invoice with PO. Please try again.'));
   }
 
   InvoiceComparisonResult _parseInvoiceComparisonResult(String rawText, List<OrderItem> originalPoItems) {
@@ -1293,7 +1342,7 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
       if (slices.length > 1) {
         for (final slice in slices) {
           processedBytesList.add(slice);
-          processedMimeTypes.add('image/png');
+          processedMimeTypes.add('image/jpeg');
         }
       } else {
         processedBytesList.add(originalBytes);
@@ -1342,6 +1391,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
 }
 ''';
 
+    dynamic lastError;
     for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
       try {
         final model = await getModel(modelIndex: _activeModelIndex);
@@ -1355,26 +1405,22 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
         }
 
         final content = [Content.multi(parts)];
-        final response = await model.generateContent(content);
+        final response = await model.generateContent(content).timeout(requestTimeout);
         await recordAiUsage();
         final rawText = response.text ?? '';
         return _parseExtractedSupplierStockData(rawText, selectaCatalog);
       } catch (e) {
+        lastError = e;
         if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
           await _handleRetry(attempt: attempt);
           continue;
         }
 
-        if (_isOverloadedError(e)) {
-          throw Exception(
-            'Google Gemini servers are temporarily experiencing high demand. Please try again in a moment.',
-          );
-        }
-        rethrow;
+        throw Exception(formatAiError(e));
       }
     }
 
-    throw Exception('Failed to process supplier stock images.');
+    throw Exception(formatAiError(lastError ?? 'Failed to process supplier stock images.'));
   }
 
   ExtractedSupplierStockData _parseExtractedSupplierStockData(

@@ -232,14 +232,14 @@ class Helperfunctions {
   /// are ephemeral and not saved to the database or storage, they are kept
   /// uncompressed at full native resolution to maximize text and digit recognition accuracy.
   ///
-  /// A gentle compression ceiling is only applied if an individual image
-  /// exceeds [maxSizeBytes] (default 6MB) to ensure the total Gemini request
-  /// stays safely below the API's 20MB payload limit.
+  /// A gentle compression ceiling is applied if an individual image
+  /// exceeds [maxSizeBytes] (default 2MB) to ensure the total Gemini request
+  /// stays small and uploads swiftly over mobile networks.
   static Future<Uint8List> prepareImageBytesForAi(
     Uint8List rawBytes, {
-    int maxSizeBytes = 6 * 1024 * 1024,
-    int maxDimensionIfOversized = 2560,
-    int qualityIfOversized = 88,
+    int maxSizeBytes = 2 * 1024 * 1024,
+    int maxDimensionIfOversized = 2200,
+    int qualityIfOversized = 85,
   }) async {
     if (rawBytes.lengthInBytes <= maxSizeBytes) {
       return rawBytes;
@@ -434,6 +434,8 @@ class Helperfunctions {
     String message = '',
     String subtitle = '',
     ValueNotifier<String>? statusNotifier,
+    VoidCallback? onCancel,
+    bool showCancelButton = false,
   }) async {
     if (showLoading) {
       if (_isLoadingDialogOpen) return;
@@ -442,7 +444,7 @@ class Helperfunctions {
 
       showDialog<void>(
         context: context,
-        barrierDismissible: false, // Prevents closing by tapping outside the dialog
+        barrierDismissible: onCancel != null, // Allows closing by tapping outside if cancellable
         useRootNavigator: true,
         builder: (BuildContext dialogContext) {
           _activeLoadingContext = dialogContext;
@@ -456,9 +458,17 @@ class Helperfunctions {
           }
           final theme = Theme.of(dialogContext);
           final hasMessage = message.isNotEmpty || statusNotifier != null;
+          final canCancel = onCancel != null || showCancelButton;
 
           return PopScope(
-            canPop: false, // Prevents closing via the physical back button or swipe
+            canPop: canCancel, // Allows closing via physical back button or swipe if cancellable
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop && onCancel != null) {
+                _isLoadingDialogOpen = false;
+                _activeLoadingContext = null;
+                onCancel();
+              }
+            },
             child: Center(
               child: Material(
                 color: Colors.transparent,
@@ -531,6 +541,29 @@ class Helperfunctions {
                             decoration: TextDecoration.none,
                           ),
                           textAlign: TextAlign.center,
+                        ),
+                      ],
+                      if (canCancel) ...[
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Helperfunctions.showLoading(context: dialogContext, showLoading: false);
+                            onCancel?.call();
+                          },
+                          icon: Icon(Icons.close_rounded, size: 16, color: theme.colorScheme.error),
+                          label: Text(
+                            'Cancel',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.error,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.4)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          ),
                         ),
                       ],
                     ],

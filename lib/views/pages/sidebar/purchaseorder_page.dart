@@ -432,6 +432,18 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       _aiExtractionSummary = null;
     });
 
+    bool isCancelled = false;
+    void handleCancel() {
+      if (isCancelled) return;
+      isCancelled = true;
+      if (mounted) {
+        setState(() {
+          _isAnalyzingWithAi = false;
+        });
+        ShowMessage.info(context, 'Document scanning was cancelled.');
+      }
+    }
+
     final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing document images...');
     Helperfunctions.showLoading(
       context: context,
@@ -439,13 +451,18 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       message: 'Processing Purchase Order',
       subtitle: 'Please wait while Sedy AI analyzes your document.',
       statusNotifier: statusNotifier,
+      onCancel: handleCancel,
+      showCancelButton: true,
     );
 
     try {
       final knownMappings = await _mappingService.getAllMappings();
+      if (isCancelled) return;
+
       final List<Uint8List> bytesList = [];
       final List<String> mimeTypes = [];
       for (int i = 0; i < files.length; i++) {
+        if (isCancelled) return;
         final file = files[i];
         statusNotifier.value = 'Step 1/3: Preparing document image ${i + 1} of ${files.length}...';
         final rawBytes = await file.readAsBytes();
@@ -455,6 +472,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }
 
+      if (isCancelled) return;
       statusNotifier.value = 'Step 2/3: Sedy AI reading products & quantities...';
       final result = await _aiService.extractPurchaseOrderFromImages(
         imagesBytesList: bytesList,
@@ -462,7 +480,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         catalog: allInventory,
         knownMappings: knownMappings,
       );
-      if (!mounted) return;
+      if (isCancelled || !mounted) return;
 
       statusNotifier.value = 'Step 3/3: Matching with inventory catalog...';
       // Dismiss loading modal before interactive disambiguation if user selection is required
@@ -473,6 +491,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         allInventory: allInventory,
         knownMappings: knownMappings,
         onLiveUpdate: (currentLines) {
+          if (isCancelled || !mounted) return;
           setState(() {
             _documentLines
               ..clear()
@@ -482,6 +501,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           });
         },
       );
+
+      if (isCancelled || !mounted) return;
 
       // Populate document lines in document sequence with pre-orders prioritized at top
       _documentLines
@@ -509,6 +530,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         ShowMessage.success(context, 'Document analyzed! Review products below in document order.');
       }
     } catch (e) {
+      if (isCancelled) return;
       if (mounted) {
         setState(() => _isAnalyzingWithAi = false);
         ShowMessage.error(context, 'AI: ${e.toString().replaceAll('Exception: ', '')}');
@@ -1354,6 +1376,18 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       _comparisonResult = null;
     });
 
+    bool isCancelled = false;
+    void handleCancel() {
+      if (isCancelled) return;
+      isCancelled = true;
+      if (mounted) {
+        setState(() {
+          _isComparingWithAi = false;
+        });
+        ShowMessage.info(context, 'Invoice reconciliation was cancelled.');
+      }
+    }
+
     final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing invoice images...');
     Helperfunctions.showLoading(
       context: context,
@@ -1361,13 +1395,18 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       message: 'Analyzing Official Invoice',
       subtitle: 'Comparing against original P.O. products...',
       statusNotifier: statusNotifier,
+      onCancel: handleCancel,
+      showCancelButton: true,
     );
 
     try {
       final knownMappings = await _mappingService.getAllMappings();
+      if (isCancelled) return;
+
       final List<Uint8List> bytesList = [];
       final List<String> mimeTypes = [];
       for (int i = 0; i < _officialInvoiceImages.length; i++) {
+        if (isCancelled) return;
         final file = _officialInvoiceImages[i];
         statusNotifier.value = 'Step 1/3: Preparing invoice image ${i + 1} of ${_officialInvoiceImages.length}...';
         final rawBytes = await file.readAsBytes();
@@ -1377,6 +1416,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
       }
 
+      if (isCancelled) return;
       statusNotifier.value = 'Step 2/3: Sedy AI reading invoice items...';
       final result = await _aiService.extractPurchaseOrderFromImages(
         imagesBytesList: bytesList,
@@ -1385,7 +1425,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         knownMappings: knownMappings,
       );
 
-      if (!mounted) return;
+      if (isCancelled || !mounted) return;
 
       statusNotifier.value = 'Step 3/3: Reconciling invoice with P.O....';
       Helperfunctions.showLoading(context: context, showLoading: false);
@@ -1395,6 +1435,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         allInventory: allInventory,
         knownMappings: knownMappings,
         onLiveUpdate: (currentLines) {
+          if (isCancelled || !mounted) return;
           setState(() {
             _invoiceLines
               ..clear()
@@ -1403,6 +1444,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           });
         },
       );
+
+      if (isCancelled || !mounted) return;
 
       _invoiceLines
         ..clear()
@@ -1436,6 +1479,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         }
       }
     } catch (e, s) {
+      if (isCancelled) return;
       ErrorLogService.logError(page: 'PurchaseorderPage', action: 'Official Invoice AI Extraction', error: e, stackTrace: s);
       if (mounted) {
         setState(() => _isComparingWithAi = false);

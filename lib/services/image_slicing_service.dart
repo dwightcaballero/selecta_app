@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
+import 'package:selecta_ops/data/helperfunctions.dart';
 
 /// Service that automatically detects vertically elongated scrolling screenshots
 /// and slices them into standard aspect-ratio chunks with overlap.
@@ -63,7 +64,13 @@ class ImageSlicingService {
         final sliceImg = await picture.toImage(width, currentSliceHeight);
         final byteData = await sliceImg.toByteData(format: ui.ImageByteFormat.png);
         if (byteData != null) {
-          slices.add(byteData.buffer.asUint8List());
+          final pngBytes = byteData.buffer.asUint8List();
+          final compressedJpeg = await Helperfunctions.compressImageBytes(
+            pngBytes,
+            maxDimension: 2200,
+            quality: 85,
+          );
+          slices.add(compressedJpeg);
         }
       }
 
