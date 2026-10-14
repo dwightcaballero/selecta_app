@@ -43,6 +43,8 @@ class PicklistContinuousScannerPage extends StatefulWidget {
   final List<OrderItem> items;
   final Map<String, String> productIdToBarcode;
   final Map<String, Map<String, String>> barcodeToProductInfo;
+  final Map<String, int> productIdToStock;
+  final Map<String, int> productNameToStock;
 
   const PicklistContinuousScannerPage({
     super.key,
@@ -50,6 +52,8 @@ class PicklistContinuousScannerPage extends StatefulWidget {
     required this.items,
     required this.productIdToBarcode,
     required this.barcodeToProductInfo,
+    this.productIdToStock = const {},
+    this.productNameToStock = const {},
   });
 
   @override
@@ -93,6 +97,21 @@ class _PicklistContinuousScannerPageState extends State<PicklistContinuousScanne
   int get _totalCount => _items.length;
   int get _totalUnits => _items.fold<int>(0, (total, it) => total + it.pickedQuantity);
   List<OrderItem> get _pendingItems => _items.where((it) => !it.isPicked).toList();
+
+  int _getOnHandStock(OrderItem item) {
+    if (item.productId.isNotEmpty && widget.productIdToStock.containsKey(item.productId)) {
+      return widget.productIdToStock[item.productId]!;
+    }
+    final nameKey = item.productName.trim().toLowerCase();
+    if (widget.productNameToStock.containsKey(nameKey)) {
+      return widget.productNameToStock[nameKey]!;
+    }
+    return 0;
+  }
+
+  int _getRequiredQty(OrderItem item) {
+    return item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+  }
 
   String _getEffectiveBarcode(OrderItem item) {
     if (item.barcode.trim().isNotEmpty) return item.barcode.trim();
@@ -196,6 +215,25 @@ class _PicklistContinuousScannerPageState extends State<PicklistContinuousScanne
           type: ScanFeedbackType.alreadyPicked,
           title: 'Already Checked',
           subtitle: '${item.productName} is already marked as picked',
+          barcode: barcode,
+          productName: item.productName,
+        );
+      });
+      return;
+    }
+
+    final onHand = _getOnHandStock(item);
+    final reqQty = _getRequiredQty(item);
+    if (onHand < reqQty) {
+      SoundFeedbackService().playErrorBuzzer();
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _feedback = ScanFeedback(
+          type: ScanFeedbackType.wrongItem,
+          title: onHand <= 0 ? '⚠️ Zero Warehouse Stock' : '⚠️ Insufficient Stock',
+          subtitle: onHand <= 0
+              ? '${item.productName}: 0 on hand in warehouse (Cannot pick)'
+              : '${item.productName}: only $onHand on hand (need $reqQty)',
           barcode: barcode,
           productName: item.productName,
         );
@@ -340,6 +378,28 @@ class _PicklistContinuousScannerPageState extends State<PicklistContinuousScanne
   }
 
   void _toggleManualItem(int index) {
+    final item = _items[index];
+    if (!item.isPicked) {
+      final onHand = _getOnHandStock(item);
+      final reqQty = _getRequiredQty(item);
+      if (onHand < reqQty) {
+        SoundFeedbackService().playErrorBuzzer();
+        HapticFeedback.heavyImpact();
+        setState(() {
+          _feedback = ScanFeedback(
+            type: ScanFeedbackType.wrongItem,
+            title: onHand <= 0 ? '⚠️ Zero Warehouse Stock' : '⚠️ Insufficient Stock',
+            subtitle: onHand <= 0
+                ? '${item.productName}: 0 on hand in warehouse (Cannot pick)'
+                : '${item.productName}: only $onHand on hand (need $reqQty)',
+            barcode: _getEffectiveBarcode(item),
+            productName: item.productName,
+          );
+        });
+        return;
+      }
+    }
+
     setState(() {
       final newStatus = !_items[index].isPicked;
       _items[index] = _items[index].copyWith(isPicked: newStatus);
@@ -815,6 +875,24 @@ class _PicklistContinuousScannerPageState extends State<PicklistContinuousScanne
                                       fontFamily: 'monospace',
                                     ),
                                   ),
+                                Builder(builder: (context) {
+                                  final onHand = _getOnHandStock(item);
+                                  final reqQty = _getRequiredQty(item);
+                                  if (onHand < reqQty && !isPicked) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        onHand <= 0 ? '0 on hand (Out of stock)' : 'Only $onHand on hand (Need $reqQty)',
+                                        style: TextStyle(
+                                          color: onHand <= 0 ? Colors.redAccent.shade100 : Colors.amberAccent.shade100,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                }),
                               ],
                             ),
                           ),

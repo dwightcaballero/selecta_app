@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/services/inventory_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
@@ -50,6 +53,9 @@ class _PicklistPageState extends State<PicklistPage> {
   bool _enableBarcodeScanner = true;
   final Map<String, String> _productIdToBarcode = {};
   final Map<String, Map<String, String>> _barcodeToProductInfo = {};
+  StreamSubscription<List<InventoryItem>>? _inventorySub;
+  final Map<String, int> _productIdToStock = {};
+  final Map<String, int> _productNameToStock = {};
 
   @override
   void initState() {
@@ -59,6 +65,7 @@ class _PicklistPageState extends State<PicklistPage> {
     _networkImagePath = widget.delivery.imagePath;
     _groupAndSortItemIndices();
     _prefetchData();
+    _subscribeInventory();
     SoundFeedbackService().init();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _scannerFocusNode.requestFocus();
@@ -67,8 +74,174 @@ class _PicklistPageState extends State<PicklistPage> {
 
   @override
   void dispose() {
+    _inventorySub?.cancel();
     _scannerFocusNode.dispose();
     super.dispose();
+  }
+
+  void _subscribeInventory() {
+    _inventorySub = InventoryService().getActiveInventoryStream().listen((items) {
+      if (!mounted) return;
+      final idMap = <String, int>{};
+      final nameMap = <String, int>{};
+      for (final it in items) {
+        idMap[it.id] = it.stockQuantity;
+        nameMap[it.productName.trim().toLowerCase()] = it.stockQuantity;
+      }
+      setState(() {
+        _productIdToStock.clear();
+        _productIdToStock.addAll(idMap);
+        _productNameToStock.clear();
+        _productNameToStock.addAll(nameMap);
+      });
+    });
+  }
+
+  int _getOnHandStock(OrderItem item) {
+    if (item.productId.isNotEmpty && _productIdToStock.containsKey(item.productId)) {
+      return _productIdToStock[item.productId]!;
+    }
+    final nameKey = item.productName.trim().toLowerCase();
+    if (_productNameToStock.containsKey(nameKey)) {
+      return _productNameToStock[nameKey]!;
+    }
+    return 0;
+  }
+
+  int _getRequiredQty(OrderItem item) {
+    return item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+  }
+
+  Future<void> _showCannotPickStockDialog(OrderItem item, int onHand, int reqQty) async {
+    SoundFeedbackService().playErrorBuzzer();
+    HapticFeedback.heavyImpact();
+
+    final isZero = onHand <= 0;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(10)),
+              child: Icon(Icons.block_rounded, color: Colors.red.shade700, size: 26),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                isZero ? 'CANNOT PICK - ZERO STOCK' : 'CANNOT PICK - INSUFFICIENT STOCK',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.red.shade900),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isZero
+                        ? 'The physical warehouse count for this product is 0 units.'
+                        : 'Physical warehouse count is only $onHand unit(s), but the picklist requires $reqQty unit(s).',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.red.shade900),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Picking an item that is out of stock or insufficient is strictly prohibited to keep inventory accurate.',
+                    style: TextStyle(fontSize: 12, color: Colors.red.shade800),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CachedProductImage(imageUrl: item.imageUrl, size: 44, borderRadius: 8),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item.productName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      Text('Category: ${item.category}', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Warehouse Physical Count:', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                Text(
+                  '$onHand ${item.category.toLowerCase().contains('case') ? 'Cases' : 'Units'}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: isZero ? Colors.red.shade700 : Colors.amber.shade900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Required Picklist Qty:', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+                Text(
+                  '$reqQty ${item.category.toLowerCase().contains('case') ? 'Cases' : 'Units'}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              _isDealer
+                  ? 'Please edit this order to adjust quantities or update physical inventory.'
+                  : 'Please notify the dealer to adjust the picklist or replenish warehouse inventory.',
+              style: TextStyle(fontSize: 11.5, fontStyle: FontStyle.italic, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+        actions: [
+          if (_isDealer)
+            OutlinedButton.icon(
+              icon: const Icon(Icons.edit_note_rounded, size: 18),
+              label: const Text('Edit Order'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _openEditOrderProducts();
+              },
+            ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Understood'),
+          ),
+        ],
+      ),
+    );
+    if (mounted) _scannerFocusNode.requestFocus();
   }
 
   void _groupAndSortItemIndices() {
@@ -134,6 +307,9 @@ class _PicklistPageState extends State<PicklistPage> {
         final data = doc.data();
         final barcode = (data['barcode'] as String? ?? '').trim();
         final name = (data['productName'] as String? ?? '').trim();
+        final stock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+        _productIdToStock[doc.id] = stock;
+        if (name.isNotEmpty) _productNameToStock[name.toLowerCase()] = stock;
         if (barcode.isNotEmpty) {
           _productIdToBarcode[doc.id] = barcode;
           _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};
@@ -145,6 +321,9 @@ class _PicklistPageState extends State<PicklistPage> {
         final data = doc.data();
         final barcode = (data['barcode'] as String? ?? '').trim();
         final name = (data['productName'] as String? ?? '').trim();
+        final stock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+        _productIdToStock[doc.id] = stock;
+        if (name.isNotEmpty) _productNameToStock[name.toLowerCase()] = stock;
         if (barcode.isNotEmpty) {
           _productIdToBarcode[doc.id] = barcode;
           _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};
@@ -156,6 +335,9 @@ class _PicklistPageState extends State<PicklistPage> {
         final data = doc.data();
         final barcode = (data['barcode'] as String? ?? '').trim();
         final name = (data['productName'] as String? ?? '').trim();
+        final stock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+        _productIdToStock[doc.id] = stock;
+        if (name.isNotEmpty) _productNameToStock[name.toLowerCase()] = stock;
         if (barcode.isNotEmpty) {
           _productIdToBarcode[doc.id] = barcode;
           _barcodeToProductInfo[barcode.toLowerCase()] = {'name': name, 'id': doc.id};
@@ -219,6 +401,8 @@ class _PicklistPageState extends State<PicklistPage> {
           items: _items,
           productIdToBarcode: _productIdToBarcode,
           barcodeToProductInfo: _barcodeToProductInfo,
+          productIdToStock: _productIdToStock,
+          productNameToStock: _productNameToStock,
         ),
       ),
     );
@@ -339,6 +523,13 @@ class _PicklistPageState extends State<PicklistPage> {
       HapticFeedback.lightImpact();
       ShowMessage.info(context, '${item.productName} is already checked.');
       if (mounted) _scannerFocusNode.requestFocus();
+      return;
+    }
+
+    final onHand = _getOnHandStock(item);
+    final reqQty = _getRequiredQty(item);
+    if (onHand < reqQty) {
+      await _showCannotPickStockDialog(item, onHand, reqQty);
       return;
     }
 
@@ -558,11 +749,38 @@ class _PicklistPageState extends State<PicklistPage> {
   void _toggleAllPicked() {
     HapticFeedback.lightImpact();
     final target = !_allItemsPicked;
+    if (!target) {
+      setState(() {
+        for (int i = 0; i < _items.length; i++) {
+          _items[i] = _items[i].copyWith(isPicked: false);
+        }
+      });
+      return;
+    }
+
+    int skippedCount = 0;
     setState(() {
       for (int i = 0; i < _items.length; i++) {
-        _items[i] = _items[i].copyWith(isPicked: target);
+        final item = _items[i];
+        final onHand = _getOnHandStock(item);
+        final reqQty = _getRequiredQty(item);
+        if (onHand >= reqQty) {
+          _items[i] = item.copyWith(isPicked: true);
+        } else {
+          skippedCount++;
+        }
       }
     });
+
+    if (skippedCount > 0) {
+      SoundFeedbackService().playErrorBuzzer();
+      ShowMessage.error(
+        context,
+        'Skipped $skippedCount item(s) due to zero or insufficient physical warehouse stock.',
+      );
+    } else {
+      SoundFeedbackService().playSuccessChime();
+    }
   }
 
   void _toggleCategoryPicked(List<int> indices) {
@@ -570,16 +788,52 @@ class _PicklistPageState extends State<PicklistPage> {
     HapticFeedback.lightImpact();
     final allCategoryPicked = indices.every((i) => _items[i].isPicked);
     final target = !allCategoryPicked;
+    if (!target) {
+      setState(() {
+        for (final i in indices) {
+          _items[i] = _items[i].copyWith(isPicked: false);
+        }
+      });
+      return;
+    }
+
+    int skippedCount = 0;
     setState(() {
       for (final i in indices) {
-        _items[i] = _items[i].copyWith(isPicked: target);
+        final item = _items[i];
+        final onHand = _getOnHandStock(item);
+        final reqQty = _getRequiredQty(item);
+        if (onHand >= reqQty) {
+          _items[i] = item.copyWith(isPicked: true);
+        } else {
+          skippedCount++;
+        }
       }
     });
+
+    if (skippedCount > 0) {
+      SoundFeedbackService().playErrorBuzzer();
+      ShowMessage.error(
+        context,
+        'Skipped $skippedCount item(s) in category due to zero or insufficient physical warehouse stock.',
+      );
+    } else {
+      SoundFeedbackService().playSuccessChime();
+    }
   }
 
-  void _toggleItemPicked(int index) {
+  Future<void> _toggleItemPicked(int index) async {
+    final item = _items[index];
+    if (!item.isPicked) {
+      final onHand = _getOnHandStock(item);
+      final reqQty = _getRequiredQty(item);
+      if (onHand < reqQty) {
+        await _showCannotPickStockDialog(item, onHand, reqQty);
+        return;
+      }
+    }
+
     setState(() {
-      final item = _items[index];
       final newStatus = !item.isPicked;
       _items[index] = item.copyWith(isPicked: newStatus);
       if (newStatus) {
@@ -1040,17 +1294,34 @@ class _PicklistPageState extends State<PicklistPage> {
   Widget _buildPicklistItemTile(int index, ColorScheme colorScheme) {
     final item = _items[index];
     final isPicked = item.isPicked;
+    final onHand = _getOnHandStock(item);
+    final reqQty = _getRequiredQty(item);
+    final isShortage = onHand < reqQty;
+    final isZero = onHand <= 0;
+
+    final Color tileBgColor;
+    final BorderSide tileBorder;
+    if (isPicked) {
+      tileBgColor = Colors.green.withValues(alpha: 0.06);
+      tileBorder = BorderSide(color: Colors.green.withValues(alpha: 0.45), width: 1.3);
+    } else if (isZero) {
+      tileBgColor = Colors.red.withValues(alpha: 0.03);
+      tileBorder = BorderSide(color: Colors.red.shade300, width: 1.2);
+    } else if (isShortage) {
+      tileBgColor = Colors.amber.withValues(alpha: 0.03);
+      tileBorder = BorderSide(color: Colors.amber.shade300, width: 1.2);
+    } else {
+      tileBgColor = colorScheme.surface;
+      tileBorder = BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5), width: 1.0);
+    }
 
     return Card(
       elevation: 0,
       margin: const EdgeInsets.symmetric(vertical: 4),
-      color: isPicked ? Colors.green.withValues(alpha: 0.06) : colorScheme.surface,
+      color: tileBgColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: isPicked ? Colors.green.withValues(alpha: 0.45) : colorScheme.outlineVariant.withValues(alpha: 0.5),
-          width: isPicked ? 1.3 : 1.0,
-        ),
+        side: tileBorder,
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -1113,6 +1384,70 @@ class _PicklistPageState extends State<PicklistPage> {
                         );
                       },
                     ),
+                    if (!isPicked) ...[
+                      if (isZero)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.red.shade200),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.cancel_outlined, size: 12, color: Colors.red.shade700),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '0 on hand • Out of stock',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else if (isShortage)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.amber.shade300),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.warning_amber_rounded, size: 12, color: Colors.amber.shade900),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Only $onHand on hand (Need $reqQty)',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Text(
+                            'On hand: $onHand',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -1120,13 +1455,31 @@ class _PicklistPageState extends State<PicklistPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isPicked ? Colors.green.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.08),
+                  color: isPicked
+                      ? Colors.green.withValues(alpha: 0.15)
+                      : (isZero
+                          ? Colors.red.withValues(alpha: 0.1)
+                          : (isShortage ? Colors.amber.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.08))),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: isPicked ? Colors.green.withValues(alpha: 0.3) : colorScheme.primary.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: isPicked
+                        ? Colors.green.withValues(alpha: 0.3)
+                        : (isZero
+                            ? Colors.red.shade300
+                            : (isShortage ? Colors.amber.shade300 : colorScheme.primary.withValues(alpha: 0.2))),
+                  ),
                 ),
                 child: Text(
                   '×${item.pickedQuantity}',
-                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: isPicked ? Colors.green.shade700 : colorScheme.primary),
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: isPicked
+                        ? Colors.green.shade700
+                        : (isZero
+                            ? Colors.red.shade700
+                            : (isShortage ? Colors.amber.shade900 : colorScheme.primary)),
+                  ),
                 ),
               ),
             ],
@@ -1542,12 +1895,14 @@ class _PicklistPageState extends State<PicklistPage> {
                                 'No products in this order yet.',
                                 style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13.5, fontWeight: FontWeight.w700),
                               ),
-                              const SizedBox(height: 10),
-                              OutlinedButton.icon(
-                                onPressed: _openEditOrderProducts,
-                                icon: const Icon(Icons.edit_note_rounded, size: 20),
-                                label: const Text('Edit Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
-                              ),
+                              if (_isDealer) ...[
+                                const SizedBox(height: 10),
+                                OutlinedButton.icon(
+                                  onPressed: _openEditOrderProducts,
+                                  icon: const Icon(Icons.edit_note_rounded, size: 20),
+                                  label: const Text('Edit Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
                             ],
                           ),
                         ),

@@ -7,11 +7,14 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
+import 'package:selecta_ops/services/inventory_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
 class PicklistListPage extends StatefulWidget {
@@ -31,8 +34,11 @@ class _PicklistListPageState extends State<PicklistListPage> {
 
   StreamSubscription? _storesSub;
   StreamSubscription<int>? _returnedCountSub;
+  StreamSubscription<List<InventoryItem>>? _inventorySub;
   Map<String, Hapistore> _storesByName = {};
   Map<String, String> _storeDocIdsByName = {};
+  Map<String, int> _inventoryStockById = {};
+  Map<String, int> _inventoryStockByName = {};
 
   bool _isEditing = false;
   bool _isSaving = false;
@@ -44,12 +50,14 @@ class _PicklistListPageState extends State<PicklistListPage> {
     super.initState();
     prefetchData();
     _subscribeStores();
+    _subscribeInventory();
   }
 
   @override
   void dispose() {
     _storesSub?.cancel();
     _returnedCountSub?.cancel();
+    _inventorySub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -71,6 +79,229 @@ class _PicklistListPageState extends State<PicklistListPage> {
         _storeDocIdsByName = docIds;
       });
     });
+  }
+
+  void _subscribeInventory() {
+    _inventorySub = InventoryService().getActiveInventoryStream().listen((items) {
+      if (!mounted) return;
+      final byId = <String, int>{};
+      final byName = <String, int>{};
+      for (final item in items) {
+        byId[item.id] = item.stockQuantity;
+        byName[item.productName.trim().toLowerCase()] = item.stockQuantity;
+      }
+      setState(() {
+        _inventoryStockById = byId;
+        _inventoryStockByName = byName;
+      });
+    });
+  }
+
+  List<({OrderItem item, int requiredQty, int onHandQty})> _getDeliveryShortages(Delivery delivery) {
+    final shortages = <({OrderItem item, int requiredQty, int onHandQty})>[];
+    for (final item in delivery.items) {
+      final reqQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+      if (reqQty <= 0) continue;
+      final nameKey = item.productName.trim().toLowerCase();
+      final onHand = _inventoryStockById[item.productId] ?? _inventoryStockByName[nameKey] ?? 0;
+      if (onHand < reqQty) {
+        shortages.add((
+          item: item,
+          requiredQty: reqQty,
+          onHandQty: onHand < 0 ? 0 : onHand,
+        ));
+      }
+    }
+    return shortages;
+  }
+
+  Future<void> _onPicklistTileTapped(String deliveryId, Delivery delivery) async {
+    final shortages = _getDeliveryShortages(delivery);
+    if (shortages.isEmpty) {
+      Helperfunctions.navigateTo(
+        context,
+        PicklistPage(deliveryID: deliveryId, delivery: delivery),
+      );
+      return;
+    }
+
+    final hasZeroStock = shortages.any((s) => s.onHandQty <= 0);
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 26),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasZeroStock ? 'Zero / Insufficient Stock Alert' : 'Stock Shortage Detected',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    delivery.storeName,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Text(
+                  isDealer
+                      ? 'The following ${shortages.length} product(s) have zero or insufficient physical stock in the warehouse. You can edit this order now to adjust quantities or update warehouse inventory.'
+                      : 'The following ${shortages.length} product(s) have zero or insufficient physical stock in the warehouse. Warehouse pickers cannot pick these items. Please notify the dealer to adjust the picklist or replenish warehouse inventory.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.red.shade900,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: shortages.length,
+                  separatorBuilder: (context, index) => const Divider(height: 12),
+                  itemBuilder: (ctx, idx) {
+                    final s = shortages[idx];
+                    final isZero = s.onHandQty <= 0;
+                    return Row(
+                      children: [
+                        CachedProductImage(imageUrl: s.item.imageUrl, size: 40, borderRadius: 6),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                s.item.productName,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Category: ${s.item.category.isEmpty ? s.item.productSource : s.item.category}',
+                                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isZero ? Colors.red.shade100 : Colors.amber.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isZero ? '0 On Hand (Zero Stock)' : 'On Hand: ${s.onHandQty}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isZero ? Colors.red.shade900 : Colors.amber.shade900,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Required: ${s.requiredQty} units',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade800),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Close'),
+          ),
+          if (isDealer)
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary),
+              icon: const Icon(Icons.edit_note_rounded, size: 18),
+              label: const Text('Edit Order'),
+              onPressed: () async {
+                Navigator.pop(dialogCtx);
+                await Navigator.push<Delivery>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BookOrderPage(
+                      deliveryID: deliveryId,
+                      existingDelivery: delivery,
+                      returnUpdatedDeliveryOnSave: true,
+                    ),
+                  ),
+                );
+              },
+            ),
+          OutlinedButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              Helperfunctions.navigateTo(
+                context,
+                PicklistPage(deliveryID: deliveryId, delivery: delivery),
+              );
+            },
+            child: const Text('View Picklist'),
+          ),
+        ],
+      ),
+    );
   }
 
   void prefetchData() async {
@@ -521,6 +752,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                     final pickedCount = delivery.items.where((i) => i.isPicked).length;
                     final totalLines = delivery.items.length;
                     final isComplete = totalLines > 0 && pickedCount == totalLines;
+                    final shortages = _getDeliveryShortages(delivery);
 
                     final store = _storesByName[delivery.storeName.trim().toLowerCase()];
                     final isTodayPjp = store?.pjpSchedule?.trim().toLowerCase() == targetPjpDay.toLowerCase();
@@ -532,12 +764,14 @@ class _PicklistListPageState extends State<PicklistListPage> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
-                          color: isTodayPjp ? colorScheme.primary.withValues(alpha: 0.25) : colorScheme.outlineVariant.withValues(alpha: 0.55),
+                          color: shortages.isNotEmpty
+                              ? Colors.red.shade300
+                              : (isTodayPjp ? colorScheme.primary.withValues(alpha: 0.25) : colorScheme.outlineVariant.withValues(alpha: 0.55)),
                         ),
                       ),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(12),
-                        onTap: () => Helperfunctions.navigateTo(context, PicklistPage(deliveryID: deliveryId, delivery: delivery)),
+                        onTap: () => _onPicklistTileTapped(deliveryId, delivery),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                           child: Row(
@@ -625,6 +859,32 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                       ),
                                     ),
                                   ),
+                                  if (shortages.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.shade50,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: Colors.red.shade200),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.warning_amber_rounded, size: 11, color: Colors.red.shade700),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            '${shortages.length} shortage${shortages.length > 1 ? 's' : ''}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.red.shade800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ],
