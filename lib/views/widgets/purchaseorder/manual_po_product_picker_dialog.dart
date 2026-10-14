@@ -7,9 +7,9 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/po_extracted_line.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 
-/// Modal dialog allowing dealers to manually select products and quantities
-/// for a Purchase Order, organized with the exact same category grouping and
-/// sort sequence as Book Order Page (Best Sellers -> By Case -> By Piece -> SRP Ascending).
+import 'package:selecta_ops/views/pages/sidebar/purchaseorder_catalog_page.dart';
+
+/// Catalog selector for Purchase Order items.
 class ManualPoProductPickerDialog extends StatefulWidget {
   final List<InventoryItem> allInventory;
   final List<PoExtractedLine> existingLines;
@@ -28,15 +28,14 @@ class ManualPoProductPickerDialog extends StatefulWidget {
     List<PoExtractedLine> existingLines = const [],
     required NumberFormat currencyFormat,
   }) {
-    return showModalBottomSheet<List<PoExtractedLine>>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => ManualPoProductPickerDialog(
-        allInventory: allInventory,
-        existingLines: existingLines,
-        currencyFormat: currencyFormat,
+    return Navigator.push<List<PoExtractedLine>>(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => PurchaseOrderCatalogPage(
+          allInventory: allInventory,
+          existingLines: existingLines,
+          isDirectCreationFlow: false,
+        ),
       ),
     );
   }
@@ -553,182 +552,203 @@ class _ManualPoProductPickerDialogState extends State<ManualPoProductPickerDialo
         ),
       ),
       color: isSelected ? colorScheme.primary.withValues(alpha: 0.04) : colorScheme.surface,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            CachedProductImage(imageUrl: item.imageUrl, size: 44, borderRadius: 8),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (item.hasPreOrderShortage) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEDE9FE),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          if (!isSelected) {
+            HapticFeedback.lightImpact();
+            final initialQty = item.isPreOrderRecommended ? item.recommendedPreOrderOrderQuantity : 1;
+            setState(() => _selectedQuantities[item.id] = initialQty);
+          } else {
+            _promptDirectQuantityDialog(item);
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CachedProductImage(imageUrl: item.imageUrl, size: 44, borderRadius: 8),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (item.hasPreOrderShortage) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE9FE),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
+                        ),
+                        child: Text(
+                          'Shortage: ${item.preOrderShortage} (Pre-order: ${item.preOrderQuantity} > Stock: ${item.stockQuantity})',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF6D28D9)),
+                        ),
                       ),
-                      child: Text(
-                        'Shortage: ${item.preOrderShortage} (Pre-order: ${item.preOrderQuantity} > Stock: ${item.stockQuantity})',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF6D28D9)),
+                      const SizedBox(height: 2),
+                    ] else if (item.isPreOrderRecommended) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE9FE),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
+                        ),
+                        child: Text(
+                          '⚠️ Low Stock Alert (Pre-order: ${item.preOrderQuantity}, Stock: ${item.stockQuantity} leaves ${item.remainingStockAfterPreOrder} ≤ ${item.lowStockThreshold})',
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF6D28D9)),
+                        ),
                       ),
+                      const SizedBox(height: 2),
+                    ] else if (item.preOrderQuantity > 0) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3E8FF),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Pre-order: ${item.preOrderQuantity}',
+                          style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF7C3AED)),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    if (isBestSeller) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'Best Seller',
+                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFFB45309)),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    Text(
+                      item.productName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: 2),
-                  ] else if (item.isPreOrderRecommended) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEDE9FE),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
-                      ),
-                      child: Text(
-                        '⚠️ Low Stock Alert (Pre-order: ${item.preOrderQuantity}, Stock: ${item.stockQuantity} leaves ${item.remainingStockAfterPreOrder} ≤ ${item.lowStockThreshold})',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF6D28D9)),
-                      ),
+                    const SizedBox(height: 3),
+                    Wrap(
+                      spacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Cost: ${widget.currencyFormat.format(item.buyingPrice)}',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.primary),
+                        ),
+                        Text('•', style: TextStyle(color: colorScheme.outline)),
+                        Text(
+                          'Stock: ${item.stockQuantity}',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            color: item.stockQuantity <= 0
+                                ? colorScheme.error
+                                : (item.isLowStock ? Colors.orange.shade800 : colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                  ] else if (item.preOrderQuantity > 0) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3E8FF),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'Pre-order: ${item.preOrderQuantity}',
-                        style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF7C3AED)),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
                   ],
-                  if (isBestSeller) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3C7),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'Best Seller',
-                        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFFB45309)),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                  ],
-                  Text(
-                    item.productName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // Stepper or Add button
+              if (qty <= 0)
+                FilledButton.tonal(
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    final initialQty = item.isPreOrderRecommended ? item.recommendedPreOrderOrderQuantity : 1;
+                    setState(() => _selectedQuantities[item.id] = initialQty);
+                  },
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    minimumSize: const Size(60, 36),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   ),
-                  const SizedBox(height: 3),
-                  Wrap(
-                    spacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                  child: const Text('Add', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                )
+              else
+                Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: colorScheme.primary.withValues(alpha: 0.35)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'Cost: ${widget.currencyFormat.format(item.buyingPrice)}',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.primary),
+                      Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(
+                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              if (qty <= 1) {
+                                _selectedQuantities.remove(item.id);
+                              } else {
+                                _selectedQuantities[item.id] = qty - 1;
+                              }
+                            });
+                          },
+                          child: SizedBox(
+                            width: 32,
+                            height: 36,
+                            child: Icon(
+                              qty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
+                              size: 17,
+                              color: qty == 1 ? colorScheme.error : colorScheme.primary,
+                            ),
+                          ),
+                        ),
                       ),
-                      Text('•', style: TextStyle(color: colorScheme.outline)),
-                      Text(
-                        'Stock: ${item.stockQuantity}',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          color: item.stockQuantity <= 0
-                              ? colorScheme.error
-                              : (item.isLowStock ? Colors.orange.shade800 : colorScheme.onSurfaceVariant),
+                      Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(
+                          onTap: () => _promptDirectQuantityDialog(item),
+                          child: Container(
+                            constraints: const BoxConstraints(minWidth: 32),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '$qty',
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(
+                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(18)),
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            setState(() => _selectedQuantities[item.id] = qty + 1);
+                          },
+                          child: SizedBox(
+                            width: 32,
+                            height: 36,
+                            child: Icon(Icons.add_rounded, size: 17, color: colorScheme.primary),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-
-            // Stepper or Add button
-            if (qty <= 0)
-              FilledButton.tonal(
-                onPressed: () {
-                  HapticFeedback.lightImpact();
-                  final initialQty = item.isPreOrderRecommended ? item.recommendedPreOrderOrderQuantity : 1;
-                  setState(() => _selectedQuantities[item.id] = initialQty);
-                },
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  minimumSize: const Size(60, 36),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                 ),
-                child: const Text('Add', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
-              )
-            else
-              Container(
-                height: 36,
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.35)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    InkWell(
-                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        setState(() {
-                          if (qty <= 1) {
-                            _selectedQuantities.remove(item.id);
-                          } else {
-                            _selectedQuantities[item.id] = qty - 1;
-                          }
-                        });
-                      },
-                      child: SizedBox(
-                        width: 32,
-                        height: 36,
-                        child: Icon(
-                          qty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
-                          size: 17,
-                          color: qty == 1 ? colorScheme.error : colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                    InkWell(
-                      onTap: () => _promptDirectQuantityDialog(item),
-                      child: Container(
-                        constraints: const BoxConstraints(minWidth: 32),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '$qty',
-                          style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                        ),
-                      ),
-                    ),
-                    InkWell(
-                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(18)),
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        setState(() => _selectedQuantities[item.id] = qty + 1);
-                      },
-                      child: SizedBox(
-                        width: 32,
-                        height: 36,
-                        child: Icon(Icons.add_rounded, size: 17, color: colorScheme.primary),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

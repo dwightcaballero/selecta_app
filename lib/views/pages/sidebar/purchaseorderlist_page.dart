@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/purchaseorder_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/purchaseorder.dart';
+import 'package:selecta_ops/views/pages/sidebar/purchaseorder_catalog_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/purchaseorder_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:intl/intl.dart';
@@ -518,6 +519,19 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () {
+                Helperfunctions.navigateTo(
+                  context,
+                  const PurchaseOrderCatalogPage(
+                    isDirectCreationFlow: true,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+              label: const Text('Add Order', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
           ],
         ),
       ),
@@ -566,9 +580,8 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
         onPressed: () {
           Helperfunctions.navigateTo(
             context,
-            PurchaseorderPage(
-              purchaseorderID: '',
-              purchaseorder: Purchaseorder.empty(),
+            const PurchaseOrderCatalogPage(
+              isDirectCreationFlow: true,
             ),
           );
         },

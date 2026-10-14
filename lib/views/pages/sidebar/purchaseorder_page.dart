@@ -27,7 +27,7 @@ import 'package:selecta_ops/views/widgets/purchaseorder/po_document_line_card.da
 import 'package:selecta_ops/views/widgets/purchaseorder/po_reconciliation_header.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/po_phase2_confirmation_card.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/automated_po_suggestion_dialog.dart';
-import 'package:selecta_ops/views/widgets/purchaseorder/manual_po_product_picker_dialog.dart';
+import 'package:selecta_ops/views/pages/sidebar/purchaseorder_catalog_page.dart';
 
 class PurchaseorderPage extends StatefulWidget {
   const PurchaseorderPage({
@@ -35,10 +35,14 @@ class PurchaseorderPage extends StatefulWidget {
     required this.purchaseorderID,
     required this.purchaseorder,
     this.initialOpenManualPicker = false,
+    this.initialOpenScanner = false,
+    this.initialLines,
   });
   final Purchaseorder purchaseorder;
   final String purchaseorderID;
   final bool initialOpenManualPicker;
+  final bool initialOpenScanner;
+  final List<PoExtractedLine>? initialLines;
 
   @override
   State<PurchaseorderPage> createState() => _PurchaseorderPageState();
@@ -92,6 +96,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   int _invoiceSelectedTab = 0;
   bool _showMatchedItems = false;
   bool _hasTriggeredInitialManualPicker = false;
+  bool _hasTriggeredInitialScanner = false;
+  bool _hasPrioritizedInitialLines = false;
   bool _showPhase2Inline = false;
   bool _showPreOrderChips = false;
 
@@ -142,6 +148,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       }
       _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
     } else {
+      if (widget.initialLines != null && widget.initialLines!.isNotEmpty) {
+        _documentLines.addAll(widget.initialLines!);
+        _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
+        _docTotalAmountRead = _currentListTotalCost;
+        orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
+        _aiExtractionSummary = '📋 Selected ${_documentLines.length} products ($_currentListUnits units)';
+      }
       _loadUnsettledOverpayments();
     }
   }
@@ -196,11 +209,15 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   // ============================================================
 
   Future<void> _openManualPoPicker(List<InventoryItem> allInventory) async {
-    final selectedLines = await ManualPoProductPickerDialog.show(
-      context: context,
-      allInventory: allInventory,
-      existingLines: _documentLines,
-      currencyFormat: _currencyFormat,
+    final selectedLines = await Navigator.push<List<PoExtractedLine>>(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => PurchaseOrderCatalogPage(
+          allInventory: allInventory,
+          existingLines: _documentLines,
+          isDirectCreationFlow: false,
+        ),
+      ),
     );
 
     if (selectedLines != null && mounted) {
@@ -2483,6 +2500,26 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           final allInventory = (snapshot.data ?? [])
               .where((item) => item.source == InventoryProductSource.selecta)
               .toList();
+
+          if (widget.initialLines != null &&
+              !_hasPrioritizedInitialLines &&
+              allInventory.isNotEmpty &&
+              _documentLines.isNotEmpty) {
+            _hasPrioritizedInitialLines = true;
+            _prioritizePreOrderDeficitLines(allInventory);
+          }
+
+          if (widget.initialOpenScanner &&
+              !_hasTriggeredInitialScanner &&
+              allInventory.isNotEmpty &&
+              _documentLines.isEmpty) {
+            _hasTriggeredInitialScanner = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _showImageSourcePicker(allInventory);
+              }
+            });
+          }
 
           if (widget.initialOpenManualPicker &&
               !_hasTriggeredInitialManualPicker &&
