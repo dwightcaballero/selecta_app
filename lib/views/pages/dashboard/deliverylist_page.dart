@@ -226,7 +226,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                     Flexible(
                       child: Text(
                         _dateLabel(),
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -247,7 +247,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
               child: ActionChip(
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                label: const Text('Today', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                label: const Text('Today', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 onPressed: () => setState(() => _selectedDate = DateTime.now()),
               ),
             ),
@@ -263,7 +263,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     }
 
     return Container(
-      margin: const EdgeInsets.only(top: 8),
+      margin: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
         color: Colors.red.shade50,
         shape: RoundedRectangleBorder(
@@ -297,84 +297,69 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     );
   }
 
-  Widget _buildInteractiveSummary(List deliveries) {
+  // Clean neutral summary bar
+  Widget _buildSummaryBar(List deliveries) {
     final summary = _controller.computeSummaryCounts(deliveries);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          Expanded(child: _summaryItem('All', summary.all, Theme.of(context).colorScheme.primary, 'All')),
-          Expanded(child: _summaryItem('For Delivery', summary.pending, Colors.orange.shade800, DeliveryStatus.pending)),
-          Expanded(child: _summaryItem('Delivered', summary.delivered, Colors.green.shade700, DeliveryStatus.delivered)),
-          Expanded(child: _summaryItem('Returned', summary.returned, Colors.red.shade700, DeliveryStatus.returned)),
+          _buildSummaryStat(label: 'Deliveries', value: '${summary.all}', color: colorScheme.onSurface),
+          Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          _buildSummaryStat(label: 'Delivered', value: '${summary.delivered}', color: colorScheme.onSurface),
+          Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          _buildSummaryStat(
+            label: 'Expected Total',
+            value: Helperfunctions.formatDoubleAmountForDisplay(summary.totalExpectedAmount),
+            color: colorScheme.primary,
+          ),
         ],
       ),
     );
   }
 
-  Widget _summaryItem(String label, int count, Color color, String statusKey) {
-    final bool isSelected = _selectedStatusFilter == statusKey;
-
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedStatusFilter = isSelected && statusKey != 'All' ? 'All' : statusKey;
-        });
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-        decoration: BoxDecoration(color: isSelected ? color.withValues(alpha: 0.12) : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-        child: Column(
-          children: [
-            Text(
-              '$count',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isSelected ? color : color.withValues(alpha: 0.8)),
-            ),
-            const SizedBox(height: 2),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  softWrap: false,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                    color: isSelected ? color : Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            ),
-          ],
+  Widget _buildSummaryStat({required String label, required String value, required Color color}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          value,
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
         ),
-      ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ],
     );
   }
 
   Widget _buildSearchBar(ThemeData theme) {
+    final colorScheme = theme.colorScheme;
+
     return SizedBox(
-      height: 46,
+      height: 48,
       child: TextField(
         controller: _searchController,
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
-        style: const TextStyle(fontSize: 15),
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         decoration: InputDecoration(
-          hintText: 'Search stores...',
-          hintStyle: TextStyle(fontSize: 15, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
-          prefixIcon: Icon(Icons.search, size: 22, color: theme.colorScheme.primary),
+          hintText: 'Search Hapi Store...',
+          hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
+          prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.close, size: 18),
+                  icon: const Icon(Icons.clear, size: 20),
                   onPressed: () {
                     _searchController.clear();
                     setState(() => _searchQuery = '');
@@ -382,15 +367,15 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                 )
               : null,
           filled: true,
-          fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
           contentPadding: const EdgeInsets.symmetric(horizontal: 14),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4)),
+            borderSide: BorderSide(color: colorScheme.outlineVariant),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3)),
+            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
           ),
         ),
       ),
@@ -504,7 +489,12 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                     children: [
                       _buildDateNavigator(theme),
                       _buildReturnedAlertBanner(),
-                      if (allDocs.isNotEmpty) ...[_buildInteractiveSummary(allDocs), _buildSearchBar(theme), const SizedBox(height: 8)],
+                      if (allDocs.isNotEmpty) ...[
+                        _buildSummaryBar(allDocs),
+                        const SizedBox(height: 2),
+                        _buildSearchBar(theme),
+                        const SizedBox(height: 6),
+                      ],
                       Expanded(
                         child: allDocs.isEmpty
                             ? Center(

@@ -105,11 +105,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
       final nameKey = item.productName.trim().toLowerCase();
       final onHand = _inventoryStockById[item.productId] ?? _inventoryStockByName[nameKey] ?? 0;
       if (onHand < reqQty) {
-        shortages.add((
-          item: item,
-          requiredQty: reqQty,
-          onHandQty: onHand < 0 ? 0 : onHand,
-        ));
+        shortages.add((item: item, requiredQty: reqQty, onHandQty: onHand < 0 ? 0 : onHand));
       }
     }
     return shortages;
@@ -118,10 +114,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
   Future<void> _onPicklistTileTapped(String deliveryId, Delivery delivery) async {
     final shortages = _getDeliveryShortages(delivery);
     if (shortages.isEmpty) {
-      Helperfunctions.navigateTo(
-        context,
-        PicklistPage(deliveryID: deliveryId, delivery: delivery),
-      );
+      Helperfunctions.navigateTo(context, PicklistPage(deliveryID: deliveryId, delivery: delivery));
       return;
     }
 
@@ -139,10 +132,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(10),
-              ),
+              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(10)),
               child: Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 26),
             ),
             const SizedBox(width: 12),
@@ -152,20 +142,12 @@ class _PicklistListPageState extends State<PicklistListPage> {
                 children: [
                   Text(
                     hasZeroStock ? 'Zero / Insufficient Stock Alert' : 'Stock Shortage Detected',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red.shade900,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red.shade900),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     delivery.storeName,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade700,
-                    ),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -192,12 +174,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                   isDealer
                       ? 'The following ${shortages.length} product(s) have zero or insufficient physical stock in the warehouse. You can edit this order now to adjust quantities or update warehouse inventory.'
                       : 'The following ${shortages.length} product(s) have zero or insufficient physical stock in the warehouse. Warehouse pickers cannot pick these items. Please notify the dealer to adjust the picklist or replenish warehouse inventory.',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.red.shade900,
-                    height: 1.35,
-                  ),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red.shade900, height: 1.35),
                 ),
               ),
               const SizedBox(height: 12),
@@ -266,10 +243,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Close'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Close')),
           if (isDealer)
             FilledButton.icon(
               style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.primary),
@@ -280,11 +254,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                 await Navigator.push<Delivery>(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => BookOrderPage(
-                      deliveryID: deliveryId,
-                      existingDelivery: delivery,
-                      returnUpdatedDeliveryOnSave: true,
-                    ),
+                    builder: (_) => BookOrderPage(deliveryID: deliveryId, existingDelivery: delivery, returnUpdatedDeliveryOnSave: true),
                   ),
                 );
               },
@@ -292,10 +262,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
           OutlinedButton(
             onPressed: () {
               Navigator.pop(dialogCtx);
-              Helperfunctions.navigateTo(
-                context,
-                PicklistPage(deliveryID: deliveryId, delivery: delivery),
-              );
+              Helperfunctions.navigateTo(context, PicklistPage(deliveryID: deliveryId, delivery: delivery));
             },
             child: const Text('View Picklist'),
           ),
@@ -632,6 +599,27 @@ class _PicklistListPageState extends State<PicklistListPage> {
       children: [
         Padding(padding: const EdgeInsets.fromLTRB(16, 10, 16, 4), child: _buildDateNavigator(Theme.of(context))),
         _buildReturnedAlertBanner(),
+        // Clean neutral summary bar
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildSummaryStat(label: 'Orders', value: '$totalOrders', color: colorScheme.onSurface),
+              Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              _buildSummaryStat(label: 'Total Units', value: '$totalUnits', color: colorScheme.onSurface),
+              Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              _buildSummaryStat(label: 'Total Value', value: Helperfunctions.formatDoubleAmountForDisplay(totalValue), color: colorScheme.primary),
+            ],
+          ),
+        ),
+        const SizedBox(height: 2),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
           child: SizedBox(
@@ -668,27 +656,6 @@ class _PicklistListPageState extends State<PicklistListPage> {
             ),
           ),
         ),
-        // Clean neutral summary bar
-        Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildSummaryStat(label: 'Orders', value: '$totalOrders', color: colorScheme.onSurface),
-              Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-              _buildSummaryStat(label: 'Total Units', value: '$totalUnits', color: colorScheme.onSurface),
-              Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-              _buildSummaryStat(label: 'Total Value', value: Helperfunctions.formatDoubleAmountForDisplay(totalValue), color: colorScheme.primary),
-            ],
-          ),
-        ),
-        const SizedBox(height: 2),
         Expanded(
           child: filtered.isEmpty
               ? Center(
@@ -875,11 +842,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
                                           const SizedBox(width: 3),
                                           Text(
                                             '${shortages.length} shortage${shortages.length > 1 ? 's' : ''}',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.red.shade800,
-                                            ),
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red.shade800),
                                           ),
                                         ],
                                       ),

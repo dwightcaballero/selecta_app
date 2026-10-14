@@ -39,7 +39,29 @@ class DeliverySummaryCounts {
   /// Count of records that were returned.
   final int returned;
 
-  const DeliverySummaryCounts({required this.all, this.pendingPicklist = 0, required this.delivered, required this.pending, required this.returned});
+  /// Total expected delivered amount for all orders scheduled for delivery.
+  final double totalExpectedAmount;
+
+  /// Total actual delivered amount (cash + online + credit) for completed deliveries.
+  final double deliveredAmount;
+
+  /// Expected amount remaining for pending deliveries.
+  final double pendingAmount;
+
+  /// Total returned amount.
+  final double returnedAmount;
+
+  const DeliverySummaryCounts({
+    required this.all,
+    this.pendingPicklist = 0,
+    required this.delivered,
+    required this.pending,
+    required this.returned,
+    this.totalExpectedAmount = 0.0,
+    this.deliveredAmount = 0.0,
+    this.pendingAmount = 0.0,
+    this.returnedAmount = 0.0,
+  });
 }
 
 /// Container bundling fetched placement document ID and placement items for a store.
@@ -158,26 +180,51 @@ class DeliveryController {
     int pending = 0;
     int delivered = 0;
     int returned = 0;
+    double totalExpectedAmount = 0.0;
+    double deliveredAmount = 0.0;
+    double pendingAmount = 0.0;
+    double returnedAmount = 0.0;
 
     for (final item in docs) {
-      final Delivery delivery = item.data() as Delivery;
+      final raw = item.data();
+      final Delivery delivery = raw is Delivery ? raw : Delivery.fromJson(raw as Map<String, Object?>);
+      if (delivery.transactionStatus == DeliveryStatus.pendingPicklist) {
+        pendingPicklist++;
+        continue;
+      }
+
+      final double expected = delivery.originalOrderAmount ?? delivery.orderAmount;
+      totalExpectedAmount += expected;
+
       switch (delivery.transactionStatus) {
-        case DeliveryStatus.pendingPicklist:
-          pendingPicklist++;
-          break;
         case DeliveryStatus.pending:
           pending++;
+          pendingAmount += delivery.orderAmount;
           break;
         case DeliveryStatus.delivered:
           delivered++;
+          final double deliveredTotal = delivery.cashAmount + delivery.onlineAmount + delivery.creditAmount;
+          deliveredAmount += deliveredTotal > 0 ? deliveredTotal : delivery.orderAmount;
+          returnedAmount += delivery.returnAmount;
           break;
         case DeliveryStatus.returned:
           returned++;
+          returnedAmount += (delivery.returnAmount > 0 ? delivery.returnAmount : expected);
           break;
       }
     }
 
-    return DeliverySummaryCounts(all: docs.length, pendingPicklist: pendingPicklist, delivered: delivered, pending: pending, returned: returned);
+    return DeliverySummaryCounts(
+      all: docs.length,
+      pendingPicklist: pendingPicklist,
+      delivered: delivered,
+      pending: pending,
+      returned: returned,
+      totalExpectedAmount: totalExpectedAmount,
+      deliveredAmount: deliveredAmount,
+      pendingAmount: pendingAmount,
+      returnedAmount: returnedAmount,
+    );
   }
 
   /// Filters delivery document snapshots by selected status tab and search query,
