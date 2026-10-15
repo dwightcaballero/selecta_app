@@ -36,7 +36,7 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _homeScaffoldKey = GlobalKey<ScaffoldState>();
   // Controller handling dashboard sync, data caching, live count streams, and role switching
   final DashboardController _controller = DashboardController();
@@ -55,11 +55,14 @@ class _DashboardPageState extends State<DashboardPage> {
   bool isDealer = false;
   bool isSyncing = false;
   String lastSyncDateTime = '';
+  DateTime? _lastSyncTime;
   int _currentTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    dashboardNeedsRefreshNotifier.addListener(_refreshDashboardIfNeeded);
     _tasksCountStream = _controller.getTasksPendingAndOverdueCountStream();
     _merchBlitzCountStream = _controller.getMerchBlitzCountStream(forDealer: true);
     _purchaseOrdersAwaitingCountStream = _controller.getPurchaseOrdersAwaitingCountStream();
@@ -81,23 +84,39 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    dashboardNeedsRefreshNotifier.removeListener(_refreshDashboardIfNeeded);
     _configSubscription?.cancel();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _autoSyncIfStaleOrRequested();
+    }
+  }
+
+  /// Automatically triggers a silent sync when resuming if the cache is stale (>30 mins) or requested.
+  Future<void> _autoSyncIfStaleOrRequested() async {
+    if (isSyncing || !mounted) return;
+    final isStale = await DashboardController.isCacheStale();
+    if (isStale || dashboardNeedsRefreshNotifier.value) {
+      dashboardNeedsRefreshNotifier.value = false;
+      await syncDashboard(force: false);
+    }
+  }
 
   // Load user info and cached metrics via DashboardController
   void prefetchData() async {
     final user = await _controller.getCurrentUser();
     final isDealerRole = user?.role == BusinessRole.dealer;
-    final lastSync = await DashboardController.getLastSync();
     final config = await ConfigurationService().getConfiguration();
     await _syncDashboardFromSharedPreferences();
     if (mounted) {
       setState(() {
         _currentUser = user;
         isDealer = isDealerRole;
-        lastSyncDateTime = lastSync;
         _configuration = config;
       });
       AppUpdateService.checkAndPromptUpdate(context, silent: true);
@@ -119,10 +138,12 @@ class _DashboardPageState extends State<DashboardPage> {
 
       final newDto = await DashboardController.getLatestDashboardData(force: force);
       final newSync = await DashboardController.getLastSync();
+      final newSyncTime = await DashboardController.getLastSyncDateTime();
       if (mounted) {
         setState(() {
           dashboardDTO = newDto;
           lastSyncDateTime = newSync;
+          _lastSyncTime = newSyncTime;
         });
       }
       // save in shared preferences
@@ -148,27 +169,27 @@ class _DashboardPageState extends State<DashboardPage> {
     await syncDashboard(force: false);
   }
 
-  // Synchronize dashboard state from local cache via controller
+  // Synchronize dashboard state from local cache via Stale-While-Revalidate (SWR)
   Future<void> _syncDashboardFromSharedPreferences() async {
-    final isToday = await DashboardController.isLastSyncToday();
-    if (!isToday) {
-      await syncDashboard(force: false);
-      return;
-    }
-
+    // 1. Immediately render cached data for instant 0ms startup
     final cachedDashboard = await _controller.getCachedDashboardData();
-    if (cachedDashboard == null || !mounted) {
-      await syncDashboard(force: false);
-      return;
+    final cachedLastSync = await DashboardController.getLastSync();
+    final cachedLastSyncTime = await DashboardController.getLastSyncDateTime();
+    if (mounted) {
+      setState(() {
+        if (cachedDashboard != null) {
+          dashboardDTO = cachedDashboard;
+        }
+        lastSyncDateTime = cachedLastSync;
+        _lastSyncTime = cachedLastSyncTime;
+      });
     }
 
-    final cachedLastSync = await DashboardController.getLastSync();
-    if (!mounted) return;
-
-    setState(() {
-      dashboardDTO = cachedDashboard;
-      lastSyncDateTime = cachedLastSync;
-    });
+    // 2. Stale-While-Revalidate: Silently sync in background if cache is stale (>30 mins / different day)
+    final isStale = await DashboardController.isCacheStale();
+    if (cachedDashboard == null || isStale) {
+      await syncDashboard(force: false);
+    }
   }
 
   // Logout via DashboardController
@@ -357,6 +378,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     currentUser: _currentUser,
                     isDealer: isDealer,
                     lastSyncDateTime: lastSyncDateTime,
+                    lastSyncTime: _lastSyncTime,
+                    isSyncing: isSyncing,
+                    onSyncTap: () => syncDashboard(force: true),
                     onSecretTap: _showSecretRoleSwitchDialog,
                   ),
 

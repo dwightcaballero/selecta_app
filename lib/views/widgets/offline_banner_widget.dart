@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/services/offline_sync_service.dart';
 
 /// Global wrapper that monitors real network connectivity and displays
@@ -55,6 +56,7 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with Widget
           });
           // Process any pending offline operations now that connectivity is back
           unawaited(OfflineSyncService.instance.processQueue());
+          dashboardNeedsRefreshNotifier.value = true;
 
           // Show "Back Online" briefly for 3 seconds then dismiss
           Future.delayed(const Duration(seconds: 3), () {

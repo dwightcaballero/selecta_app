@@ -204,17 +204,47 @@ class DashboardController {
     // Initialize Components
     var dashboardDTO = DashboardDTO.empty();
 
+    // Dispatch all independent network queries concurrently
+    final unpaidCreditFuture = DeliveryService.getCountDeliveryWithCreditNotYetPaid();
+    final pendingPicklistFuture = DeliveryService.getCountPendingPicklistsForDate(DateTime.now());
+    final pendingDeliveryFuture = DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending);
+    final returnedDeliveryFuture = DeliveryService.getCountActiveReturnedDeliveries();
+    final unverifiedBreakdownFuture = BreakdownService.getCountUnverifiedBreakdowns();
+    final overpaymentFuture = PurchaseOrderService.getCountDeliveriesNotYetSettled();
+    final listStoresFuture = HapiStoreService.getListHapiStores();
+    final listDeliveryFuture = DeliveryService.getListDeliveryWithinCurrentMonth();
+    final totalInvoiceAmountFuture = PurchaseOrderService.getTotalInvoiceAmountForCurrentMonth();
+    final totalPlacementCountFuture = PlacementService.getCountOfFinishedPlacements();
+    final storesOpenedThisMonthFuture = HapiStoreService.getListHapiStoresWithOpeningDateInCurrentMonth();
+    final listScanningsFuture = ScanningServices.getAllScannings();
+
+    // Await all independent network queries in parallel
+    await Future.wait([
+      unpaidCreditFuture,
+      pendingPicklistFuture,
+      pendingDeliveryFuture,
+      returnedDeliveryFuture,
+      unverifiedBreakdownFuture,
+      overpaymentFuture,
+      listStoresFuture,
+      listDeliveryFuture,
+      totalInvoiceAmountFuture,
+      totalPlacementCountFuture,
+      storesOpenedThisMonthFuture,
+      listScanningsFuture,
+    ]);
+
     // DASHBOARD: notifications
-    dashboardDTO.unpaidCreditCount = await DeliveryService.getCountDeliveryWithCreditNotYetPaid() ?? 0;
-    dashboardDTO.pendingPicklistCount = await DeliveryService.getCountPendingPicklistsForDate(DateTime.now());
-    dashboardDTO.pendingDeliveryCount = await DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending) ?? 0;
-    dashboardDTO.returnedDeliveryCount = await DeliveryService.getCountActiveReturnedDeliveries();
-    dashboardDTO.unverifiedBreakdownCount = await BreakdownService.getCountUnverifiedBreakdowns();
-    dashboardDTO.overpaymentCount = await PurchaseOrderService.getCountDeliveriesNotYetSettled() ?? 0;
+    dashboardDTO.unpaidCreditCount = (await unpaidCreditFuture) ?? 0;
+    dashboardDTO.pendingPicklistCount = await pendingPicklistFuture;
+    dashboardDTO.pendingDeliveryCount = (await pendingDeliveryFuture) ?? 0;
+    dashboardDTO.returnedDeliveryCount = await returnedDeliveryFuture;
+    dashboardDTO.unverifiedBreakdownCount = await unverifiedBreakdownFuture;
+    dashboardDTO.overpaymentCount = (await overpaymentFuture) ?? 0;
 
     // DASHBOARD: buying and non Buying
-    var listStores = await HapiStoreService.getListHapiStores();
-    var listDelivery = await DeliveryService.getListDeliveryWithinCurrentMonth();
+    var listStores = await listStoresFuture;
+    var listDelivery = await listDeliveryFuture;
 
     // DASHBOARD: PJP pending visit count for today
     dashboardDTO.pendingPjpCount = HapiStoreService.countPendingPjpVisitsForToday(listStores);
@@ -241,16 +271,16 @@ class DashboardController {
     dashboardDTO.buyingThruput = dashboardDTO.buyingCount == 0 ? 0.0 : dashboardDTO.totalBuyingSales / dashboardDTO.buyingCount;
 
     // DASHBOARD: total invoice amount for the current month
-    dashboardDTO.totalInvoiceAmount = await PurchaseOrderService.getTotalInvoiceAmountForCurrentMonth();
+    dashboardDTO.totalInvoiceAmount = await totalInvoiceAmountFuture;
 
     // DASHBOARD: total stores with finished placement
-    dashboardDTO.totalPlacementCount = await PlacementService.getCountOfFinishedPlacements();
+    dashboardDTO.totalPlacementCount = await totalPlacementCountFuture;
 
     // DASHBOARD: total stores opened this month
-    dashboardDTO.totalExpansionCount = (await HapiStoreService.getListHapiStoresWithOpeningDateInCurrentMonth()).length;
+    dashboardDTO.totalExpansionCount = (await storesOpenedThisMonthFuture).length;
 
     // DASHBOARD: total scanned, not scanned (including pending), and unassigned stores
-    var listScannings = await ScanningServices.getAllScannings();
+    var listScannings = await listScanningsFuture;
     listScannings = listScannings.where((scanning) => scanning.status != ScanningStatus.pullout).toList();
     dashboardDTO.totalScanCount = listScannings.where((scanning) => scanning.status == ScanningStatus.scanned).length;
     dashboardDTO.totalNotScannedCount = listScannings
@@ -279,6 +309,49 @@ class DashboardController {
     await saveDashboardDataStatic(dashboardDTO);
 
     return dashboardDTO;
+  }
+
+  /// Default Time-To-Live before dashboard cached data is considered stale (30 minutes).
+  static const Duration defaultCacheTtl = Duration(minutes: 30);
+
+  /// Threshold after which data staleness triggers an amber visual warning (2 hours).
+  static const Duration staleWarningThreshold = Duration(hours: 2);
+
+  /// Checks if the cached dashboard data has expired beyond [maxAge] or is from a previous day.
+  static Future<bool> isCacheStale({Duration maxAge = defaultCacheTtl}) async {
+    final lastSync = await getLastSyncDateTime();
+    if (lastSync == null) return true;
+    final now = DateTime.now();
+    if (!DateUtils.isSameDay(lastSync, now)) return true;
+    return now.difference(lastSync) > maxAge;
+  }
+
+  /// Determines if a given sync timestamp warrants a visual staleness warning.
+  static bool isStaleWarning(DateTime? lastSync, {Duration threshold = staleWarningThreshold}) {
+    if (lastSync == null) return true;
+    final now = DateTime.now();
+    if (!DateUtils.isSameDay(lastSync, now)) return true;
+    return now.difference(lastSync) > threshold;
+  }
+
+  /// Formats a timestamp into human-readable relative duration (e.g. "Just now", "15m ago", "2h ago").
+  static String formatRelativeTime(DateTime? dateTime) {
+    if (dateTime == null) return 'Never';
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.isNegative || difference.inSeconds < 45) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      final mins = difference.inMinutes;
+      return '$mins min${mins == 1 ? '' : 's'} ago';
+    } else if (difference.inHours < 24) {
+      final hours = difference.inHours;
+      return '$hours hr${hours == 1 ? '' : 's'} ago';
+    } else {
+      final days = difference.inDays;
+      return '$days day${days == 1 ? '' : 's'} ago';
+    }
   }
 
   /// Checks if the last sync was performed today.

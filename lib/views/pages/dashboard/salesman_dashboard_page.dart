@@ -29,6 +29,7 @@ import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
+import 'package:selecta_ops/views/widgets/dashboard/dashboard_welcome_banner.dart';
 import 'package:selecta_ops/views/widgets/exit_guard.dart';
 
 class SalesmanDashboardPage extends StatefulWidget {
@@ -38,7 +39,7 @@ class SalesmanDashboardPage extends StatefulWidget {
   State<SalesmanDashboardPage> createState() => _SalesmanDashboardPageState();
 }
 
-class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
+class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _homeScaffoldKey = GlobalKey<ScaffoldState>();
   // Controller managing data syncing, live count streams, role switching, and user state
   final DashboardController _controller = DashboardController();
@@ -54,11 +55,14 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
   bool _isLoading = true;
   bool _isSyncing = false;
   String _lastSyncDateTime = '';
+  DateTime? _lastSyncTime;
   int _currentTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    dashboardNeedsRefreshNotifier.addListener(_refreshDashboardIfNeeded);
     _tasksCountStream = _controller.getTasksPendingAndOverdueCountStream();
     _merchBlitzCountStream = _controller.getMerchBlitzCountStream();
     _pendingPicklistsCountStream = _controller.getPendingPicklistsCountStream();
@@ -68,21 +72,58 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     _loadInitialData();
   }
 
-  // Load cached dashboard metrics and user data via DashboardController
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    dashboardNeedsRefreshNotifier.removeListener(_refreshDashboardIfNeeded);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _autoSyncIfStaleOrRequested();
+    }
+  }
+
+  Future<void> _refreshDashboardIfNeeded() async {
+    if (!dashboardNeedsRefreshNotifier.value) return;
+    dashboardNeedsRefreshNotifier.value = false;
+    await _syncDashboard(force: false);
+  }
+
+  Future<void> _autoSyncIfStaleOrRequested() async {
+    if (_isSyncing || !mounted) return;
+    final isStale = await DashboardController.isCacheStale();
+    if (isStale || dashboardNeedsRefreshNotifier.value) {
+      dashboardNeedsRefreshNotifier.value = false;
+      await _syncDashboard(force: false);
+    }
+  }
+
+  // Load cached dashboard metrics and user data via DashboardController (Stale-While-Revalidate)
   Future<void> _loadInitialData() async {
     try {
       final user = await _controller.getCurrentUser();
       final lastSync = await DashboardController.getLastSync();
+      final lastSyncTime = await DashboardController.getLastSyncDateTime();
       final dto = await _controller.getCachedDashboardData() ?? DashboardDTO.empty();
 
       if (mounted) {
         setState(() {
           _currentUser = user;
           _lastSyncDateTime = lastSync;
+          _lastSyncTime = lastSyncTime;
           _dashboardDTO = dto;
           _isLoading = false;
         });
         AppUpdateService.checkAndPromptUpdate(context, silent: true);
+      }
+
+      // Stale-While-Revalidate: Silently sync in background if cache is stale or missing
+      final isStale = await DashboardController.isCacheStale();
+      if (isStale) {
+        await _syncDashboard(force: false);
       }
     } catch (_) {
       if (mounted) {
@@ -99,11 +140,13 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     try {
       final latestDto = await DashboardController.getLatestDashboardData(force: force);
       final lastSync = await DashboardController.getLastSync();
+      final lastSyncTime = await DashboardController.getLastSyncDateTime();
 
       if (mounted) {
         setState(() {
           _dashboardDTO = latestDto;
           _lastSyncDateTime = lastSync;
+          _lastSyncTime = lastSyncTime;
         });
         if (force) {
           ShowMessage.success(context, 'Salesman dashboard synced successfully.');
@@ -252,94 +295,15 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
     }
   }
 
-  int _secretTapCount = 0;
-  DateTime? _lastSecretTapTime;
-
-  void _onWelcomeBannerTap() {
-    final now = DateTime.now();
-    if (_lastSecretTapTime != null && now.difference(_lastSecretTapTime!) > const Duration(seconds: 2)) {
-      _secretTapCount = 0;
-    }
-    _lastSecretTapTime = now;
-    _secretTapCount++;
-
-    if (_secretTapCount >= 5) {
-      _secretTapCount = 0;
-      _showSecretRoleSwitchDialog();
-    }
-  }
-
   Widget _buildWelcomeBanner() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final displayName = _currentUser?.username ?? 'Salesman';
-    final hasSyncTime = _lastSyncDateTime.isNotEmpty && _lastSyncDateTime != 'Never';
-
-    return GestureDetector(
-      onTap: _onWelcomeBannerTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: colorScheme.tertiary.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: Icon(Icons.badge_outlined, color: colorScheme.tertiary, size: 24),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Welcome, $displayName!',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: colorScheme.tertiary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-                        child: Text(
-                          'Salesman',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.tertiary),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Icon(Icons.sync_rounded, size: 15, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          hasSyncTime ? 'Last synced: $_lastSyncDateTime' : 'Not synced yet',
-                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.85), fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+    return DashboardWelcomeBanner(
+      currentUser: _currentUser,
+      isDealer: false,
+      lastSyncDateTime: _lastSyncDateTime,
+      lastSyncTime: _lastSyncTime,
+      isSyncing: _isSyncing,
+      onSyncTap: () => _syncDashboard(force: true),
+      onSecretTap: _showSecretRoleSwitchDialog,
     );
   }
 
