@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
@@ -1131,7 +1133,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
               items: orderItems,
               remarks: _remarksController.text,
             )
-            .timeout(const Duration(seconds: 5));
+            .timeout(const Duration(seconds: 30));
         if (!mounted) return;
         Helperfunctions.showLoading(context: context, showLoading: false);
         ShowMessage.success(context, 'Order updated for $storeName!');
@@ -1139,7 +1141,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       } else {
         final createdResult = await _deliveryController
             .createBookedOrder(storeName: storeName, selectedDate: _selectedDate, items: orderItems, remarks: _remarksController.text)
-            .timeout(const Duration(seconds: 5));
+            .timeout(const Duration(seconds: 30));
         if (!mounted) return;
         Helperfunctions.showLoading(context: context, showLoading: false);
         ShowMessage.success(context, 'Order booked for $storeName!');
@@ -1147,15 +1149,16 @@ class _BookOrderPageState extends State<BookOrderPage> {
       }
     } catch (e) {
       final errStr = e.toString().toLowerCase();
-      final isOfflineOrTimeout =
-          e is TimeoutException ||
-          errStr.contains('timeout') ||
-          errStr.contains('network') ||
-          errStr.contains('socket') ||
-          errStr.contains('unavailable') ||
+      // Only treat genuine offline network failures where the write never reached Firestore as offline.
+      // Do NOT enqueue on timeout exceptions since in-flight server writes may have already completed.
+      final isOffline =
+          e is SocketException ||
+          (e is FirebaseException && (e.code == 'unavailable' || e.code == 'network-request-failed')) ||
+          errStr.contains('socketexception') ||
+          errStr.contains('network is unreachable') ||
           errStr.contains('client is offline');
 
-      if (isOfflineOrTimeout) {
+      if (isOffline) {
         try {
           if (_isEditing) {
             await OfflineSyncService.instance.enqueueOrderUpdate(
@@ -1185,7 +1188,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
       if (mounted) {
         Helperfunctions.showLoading(context: context, showLoading: false);
-        ShowMessage.error(context, 'Failed to save order: $e');
+        if (e is TimeoutException || errStr.contains('timeout')) {
+          ShowMessage.error(context, 'Order save timed out. Please check your network or verify in Picklist before retrying.');
+        } else {
+          ShowMessage.error(context, 'Failed to save order: $e');
+        }
       }
     } finally {
       if (mounted) {

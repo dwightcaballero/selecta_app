@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 
@@ -77,14 +78,20 @@ class OfflineSyncService {
     refreshPendingCount();
   }
 
-  /// Fast probe check for active internet connectivity with a 2-second timeout.
+  /// Fast probe check for active internet connectivity with fallback and realistic timeout.
   static Future<bool> isOnline() async {
     try {
       final result = await InternetAddress.lookup('google.com')
-          .timeout(const Duration(seconds: 2));
+          .timeout(const Duration(seconds: 4));
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (_) {
-      return false;
+      try {
+        final fallback = await InternetAddress.lookup('cloudflare.com')
+            .timeout(const Duration(seconds: 3));
+        return fallback.isNotEmpty && fallback[0].rawAddress.isNotEmpty;
+      } catch (_) {
+        return false;
+      }
     }
   }
 
@@ -209,12 +216,47 @@ class OfflineSyncService {
             final rawItems = item.payload['items'] as List<dynamic>? ?? [];
             final items = rawItems.map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
 
-            await deliveryController.createBookedOrder(
-              storeName: storeName,
-              selectedDate: selectedDate,
-              items: items,
-              remarks: remarks,
-            );
+            // Deduplication check: verify if a matching pending picklist order already exists in Firestore
+            final existingPendingDeliveries = await FirebaseFirestore.instance
+                .collection(DELIVERY_COLLECTION_REF)
+                .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist)
+                .where(DeliveryModelString.storeName, isEqualTo: storeName)
+                .get();
+
+            final startOfDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+            final endOfDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, 23, 59, 59);
+
+            bool alreadyExists = false;
+            for (final doc in existingPendingDeliveries.docs) {
+              final dData = doc.data();
+              final dDateTs = dData['deliveryDate'] as Timestamp?;
+              if (dDateTs == null) continue;
+              final dDate = dDateTs.toDate();
+              if (dDate.isBefore(startOfDay) || dDate.isAfter(endOfDay)) continue;
+
+              final existingRawItems = dData['items'] as List<dynamic>? ?? [];
+              if (existingRawItems.length == items.length) {
+                final existingMap = {
+                  for (final ei in existingRawItems)
+                    ei['productId'] as String?: (ei['pickedQuantity'] as num?)?.toInt() ?? 0
+                };
+                final matches = items.every((i) => existingMap[i.productId] == i.pickedQuantity);
+                if (matches) {
+                  alreadyExists = true;
+                  debugPrint('OfflineSync: Order already exists in Firestore for $storeName (Doc ID: ${doc.id}), skipping duplicate creation.');
+                  break;
+                }
+              }
+            }
+
+            if (!alreadyExists) {
+              await deliveryController.createBookedOrder(
+                storeName: storeName,
+                selectedDate: selectedDate,
+                items: items,
+                remarks: remarks,
+              );
+            }
             succeeded++;
           } else if (item.action == 'update_booked_order') {
             final deliveryId = item.payload['deliveryId'] as String;

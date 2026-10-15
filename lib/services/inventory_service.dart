@@ -381,27 +381,35 @@ class InventoryService {
     required String storeName,
     required List<OrderItem> items,
   }) async {
-    if (items.isEmpty) return;
+    final validItems = items.where((i) => i.productId.isNotEmpty && i.pickedQuantity > 0).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final batch = _firestore.batch();
 
-    for (final item in items) {
-      if (item.productId.isEmpty || item.pickedQuantity <= 0) continue;
+    final snapshots = await Future.wait(validItems.map((item) {
       final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
+      return _firestore.collection(collectionName).doc(item.productId).get();
+    }));
+
+    bool hasUpdates = false;
+    for (int i = 0; i < validItems.length; i++) {
+      final snap = snapshots[i];
       if (!snap.exists) continue;
+      final item = validItems[i];
       final data = snap.data() ?? {};
       final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
       final newReserved = currentReserved + item.pickedQuantity;
 
-      batch.update(productRef, {
+      batch.update(snap.reference, {
         'reservedQuantity': newReserved < 0 ? 0 : newReserved,
         'updatedAt': now,
       });
+      hasUpdates = true;
     }
 
-    await batch.commit();
+    if (hasUpdates) {
+      await batch.commit();
+    }
   }
 
   /// Adjusts floating stock (`reservedQuantity`) when an order in `Pending Picklist`
@@ -433,24 +441,29 @@ class InventoryService {
       );
     }
 
+    final activeEntries = deltas.entries.where((e) => e.value.delta != 0).toList();
+    if (activeEntries.isEmpty) return;
+
     final now = Timestamp.now();
     final batch = _firestore.batch();
     bool hasChanges = false;
 
-    for (final entry in deltas.entries) {
-      if (entry.value.delta == 0) continue;
+    final snapshots = await Future.wait(activeEntries.map((entry) {
       final parts = entry.key.split(':');
-      if (parts.length < 2) continue;
       final productId = parts.sublist(1).join(':');
       final collectionName = _collectionForSource(entry.value.source);
-      final productRef = _firestore.collection(collectionName).doc(productId);
-      final snap = await productRef.get();
+      return _firestore.collection(collectionName).doc(productId).get();
+    }));
+
+    for (int i = 0; i < activeEntries.length; i++) {
+      final snap = snapshots[i];
       if (!snap.exists) continue;
+      final entry = activeEntries[i];
       final data = snap.data() ?? {};
       final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
       final nextReserved = (currentReserved + entry.value.delta);
 
-      batch.update(productRef, {
+      batch.update(snap.reference, {
         'reservedQuantity': nextReserved < 0 ? 0 : nextReserved,
         'updatedAt': now,
       });
@@ -467,22 +480,26 @@ class InventoryService {
     required String storeName,
     required List<OrderItem> items,
   }) async {
-    if (items.isEmpty) return;
+    final validItems = items.where((i) => i.productId.isNotEmpty && i.pickedQuantity > 0).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final batch = _firestore.batch();
     bool hasChanges = false;
 
-    for (final item in items) {
-      if (item.productId.isEmpty || item.pickedQuantity <= 0) continue;
+    final snapshots = await Future.wait(validItems.map((item) {
       final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
+      return _firestore.collection(collectionName).doc(item.productId).get();
+    }));
+
+    for (int i = 0; i < validItems.length; i++) {
+      final snap = snapshots[i];
       if (!snap.exists) continue;
+      final item = validItems[i];
       final data = snap.data() ?? {};
       final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
       final nextReserved = currentReserved - item.pickedQuantity;
 
-      batch.update(productRef, {
+      batch.update(snap.reference, {
         'reservedQuantity': nextReserved < 0 ? 0 : nextReserved,
         'updatedAt': now,
       });
