@@ -120,7 +120,7 @@ class _PicklistPageState extends State<PicklistPage> {
     return item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
   }
 
-  Future<void> _showCannotPickStockDialog(OrderItem item, int onHand, int reqQty) async {
+  Future<void> _showCannotPickStockDialog(OrderItem item, int onHand, int reqQty, {int? index}) async {
     SoundFeedbackService().playErrorBuzzer();
     HapticFeedback.heavyImpact();
 
@@ -172,7 +172,9 @@ class _PicklistPageState extends State<PicklistPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Picking an item that is out of stock or insufficient is strictly prohibited to keep inventory accurate.',
+                    isZero
+                        ? 'You can mark this item as Out of Stock (0 Picked). The store will not be charged, and it will be recorded on their receipt as OOS without losing what they originally ordered.'
+                        : 'You can pick the available $onHand unit(s) or mark as Out of Stock (0 Picked). The shortage will be printed on the receipt.',
                     style: TextStyle(fontSize: 12, color: Colors.red.shade800),
                   ),
                 ],
@@ -224,14 +226,47 @@ class _PicklistPageState extends State<PicklistPage> {
             ),
             const SizedBox(height: 14),
             Text(
-              _isDealer
-                  ? 'Please edit this order to adjust quantities or update physical inventory.'
-                  : 'Please notify the dealer to adjust the picklist or replenish warehouse inventory.',
+              'Select an option below to proceed without deleting or corrupting the order:',
               style: TextStyle(fontSize: 11.5, fontStyle: FontStyle.italic, color: Colors.grey.shade700),
             ),
           ],
         ),
         actions: [
+          if (index != null) ...[
+            if (!isZero && onHand > 0)
+              FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade800),
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: Text('Pick Available ($onHand)'),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  setState(() {
+                    _items[index] = item.copyWith(pickedQuantity: onHand, isPicked: true);
+                  });
+                  SoundFeedbackService().playSuccessChime();
+                  ShowMessage.info(
+                    context,
+                    'Adjusted ${item.productName} to available $onHand units. Shortage will be noted on receipt.',
+                  );
+                },
+              ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+              icon: const Icon(Icons.remove_shopping_cart_outlined, size: 18),
+              label: const Text('Mark Out of Stock (0 Picked)'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                setState(() {
+                  _items[index] = item.copyWith(pickedQuantity: 0, isPicked: true);
+                });
+                SoundFeedbackService().playSuccessChime();
+                ShowMessage.warning(
+                  context,
+                  'Marked ${item.productName} as Out of Stock (0 picked). The store will not be charged and receipt will show OOS.',
+                );
+              },
+            ),
+          ],
           if (_isDealer)
             OutlinedButton.icon(
               icon: const Icon(Icons.edit_note_rounded, size: 18),
@@ -241,10 +276,9 @@ class _PicklistPageState extends State<PicklistPage> {
                 _openEditOrderProducts();
               },
             ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+          TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Understood'),
+            child: const Text('Cancel'),
           ),
         ],
       ),
@@ -552,7 +586,7 @@ class _PicklistPageState extends State<PicklistPage> {
     final onHand = _getOnHandStock(item);
     final reqQty = _getRequiredQty(item);
     if (onHand < reqQty) {
-      await _showCannotPickStockDialog(item, onHand, reqQty);
+      await _showCannotPickStockDialog(item, onHand, reqQty, index: matchIndex);
       return;
     }
 
@@ -847,23 +881,50 @@ class _PicklistPageState extends State<PicklistPage> {
 
   Future<void> _toggleItemPicked(int index) async {
     final item = _items[index];
-    if (!item.isPicked) {
-      final onHand = _getOnHandStock(item);
-      final reqQty = _getRequiredQty(item);
-      if (onHand < reqQty) {
-        await _showCannotPickStockDialog(item, onHand, reqQty);
+    if (item.isPicked) {
+      if (item.pickedQuantity < item.orderedQuantity) {
+        final reset = await ShowMessage.confirm(
+          context,
+          title: 'Reset Adjusted Item',
+          message:
+              'Restore "${item.productName}" to original order quantity (${item.orderedQuantity}) and mark as unpicked?',
+          confirmText: 'Restore (${item.orderedQuantity})',
+          cancelText: 'Keep As Is',
+        );
+        if (reset) {
+          setState(() {
+            _items[index] = item.copyWith(
+              pickedQuantity: item.orderedQuantity,
+              isPicked: false,
+            );
+          });
+          HapticFeedback.lightImpact();
+        }
         return;
       }
+
+      setState(() {
+        final newStatus = !item.isPicked;
+        _items[index] = item.copyWith(isPicked: newStatus);
+        if (newStatus) {
+          SoundFeedbackService().playSuccessChime();
+        } else {
+          HapticFeedback.lightImpact();
+        }
+      });
+      return;
+    }
+
+    final onHand = _getOnHandStock(item);
+    final reqQty = _getRequiredQty(item);
+    if (onHand < reqQty) {
+      await _showCannotPickStockDialog(item, onHand, reqQty, index: index);
+      return;
     }
 
     setState(() {
-      final newStatus = !item.isPicked;
-      _items[index] = item.copyWith(isPicked: newStatus);
-      if (newStatus) {
-        SoundFeedbackService().playSuccessChime();
-      } else {
-        HapticFeedback.lightImpact();
-      }
+      _items[index] = item.copyWith(isPicked: true);
+      SoundFeedbackService().playSuccessChime();
     });
   }
 
@@ -1366,10 +1427,18 @@ class _PicklistPageState extends State<PicklistPage> {
     final reqQty = _getRequiredQty(item);
     final isShortage = onHand < reqQty;
     final isZero = onHand <= 0;
+    final isOutOfStock = isPicked && item.pickedQuantity == 0;
+    final isPartialPicked = isPicked && item.pickedQuantity > 0 && item.pickedQuantity < item.orderedQuantity;
 
     final Color tileBgColor;
     final BorderSide tileBorder;
-    if (isPicked) {
+    if (isOutOfStock) {
+      tileBgColor = Colors.red.withValues(alpha: 0.05);
+      tileBorder = BorderSide(color: Colors.red.shade300, width: 1.2);
+    } else if (isPartialPicked) {
+      tileBgColor = Colors.amber.withValues(alpha: 0.05);
+      tileBorder = BorderSide(color: Colors.amber.shade300, width: 1.2);
+    } else if (isPicked) {
       tileBgColor = Colors.green.withValues(alpha: 0.06);
       tileBorder = BorderSide(color: Colors.green.withValues(alpha: 0.45), width: 1.3);
     } else if (isZero) {
@@ -1403,7 +1472,9 @@ class _PicklistPageState extends State<PicklistPage> {
                 scale: 1.15,
                 child: Checkbox(
                   value: isPicked,
-                  activeColor: Colors.green.shade700,
+                  activeColor: isOutOfStock
+                      ? Colors.red.shade700
+                      : (isPartialPicked ? Colors.amber.shade800 : Colors.green.shade700),
                   visualDensity: VisualDensity.compact,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
@@ -1423,9 +1494,15 @@ class _PicklistPageState extends State<PicklistPage> {
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         height: 1.3,
-                        color: isPicked ? Colors.green.shade800 : colorScheme.onSurface,
+                        color: isOutOfStock
+                            ? Colors.red.shade800
+                            : (isPartialPicked
+                                ? Colors.amber.shade900
+                                : (isPicked ? Colors.green.shade800 : colorScheme.onSurface)),
                         decoration: isPicked ? TextDecoration.lineThrough : null,
-                        decorationColor: Colors.green.shade700,
+                        decorationColor: isOutOfStock
+                            ? Colors.red.shade700
+                            : (isPartialPicked ? Colors.amber.shade700 : Colors.green.shade700),
                       ),
                     ),
                     Builder(
@@ -1437,14 +1514,22 @@ class _PicklistPageState extends State<PicklistPage> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.qr_code_2_rounded, size: 13, color: isPicked ? Colors.green.shade600 : colorScheme.onSurfaceVariant),
+                              Icon(
+                                Icons.qr_code_2_rounded,
+                                size: 13,
+                                color: isOutOfStock
+                                    ? Colors.red.shade600
+                                    : (isPicked ? Colors.green.shade600 : colorScheme.onSurfaceVariant),
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 barcode,
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w500,
-                                  color: isPicked ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
+                                  color: isOutOfStock
+                                      ? Colors.red.shade600
+                                      : (isPicked ? Colors.green.shade600 : colorScheme.onSurfaceVariant),
                                 ),
                               ),
                             ],
@@ -1452,7 +1537,61 @@ class _PicklistPageState extends State<PicklistPage> {
                         );
                       },
                     ),
-                    if (!isPicked) ...[
+                    if (isOutOfStock)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.red.shade200),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.remove_shopping_cart_outlined, size: 12, color: Colors.red.shade700),
+                              const SizedBox(width: 4),
+                              Text(
+                                'OUT OF STOCK (0 of ${item.orderedQuantity} requested)',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.red.shade800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (isPartialPicked)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.amber.shade300),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.warning_amber_rounded, size: 12, color: Colors.amber.shade900),
+                              const SizedBox(width: 4),
+                              Text(
+                                'PARTIAL PICK (${item.pickedQuantity} of ${item.orderedQuantity} requested)',
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.amber.shade900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (!isPicked) ...[
                       if (isZero)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
@@ -1523,30 +1662,46 @@ class _PicklistPageState extends State<PicklistPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isPicked
-                      ? Colors.green.withValues(alpha: 0.15)
-                      : (isZero
-                          ? Colors.red.withValues(alpha: 0.1)
-                          : (isShortage ? Colors.amber.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.08))),
+                  color: isOutOfStock
+                      ? Colors.red.withValues(alpha: 0.12)
+                      : (isPartialPicked
+                          ? Colors.amber.withValues(alpha: 0.15)
+                          : (isPicked
+                              ? Colors.green.withValues(alpha: 0.15)
+                              : (isZero
+                                  ? Colors.red.withValues(alpha: 0.1)
+                                  : (isShortage ? Colors.amber.withValues(alpha: 0.15) : colorScheme.primary.withValues(alpha: 0.08))))),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isPicked
-                        ? Colors.green.withValues(alpha: 0.3)
-                        : (isZero
-                            ? Colors.red.shade300
-                            : (isShortage ? Colors.amber.shade300 : colorScheme.primary.withValues(alpha: 0.2))),
+                    color: isOutOfStock
+                        ? Colors.red.shade300
+                        : (isPartialPicked
+                            ? Colors.amber.shade300
+                            : (isPicked
+                                ? Colors.green.withValues(alpha: 0.3)
+                                : (isZero
+                                    ? Colors.red.shade300
+                                    : (isShortage ? Colors.amber.shade300 : colorScheme.primary.withValues(alpha: 0.2))))),
                   ),
                 ),
                 child: Text(
-                  '×${item.pickedQuantity}',
+                  isOutOfStock
+                      ? 'OOS (0)'
+                      : (isPartialPicked
+                          ? '${item.pickedQuantity}/${item.orderedQuantity}'
+                          : '×${item.pickedQuantity}'),
                   style: TextStyle(
-                    fontSize: 14.5,
+                    fontSize: isOutOfStock || isPartialPicked ? 12 : 14.5,
                     fontWeight: FontWeight.w800,
-                    color: isPicked
-                        ? Colors.green.shade700
-                        : (isZero
-                            ? Colors.red.shade700
-                            : (isShortage ? Colors.amber.shade900 : colorScheme.primary)),
+                    color: isOutOfStock
+                        ? Colors.red.shade700
+                        : (isPartialPicked
+                            ? Colors.amber.shade900
+                            : (isPicked
+                                ? Colors.green.shade700
+                                : (isZero
+                                    ? Colors.red.shade700
+                                    : (isShortage ? Colors.amber.shade900 : colorScheme.primary)))),
                   ),
                 ),
               ),

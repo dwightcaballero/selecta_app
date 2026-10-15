@@ -226,6 +226,7 @@ class ThermalPrinterService {
     final otherProducts = <OrderItem>[];
 
     for (final item in items) {
+      if (item.pickedQuantity <= 0) continue;
       final isSelecta = item.productSource.toLowerCase() == 'selecta';
       if (isSelecta) {
         final cat = item.category.trim().toLowerCase();
@@ -461,6 +462,43 @@ class ThermalPrinterService {
       if (delivery.cashAmount > 0) buffer.writeln('  CASH:   ${currency.format(delivery.cashAmount)}');
       if (delivery.onlineAmount > 0) buffer.writeln('  ONLINE: ${currency.format(delivery.onlineAmount)}');
       if (delivery.creditAmount > 0) buffer.writeln('  CREDIT: ${currency.format(delivery.creditAmount)}');
+      buffer.writeln(divider);
+    }
+
+    final unfulfilledItems = delivery.items.where((i) => i.pickedQuantity < i.orderedQuantity).toList();
+    if (unfulfilledItems.isNotEmpty) {
+      buffer.writeln(divider);
+      buffer.writeln(center(is80 ? '** OUT OF STOCK / UNFULFILLED ITEMS **' : '** OUT OF STOCK / ADJUSTED **'));
+      buffer.writeln(divider);
+
+      final oosNameWidth = is80 ? 25 : 14;
+      final oosOrdWidth = is80 ? 5 : 4;
+      final oosPickWidth = is80 ? 5 : 4;
+      final oosStatusWidth = is80 ? 8 : 6;
+
+      final oosHeader =
+          '${'ITEM'.padRight(oosNameWidth)} ${'ORD'.padLeft(oosOrdWidth)} ${'PICK'.padLeft(oosPickWidth)} ${'STATUS'.padLeft(oosStatusWidth)}';
+      buffer.writeln(oosHeader);
+      buffer.writeln(divider);
+
+      for (final item in unfulfilledItems) {
+        final nameLines = wrapText(item.productName.toUpperCase(), oosNameWidth);
+        final ordStr = item.orderedQuantity.toString().padLeft(oosOrdWidth);
+        final pickStr = item.pickedQuantity.toString().padLeft(oosPickWidth);
+        final isZero = item.pickedQuantity <= 0;
+        final statusLabel = isZero ? 'OOS' : '-${item.orderedQuantity - item.pickedQuantity}';
+        final statusStr = statusLabel.padLeft(oosStatusWidth);
+
+        buffer.writeln('${nameLines[0].padRight(oosNameWidth)} $ordStr $pickStr $statusStr');
+        for (int i = 1; i < nameLines.length; i++) {
+          buffer.writeln(nameLines[i]);
+        }
+      }
+      buffer.writeln(divider);
+      final noteLines = wrapText('* Not charged. Unfulfilled items will be prioritized on next delivery.', width);
+      for (final nl in noteLines) {
+        buffer.writeln(nl);
+      }
       buffer.writeln(divider);
     }
 

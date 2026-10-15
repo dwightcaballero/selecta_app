@@ -17,6 +17,7 @@ import 'package:selecta_ops/services/selecta_product_service.dart';
 enum ExportReportType {
   sales('Sales & Orders Report', 'Daily/weekly customer order amounts, payment methods, and status.'),
   deliveries('Delivery Summary Report', 'Completed, pending, and returned delivery operations with invoices.'),
+  outOfStockDemand('Out of Stock & Lost Demand', 'Supplier escalation report tracking unfulfilled store orders, cut quantities, and lost revenue.'),
   creditAging('Credit & AR Aging Report', 'Accounts receivable ledger broken down into aging buckets (0-15d, 16-30d, 31-60d, 60d+).'),
   inventory('Inventory & Stock Sheet', 'Current on-hand stock quantities, wholesale costs, retail SRPs, and valuations.'),
   storeVisits('PJP Store Visits Log', 'Field store visit log with timestamps, agents, notes, and photo references.');
@@ -225,6 +226,142 @@ class ExportReportService {
           'Completed Deliveries': deliveredCount,
           'Pre-Sell Orders': preSellCount,
           'Van Sell Orders': vanSellCount,
+        };
+        break;
+
+      // ═════════════════════════════════════════════════════════════════════
+      // 2.5 OUT OF STOCK & LOST SALES DEMAND REPORT (SUPPLIER ESCALATION)
+      // ═════════════════════════════════════════════════════════════════════
+      case ExportReportType.outOfStockDemand:
+        baseFileName = 'Selecta_Supplier_OOS_Demand_Report_$fileTimestamp.csv';
+        headers = [
+          'Product Name',
+          'Product Source',
+          'Category',
+          'Priority Tag',
+          'Barcode / SKU',
+          'Times Cut (OOS Incidents)',
+          'Stores Affected (Count)',
+          'Stores Affected (Names)',
+          'Total Requested (Units/Cases)',
+          'Total Delivered (Units/Cases)',
+          'Unfulfilled Shortage (Units/Cases)',
+          'Buying Cost / Unit (PHP)',
+          'Selling Price / Unit (PHP)',
+          'Lost Supplier Sales (PHP Cost)',
+          'Lost Dealer Revenue (PHP Retail)',
+        ];
+
+        final snapshot = await _firestore
+            .collection(DELIVERY_COLLECTION_REF)
+            .where('createdDate', isGreaterThanOrEqualTo: Timestamp.fromDate(effectiveStartDate))
+            .where('createdDate', isLessThanOrEqualTo: Timestamp.fromDate(effectiveEndDate))
+            .get();
+
+        // Product ID -> Aggregation Bucket
+        final Map<String, ({
+          String name,
+          String source,
+          String category,
+          String tag,
+          String barcode,
+          double buyingPrice,
+          double sellingPrice,
+          int incidentCount,
+          Set<String> stores,
+          int totalOrdered,
+          int totalPicked,
+          int totalShortage,
+          double lostCost,
+          double lostRevenue,
+        })> aggregated = {};
+
+        for (final doc in snapshot.docs) {
+          final d = Delivery.fromJson(doc.data());
+          final storeName = d.storeName.trim().isNotEmpty ? d.storeName.trim() : 'Unknown Store';
+
+          for (final item in d.items) {
+            final shortage = item.orderedQuantity - item.pickedQuantity;
+            if (shortage <= 0) continue;
+
+            final key = item.productId.isNotEmpty ? item.productId : item.productName.trim().toLowerCase();
+            final existing = aggregated[key];
+
+            final buyingPrice = item.buyingPrice > 0 ? item.buyingPrice : (existing?.buyingPrice ?? 0.0);
+            final sellingPrice = item.sellingPrice > 0 ? item.sellingPrice : (existing?.sellingPrice ?? 0.0);
+
+            final currentStores = existing != null ? Set<String>.from(existing.stores) : <String>{};
+            currentStores.add(storeName);
+
+            aggregated[key] = (
+              name: item.productName.isNotEmpty ? item.productName : (existing?.name ?? 'Unknown Product'),
+              source: item.productSource.isNotEmpty ? item.productSource : (existing?.source ?? 'selecta'),
+              category: item.category.isNotEmpty ? item.category : (existing?.category ?? ''),
+              tag: item.tag.isNotEmpty ? item.tag : (existing?.tag ?? ''),
+              barcode: item.barcode.isNotEmpty ? item.barcode : (existing?.barcode ?? ''),
+              buyingPrice: buyingPrice,
+              sellingPrice: sellingPrice,
+              incidentCount: (existing?.incidentCount ?? 0) + 1,
+              stores: currentStores,
+              totalOrdered: (existing?.totalOrdered ?? 0) + item.orderedQuantity,
+              totalPicked: (existing?.totalPicked ?? 0) + item.pickedQuantity,
+              totalShortage: (existing?.totalShortage ?? 0) + shortage,
+              lostCost: (existing?.lostCost ?? 0.0) + (shortage * buyingPrice),
+              lostRevenue: (existing?.lostRevenue ?? 0.0) + (shortage * sellingPrice),
+            );
+          }
+        }
+
+        // Sort by total shortage quantity descending (highest shortage first), prioritizing best sellers
+        final sortedList = aggregated.values.toList()
+          ..sort((a, b) {
+            final aIsBest = a.tag.toLowerCase().contains('best') || a.tag.toLowerCase().contains('new');
+            final bIsBest = b.tag.toLowerCase().contains('best') || b.tag.toLowerCase().contains('new');
+            if (aIsBest && !bIsBest) return -1;
+            if (!aIsBest && bIsBest) return 1;
+            return b.totalShortage.compareTo(a.totalShortage);
+          });
+
+        int totalShortageAll = 0;
+        double totalLostCostAll = 0.0;
+        double totalLostRevenueAll = 0.0;
+        int totalIncidentsAll = 0;
+        final Set<String> allAffectedStores = {};
+
+        for (final p in sortedList) {
+          totalShortageAll += p.totalShortage;
+          totalLostCostAll += p.lostCost;
+          totalLostRevenueAll += p.lostRevenue;
+          totalIncidentsAll += p.incidentCount;
+          allAffectedStores.addAll(p.stores);
+
+          rows.add([
+            p.name,
+            p.source.toUpperCase(),
+            p.category,
+            p.tag.isNotEmpty ? p.tag : '-',
+            p.barcode,
+            p.incidentCount,
+            p.stores.length,
+            p.stores.join('; '),
+            p.totalOrdered,
+            p.totalPicked,
+            p.totalShortage,
+            p.buyingPrice.toStringAsFixed(2),
+            p.sellingPrice.toStringAsFixed(2),
+            p.lostCost.toStringAsFixed(2),
+            p.lostRevenue.toStringAsFixed(2),
+          ]);
+        }
+
+        summary = {
+          'Total Unfulfilled Shortage': '$totalShortageAll units/cases',
+          'Lost Dealer Revenue (PHP)': 'PHP ${NumberFormat('#,##0.00').format(totalLostRevenueAll)}',
+          'Lost Supplier Cost (PHP)': 'PHP ${NumberFormat('#,##0.00').format(totalLostCostAll)}',
+          'Total OOS Order Incidents': totalIncidentsAll,
+          'Affected Products': sortedList.length,
+          'Unique Stores Affected': allAffectedStores.length,
+          'Date Range': '${dateOnly.format(effectiveStartDate)} to ${dateOnly.format(effectiveEndDate)}',
         };
         break;
 

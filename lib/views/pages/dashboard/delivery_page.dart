@@ -1913,6 +1913,50 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       ],
                     ),
                   ),
+                if (_currentDelivery.items.any((i) => i.pickedQuantity < i.orderedQuantity))
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.orange.shade300,
+                        width: 1.2,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: Colors.orange.shade900,
+                          size: 22,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Order Adjustments / Out of Stock Items',
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange.shade900,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${_currentDelivery.items.where((i) => i.pickedQuantity < i.orderedQuantity).length} product(s) could not be fully fulfilled due to warehouse stock shortage. They are printed on the delivery receipt and the store is not charged.',
+                                style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
                 if (_currentDelivery.transactionStatus == DeliveryStatus.pendingPicklist && widget.deliveryID.isNotEmpty)
                   Container(
@@ -2128,7 +2172,7 @@ class _ItemizedReturnsBottomSheetState extends State<_ItemizedReturnsBottomSheet
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final filteredItems = widget.items.where((i) {
+    final filteredItems = widget.items.where((i) => i.pickedQuantity > 0).where((i) {
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       return i.productName.toLowerCase().contains(q) || i.category.toLowerCase().contains(q);

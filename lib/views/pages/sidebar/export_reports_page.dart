@@ -483,6 +483,8 @@ class _ExportReportsPageState extends State<ExportReportsPage> {
         return Icons.point_of_sale_rounded;
       case ExportReportType.deliveries:
         return Icons.local_shipping_outlined;
+      case ExportReportType.outOfStockDemand:
+        return Icons.remove_shopping_cart_outlined;
       case ExportReportType.creditAging:
         return Icons.account_balance_wallet_outlined;
       case ExportReportType.inventory:
