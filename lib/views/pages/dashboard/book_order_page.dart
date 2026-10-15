@@ -103,6 +103,22 @@ class _BookOrderPageState extends State<BookOrderPage> {
     return target.isAfter(today);
   }
 
+  bool get _hasUnsavedChanges {
+    if (_isEditing) {
+      if (_remarksController.text.trim() != (widget.existingDelivery?.remarks ?? '')) return true;
+      if (_storeController.text.trim() != (widget.existingDelivery?.storeName ?? '')) return true;
+      if (_selectedQuantities.length != _initialOrderQuantities.length) return true;
+      for (final entry in _selectedQuantities.entries) {
+        if (entry.value != (_initialOrderQuantities[entry.key] ?? 0)) return true;
+      }
+      return false;
+    }
+    final hasItems = _selectedQuantities.values.any((qty) => qty > 0);
+    final hasStore = _storeController.text.trim().isNotEmpty && _storeController.text.trim() != widget.initialStoreName;
+    final hasRemarks = _remarksController.text.trim().isNotEmpty;
+    return hasItems || hasStore || hasRemarks;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1747,10 +1763,24 @@ class _BookOrderPageState extends State<BookOrderPage> {
         final isLocked = _isSaving || _isScanning;
 
         return PopScope(
-          canPop: !isLocked,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) {
+          canPop: !_hasUnsavedChanges && !isLocked,
+          onPopInvokedWithResult: (didPop, _) async {
+            if (didPop) return;
+            if (isLocked) {
               ShowMessage.warning(context, 'Operation in progress. Please wait.');
+              return;
+            }
+            final shouldDiscard = await ShowMessage.confirm(
+              context,
+              title: 'Discard Order Changes?',
+              message: 'You have unsaved changes or items selected in this order. Are you sure you want to go back and discard them?',
+              confirmText: 'Discard',
+              cancelText: 'Keep Editing',
+              isDestructive: true,
+              icon: Icons.warning_amber_rounded,
+            );
+            if (shouldDiscard && context.mounted) {
+              Navigator.pop(context);
             }
           },
           child: Scaffold(

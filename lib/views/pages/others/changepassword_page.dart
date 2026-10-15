@@ -27,56 +27,80 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     super.dispose();
   }
 
+  bool get _hasUnsavedChanges {
+    return textEditingControllerEmail.text.isNotEmpty ||
+        textEditingControllerOldPassword.text.isNotEmpty ||
+        textEditingControllerNewPassword.text.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.blue,
-        title: const Text('Change Password'),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  hintText: "Email",
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Changes?',
+          message: 'You have entered password information. Are you sure you want to discard it?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.blue,
+          title: const Text('Change Password'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    hintText: "Email",
+                  ),
+                  controller: textEditingControllerEmail,
+                  onEditingComplete: () => setState(() {}),
                 ),
-                controller: textEditingControllerEmail,
-                onEditingComplete: () => setState(() {}),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  hintText: "Old Password",
-                ),
-                controller: textEditingControllerOldPassword,
-                onEditingComplete: () => setState(() {}),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  hintText: "New Password",
-                ),
-                controller: textEditingControllerNewPassword,
-                onEditingComplete: () => setState(() {}),
-              ),
-              if (errormessage.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                Text('* $errormessage', style: const TextStyle(color: Colors.red)),
+                TextField(
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    hintText: "Old Password",
+                  ),
+                  controller: textEditingControllerOldPassword,
+                  onEditingComplete: () => setState(() {}),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    hintText: "New Password",
+                  ),
+                  controller: textEditingControllerNewPassword,
+                  onEditingComplete: () => setState(() {}),
+                ),
+                if (errormessage.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text('* $errormessage', style: const TextStyle(color: Colors.red)),
+                ],
+                const Spacer(),
+                FilledButton(
+                  onPressed: changePassword,
+                  style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 40.0)),
+                  child: const Text("Change Password"),
+                ),
               ],
-              const Spacer(),
-              FilledButton(
-                onPressed: changePassword,
-                style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 40.0)),
-                child: const Text("Change Password"),
-              ),
-            ],
+            ),
           ),
         ),
       ),

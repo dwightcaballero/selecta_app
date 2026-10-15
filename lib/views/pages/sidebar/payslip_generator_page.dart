@@ -291,13 +291,40 @@ class _PayslipGeneratorPageState extends State<PayslipGeneratorPage> {
     }
   }
 
+  bool get _hasUnsavedChanges {
+    return _incentiveAmountController.text.trim().isNotEmpty ||
+        _incentiveRemarksController.text.trim().isNotEmpty ||
+        _otherDeductionsController.text.trim().isNotEmpty ||
+        _otherDeductionsRemarksController.text.trim().isNotEmpty ||
+        _remarksController.text.trim().isNotEmpty ||
+        _daysWorkedController.text.trim() != '5.5';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Generate Weekly Payslip'),
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isSaving,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isSaving) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Changes?',
+          message: 'You have unsaved changes in this payslip. Are you sure you want to discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(title: 'Generate Weekly Payslip'),
       body: _isLoadingSalesmen
           ? const Center(child: CircularProgressIndicator())
           : Form(
@@ -812,6 +839,7 @@ class _PayslipGeneratorPageState extends State<PayslipGeneratorPage> {
                 ),
               ),
             ),
+    ),
     );
   }
 

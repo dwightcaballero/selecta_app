@@ -303,13 +303,62 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     }
   }
 
+  bool get _hasUnsavedChanges {
+    if (_isReadOnly) return false;
+    final adminP = widget.existingProduct;
+    final dealerP = widget.existingDealerProduct;
+    final initialName = adminP?.productName ?? dealerP?.productName ?? '';
+    final initialBarcode = adminP?.barcode ?? dealerP?.barcode ?? '';
+    final rawCat = (adminP?.category ?? dealerP?.category ?? '').trim();
+    final isCase = rawCat.toLowerCase() == 'by case' || rawCat.toLowerCase() == 'case';
+    final initialCategory = isCase ? 'By Case' : 'By Piece';
+    final initialTag = adminP?.tag ?? dealerP?.tag ?? ProductTag.none;
+    final bp = adminP?.buyingPrice ?? dealerP?.buyingPrice ?? 0.0;
+    final initialBp = bp > 0 ? bp.toStringAsFixed(2) : '';
+    final sp = adminP?.sellingPrice ?? dealerP?.sellingPrice ?? 0.0;
+    final initialSp = sp > 0 ? sp.toStringAsFixed(2) : '';
+
+    if (_isEditing && (adminP != null || dealerP != null)) {
+      return _nameController.text.trim() != initialName ||
+          _barcodeController.text.trim() != initialBarcode ||
+          _category != initialCategory ||
+          _tag != initialTag ||
+          _buyingPriceController.text.trim() != initialBp ||
+          _sellingPriceController.text.trim() != initialSp ||
+          _image != null;
+    }
+    return _nameController.text.trim().isNotEmpty ||
+        _barcodeController.text.trim().isNotEmpty ||
+        _buyingPriceController.text.trim().isNotEmpty ||
+        _sellingPriceController.text.trim().isNotEmpty ||
+        _image != null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isPositiveMargin = _margin >= 0;
     final marginColor = isPositiveMargin ? const Color(0xFF15803D) : colorScheme.error;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isSaving,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isSaving) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Changes?',
+          message: 'You have unsaved changes to this product. Are you sure you want to discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: CustomAppbar(
         title: _isReadOnly
             ? 'Product Details'
@@ -595,6 +644,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
           ),
         ),
       ),
+    ),
     );
   }
 

@@ -327,13 +327,39 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
+  bool get _hasUnsavedChanges {
+    return txtUsername.text.trim().isNotEmpty ||
+        txtEmail.text.trim().isNotEmpty ||
+        txtDealerName.text.trim().isNotEmpty ||
+        txtPassword.text.isNotEmpty ||
+        txtConfirmPassword.text.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isLoading,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isLoading) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Registration?',
+          message: 'You have entered registration details. Are you sure you want to leave and discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: const CustomAppbar(title: 'Create Account', subtitle: 'Start your journey'),
       body: Container(
         width: double.infinity,
@@ -662,6 +688,7 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
         ),
       ),
+    ),
     );
   }
 }

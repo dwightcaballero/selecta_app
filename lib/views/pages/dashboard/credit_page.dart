@@ -452,44 +452,67 @@ class _CreditPageState extends State<CreditPage> {
     );
   }
 
+  bool get _hasUnsavedChanges {
+    return _selectedStatus != _controller.resolveInitialStatus(widget.delivery);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Credit Settlement', subtitle: widget.delivery.storeName),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 16,
-          children: [
-            // 1. Credit Overview Card
-            _buildCreditOverviewCard(),
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isUpdating,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isUpdating) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Changes?',
+          message: 'You have unsaved changes to the credit status. Are you sure you want to discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(title: 'Credit Settlement', subtitle: widget.delivery.storeName),
+        bottomNavigationBar: _buildStickyBottomBar(),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: 16,
+            children: [
+              // 1. Credit Overview Card
+              _buildCreditOverviewCard(),
 
-            // 2. Status Selector Card
-            _buildStatusCard(),
+              // 2. Status Selector Card
+              _buildStatusCard(),
 
-            // 3. Payment & Order Breakdown Card
-            _buildPaymentBreakdownCard(),
+              // 3. Payment & Order Breakdown Card
+              _buildPaymentBreakdownCard(),
 
-            // 4. Remarks Note Card
-            _buildRemarksCard(),
+              // 4. Remarks Note Card
+              _buildRemarksCard(),
 
-            // 5. Proof of Delivery Receipt Card
-            _buildAttachmentCard(),
+              // 5. Proof of Delivery Receipt Card
+              _buildAttachmentCard(),
 
-            // 6. Audit History Card
-            AuditHistoryWidget(
-              createdBy: widget.delivery.createdBy,
-              createdDate: widget.delivery.createdDate,
-              createdPage: widget.delivery.createdPage,
-              lastUpdatedBy: widget.delivery.lastUpdatedBy,
-              lastUpdatedDate: widget.delivery.lastupdatedDate,
-              lastUpdatedPage: widget.delivery.lastUpdatedPage,
-            ),
+              // 6. Audit History Card
+              AuditHistoryWidget(
+                createdBy: widget.delivery.createdBy,
+                createdDate: widget.delivery.createdDate,
+                createdPage: widget.delivery.createdPage,
+                lastUpdatedBy: widget.delivery.lastUpdatedBy,
+                lastUpdatedDate: widget.delivery.lastupdatedDate,
+                lastUpdatedPage: widget.delivery.lastUpdatedPage,
+              ),
 
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );

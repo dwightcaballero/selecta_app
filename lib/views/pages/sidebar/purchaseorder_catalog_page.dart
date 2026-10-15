@@ -68,19 +68,13 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
   }
 
   int _compareProducts(InventoryItem a, InventoryItem b) {
-    return Helperfunctions.compareBySrpAndName(
-      nameA: a.productName,
-      priceA: a.sellingPrice,
-      nameB: b.productName,
-      priceB: b.sellingPrice,
-    );
+    return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
   }
 
   Future<void> _promptDirectQuantityDialog(InventoryItem item) async {
     final currentQty = _selectedQuantities[item.id] ?? 0;
     final initialText = currentQty > 0 ? '$currentQty' : '';
-    final controller = TextEditingController(text: initialText)
-      ..selection = TextSelection(baseOffset: 0, extentOffset: initialText.length);
+    final controller = TextEditingController(text: initialText)..selection = TextSelection(baseOffset: 0, extentOffset: initialText.length);
 
     final result = await showDialog<int>(
       context: context,
@@ -107,10 +101,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                   labelText: 'Order Quantity (pcs)',
                   hintText: 'Enter quantity',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear, size: 18),
-                    onPressed: () => controller.clear(),
-                  ),
+                  suffixIcon: IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => controller.clear()),
                 ),
                 onSubmitted: (val) {
                   final qty = int.tryParse(val.trim()) ?? 0;
@@ -120,10 +111,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
                 final qty = int.tryParse(controller.text.trim()) ?? 0;
@@ -147,49 +135,17 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
     }
   }
 
-  void _confirmClearAll() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text('Clear All Selections?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        content: const Text('Are you sure you want to reset all order quantities to 0?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-            onPressed: () {
-              Navigator.pop(ctx);
-              setState(() => _selectedQuantities.clear());
-              ShowMessage.info(context, 'Order quantities cleared.');
-            },
-            child: const Text('Clear All'),
-          ),
-        ],
-      ),
-    );
-  }
-
   List<PoExtractedLine> _buildOrderLines(List<InventoryItem> allInventory) {
     final Map<String, InventoryItem> invMap = {for (final i in allInventory) i.id: i};
 
-    final selectaCatalog = allInventory
-        .where((i) => i.source == InventoryProductSource.selecta)
-        .toList();
+    final selectaCatalog = allInventory.where((i) => i.source == InventoryProductSource.selecta).toList();
 
     final bestSellerProducts = selectaCatalog.where((i) => ProductTag.isBestSeller(i.tag)).toList()..sort(_compareProducts);
     final nonBestSellerSelecta = selectaCatalog.where((i) => !ProductTag.isBestSeller(i.tag)).toList();
     final caseProducts = nonBestSellerSelecta.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
     final pieceProducts = nonBestSellerSelecta.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
 
-    final orderedCatalog = [
-      ...bestSellerProducts,
-      ...caseProducts,
-      ...pieceProducts,
-    ];
+    final orderedCatalog = [...bestSellerProducts, ...caseProducts, ...pieceProducts];
 
     final List<PoExtractedLine> result = [];
 
@@ -254,20 +210,14 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
               'You have not selected any products yet.\n\nDo you want to proceed with a blank purchase order or stay in the catalog?',
             ),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Stay in Catalog'),
-              ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Stay in Catalog')),
               FilledButton(
                 onPressed: () {
                   Navigator.pop(ctx);
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => PurchaseorderPage(
-                        purchaseorderID: '',
-                        purchaseorder: Purchaseorder.empty(),
-                      ),
+                      builder: (_) => PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty()),
                     ),
                   );
                 },
@@ -282,11 +232,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => PurchaseorderPage(
-            purchaseorderID: '',
-            purchaseorder: Purchaseorder.empty(),
-            initialLines: lines,
-          ),
+          builder: (_) => PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty(), initialLines: lines),
         ),
       );
     } else {
@@ -299,11 +245,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => PurchaseorderPage(
-            purchaseorderID: '',
-            purchaseorder: Purchaseorder.empty(),
-            initialOpenScanner: true,
-          ),
+          builder: (_) => PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty(), initialOpenScanner: true),
         ),
       );
     } else {
@@ -314,9 +256,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
   @override
   Widget build(BuildContext context) {
     if (widget.allInventory != null) {
-      final selectaOnly = widget.allInventory!
-          .where((i) => i.source == InventoryProductSource.selecta)
-          .toList();
+      final selectaOnly = widget.allInventory!.where((i) => i.source == InventoryProductSource.selecta).toList();
       return _buildScaffold(context, selectaOnly);
     }
 
@@ -327,17 +267,13 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
           return Scaffold(
             appBar: CustomAppbar(
               title: widget.isDirectCreationFlow ? 'Restock Catalog' : 'Manual Purchase Order',
-              subtitle: widget.isDirectCreationFlow
-                  ? 'Select products & quantities for Purchase Order'
-                  : 'Update Purchase Order Items',
+              subtitle: widget.isDirectCreationFlow ? 'Select products & quantities for Purchase Order' : 'Update Purchase Order Items',
             ),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
 
-        final allInventory = (snapshot.data ?? [])
-            .where((i) => i.source == InventoryProductSource.selecta)
-            .toList();
+        final allInventory = (snapshot.data ?? []).where((i) => i.source == InventoryProductSource.selecta).toList();
 
         return _buildScaffold(context, allInventory);
       },
@@ -362,9 +298,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
 
     // Recommended Pre-Orders: Products where pre-orders exceed warehouse stock (shortage)
     // or leave remaining stock at or below lowStockThreshold
-    final recommendedPreOrders = selectaCatalog
-        .where((i) => i.isPreOrderRecommended)
-        .toList()
+    final recommendedPreOrders = selectaCatalog.where((i) => i.isPreOrderRecommended).toList()
       ..sort((a, b) {
         if (a.hasPreOrderShortage && !b.hasPreOrderShortage) return -1;
         if (!a.hasPreOrderShortage && b.hasPreOrderShortage) return 1;
@@ -396,27 +330,38 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
       }
     });
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: widget.isDirectCreationFlow ? 'Restock Catalog' : 'Manual Purchase Order',
-        subtitle: widget.isDirectCreationFlow
-            ? 'Restock from Selecta • Select Products'
-            : 'Update Purchase Order Items',
-        actions: [
-          if (widget.isDirectCreationFlow)
-            IconButton(
-              icon: const Icon(Icons.document_scanner_outlined),
-              tooltip: 'Scan Supplier Invoice / Document',
-              onPressed: _openScannerFlow,
-            ),
-          if (_selectedQuantities.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.cleaning_services_outlined),
-              tooltip: 'Clear quantities',
-              onPressed: _confirmClearAll,
-            ),
-        ],
-      ),
+    final hasSelectedItems = _selectedQuantities.values.any((qty) => qty > 0);
+
+    return PopScope(
+      canPop: !hasSelectedItems,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Selections?',
+          message: 'You have selected products in the catalog. Are you sure you want to go back and discard your selections?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: widget.isDirectCreationFlow ? 'Restock Catalog' : 'Manual Purchase Order',
+          subtitle: widget.isDirectCreationFlow ? 'Restock from Selecta • Select Products' : 'Update Purchase Order Items',
+          actions: [
+            if (widget.isDirectCreationFlow)
+              IconButton(
+                icon: const Icon(Icons.document_scanner_outlined, color: Colors.white),
+                tooltip: 'Scan Supplier Invoice / Document',
+                onPressed: _openScannerFlow,
+              ),
+          ],
+        ),
       bottomNavigationBar: _buildStickyBottomBar(
         context: context,
         totalSkus: totalSkus,
@@ -461,7 +406,12 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                 _buildFilterChip('all', 'All Products (${selectaCatalog.length})', Icons.grid_view_rounded),
                 if (recommendedPreOrders.isNotEmpty) ...[
                   const SizedBox(width: 8),
-                  _buildFilterChip('recommended', 'Recommended (${recommendedPreOrders.length})', Icons.auto_awesome_rounded, const Color(0xFF7C3AED)),
+                  _buildFilterChip(
+                    'recommended',
+                    'Recommended (${recommendedPreOrders.length})',
+                    Icons.auto_awesome_rounded,
+                    const Color(0xFF7C3AED),
+                  ),
                 ],
                 const SizedBox(width: 8),
                 _buildFilterChip('best_sellers', 'Best Sellers (${bestSellerProducts.length})', Icons.star_rounded, Colors.amber.shade700),
@@ -532,6 +482,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -570,10 +521,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
+              decoration: BoxDecoration(color: accentColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
               child: Text(
                 '$count',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accentColor),
@@ -589,14 +537,11 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final item = items[index];
-            final qty = _selectedQuantities[item.id] ?? 0;
-            return _buildProductRow(item, qty);
-          },
-          childCount: items.length,
-        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final item = items[index];
+          final qty = _selectedQuantities[item.id] ?? 0;
+          return _buildProductRow(item, qty);
+        }, childCount: items.length),
       ),
     );
   }
@@ -611,10 +556,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.4),
-          width: isSelected ? 1.5 : 1,
-        ),
+        side: BorderSide(color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.4), width: isSelected ? 1.5 : 1),
       ),
       color: isSelected ? colorScheme.primary.withValues(alpha: 0.04) : colorScheme.surface,
       child: InkWell(
@@ -670,10 +612,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                     ] else if (item.preOrderQuantity > 0) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3E8FF),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                        decoration: BoxDecoration(color: const Color(0xFFF3E8FF), borderRadius: BorderRadius.circular(4)),
                         child: Text(
                           'Pre-order: ${item.preOrderQuantity}',
                           style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF7C3AED)),
@@ -684,10 +623,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                     if (isBestSeller) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEF3C7),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                        decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(4)),
                         child: const Text(
                           'Best Seller',
                           style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFFB45309)),
@@ -802,11 +738,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                             HapticFeedback.lightImpact();
                             setState(() => _selectedQuantities[item.id] = qty + 1);
                           },
-                          child: SizedBox(
-                            width: 32,
-                            height: 36,
-                            child: Icon(Icons.add_rounded, size: 17, color: colorScheme.primary),
-                          ),
+                          child: SizedBox(width: 32, height: 36, child: Icon(Icons.add_rounded, size: 17, color: colorScheme.primary)),
                         ),
                       ),
                     ],
@@ -833,9 +765,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -3)),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -3))],
       ),
       child: Row(
         children: [
@@ -863,9 +793,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
             ),
             icon: Icon(widget.isDirectCreationFlow ? Icons.arrow_forward_rounded : Icons.check_rounded, size: 20),
             label: Text(
-              widget.isDirectCreationFlow
-                  ? (totalUnits > 0 ? 'Proceed to P.O. ($totalUnits)' : 'Proceed to P.O.')
-                  : 'Apply to P.O. ($totalUnits)',
+              widget.isDirectCreationFlow ? (totalUnits > 0 ? 'Proceed to P.O. ($totalUnits)' : 'Proceed to P.O.') : 'Apply to P.O. ($totalUnits)',
             ),
           ),
         ],

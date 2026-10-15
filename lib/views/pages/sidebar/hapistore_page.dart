@@ -50,6 +50,23 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   final _formKey = GlobalKey<FormState>();
 
+  bool get _hasUnsavedChanges {
+    final h = widget.hapistore;
+    if (widget.hapiStoreID.isNotEmpty) {
+      return txtName.text.trim() != h.storeName ||
+          txtAddress.text.trim() != h.storeAddress ||
+          txtContact.text.trim() != h.storeContact ||
+          _selectedPjpSchedule != h.pjpSchedule ||
+          _latitude != h.latitude ||
+          _longitude != h.longitude;
+    }
+    return txtName.text.trim().isNotEmpty ||
+        txtAddress.text.trim().isNotEmpty ||
+        txtContact.text.trim().isNotEmpty ||
+        _latitude != null ||
+        _selectedPjpSchedule != null;
+  }
+
   @override
   void dispose() {
     txtName.dispose();
@@ -868,7 +885,25 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isSaving,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isSaving) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Store Changes?',
+          message: 'You have unsaved store details. Are you sure you want to go back and discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: CustomAppbar(
         title: 'Hapi Store',
         subtitle: widget.hapiStoreID.isEmpty ? 'New Store Record' : widget.hapistore.storeName,
@@ -900,6 +935,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
           ),
         ),
       ),
+    ),
     );
   }
 }

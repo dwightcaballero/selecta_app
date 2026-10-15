@@ -49,6 +49,23 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
 
   bool get _isEditing => widget.productId != null;
 
+  bool get _hasUnsavedChanges {
+    final p = widget.existingProduct;
+    if (_isEditing && p != null) {
+      return _nameController.text.trim() != p.productName ||
+          _barcodeController.text.trim() != p.barcode ||
+          _buyingPriceController.text.trim() != (p.buyingPrice > 0 ? p.buyingPrice.toStringAsFixed(2) : '') ||
+          _sellingPriceController.text.trim() != (p.sellingPrice > 0 ? p.sellingPrice.toStringAsFixed(2) : '') ||
+          _isActive != p.isActive ||
+          _image != null;
+    }
+    return _nameController.text.trim().isNotEmpty ||
+        _barcodeController.text.trim().isNotEmpty ||
+        _buyingPriceController.text.trim().isNotEmpty ||
+        _sellingPriceController.text.trim().isNotEmpty ||
+        _image != null;
+  }
+
   final currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
   @override
@@ -276,8 +293,26 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isSaving,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isSaving) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Product Changes?',
+          message: 'You have unsaved product details. Are you sure you want to go back and discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: _isEditing ? 'Edit Product' : 'Add Product',
         subtitle: _isEditing ? 'Update product details' : 'New catalog entry',
         actions: [
@@ -453,6 +488,7 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
           ),
         ),
       ),
+    ),
     );
   }
 

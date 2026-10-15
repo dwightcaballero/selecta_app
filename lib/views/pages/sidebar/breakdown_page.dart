@@ -39,6 +39,50 @@ class _BreakdownPageState extends State<BreakdownPage> {
   final TextEditingController txtCent = TextEditingController();
   bool withBankDeposit = false;
 
+  bool get _hasUnsavedChanges {
+    if (widget.breakdown.isVerifiedByDealer) return false;
+    final b = widget.breakdown;
+    if (widget.breakdownID.isNotEmpty) {
+      final curB1000 = txt1000.text.isEmpty ? 0 : int.tryParse(txt1000.text) ?? 0;
+      final curB500 = txt500.text.isEmpty ? 0 : int.tryParse(txt500.text) ?? 0;
+      final curB200 = txt200.text.isEmpty ? 0 : int.tryParse(txt200.text) ?? 0;
+      final curB100 = txt100.text.isEmpty ? 0 : int.tryParse(txt100.text) ?? 0;
+      final curB50 = txt50.text.isEmpty ? 0 : int.tryParse(txt50.text) ?? 0;
+      final curB20 = txtB20.text.isEmpty ? 0 : int.tryParse(txtB20.text) ?? 0;
+      final curC20 = txtC20.text.isEmpty ? 0 : int.tryParse(txtC20.text) ?? 0;
+      final curC10 = txt10.text.isEmpty ? 0 : int.tryParse(txt10.text) ?? 0;
+      final curC5 = txt5.text.isEmpty ? 0 : int.tryParse(txt5.text) ?? 0;
+      final curC1 = txt1.text.isEmpty ? 0 : int.tryParse(txt1.text) ?? 0;
+      final curCent = txtCent.text.isEmpty ? 0 : int.tryParse(txtCent.text) ?? 0;
+      final curBank = txtBankDeposit.text.isEmpty ? 0.0 : Helperfunctions.formatStringAmountToDouble(txtBankDeposit.text);
+
+      return curB1000 != b.b1000 ||
+          curB500 != b.b500 ||
+          curB200 != b.b200 ||
+          curB100 != b.b100 ||
+          curB50 != b.b50 ||
+          curB20 != b.b20 ||
+          curC20 != b.c20 ||
+          curC10 != b.c10 ||
+          curC5 != b.c5 ||
+          curC1 != b.c1 ||
+          curCent != b.cent ||
+          curBank != b.bankDepositAmount;
+    }
+    return txt1000.text.isNotEmpty ||
+        txt500.text.isNotEmpty ||
+        txt200.text.isNotEmpty ||
+        txt100.text.isNotEmpty ||
+        txt50.text.isNotEmpty ||
+        txtB20.text.isNotEmpty ||
+        txtC20.text.isNotEmpty ||
+        txt10.text.isNotEmpty ||
+        txt5.text.isNotEmpty ||
+        txt1.text.isNotEmpty ||
+        txtCent.text.isNotEmpty ||
+        txtBankDeposit.text.isNotEmpty;
+  }
+
   @override
   void dispose() {
     txt1000.dispose();
@@ -729,7 +773,24 @@ class _BreakdownPageState extends State<BreakdownPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Cash Breakdown?',
+          message: 'You have unsaved cash breakdown entries. Are you sure you want to go back and discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: CustomAppbar(title: 'Cash Breakdown', subtitle: Helperfunctions.formatTimestampForDisplay(widget.breakdown.breakdownDate)),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: SingleChildScrollView(
@@ -790,6 +851,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
           ],
         ),
       ),
+    ),
     );
   }
 }

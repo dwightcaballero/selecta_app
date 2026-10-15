@@ -84,6 +84,23 @@ class _DeliveryPageState extends State<DeliveryPage> {
   double discrepancy = 0;
   double get effectiveOrderAmount =>
       txtOrderAmount.text.isNotEmpty ? Helperfunctions.formatStringAmountToDouble(txtOrderAmount.text) : _currentDelivery.orderAmount;
+
+  bool get _hasUnsavedChanges {
+    if (isSalesmanLocked) return false;
+    if (widget.deliveryID.isEmpty) {
+      return dropdownHapiStore.text.trim().isNotEmpty ||
+          txtOrderAmount.text.trim().isNotEmpty ||
+          txtRemarks.text.trim().isNotEmpty ||
+          _currentDelivery.items.isNotEmpty;
+    }
+    return dropdownStatus.text != _currentDelivery.transactionStatus ||
+        txtRemarks.text.trim() != _currentDelivery.remarks ||
+        txtOrderAmount.text.trim() != Helperfunctions.formatDoubleAmountForField(_currentDelivery.orderAmount) ||
+        txtCashAmount.text.trim() != Helperfunctions.formatDoubleAmountForField(_currentDelivery.cashAmount) ||
+        txtOnlineAmount.text.trim() != Helperfunctions.formatDoubleAmountForField(_currentDelivery.onlineAmount) ||
+        txtCreditAmount.text.trim() != Helperfunctions.formatDoubleAmountForField(_currentDelivery.creditAmount) ||
+        _withReturns != _currentDelivery.hasReturnedItems;
+  }
   TextEditingController dropdownHapiStore = TextEditingController();
   TextEditingController dropdownStatus = TextEditingController();
   bool isDealer = true;
@@ -1708,8 +1725,25 @@ class _DeliveryPageState extends State<DeliveryPage> {
     bool isReturned = dropdownStatus.text == DeliveryStatus.returned;
     bool showRemarks = isReturned || (isDelivered && (_withReturns && _selectedReturnProductIds.isNotEmpty));
 
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Delivery Changes?',
+          message: 'You have unsaved changes in this delivery. Are you sure you want to go back and discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: 'Delivery',
         subtitle: widget.deliveryID.isEmpty ? 'New Record' : _currentDelivery.storeName,
         actions: [
@@ -1951,6 +1985,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           ),
         ),
       ),
+    ),
     );
   }
 }

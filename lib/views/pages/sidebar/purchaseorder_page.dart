@@ -110,6 +110,32 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   double get _currentListTotalCost => _documentLines.fold(0.0, (acc, l) => acc + l.lineTotal);
   int get _currentListCount => _documentLines.where((l) => l.quantity > 0).length;
 
+  bool get _hasUnsavedChanges {
+    if (_isEditing && _isConfirmed) return false;
+    if (isNewRecord) {
+      return _documentLines.isNotEmpty ||
+          orderNumberController.text.trim().isNotEmpty ||
+          _officialInvoiceNumberController.text.trim().isNotEmpty ||
+          _pickedImages.isNotEmpty;
+    }
+    if (orderNumberController.text.trim() != widget.purchaseorder.poNumber &&
+        orderNumberController.text.trim() != widget.purchaseorder.invoiceNumber) {
+      return true;
+    }
+    if (_officialInvoiceNumberController.text.trim() != widget.purchaseorder.invoiceNumber) {
+      return true;
+    }
+    if (_pickedImages.isNotEmpty) return true;
+    if (_documentLines.length != widget.purchaseorder.items.length) return true;
+    for (final line in _documentLines) {
+      final origMatches = widget.purchaseorder.items.where((it) => it.productId == line.productId);
+      if (origMatches.isEmpty || line.quantity != origMatches.first.effectiveQuantity) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2486,10 +2512,24 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     }
 
     return PopScope(
-      canPop: !isLocked,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
+      canPop: !_hasUnsavedChanges && !isLocked,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (isLocked) {
           ShowMessage.warning(context, 'Operation in progress. Please wait.');
+          return;
+        }
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Changes?',
+          message: 'You have unsaved changes on this purchase order. Are you sure you want to go back and discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
         }
       },
       child: StreamBuilder<List<InventoryItem>>(

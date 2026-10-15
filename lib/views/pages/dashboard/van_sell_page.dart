@@ -8,6 +8,7 @@ import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/van_load.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
@@ -45,6 +46,9 @@ class _VanSellPageState extends State<VanSellPage> {
   String _paymentMethod = 'Cash'; // 'Cash' | 'Online' | 'Credit'
   bool _isSaving = false;
   String _productSearchQuery = '';
+
+  bool get _hasUnsavedChanges =>
+      _selectedStore != null || _sellQuantities.values.any((q) => q > 0) || _remarksController.text.trim().isNotEmpty;
 
   @override
   void initState() {
@@ -450,8 +454,26 @@ class _VanSellPageState extends State<VanSellPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isSaving,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isSaving) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Van Sale?',
+          message: 'You have unsaved items or store selection. Are you sure you want to go back and discard this sale?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: 'Van Sell',
         subtitle: _activeVanLoad != null
             ? '${_activeVanLoad!.totalAvailableUnits} units available on van'
@@ -464,6 +486,7 @@ class _VanSellPageState extends State<VanSellPage> {
       bottomNavigationBar: _activeVanLoad != null
           ? _buildBottomBar(theme)
           : null,
+    ),
     );
   }
 

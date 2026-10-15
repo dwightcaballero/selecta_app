@@ -9,6 +9,7 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/van_load.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
@@ -45,6 +46,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
   List<InventoryItem> _allInventoryItems = [];
   final Map<String, int> _loadedQuantities = {}; // productId -> quantity
   final Map<String, TextEditingController> _qtyControllers = {};
+
+  bool get _hasUnsavedChanges {
+    if (_isCreatingNew) {
+      return _loadedQuantities.values.any((q) => q > 0) || _remarksController.text.trim().isNotEmpty;
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -589,8 +597,34 @@ class _VanLoadPageState extends State<VanLoadPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isCreatingNew,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Van Load?',
+            message: 'You have unsaved manifest entries. Are you sure you want to go back and discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (!shouldDiscard || !context.mounted) return;
+        }
+        if (_isCreatingNew) {
+          setState(() {
+            _isCreatingNew = false;
+            _loadedQuantities.clear();
+            _remarksController.clear();
+          });
+        } else {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: 'Van Load',
         subtitle: _isCreatingNew
             ? 'New Van Manifest'
@@ -633,6 +667,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
       bottomNavigationBar: (_isCreatingNew || (_currentVanLoad != null && _currentVanLoad!.status == VanLoadStatus.draft))
           ? _buildBottomActionBar(theme)
           : null,
+    ),
     );
   }
 

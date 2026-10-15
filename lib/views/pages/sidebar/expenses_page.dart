@@ -50,6 +50,17 @@ class _ExpensesPageState extends State<ExpensesPage> {
     return false;
   }
 
+  bool get _hasUnsavedChanges {
+    if (isReadOnly) return false;
+    if (widget.recID.isNotEmpty) {
+      return txtDescription.text.trim() != widget.expense.description ||
+          txtAmount.text.trim() != Helperfunctions.formatDoubleAmountForField(widget.expense.expenseAmount) ||
+          _selectedExpenseType != widget.expense.expenseType ||
+          _selectedPaymentMethod != widget.expense.paymentMethod;
+    }
+    return txtDescription.text.trim().isNotEmpty || txtAmount.text.trim().isNotEmpty;
+  }
+
   @override
   void dispose() {
     txtDescription.dispose();
@@ -815,8 +826,25 @@ class _ExpensesPageState extends State<ExpensesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Expense?',
+          message: 'You have unsaved expense details. Are you sure you want to go back and discard them?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: 'Expense Details',
         subtitle: widget.recID.isEmpty
             ? 'New ${_selectedExpenseType == ExpenseType.salesman ? "Salesman" : "Dealer"} Record'
@@ -877,6 +905,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
           ),
         ),
       ),
+    ),
     );
   }
 }

@@ -57,6 +57,26 @@ class _ProspectScoutFormPageState extends State<ProspectScoutFormPage> {
 
   bool get _isEditing => widget.prospect != null && widget.prospectId != null;
 
+  bool get _hasUnsavedChanges {
+    final p = widget.prospect;
+    if (_isEditing && p != null) {
+      return _nameController.text.trim() != p.storeName ||
+          _contactPersonController.text.trim() != (p.contactPerson ?? '') ||
+          _contactPhoneController.text.trim() != (p.contactPhone ?? '') ||
+          _notesController.text.trim() != (p.notes ?? '') ||
+          _isAccessible != p.isAccessible ||
+          _isStoreBig != p.isStoreBig ||
+          _hasCompetitorFreezer != p.hasCompetitorFreezer ||
+          _selectedStatus != p.status ||
+          _storePhotoFile != null;
+    }
+    return _nameController.text.trim().isNotEmpty ||
+        _contactPersonController.text.trim().isNotEmpty ||
+        _contactPhoneController.text.trim().isNotEmpty ||
+        _notesController.text.trim().isNotEmpty ||
+        _storePhotoFile != null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -342,8 +362,26 @@ class _ProspectScoutFormPageState extends State<ProspectScoutFormPage> {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: !_hasUnsavedChanges && !_isSaving,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isSaving) return;
+        final shouldDiscard = await ShowMessage.confirm(
+          context,
+          title: 'Discard Prospect Survey?',
+          message: 'You have unsaved prospect scout information. Are you sure you want to go back and discard it?',
+          confirmText: 'Discard',
+          cancelText: 'Keep Editing',
+          isDestructive: true,
+          icon: Icons.warning_amber_rounded,
+        );
+        if (shouldDiscard && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: _isEditing ? 'Edit Prospect' : 'Scout New Store',
         subtitle: _isEditing ? 'Update assessment and status' : 'Record store location and prospect assessment',
         actions: [
@@ -423,6 +461,7 @@ class _ProspectScoutFormPageState extends State<ProspectScoutFormPage> {
           ),
         ),
       ),
+    ),
     );
   }
 
