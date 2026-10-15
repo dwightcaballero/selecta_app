@@ -221,6 +221,14 @@ class InventoryItem {
   double get stockCostValue => stockQuantity * buyingPrice;
 
   double get stockRetailValue => stockQuantity * sellingPrice;
+
+  bool get isSelecta => source == InventoryProductSource.selecta;
+
+  bool get isByPiece => category.toLowerCase().contains('piece');
+
+  bool get isByCase => category.toLowerCase().contains('case');
+
+  String get productSource => source.name;
 }
 
 /// Represents a recorded stock adjustment or movement in `inventory_movements`.

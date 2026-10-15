@@ -51,6 +51,12 @@ class DeliverySummaryCounts {
   /// Total returned amount.
   final double returnedAmount;
 
+  /// Count of completed van sell deliveries.
+  final int vanSellCount;
+
+  /// Total sales amount from van sell deliveries.
+  final double vanSellAmount;
+
   const DeliverySummaryCounts({
     required this.all,
     this.pendingPicklist = 0,
@@ -61,6 +67,8 @@ class DeliverySummaryCounts {
     this.deliveredAmount = 0.0,
     this.pendingAmount = 0.0,
     this.returnedAmount = 0.0,
+    this.vanSellCount = 0,
+    this.vanSellAmount = 0.0,
   });
 }
 
@@ -185,6 +193,8 @@ class DeliveryController {
     double deliveredAmount = 0.0;
     double pendingAmount = 0.0;
     double returnedAmount = 0.0;
+    int vanSellCount = 0;
+    double vanSellAmount = 0.0;
 
     for (final item in docs) {
       final raw = item.data();
@@ -197,6 +207,12 @@ class DeliveryController {
         continue;
       }
       validAllCount++;
+
+      if (delivery.isVanSell) {
+        vanSellCount++;
+        final double vTotal = delivery.cashAmount + delivery.onlineAmount + delivery.creditAmount;
+        vanSellAmount += vTotal > 0 ? vTotal : delivery.orderAmount;
+      }
 
       final double expected = delivery.originalOrderAmount ?? delivery.orderAmount;
       totalExpectedAmount += expected;
@@ -229,6 +245,8 @@ class DeliveryController {
       deliveredAmount: deliveredAmount,
       pendingAmount: pendingAmount,
       returnedAmount: returnedAmount,
+      vanSellCount: vanSellCount,
+      vanSellAmount: vanSellAmount,
     );
   }
 

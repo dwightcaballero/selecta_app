@@ -58,6 +58,18 @@ class CreditStatus {
   static const unpaid = "Unpaid";
 }
 
+class OrderType {
+  static const preSell = "pre-sell";
+  static const vanSell = "van-sell";
+}
+
+class VanLoadStatus {
+  static const draft = "draft";
+  static const loaded = "loaded";
+  static const inRoute = "in-route";
+  static const completed = "completed";
+}
+
 class ScanningStatus {
   static const scanned = "Scanned";
   static const pending = "Pending";
@@ -152,6 +164,8 @@ class AppPages {
   static const configuration = "Configuration";
   static const register = "Register";
   static const prospectScouting = "Prospect Scouting";
+  static const vanLoad = "Van Load";
+  static const vanSell = "Van Sell";
 }
 
 class ProductTag {

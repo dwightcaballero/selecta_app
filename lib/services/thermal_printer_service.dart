@@ -364,7 +364,7 @@ class ThermalPrinterService {
     final cleanStore = delivery.storeName.trim().toUpperCase();
 
     buffer.writeln(center(cleanDealer));
-    buffer.writeln(center('DELIVERY RECEIPT'));
+    buffer.writeln(center(delivery.isVanSell ? 'VAN SELL RECEIPT' : 'DELIVERY RECEIPT'));
     buffer.writeln('\n');
     buffer.writeln(divider);
 

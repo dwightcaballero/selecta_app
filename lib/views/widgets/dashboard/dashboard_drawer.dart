@@ -8,6 +8,8 @@ import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
@@ -141,6 +143,8 @@ class DashboardDrawer extends StatelessWidget {
             const CreditlistPage(),
             badgeCount: dashboardDTO.unpaidCreditCount,
           ),
+          _buildDrawerItem(context, Icons.local_shipping_outlined, 'Van Load', const VanLoadPage()),
+          _buildDrawerItem(context, Icons.directions_car_filled_outlined, 'Van Sell', const VanSellPage()),
           _buildDrawerItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
           StreamBuilder<int>(

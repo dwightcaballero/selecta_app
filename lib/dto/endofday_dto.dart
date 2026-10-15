@@ -4,9 +4,13 @@ class EndOfDayDTO {
   int deliveredstatus = 0;
   int returnedstatus = 0;
   int pendingPicklistStatus = 0;
+  int vanSellCount = 0;
+  int preSellCount = 0;
 
   double totalorderamount = 0;
   double totaldeliveredamount = 0;
+  double preSellAmount = 0;
+  double vanSellAmount = 0;
   double cashamount = 0;
   double onlineamount = 0;
   double creditamount = 0;

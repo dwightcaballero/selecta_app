@@ -158,6 +158,7 @@ class ExportReportService {
         headers = [
           'Delivery Date',
           'Delivery ID',
+          'Order Type',
           'Store Name',
           'Delivery Status',
           'Invoiced Amount (PHP)',
@@ -179,6 +180,8 @@ class ExportReportService {
         double totalCash = 0.0;
         double totalCredit = 0.0;
         int deliveredCount = 0;
+        int vanSellCount = 0;
+        int preSellCount = 0;
 
         for (final doc in snapshot.docs) {
           final data = doc.data();
@@ -192,10 +195,16 @@ class ExportReportService {
           totalCash += cashAmt;
           totalCredit += creditAmt;
           if (d.transactionStatus.toLowerCase().contains('deliver')) deliveredCount++;
+          if (d.isVanSell) {
+            vanSellCount++;
+          } else {
+            preSellCount++;
+          }
 
           rows.add([
             dateFormat.format(createdDt),
             doc.id,
+            d.isVanSell ? 'Van Sell' : 'Pre-Sell',
             d.storeName,
             d.transactionStatus,
             invoicedAmt.toStringAsFixed(2),
@@ -214,6 +223,8 @@ class ExportReportService {
           'Credit Incurred (PHP)': totalCredit.toStringAsFixed(2),
           'Total Deliveries': rows.length,
           'Completed Deliveries': deliveredCount,
+          'Pre-Sell Orders': preSellCount,
+          'Van Sell Orders': vanSellCount,
         };
         break;
 

@@ -11,8 +11,9 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/other_product.dart';
 import 'package:selecta_ops/models/purchaseorder.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
-import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/models/placement.dart';
+import 'package:selecta_ops/models/van_load.dart';
+import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/other_product_service.dart';
 import 'package:selecta_ops/services/placement_service.dart';
@@ -574,6 +575,100 @@ class InventoryService {
         );
         batch.set(movementRef, movement.toJson());
       }
+    }
+
+    await batch.commit();
+  }
+
+  /// Deducts warehouse stock when dealer confirms a Van Load manifest.
+  /// Logs an [InventoryMovement] audit entry with reason 'Van Load'.
+  Future<void> deductVanLoadInventory({
+    required String vanLoadId,
+    required List<VanLoadItem> items,
+  }) async {
+    final now = Timestamp.now();
+    final createdBy = _currentActorName();
+    final batch = _firestore.batch();
+
+    for (final item in items) {
+      if (item.productId.isEmpty || item.loadedQuantity <= 0) continue;
+      final collectionName = _collectionForSource(item.productSource);
+      final productRef = _firestore.collection(collectionName).doc(item.productId);
+      final snap = await productRef.get();
+      if (!snap.exists) continue;
+      final data = snap.data() ?? {};
+
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final nextStock = (currentStock - item.loadedQuantity) < 0 ? 0 : (currentStock - item.loadedQuantity);
+      final delta = nextStock - currentStock;
+
+      batch.update(productRef, {
+        'stockQuantity': nextStock,
+        'updatedAt': now,
+      });
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        productSource: item.productSource,
+        previousStock: currentStock,
+        newStock: nextStock,
+        delta: delta != 0 ? delta : -item.loadedQuantity,
+        reason: 'Van Load',
+        notes: 'Van Load #$vanLoadId',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
+    }
+
+    await batch.commit();
+  }
+
+  /// Replenishes warehouse stock when unsold items from a Van Load are returned at EOD.
+  /// Logs an [InventoryMovement] audit entry with reason 'Van Return'.
+  Future<void> returnVanLoadInventory({
+    required String vanLoadId,
+    required List<VanLoadItem> returnedItems,
+  }) async {
+    final now = Timestamp.now();
+    final createdBy = _currentActorName();
+    final batch = _firestore.batch();
+
+    for (final item in returnedItems) {
+      if (item.productId.isEmpty || item.returnedQuantity <= 0) continue;
+      final collectionName = _collectionForSource(item.productSource);
+      final productRef = _firestore.collection(collectionName).doc(item.productId);
+      final snap = await productRef.get();
+      if (!snap.exists) continue;
+      final data = snap.data() ?? {};
+
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final nextStock = currentStock + item.returnedQuantity;
+      final delta = item.returnedQuantity;
+
+      batch.update(productRef, {
+        'stockQuantity': nextStock,
+        'updatedAt': now,
+      });
+
+      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+      final movement = InventoryMovement(
+        id: movementRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        productSource: item.productSource,
+        previousStock: currentStock,
+        newStock: nextStock,
+        delta: delta,
+        reason: 'Van Return',
+        notes: 'Returned from Van Load #$vanLoadId',
+        createdBy: createdBy,
+        createdAt: now,
+      );
+      batch.set(movementRef, movement.toJson());
     }
 
     await batch.commit();

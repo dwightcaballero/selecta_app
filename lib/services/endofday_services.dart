@@ -41,6 +41,19 @@ class EndofdayServices {
       endofday.onlineamount += data[DeliveryModelString.onlineAmount];
       endofday.creditamount += data[DeliveryModelString.creditAmount];
       endofday.returnedAmount += data[DeliveryModelString.returnAmount];
+      final deliveredPortion = (data[DeliveryModelString.cashAmount] as num? ?? 0).toDouble() +
+          (data[DeliveryModelString.onlineAmount] as num? ?? 0).toDouble() +
+          (data[DeliveryModelString.creditAmount] as num? ?? 0).toDouble();
+
+      final orderType = data[DeliveryModelString.orderType] as String? ?? OrderType.preSell;
+      if (orderType == OrderType.vanSell) {
+        endofday.vanSellCount += 1;
+        endofday.vanSellAmount += deliveredPortion;
+      } else {
+        endofday.preSellCount += 1;
+        endofday.preSellAmount += deliveredPortion;
+      }
+
       endofday.totaldeliveredamount +=
           data[DeliveryModelString.cashAmount] + data[DeliveryModelString.onlineAmount] + data[DeliveryModelString.creditAmount];
       endofday.totaldelivery += 1;

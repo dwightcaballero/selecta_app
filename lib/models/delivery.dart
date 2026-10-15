@@ -183,6 +183,8 @@ class Delivery {
   double returnAmount;
   String creditStatus;
   Timestamp? deliveryDate;
+  String orderType; // 'pre-sell' | 'van-sell'
+  String? vanLoadId;
 
   List<OrderItem> items;
   bool isInventoryReserved;
@@ -230,6 +232,8 @@ class Delivery {
     required this.onlineAmount,
     required this.deliveryDate,
     required this.creditStatus,
+    this.orderType = OrderType.preSell,
+    this.vanLoadId,
     required this.createdBy,
     required this.lastUpdatedBy,
     required this.createdDate,
@@ -264,6 +268,9 @@ class Delivery {
   /// True if this order/delivery has been voided.
   bool get isVoided => transactionStatus == DeliveryStatus.voided;
 
+  /// True if this order/delivery is a van sale.
+  bool get isVanSell => orderType == OrderType.vanSell;
+
   /// Total number of units across all ordered/picked items.
   int get totalUnits => items.fold<int>(0, (totalUnitsAcc, item) => totalUnitsAcc + item.pickedQuantity);
 
@@ -292,6 +299,8 @@ class Delivery {
     onlineAmount: 0,
     deliveryDate: null,
     creditStatus: '',
+    orderType: OrderType.preSell,
+    vanLoadId: null,
     createdBy: '',
     lastUpdatedBy: '',
     createdDate: Timestamp.now(),
@@ -350,6 +359,8 @@ class Delivery {
         onlineAmount: _parseDouble(json['onlineAmount']),
         deliveryDate: _parseTimestamp(json['deliveryDate']),
         creditStatus: json['creditStatus'] as String? ?? '',
+        orderType: json['orderType'] as String? ?? OrderType.preSell,
+        vanLoadId: json['vanLoadId'] as String?,
         createdBy: json['createdBy'] as String? ?? '',
         lastUpdatedBy: json['lastUpdatedBy'] as String? ?? '',
         createdDate: _parseTimestamp(json['createdDate']) ?? Timestamp.now(),
@@ -400,6 +411,8 @@ class Delivery {
     double? returnAmount,
     double? creditAmount,
     String? creditStatus,
+    String? orderType,
+    String? vanLoadId,
     double? cashAmount,
     double? onlineAmount,
     Timestamp? deliveryDate,
@@ -448,6 +461,8 @@ class Delivery {
       onlineAmount: onlineAmount ?? this.onlineAmount,
       deliveryDate: deliveryDate ?? this.deliveryDate,
       creditStatus: creditStatus ?? this.creditStatus,
+      orderType: orderType ?? this.orderType,
+      vanLoadId: vanLoadId ?? this.vanLoadId,
       items: items ?? this.items,
       isInventoryReserved: isInventoryReserved ?? this.isInventoryReserved,
       isInventoryDeducted: isInventoryDeducted ?? this.isInventoryDeducted,
@@ -494,6 +509,8 @@ class Delivery {
       'onlineAmount': onlineAmount,
       'deliveryDate': deliveryDate,
       'creditStatus': creditStatus,
+      'orderType': orderType,
+      'vanLoadId': vanLoadId,
       'items': items.map((e) => e.toJson()).toList(),
       'isInventoryReserved': isInventoryReserved,
       'isInventoryDeducted': isInventoryDeducted,
@@ -542,6 +559,8 @@ class DeliveryModelString {
   static String onlineAmount = 'onlineAmount';
   static String deliveryDate = 'deliveryDate';
   static String creditStatus = 'creditStatus';
+  static String orderType = 'orderType';
+  static String vanLoadId = 'vanLoadId';
   static String items = 'items';
   static String isInventoryReserved = 'isInventoryReserved';
   static String isInventoryDeducted = 'isInventoryDeducted';

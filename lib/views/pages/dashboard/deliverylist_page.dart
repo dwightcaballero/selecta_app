@@ -314,6 +314,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildSummaryStat(label: 'Deliveries', value: '${summary.all}', color: colorScheme.onSurface),
+          if (summary.vanSellCount > 0) ...[
+            Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+            _buildSummaryStat(label: 'Van Sells', value: '${summary.vanSellCount}', color: Colors.teal),
+          ],
           Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
           _buildSummaryStat(label: 'Delivered', value: '${summary.delivered}', color: colorScheme.onSurface),
           Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
@@ -565,10 +569,16 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                             Container(
                                               padding: const EdgeInsets.all(10),
                                               decoration: BoxDecoration(
-                                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                                color: delivery.isVanSell
+                                                    ? Colors.teal.withValues(alpha: 0.15)
+                                                    : theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
                                                 borderRadius: BorderRadius.circular(10),
                                               ),
-                                              child: Icon(Icons.storefront_outlined, color: theme.colorScheme.primary, size: 24),
+                                              child: Icon(
+                                                delivery.isVanSell ? Icons.local_shipping_rounded : Icons.storefront_outlined,
+                                                color: delivery.isVanSell ? Colors.teal : theme.colorScheme.primary,
+                                                size: 24,
+                                              ),
                                             ),
                                             const SizedBox(width: 12),
                                             Expanded(
@@ -581,7 +591,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                         margin: const EdgeInsets.only(right: 6),
                                                         decoration: BoxDecoration(
-                                                          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
+                                                          color: delivery.isVanSell
+                                                              ? Colors.teal.withValues(alpha: 0.2)
+                                                              : theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
                                                           borderRadius: BorderRadius.circular(6),
                                                         ),
                                                         child: Text(
@@ -589,10 +601,38 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                                           style: TextStyle(
                                                             fontSize: 12,
                                                             fontWeight: FontWeight.bold,
-                                                            color: theme.colorScheme.onPrimaryContainer,
+                                                            color: delivery.isVanSell
+                                                                ? Colors.teal.shade800
+                                                                : theme.colorScheme.onPrimaryContainer,
                                                           ),
                                                         ),
                                                       ),
+                                                      if (delivery.isVanSell)
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                          margin: const EdgeInsets.only(right: 6),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.teal.withValues(alpha: 0.12),
+                                                            borderRadius: BorderRadius.circular(6),
+                                                            border: Border.all(color: Colors.teal.withValues(alpha: 0.4), width: 1),
+                                                          ),
+                                                          child: const Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              Icon(Icons.directions_car_filled_rounded, size: 11, color: Colors.teal),
+                                                              SizedBox(width: 3),
+                                                              Text(
+                                                                'VAN SELL',
+                                                                style: TextStyle(
+                                                                  fontSize: 10,
+                                                                  fontWeight: FontWeight.w800,
+                                                                  color: Colors.teal,
+                                                                  letterSpacing: 0.3,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
                                                       Expanded(
                                                         child: Text(
                                                           delivery.storeName,
@@ -776,6 +816,23 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                               crossAxisAlignment: WrapCrossAlignment.center,
                               spacing: 6,
                               children: [
+                                if (delivery.isVanSell)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.teal.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.teal.withValues(alpha: 0.4), width: 1),
+                                    ),
+                                    child: const Text(
+                                      'VAN SELL',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.teal,
+                                      ),
+                                    ),
+                                  ),
                                 _statusBadge(delivery.transactionStatus),
                                 if (store?.pjpSchedule != null && store!.pjpSchedule!.isNotEmpty)
                                   Container(

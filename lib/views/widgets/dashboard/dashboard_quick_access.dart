@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 
 /// Operational quick action cards grid for core workflow entry points:
-/// Store Order, Credit, and End of Day Report.
+/// Store Order, Credit, End of Day Report, Van Load, and Van Sell.
 class DashboardQuickAccessGrid extends StatelessWidget {
   final DashboardDTO dashboardDTO;
   final Stream<int>? pendingPicklistsCountStream;
@@ -51,6 +53,28 @@ class DashboardQuickAccessGrid extends StatelessWidget {
               stream: unverifiedBreakdownsCountStream,
               color: primaryColor,
               nextPage: const EndofdayPage(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _buildCard(
+              context,
+              label: 'Van Load',
+              subtitle: 'Load Van Stock',
+              icon: Icons.local_shipping_outlined,
+              color: Colors.teal,
+              nextPage: const VanLoadPage(),
+            ),
+            const SizedBox(width: 10),
+            _buildCard(
+              context,
+              label: 'Van Sell',
+              subtitle: 'Direct Store Sale',
+              icon: Icons.directions_car_filled_outlined,
+              color: Colors.teal,
+              nextPage: const VanSellPage(),
             ),
           ],
         ),

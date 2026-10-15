@@ -267,6 +267,27 @@ class _EndofdayPageState extends State<EndofdayPage> {
         children: [
           _buildAmountRow('Total Order Amount', endOfDayData.totalorderamount, isBold: true),
           _buildAmountRow('Total Delivered Amount', endOfDayData.totaldeliveredamount, isBold: true),
+          if (endOfDayData.vanSellCount > 0 || endOfDayData.preSellCount > 0) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 8.0, top: 2.0, bottom: 2.0),
+              child: Row(
+                children: [
+                  if (endOfDayData.preSellCount > 0)
+                    Text(
+                      'Pre-Sell: ${endOfDayData.preSellCount} (${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellAmount)})',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                    ),
+                  if (endOfDayData.preSellCount > 0 && endOfDayData.vanSellCount > 0)
+                    Text('  •  ', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                  if (endOfDayData.vanSellCount > 0)
+                    Text(
+                      '🚐 Van Sell: ${endOfDayData.vanSellCount} (${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellAmount)})',
+                      style: TextStyle(fontSize: 11, color: Colors.teal.shade700, fontWeight: FontWeight.w600),
+                    ),
+                ],
+              ),
+            ),
+          ],
           const Divider(height: 14),
           _buildAmountRow('Cash Collected', endOfDayData.cashamount, icon: Icons.payments_outlined, color: Colors.green),
           _buildAmountRow('Online Payment', endOfDayData.onlineamount, icon: Icons.account_balance_outlined, color: Colors.blue),
