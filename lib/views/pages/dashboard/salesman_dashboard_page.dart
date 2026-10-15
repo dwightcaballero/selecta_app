@@ -12,7 +12,6 @@ import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/scanninglist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
@@ -415,7 +414,6 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
 
           // Drawer Navigation Items (Field Activities & Reports)
           _buildDrawerItem(Icons.directions_car_filled_outlined, 'Van Sell', const VanSellPage()),
-          _buildDrawerItem(Icons.local_shipping_outlined, 'Van Load Manifest', const VanLoadPage()),
           _buildDrawerItem(Icons.explore_outlined, 'Prospect Scouting', const ProspectScoutPage()),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
@@ -629,11 +627,18 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'End of Day',
-                            icon: Icons.today_outlined,
-                            iconColor: const Color(0xFFD97706),
-                            nextPage: const EndofdayPage(),
+                          child: StreamBuilder<int>(
+                            stream: _pendingScanningCountStream,
+                            initialData: _dashboardDTO.pendingScanningCount,
+                            builder: (context, snapshot) {
+                              return _buildQuickAccessCard(
+                                label: 'Scan',
+                                icon: Icons.qr_code_scanner_outlined,
+                                count: snapshot.data ?? 0,
+                                iconColor: Colors.teal,
+                                nextPage: const ScanninglistPage(),
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -641,43 +646,12 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
                     const SizedBox(height: 10),
                     Row(
                       children: [
-                        Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Van Sell',
-                            icon: Icons.directions_car_filled_outlined,
-                            iconColor: Colors.teal,
-                            nextPage: const VanSellPage(),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Van Load',
-                            icon: Icons.local_shipping_outlined,
-                            iconColor: Colors.teal.shade700,
-                            nextPage: const VanLoadPage(),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
                         Expanded(
                           child: _buildQuickAccessCard(
                             label: 'Expenses',
                             icon: Icons.receipt_long_outlined,
                             iconColor: const Color(0xFF4B5563),
                             nextPage: const ExpenselistPage(),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildQuickAccessCard(
-                            label: 'Prospect Scouting',
-                            icon: Icons.explore_outlined,
-                            iconColor: const Color(0xFFEF4444),
-                            nextPage: const ProspectScoutPage(),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -689,21 +663,15 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
                             nextPage: BadOrderlistPage(),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _buildQuickAccessCard(
-                            label: 'My Payslips',
-                            icon: Icons.payments_outlined,
-                            iconColor: const Color(0xFF0D9488),
-                            nextPage: const PayslipListPage(),
+                            label: 'End of Day',
+                            icon: Icons.today_outlined,
+                            iconColor: const Color(0xFFD97706),
+                            nextPage: const EndofdayPage(),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        const Expanded(child: SizedBox()),
                       ],
                     ),
                   ],
@@ -732,7 +700,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
       child: Scaffold(
         body: IndexedStack(
           index: _currentTabIndex,
-          children: [_buildHomeDashboard(), const PjpListPage(), const PicklistListPage(), const DeliveryListPage(), const ScanninglistPage()],
+          children: [_buildHomeDashboard(), const PjpListPage(), const PicklistListPage(), const DeliveryListPage(), const VanSellPage()],
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentTabIndex,
@@ -774,18 +742,10 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
               ),
               label: 'Deliveries',
             ),
-            NavigationDestination(
-              icon: _buildBadge(
-                stream: _pendingScanningCountStream,
-                initialCount: _dashboardDTO.pendingScanningCount,
-                icon: Icons.qr_code_scanner_outlined,
-              ),
-              selectedIcon: _buildBadge(
-                stream: _pendingScanningCountStream,
-                initialCount: _dashboardDTO.pendingScanningCount,
-                icon: Icons.qr_code_scanner_rounded,
-              ),
-              label: 'Scan',
+            const NavigationDestination(
+              icon: Icon(Icons.directions_car_filled_outlined),
+              selectedIcon: Icon(Icons.directions_car_filled),
+              label: 'Van Sell',
             ),
           ],
         ),
