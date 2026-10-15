@@ -102,9 +102,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   bool get _hasUnsavedChanges {
     if (_isEditing && _isConfirmed) return false;
     if (isNewRecord) {
-      return _documentLines.isNotEmpty ||
-          orderNumberController.text.trim().isNotEmpty ||
-          _officialInvoiceNumberController.text.trim().isNotEmpty;
+      return _documentLines.isNotEmpty || orderNumberController.text.trim().isNotEmpty || _officialInvoiceNumberController.text.trim().isNotEmpty;
     }
     if (orderNumberController.text.trim() != widget.purchaseorder.poNumber &&
         orderNumberController.text.trim() != widget.purchaseorder.invoiceNumber) {
@@ -128,9 +126,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     super.initState();
     isNewRecord = widget.purchaseorderID.isEmpty;
     if (!isNewRecord) {
-      orderNumberController.text = widget.purchaseorder.poNumber.isNotEmpty
-          ? widget.purchaseorder.poNumber
-          : widget.purchaseorder.invoiceNumber;
+      orderNumberController.text = widget.purchaseorder.poNumber.isNotEmpty ? widget.purchaseorder.poNumber : widget.purchaseorder.invoiceNumber;
       _officialInvoiceNumberController.text = widget.purchaseorder.invoiceNumber;
       orderAmountController.text = Helperfunctions.formatDoubleAmountForField(widget.purchaseorder.orderAmount);
       invoiceAmountController.text = Helperfunctions.formatDoubleAmountForField(widget.purchaseorder.invoiceAmount);
@@ -143,18 +139,20 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
       // Populate document lines from existing pending/confirmed items
       for (final item in widget.purchaseorder.items) {
-        _documentLines.add(PoExtractedLine(
-          productId: item.productId,
-          productName: item.productName,
-          imageUrl: item.imageUrl,
-          productSource: item.productSource,
-          category: item.category,
-          tag: item.tag,
-          buyingPrice: item.buyingPrice,
-          sellingPrice: item.sellingPrice,
-          quantity: item.effectiveQuantity,
-          rawDocText: item.productName,
-        ));
+        _documentLines.add(
+          PoExtractedLine(
+            productId: item.productId,
+            productName: item.productName,
+            imageUrl: item.imageUrl,
+            productSource: item.productSource,
+            category: item.category,
+            tag: item.tag,
+            buyingPrice: item.buyingPrice,
+            sellingPrice: item.sellingPrice,
+            quantity: item.effectiveQuantity,
+            rawDocText: item.productName,
+          ),
+        );
       }
     } else {
       if (widget.initialLines != null && widget.initialLines!.isNotEmpty) {
@@ -182,10 +180,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     } catch (_) {}
   }
 
-  double get _totalSelectedOverpayments => _controller.calculateTotalSelectedOverpayments(
-        unsettledDocs: _unsettledOverpayments,
-        selectedIds: _selectedOverpaymentIds,
-      );
+  double get _totalSelectedOverpayments =>
+      _controller.calculateTotalSelectedOverpayments(unsettledDocs: _unsettledOverpayments, selectedIds: _selectedOverpaymentIds);
 
   double get _guidedNetAmount {
     final net = _currentListTotalCost - _totalSelectedOverpayments;
@@ -218,11 +214,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     final selectedLines = await Navigator.push<List<PoExtractedLine>>(
       context,
       MaterialPageRoute(
-        builder: (ctx) => PurchaseOrderCatalogPage(
-          allInventory: allInventory,
-          existingLines: _documentLines,
-          isDirectCreationFlow: false,
-        ),
+        builder: (ctx) => PurchaseOrderCatalogPage(allInventory: allInventory, existingLines: _documentLines, isDirectCreationFlow: false),
       ),
     );
 
@@ -235,10 +227,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
       });
       if (_documentLines.isNotEmpty && mounted) {
-        ShowMessage.success(
-          context,
-          'Selected ${_documentLines.length} products ($_currentListUnits units) for Purchase Order.',
-        );
+        ShowMessage.success(context, 'Selected ${_documentLines.length} products ($_currentListUnits units) for Purchase Order.');
       }
     }
   }
@@ -248,9 +237,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   void _prioritizePreOrderDeficitLines(List<InventoryItem> allInventory) {
     if (_documentLines.isEmpty) return;
     final Map<String, InventoryItem> invById = {for (final i in allInventory) i.id: i};
-    final Map<String, InventoryItem> invByName = {
-      for (final i in allInventory) i.productName.trim().toLowerCase(): i,
-    };
+    final Map<String, InventoryItem> invByName = {for (final i in allInventory) i.productName.trim().toLowerCase(): i};
 
     _documentLines.sort((a, b) {
       final invA = invById[a.productId] ?? invByName[a.productName.trim().toLowerCase()];
@@ -279,11 +266,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   Future<void> _openAutomatedPoSuggestions(List<InventoryItem> allInventory) async {
-    final suggestedLines = await AutomatedPoSuggestionDialog.show(
-      context: context,
-      allInventory: allInventory,
-      currencyFormat: _currencyFormat,
-    );
+    final suggestedLines = await AutomatedPoSuggestionDialog.show(context: context, allInventory: allInventory, currencyFormat: _currencyFormat);
 
     if (suggestedLines != null && suggestedLines.isNotEmpty) {
       setState(() {
@@ -294,10 +277,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
       });
       if (mounted) {
-        ShowMessage.success(
-          context,
-          'Applied automated P.O. suggestion with ${_documentLines.length} products.',
-        );
+        ShowMessage.success(context, 'Applied automated P.O. suggestion with ${_documentLines.length} products.');
       }
     }
   }
@@ -314,27 +294,26 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             _documentLines[existingIndex].quantity = neededQty;
           }
         } else {
-          _documentLines.add(PoExtractedLine(
-            productId: item.id,
-            productName: item.productName,
-            imageUrl: item.imageUrl,
-            productSource: item.source.name,
-            category: item.category,
-            tag: item.tag,
-            buyingPrice: item.buyingPrice,
-            sellingPrice: item.sellingPrice,
-            quantity: neededQty,
-            rawDocText: item.productName,
-          ));
+          _documentLines.add(
+            PoExtractedLine(
+              productId: item.id,
+              productName: item.productName,
+              imageUrl: item.imageUrl,
+              productSource: item.source.name,
+              category: item.category,
+              tag: item.tag,
+              buyingPrice: item.buyingPrice,
+              sellingPrice: item.sellingPrice,
+              quantity: neededQty,
+              rawDocText: item.productName,
+            ),
+          );
         }
       }
       _prioritizePreOrderDeficitLines(allInventory);
       orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
     });
-    ShowMessage.success(
-      context,
-      'Added pre-order shortage items to Purchase Order at top priority.',
-    );
+    ShowMessage.success(context, 'Added pre-order shortage items to Purchase Order at top priority.');
   }
 
   /// Reusable catalog matching pipeline for official invoices (Phase 2).
@@ -365,11 +344,11 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         final normB = SupplierProductMapping.normalize(itemB.rawText);
 
         final sameProductId = itemA.productId.isNotEmpty && itemA.productId == itemB.productId;
-        final sameRawText = normA.isNotEmpty && normB.isNotEmpty &&
+        final sameRawText =
+            normA.isNotEmpty &&
+            normB.isNotEmpty &&
             (normA == normB ||
-             ((isTruncatedA || isTruncatedB) &&
-              normA.length >= 5 && normB.length >= 5 &&
-              (normA.startsWith(normB) || normB.startsWith(normA))));
+                ((isTruncatedA || isTruncatedB) && normA.length >= 5 && normB.length >= 5 && (normA.startsWith(normB) || normB.startsWith(normA))));
 
         if ((sameProductId && (isTruncatedA || isTruncatedB)) || sameRawText) {
           allCollidingIndices.add(i);
@@ -387,13 +366,15 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       final matched = result.matchedItems[i];
       final inv = byId[matched.productId];
       if (inv == null) {
-        resolvedAmbiguous.add(AmbiguousPoItem(
-          rawText: matched.rawText.isNotEmpty ? matched.rawText : matched.matchedProductName,
-          quantity: matched.quantity,
-          candidateProductIds: const [],
-          reason: 'Product not found in catalog. Please assign the correct Selecta product equivalent.',
-          documentIndex: i,
-        ));
+        resolvedAmbiguous.add(
+          AmbiguousPoItem(
+            rawText: matched.rawText.isNotEmpty ? matched.rawText : matched.matchedProductName,
+            quantity: matched.quantity,
+            candidateProductIds: const [],
+            reason: 'Product not found in catalog. Please assign the correct Selecta product equivalent.',
+            documentIndex: i,
+          ),
+        );
         continue;
       }
 
@@ -404,8 +385,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         for (final m in knownMappings) {
           if (m.isMultiMatch &&
               (m.normalizedText == targetNorm ||
-               (targetNorm.length >= 6 &&
-                (m.normalizedText.startsWith(targetNorm) || targetNorm.startsWith(m.normalizedText))))) {
+                  (targetNorm.length >= 6 && (m.normalizedText.startsWith(targetNorm) || targetNorm.startsWith(m.normalizedText))))) {
             multiMatchMapping = m;
             break;
           }
@@ -418,44 +398,38 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         final orderInGroup = group.indexOf(i) + 1;
         final totalInGroup = group.length;
 
-        final prefixWords = matched.rawText
-            .replaceAll(RegExp(r'[\.\…\d]'), '')
-            .trim()
-            .toLowerCase()
-            .split(' ')
-            .take(2)
-            .join(' ');
+        final prefixWords = matched.rawText.replaceAll(RegExp(r'[\.\…\d]'), '').trim().toLowerCase().split(' ').take(2).join(' ');
 
         final candidateIds = (multiMatchMapping != null && multiMatchMapping.candidateProductIds.isNotEmpty)
             ? multiMatchMapping.candidateProductIds.where((id) => byId.containsKey(id)).toList()
             : allInventory
-                .where((item) =>
-                    item.category == inv.category ||
-                    (prefixWords.length >= 3 && item.productName.toLowerCase().contains(prefixWords)))
-                .take(4)
-                .map((item) => item.id)
-                .toList();
+                  .where((item) => item.category == inv.category || (prefixWords.length >= 3 && item.productName.toLowerCase().contains(prefixWords)))
+                  .take(4)
+                  .map((item) => item.id)
+                  .toList();
 
-        resolvedAmbiguous.add(AmbiguousPoItem(
-          rawText: matched.rawText,
-          quantity: matched.quantity,
-          candidateProductIds: candidateIds,
-          reason: 'Similar truncated instance (Row $orderInGroup of $totalInGroup): "${matched.rawText}". Please confirm which flavor this row is.',
-          documentIndex: i,
-        ));
+        resolvedAmbiguous.add(
+          AmbiguousPoItem(
+            rawText: matched.rawText,
+            quantity: matched.quantity,
+            candidateProductIds: candidateIds,
+            reason: 'Similar truncated instance (Row $orderInGroup of $totalInGroup): "${matched.rawText}". Please confirm which flavor this row is.',
+            documentIndex: i,
+          ),
+        );
       } else if (multiMatchMapping != null && matched.confidence < 0.95) {
         // Case 2: Single item matching a known multi-variant alias, where AI was not visually 100% certain
-        final candidateIds = multiMatchMapping.candidateProductIds
-            .where((id) => byId.containsKey(id))
-            .toList();
+        final candidateIds = multiMatchMapping.candidateProductIds.where((id) => byId.containsKey(id)).toList();
 
-        resolvedAmbiguous.add(AmbiguousPoItem(
-          rawText: matched.rawText,
-          quantity: matched.quantity,
-          candidateProductIds: candidateIds.isNotEmpty ? candidateIds : [matched.productId],
-          reason: 'Known alias with multiple Selecta flavor options. Please confirm which variant was received.',
-          documentIndex: i,
-        ));
+        resolvedAmbiguous.add(
+          AmbiguousPoItem(
+            rawText: matched.rawText,
+            quantity: matched.quantity,
+            candidateProductIds: candidateIds.isNotEmpty ? candidateIds : [matched.productId],
+            reason: 'Known alias with multiple Selecta flavor options. Please confirm which variant was received.',
+            documentIndex: i,
+          ),
+        );
       } else {
         // Case 3: Safe, unambiguous item
         lineSlots[i] = PoExtractedLine(
@@ -482,12 +456,14 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         cleanText = qtyMatch.group(1)?.trim() ?? cleanText;
         qty = int.tryParse(qtyMatch.group(2) ?? '1') ?? 1;
       }
-      resolvedAmbiguous.add(AmbiguousPoItem(
-        rawText: cleanText,
-        quantity: qty,
-        candidateProductIds: const [],
-        reason: 'Unmatched item from invoice receipt. Please assign the equivalent Selecta product.',
-      ));
+      resolvedAmbiguous.add(
+        AmbiguousPoItem(
+          rawText: cleanText,
+          quantity: qty,
+          candidateProductIds: const [],
+          reason: 'Unmatched item from invoice receipt. Please assign the equivalent Selecta product.',
+        ),
+      );
     }
 
     if (onLiveUpdate != null) {
@@ -526,10 +502,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           }
 
           if (remember) {
-            await _mappingService.saveOrUpdateMapping(
-              rawSupplierText: item.rawText,
-              product: selectedProduct,
-            );
+            await _mappingService.saveOrUpdateMapping(rawSupplierText: item.rawText, product: selectedProduct);
           }
         },
       );
@@ -542,11 +515,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   // Dealer Correction Dialog
   // ============================================================
 
-  Future<void> _showCorrectionDialog(
-    int index,
-    List<InventoryItem> allInventory, {
-    bool isInvoice = false,
-  }) async {
+  Future<void> _showCorrectionDialog(int index, List<InventoryItem> allInventory, {bool isInvoice = false}) async {
     final targetList = isInvoice ? _invoiceLines : _documentLines;
     if (index >= targetList.length) return;
     final line = targetList[index];
@@ -568,11 +537,11 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             final searchResults = filter.trim().isEmpty
                 ? <InventoryItem>[]
                 : allInventory
-                    .where((i) =>
-                        i.productName.toLowerCase().contains(filter.toLowerCase()) ||
-                        i.itemCode.toLowerCase().contains(filter.toLowerCase()))
-                    .take(8)
-                    .toList();
+                      .where(
+                        (i) => i.productName.toLowerCase().contains(filter.toLowerCase()) || i.itemCode.toLowerCase().contains(filter.toLowerCase()),
+                      )
+                      .take(8)
+                      .toList();
 
             final effectiveProduct = replacementProduct;
 
@@ -598,10 +567,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                         children: [
                           Container(
                             padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: (isInvoice ? Colors.teal : Colors.blue).withValues(alpha: 0.12),
-                              shape: BoxShape.circle,
-                            ),
+                            decoration: BoxDecoration(color: (isInvoice ? Colors.teal : Colors.blue).withValues(alpha: 0.12), shape: BoxShape.circle),
                             child: Icon(
                               isInvoice ? Icons.fact_check_outlined : Icons.edit_note_rounded,
                               color: isInvoice ? Colors.teal : Colors.blue,
@@ -640,10 +606,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                           children: [
                             Container(
                               padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.amber.shade100,
-                                shape: BoxShape.circle,
-                              ),
+                              decoration: BoxDecoration(color: Colors.amber.shade100, shape: BoxShape.circle),
                               child: Icon(Icons.receipt_long_outlined, color: Colors.amber.shade900, size: 20),
                             ),
                             const SizedBox(width: 10),
@@ -653,12 +616,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                                 children: [
                                   Text(
                                     isInvoice ? 'ACTUAL INVOICE RECEIPT NAME:' : 'PRINTED ON DOCUMENT:',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.amber.shade900,
-                                      letterSpacing: 0.5,
-                                    ),
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.amber.shade900, letterSpacing: 0.5),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
@@ -693,10 +651,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                                 ),
                                 child: Row(
                                   children: [
-                                    CachedProductImage(
-                                      imageUrl: effectiveProduct?.imageUrl ?? line.imageUrl,
-                                      size: 44,
-                                    ),
+                                    CachedProductImage(imageUrl: effectiveProduct?.imageUrl ?? line.imageUrl, size: 44),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Column(
@@ -717,7 +672,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(8)),
-                                        child: Text('✓ Equivalent Selected', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade900)),
+                                        child: Text(
+                                          '✓ Equivalent Selected',
+                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                                        ),
                                       ),
                                   ],
                                 ),
@@ -727,7 +685,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                               // Quantity editor
                               Row(
                                 children: [
-                                  Text(isInvoice ? 'Quantity on Invoice:' : 'Quantity on Document:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                                  Text(
+                                    isInvoice ? 'Quantity on Invoice:' : 'Quantity on Document:',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                                  ),
                                   const Spacer(),
                                   Container(
                                     decoration: BoxDecoration(
@@ -746,10 +707,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                                           },
                                         ),
                                         Text('$updatedQty', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                                        IconButton(
-                                          icon: const Icon(Icons.add, size: 16),
-                                          onPressed: () => setModalState(() => updatedQty++),
-                                        ),
+                                        IconButton(icon: const Icon(Icons.add, size: 16), onPressed: () => setModalState(() => updatedQty++)),
                                       ],
                                     ),
                                   ),
@@ -801,7 +759,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                                         dense: true,
                                         leading: CachedProductImage(imageUrl: item.imageUrl, size: 32),
                                         title: Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                        subtitle: Text(_currencyFormat.format(item.buyingPrice), style: TextStyle(fontSize: 11, color: colorScheme.primary)),
+                                        subtitle: Text(
+                                          _currencyFormat.format(item.buyingPrice),
+                                          style: TextStyle(fontSize: 11, color: colorScheme.primary),
+                                        ),
                                         trailing: isPicked ? const Icon(Icons.check_circle, color: Colors.green, size: 20) : null,
                                         onTap: () => setModalState(() => replacementProduct = item),
                                       );
@@ -818,8 +779,14 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                                   value: rememberCorrection,
                                   dense: true,
                                   onChanged: (val) => setModalState(() => rememberCorrection = val ?? true),
-                                  title: const Text('Remember this mapping for future scans', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
-                                  subtitle: Text('AI will automatically assign "${line.rawDocText}" to this product next time.', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                                  title: const Text(
+                                    'Remember this mapping for future scans',
+                                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Text(
+                                    'AI will automatically assign "${line.rawDocText}" to this product next time.',
+                                    style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                  ),
                                 ),
                             ],
                           ),
@@ -894,12 +861,11 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                               Navigator.pop(ctx);
 
                               if (rememberCorrection && finalProduct != null && line.rawDocText.isNotEmpty) {
-                                await _mappingService.saveOrUpdateMapping(
-                                  rawSupplierText: line.rawDocText,
-                                  product: finalProduct,
-                                );
+                                await _mappingService.saveOrUpdateMapping(rawSupplierText: line.rawDocText, product: finalProduct);
                               }
-                              if (mounted) ShowMessage.success(context, isInvoice ? 'Invoice item #${index + 1} updated!' : 'Item #${index + 1} updated!');
+                              if (mounted) {
+                                ShowMessage.success(context, isInvoice ? 'Invoice item #${index + 1} updated!' : 'Item #${index + 1} updated!');
+                              }
                             },
                           ),
                         ],
@@ -916,10 +882,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   }
 
   // Add missed line item dialog
-  Future<void> _showAddMissingLineDialog(
-    List<InventoryItem> allInventory, {
-    bool isInvoice = false,
-  }) async {
+  Future<void> _showAddMissingLineDialog(List<InventoryItem> allInventory, {bool isInvoice = false}) async {
     final searchCtrl = TextEditingController();
     InventoryItem? selectedProduct;
     int qty = 1;
@@ -937,11 +900,11 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             final searchResults = filter.trim().isEmpty
                 ? allInventory.take(6).toList()
                 : allInventory
-                    .where((i) =>
-                        i.productName.toLowerCase().contains(filter.toLowerCase()) ||
-                        i.itemCode.toLowerCase().contains(filter.toLowerCase()))
-                    .take(8)
-                    .toList();
+                      .where(
+                        (i) => i.productName.toLowerCase().contains(filter.toLowerCase()) || i.itemCode.toLowerCase().contains(filter.toLowerCase()),
+                      )
+                      .take(8)
+                      .toList();
 
             return Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -953,8 +916,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(isInvoice ? 'Add Line Item to Invoice' : 'Add Line Item Missed by AI',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(
+                        isInvoice ? 'Add Line Item to Invoice' : 'Add Line Item Missed by AI',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
                       const SizedBox(height: 10),
                       TextField(
                         controller: searchCtrl,
@@ -990,7 +955,12 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                         children: [
                           const Text('Quantity: ', style: TextStyle(fontWeight: FontWeight.bold)),
                           const Spacer(),
-                          IconButton(icon: const Icon(Icons.remove), onPressed: () => setModalState(() { if (qty > 1) qty--; })),
+                          IconButton(
+                            icon: const Icon(Icons.remove),
+                            onPressed: () => setModalState(() {
+                              if (qty > 1) qty--;
+                            }),
+                          ),
                           Text('$qty', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           IconButton(icon: const Icon(Icons.add), onPressed: () => setModalState(() => qty++)),
                         ],
@@ -1047,10 +1017,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   // Phase 2: Official Invoice Extraction & Discrepancy Matching
   // ============================================================
 
-  Future<void> _showOfficialInvoiceSourcePicker({
-    bool append = false,
-    required List<InventoryItem> allInventory,
-  }) async {
+  Future<void> _showOfficialInvoiceSourcePicker({bool append = false, required List<InventoryItem> allInventory}) async {
     await showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -1060,12 +1027,30 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16), decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+              ),
               Row(
                 children: [
-                  Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.teal, Colors.green]), shape: BoxShape.circle), child: const Icon(Icons.fact_check_outlined, color: Colors.white, size: 20)),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(colors: [Colors.teal, Colors.green]),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.fact_check_outlined, color: Colors.white, size: 20),
+                  ),
                   const SizedBox(width: 12),
-                  const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Scan Official Invoice', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), Text('Read invoice receipt products & reconcile with P.O.', style: TextStyle(fontSize: 12, color: Colors.grey))])
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Scan Official Invoice', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text('Read invoice receipt products & reconcile with P.O.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -1118,11 +1103,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     List<File> newFiles = [];
     try {
       if (fromGalleryMulti) {
-        final pickedList = await _picker.pickMultiImage(
-          maxWidth: 1600,
-          maxHeight: 1600,
-          imageQuality: 85,
-        );
+        final pickedList = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
         if (pickedList.isNotEmpty) {
           newFiles = pickedList.map((x) => File(x.path)).toList();
         }
@@ -1132,12 +1113,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           newFiles = scanned.images.map((p) => File(p.replaceFirst('file://', ''))).toList();
         }
       } else {
-        final picked = await _picker.pickImage(
-          source: source,
-          maxWidth: 1600,
-          maxHeight: 1600,
-          imageQuality: 85,
-        );
+        final picked = await _picker.pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
         if (picked != null) {
           newFiles = [File(picked.path)];
         }
@@ -1268,7 +1244,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       if (mounted) {
         final discrepanciesCount = _comparisonDiscrepancies.where((d) => d.type != PoDiscrepancyType.matched).length;
         if (discrepanciesCount > 0) {
-          ShowMessage.warning(context, '⚠️ Invoice read: ${_invoiceLines.length} products. Detected $discrepanciesCount quantity discrepancy item(s).');
+          ShowMessage.warning(
+            context,
+            '⚠️ Invoice read: ${_invoiceLines.length} products. Detected $discrepanciesCount quantity discrepancy item(s).',
+          );
         } else {
           ShowMessage.success(context, '✅ Invoice read & verified: ${_invoiceLines.length} products. All items match P.O. quantities!');
         }
@@ -1318,20 +1297,22 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         type = PoDiscrepancyType.excess;
       }
 
-      discrepancies.add(PoInvoiceDiscrepancyItem(
-        productId: poItem.productId,
-        productName: poItem.productName,
-        imageUrl: poItem.imageUrl,
-        productSource: poItem.productSource,
-        category: poItem.category,
-        tag: poItem.tag,
-        unitCost: poItem.buyingPrice,
-        sellingPrice: poItem.sellingPrice,
-        orderedQuantity: orderedQty,
-        invoicedQuantity: invoicedQty,
-        type: type,
-        rawDocText: sampleLineByProductId[poItem.productId]?.rawDocText ?? '',
-      ));
+      discrepancies.add(
+        PoInvoiceDiscrepancyItem(
+          productId: poItem.productId,
+          productName: poItem.productName,
+          imageUrl: poItem.imageUrl,
+          productSource: poItem.productSource,
+          category: poItem.category,
+          tag: poItem.tag,
+          unitCost: poItem.buyingPrice,
+          sellingPrice: poItem.sellingPrice,
+          orderedQuantity: orderedQty,
+          invoicedQuantity: invoicedQty,
+          type: type,
+          rawDocText: sampleLineByProductId[poItem.productId]?.rawDocText ?? '',
+        ),
+      );
     }
 
     // 2. Extra items on invoice not in the original PO
@@ -1339,20 +1320,22 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       if (!matchedProductIds.contains(entry.key)) {
         final sample = sampleLineByProductId[entry.key];
         if (sample != null) {
-          discrepancies.add(PoInvoiceDiscrepancyItem(
-            productId: sample.productId,
-            productName: sample.productName,
-            imageUrl: sample.imageUrl,
-            productSource: sample.productSource,
-            category: sample.category,
-            tag: sample.tag,
-            unitCost: sample.buyingPrice,
-            sellingPrice: sample.sellingPrice,
-            orderedQuantity: 0,
-            invoicedQuantity: entry.value,
-            type: PoDiscrepancyType.extra,
-            rawDocText: sample.rawDocText,
-          ));
+          discrepancies.add(
+            PoInvoiceDiscrepancyItem(
+              productId: sample.productId,
+              productName: sample.productName,
+              imageUrl: sample.imageUrl,
+              productSource: sample.productSource,
+              category: sample.category,
+              tag: sample.tag,
+              unitCost: sample.buyingPrice,
+              sellingPrice: sample.sellingPrice,
+              orderedQuantity: 0,
+              invoicedQuantity: entry.value,
+              type: PoDiscrepancyType.extra,
+              rawDocText: sample.rawDocText,
+            ),
+          );
         }
       }
     }
@@ -1379,32 +1362,36 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
     for (final d in discrepancies) {
       if (d.invoicedQuantity > 0) {
-        confirmedItems.add(ConfirmedInvoiceItem(
-          productId: d.productId,
-          productName: d.productName,
-          imageUrl: d.imageUrl,
-          productSource: d.productSource,
-          category: d.category,
-          tag: d.tag,
-          unitCost: d.unitCost,
-          sellingPrice: d.sellingPrice,
-          orderedQuantity: d.orderedQuantity,
-          deliveredQuantity: d.invoicedQuantity,
-        ));
+        confirmedItems.add(
+          ConfirmedInvoiceItem(
+            productId: d.productId,
+            productName: d.productName,
+            imageUrl: d.imageUrl,
+            productSource: d.productSource,
+            category: d.category,
+            tag: d.tag,
+            unitCost: d.unitCost,
+            sellingPrice: d.sellingPrice,
+            orderedQuantity: d.orderedQuantity,
+            deliveredQuantity: d.invoicedQuantity,
+          ),
+        );
       } else {
-        missingItems.add(OrderItem(
-          productId: d.productId,
-          productName: d.productName,
-          imageUrl: d.imageUrl,
-          productSource: d.productSource,
-          category: d.category,
-          tag: d.tag,
-          buyingPrice: d.unitCost,
-          sellingPrice: d.sellingPrice,
-          orderedQuantity: d.orderedQuantity,
-          pickedQuantity: 0,
-          isPicked: false,
-        ));
+        missingItems.add(
+          OrderItem(
+            productId: d.productId,
+            productName: d.productName,
+            imageUrl: d.imageUrl,
+            productSource: d.productSource,
+            category: d.category,
+            tag: d.tag,
+            buyingPrice: d.unitCost,
+            sellingPrice: d.sellingPrice,
+            orderedQuantity: d.orderedQuantity,
+            pickedQuantity: 0,
+            isPicked: false,
+          ),
+        );
       }
     }
 
@@ -1568,7 +1555,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     final missingList = _comparisonDiscrepancies.where((d) => d.type == PoDiscrepancyType.missing).toList();
     final excessList = _comparisonDiscrepancies.where((d) => d.type == PoDiscrepancyType.excess).toList();
 
-    String msg = 'Confirm ${confirmed.length} delivered item(s) — $totalDeliveredUnits total units.\n\n'
+    String msg =
+        'Confirm ${confirmed.length} delivered item(s) — $totalDeliveredUnits total units.\n\n'
         '• Invoice No: $officialInvoiceNum\n'
         '• Invoice Date: ${DateFormat('MMM dd, yyyy').format(_officialInvoiceDate)}\n'
         '• Invoiced Total: ${_currencyFormat.format(confirmedTotal)}\n'
@@ -1576,7 +1564,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
     if (shortages.isNotEmpty) {
       msg += '⚠️ Shortages (${shortages.length} items):\n';
-      msg += shortages.map((s) => '• ${s.productName}: Invoiced ${s.invoicedQuantity} of ${s.orderedQuantity} (Short ${s.differenceQuantity})').join('\n');
+      msg += shortages
+          .map((s) => '• ${s.productName}: Invoiced ${s.invoicedQuantity} of ${s.orderedQuantity} (Short ${s.differenceQuantity})')
+          .join('\n');
       msg += '\n\n';
     }
 
@@ -1588,12 +1578,15 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
     if (excessList.isNotEmpty) {
       msg += '📦 Excess Delivered (${excessList.length} items):\n';
-      msg += excessList.map((e) => '• ${e.productName}: Invoiced ${e.invoicedQuantity} of ${e.orderedQuantity} (+${e.differenceQuantity})').join('\n');
+      msg += excessList
+          .map((e) => '• ${e.productName}: Invoiced ${e.invoicedQuantity} of ${e.orderedQuantity} (+${e.differenceQuantity})')
+          .join('\n');
       msg += '\n\n';
     }
 
     if (overpayment > 0) {
-      msg += '💰 Overpayment Credit: ${_currencyFormat.format(overpayment)}\n'
+      msg +=
+          '💰 Overpayment Credit: ${_currencyFormat.format(overpayment)}\n'
           'Recorded as credit for dealer to deduct from future purchase orders.';
     } else {
       msg += '✅ Invoiced amounts match — no overpayment credit.';
@@ -1659,11 +1652,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
 
     try {
-      await _controller.deletePurchaseOrder(
-        context: context,
-        purchaseOrderId: widget.purchaseorderID,
-        order: widget.purchaseorder,
-      );
+      await _controller.deletePurchaseOrder(context: context, purchaseOrderId: widget.purchaseorderID, order: widget.purchaseorder);
       if (mounted) {
         Helperfunctions.showLoading(showLoading: false);
         setState(() => _isSaving = false);
@@ -1705,9 +1694,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
   // Phase 2 Delivery Section: Collapsible & streamlined to avoid clutter on pending orders
   Widget _buildPhase2DeliverySection(List<InventoryItem> allInventory) {
-    final hasInvoiceData = _officialInvoiceImages.isNotEmpty ||
-        _officialInvoiceNumberController.text.trim().isNotEmpty ||
-        _invoiceLines.isNotEmpty;
+    final hasInvoiceData = _officialInvoiceImages.isNotEmpty || _officialInvoiceNumberController.text.trim().isNotEmpty || _invoiceLines.isNotEmpty;
 
     if (_showPhase2Inline) {
       return Column(
@@ -1782,10 +1769,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             ),
             icon: Icon(hasInvoiceData ? Icons.edit_note_rounded : Icons.document_scanner_outlined, size: 16),
-            label: Text(
-              hasInvoiceData ? 'Edit Invoice' : 'Receive Delivery',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-            ),
+            label: Text(hasInvoiceData ? 'Edit Invoice' : 'Receive Delivery', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -1829,57 +1813,38 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       onTabChanged: (tab) => setState(() => _invoiceSelectedTab = tab),
       showMatchedItems: _showMatchedItems,
       onToggleMatchedItems: () => setState(() => _showMatchedItems = !_showMatchedItems),
-      onShowCorrectionDialog: (idx, inv, {required bool isInvoice}) =>
-          _showCorrectionDialog(idx, inv, isInvoice: isInvoice),
+      onShowCorrectionDialog: (idx, inv, {required bool isInvoice}) => _showCorrectionDialog(idx, inv, isInvoice: isInvoice),
       onQuantityDecrement: (line) {
         if (line.quantity > 1) {
           setState(() => line.quantity--);
           _recomputeDiscrepancies(allInventory);
           final invTotal = _invoiceLines.fold(0.0, (acc, l) => acc + l.lineTotal);
-          _officialInvoiceAmountController.text =
-              Helperfunctions.formatDoubleAmountForField(invTotal);
+          _officialInvoiceAmountController.text = Helperfunctions.formatDoubleAmountForField(invTotal);
         }
       },
       onQuantityIncrement: (line) {
         setState(() => line.quantity++);
         _recomputeDiscrepancies(allInventory);
         final invTotal = _invoiceLines.fold(0.0, (acc, l) => acc + l.lineTotal);
-        _officialInvoiceAmountController.text =
-            Helperfunctions.formatDoubleAmountForField(invTotal);
+        _officialInvoiceAmountController.text = Helperfunctions.formatDoubleAmountForField(invTotal);
       },
-      onAddMissingLine: (inv, {required bool isInvoice}) =>
-          _showAddMissingLineDialog(inv, isInvoice: isInvoice),
+      onAddMissingLine: (inv, {required bool isInvoice}) => _showAddMissingLineDialog(inv, isInvoice: isInvoice),
       allInventory: allInventory,
     );
   }
 
   // Phase 3 Confirmed / Invoiced Status Card
   Widget _buildConfirmedStatusCard() {
-    return PoConfirmedStatusCard(
-      purchaseorder: widget.purchaseorder,
-      currencyFormat: _currencyFormat,
-    );
+    return PoConfirmedStatusCard(purchaseorder: widget.purchaseorder, currencyFormat: _currencyFormat);
   }
 
-
-
   Future<void> _pickOrderDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedOrderDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
-    );
+    final picked = await showDatePicker(context: context, initialDate: _selectedOrderDate, firstDate: DateTime(2020), lastDate: DateTime(2035));
     if (picked != null) setState(() => _selectedOrderDate = picked);
   }
 
   Future<void> _pickOfficialInvoiceDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _officialInvoiceDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2035),
-    );
+    final picked = await showDatePicker(context: context, initialDate: _officialInvoiceDate, firstDate: DateTime(2020), lastDate: DateTime(2035));
     if (picked != null) setState(() => _officialInvoiceDate = picked);
   }
 
@@ -1905,10 +1870,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6D28D9).withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: const Color(0xFF6D28D9).withValues(alpha: 0.15), shape: BoxShape.circle),
                 child: const Icon(Icons.star_rounded, color: Color(0xFF6D28D9), size: 16),
               ),
               const SizedBox(width: 8),
@@ -1918,18 +1880,11 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   children: [
                     Text(
                       'Pre-Order Restock (${recommendedItems.length} items)',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF5B21B6),
-                      ),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF5B21B6)),
                     ),
                     Text(
                       '$totalRecommendedUnits units needed for booked customer orders',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -2050,13 +2005,14 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                     flex: 2,
                     child: Builder(
                       builder: (context) {
-                        final hasInvoice = _invoiceLines.isNotEmpty || _comparisonResult != null || _officialInvoiceNumberController.text.trim().isNotEmpty;
+                        final hasInvoice =
+                            _invoiceLines.isNotEmpty || _comparisonResult != null || _officialInvoiceNumberController.text.trim().isNotEmpty;
                         return FilledButton.icon(
                           onPressed: _isSaving
                               ? null
                               : hasInvoice
-                                  ? onConfirmOfficialInvoice
-                                  : () => setState(() => _showPhase2Inline = true),
+                              ? onConfirmOfficialInvoice
+                              : () => setState(() => _showPhase2Inline = true),
                           style: FilledButton.styleFrom(
                             backgroundColor: Colors.teal,
                             minimumSize: const Size(0, 48),
@@ -2069,8 +2025,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                             _isSaving
                                 ? 'Attaching...'
                                 : hasInvoice
-                                    ? 'Attach Invoice & Replenish'
-                                    : 'Receive Delivery',
+                                ? 'Attach Invoice & Replenish'
+                                : 'Receive Delivery',
                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                           ),
                         );
@@ -2202,12 +2158,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
     // Phase 3: confirmed / invoiced PO (read-only view)
     if (_isEditing && _isConfirmed) {
-      final poRef = widget.purchaseorder.poNumber.isNotEmpty
-          ? widget.purchaseorder.poNumber
-          : widget.purchaseorder.invoiceNumber;
-      final invRef = widget.purchaseorder.invoiceNumber.isNotEmpty
-          ? ' • Inv: ${widget.purchaseorder.invoiceNumber}'
-          : '';
+      final poRef = widget.purchaseorder.poNumber.isNotEmpty ? widget.purchaseorder.poNumber : widget.purchaseorder.invoiceNumber;
+      final invRef = widget.purchaseorder.invoiceNumber.isNotEmpty ? ' • Inv: ${widget.purchaseorder.invoiceNumber}' : '';
       return PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -2277,22 +2229,14 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         builder: (context, snapshot) {
           // Purchase Orders are strictly exclusive to Selecta products.
           // Other products are completely excluded from PO catalog matching, suggestions, and discrepancy analysis.
-          final allInventory = (snapshot.data ?? [])
-              .where((item) => item.source == InventoryProductSource.selecta)
-              .toList();
+          final allInventory = (snapshot.data ?? []).where((item) => item.source == InventoryProductSource.selecta).toList();
 
-          if (widget.initialLines != null &&
-              !_hasPrioritizedInitialLines &&
-              allInventory.isNotEmpty &&
-              _documentLines.isNotEmpty) {
+          if (widget.initialLines != null && !_hasPrioritizedInitialLines && allInventory.isNotEmpty && _documentLines.isNotEmpty) {
             _hasPrioritizedInitialLines = true;
             _prioritizePreOrderDeficitLines(allInventory);
           }
 
-          if (widget.initialOpenManualPicker &&
-              !_hasTriggeredInitialManualPicker &&
-              allInventory.isNotEmpty &&
-              _documentLines.isEmpty) {
+          if (widget.initialOpenManualPicker && !_hasTriggeredInitialManualPicker && allInventory.isNotEmpty && _documentLines.isEmpty) {
             _hasTriggeredInitialManualPicker = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
@@ -2307,207 +2251,172 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               subtitle: isNewRecord ? 'New Purchase Order' : '🟡 Pending Delivery',
               onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
             ),
-          bottomNavigationBar: _buildStickyBottomBar(allInventory),
-          body: CustomScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            slivers: [
-              // Document Reconciliation Header
-              SliverToBoxAdapter(child: _buildDocumentReconciliationHeader(allInventory)),
+            bottomNavigationBar: _buildStickyBottomBar(allInventory),
+            body: CustomScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              slivers: [
+                // Document Reconciliation Header
+                SliverToBoxAdapter(child: _buildDocumentReconciliationHeader(allInventory)),
 
-              // Phase 2 Delivery Section (if existing pending PO)
-              if (_isEditing && _isPending)
-                SliverToBoxAdapter(child: _buildPhase2DeliverySection(allInventory)),
+                // Phase 2 Delivery Section (if existing pending PO)
+                if (_isEditing && _isPending) SliverToBoxAdapter(child: _buildPhase2DeliverySection(allInventory)),
 
-              // Pre-Order Shortage Recommendations Banner
-              SliverToBoxAdapter(child: _buildPreOrderRecommendationsBanner(allInventory, colorScheme)),
+                // Pre-Order Shortage Recommendations Banner
+                SliverToBoxAdapter(child: _buildPreOrderRecommendationsBanner(allInventory, colorScheme)),
 
-              // If no items added yet: Prompt to select catalog products
-              if (_documentLines.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: colorScheme.primary.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
+                // If no items added yet: Prompt to select catalog products
+                if (_documentLines.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+                              child: Icon(Icons.inventory_2_outlined, size: 44, color: colorScheme.primary),
                             ),
-                            child: Icon(Icons.inventory_2_outlined, size: 44, color: colorScheme.primary),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Start Your Purchase Order',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Select products from your catalog or generate restock suggestions based on inventory levels.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: 20),
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 12,
-                            runSpacing: 10,
-                            children: [
-                              FilledButton.icon(
-                                onPressed: () => _openManualPoPicker(allInventory),
-                                icon: const Icon(Icons.add_shopping_cart_rounded),
-                                label: const Text('Browse Catalog', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                              FilledButton.tonalIcon(
-                                onPressed: () => _openAutomatedPoSuggestions(allInventory),
-                                icon: const Icon(Icons.auto_awesome_rounded),
-                                label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
-                            ],
+                            const SizedBox(height: 16),
+                            const Text('Start Your Purchase Order', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Select products from your catalog or generate restock suggestions based on inventory levels.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: 20),
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 12,
+                              runSpacing: 10,
+                              children: [
+                                FilledButton.icon(
+                                  onPressed: () => _openManualPoPicker(allInventory),
+                                  icon: const Icon(Icons.add_shopping_cart_rounded),
+                                  label: const Text('Browse Catalog', style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                                FilledButton.tonalIcon(
+                                  onPressed: () => _openAutomatedPoSuggestions(allInventory),
+                                  icon: const Icon(Icons.auto_awesome_rounded),
+                                  label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else ...[
+                  // Section Header for Document Lines
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.format_list_numbered_rounded, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Items (${_documentLines.length})',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                )
-              else ...[
-              // Section Header for Document Lines
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.format_list_numbered_rounded, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Items (${_documentLines.length})',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _openManualPoPicker(allInventory),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                        ),
-                        icon: const Icon(Icons.edit_note_rounded, size: 16),
-                        label: const Text('Catalog', style: TextStyle(fontSize: 12)),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _openAutomatedPoSuggestions(allInventory),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                        ),
-                        icon: const Icon(Icons.auto_awesome_rounded, size: 16),
-                        label: const Text('Suggest', style: TextStyle(fontSize: 12)),
-                      ),
-                      const SizedBox(width: 4),
-                      TextButton.icon(
-                        onPressed: () => _showAddMissingLineDialog(allInventory),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                        ),
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('Add', style: TextStyle(fontSize: 12)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
 
-                // Extracted Document Lines List (Numbered in exact document sequence)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
+                  // Extracted Document Lines List (Numbered in exact document sequence)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
                         return _buildDocumentLineCard(index, _documentLines[index], colorScheme, allInventory);
-                      },
-                      childCount: _documentLines.length,
+                      }, childCount: _documentLines.length),
                     ),
                   ),
-                ),
-              ],
+                ],
 
-              // Overpayment deduction selector (if unsettled overpayments exist)
-              if (_unsettledOverpayments.isNotEmpty && isNewRecord)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        side: BorderSide(color: Colors.orange.shade300),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.savings_outlined, color: Colors.orange, size: 20),
-                                const SizedBox(width: 8),
-                                const Text('Apply Existing Overpayment Credit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                              ],
-                            ),
-                            const Divider(height: 12),
-                            ..._unsettledOverpayments.map((doc) {
-                              final order = doc.data();
-                              final isChecked = _selectedOverpaymentIds.contains(doc.id);
-                              final label = order.invoiceNumber.isNotEmpty
-                                  ? order.invoiceNumber
-                                  : 'Date: ${Helperfunctions.formatTimestampForDisplay(order.orderDate)}';
-                              return CheckboxListTile(
-                                dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                value: isChecked,
-                                title: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                                subtitle: Text('Credit: ${_currencyFormat.format(order.overpayment)}', style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.bold)),
-                                onChanged: (v) => setState(() {
-                                  if (v == true) {
-                                    _selectedOverpaymentIds.add(doc.id);
-                                  } else {
-                                    _selectedOverpaymentIds.remove(doc.id);
-                                  }
-                                }),
-                              );
-                            }),
-                          ],
+                // Overpayment deduction selector (if unsettled overpayments exist)
+                if (_unsettledOverpayments.isNotEmpty && isNewRecord)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: BorderSide(color: Colors.orange.shade300),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.savings_outlined, color: Colors.orange, size: 20),
+                                  const SizedBox(width: 8),
+                                  const Text('Apply Existing Overpayment Credit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                                ],
+                              ),
+                              const Divider(height: 12),
+                              ..._unsettledOverpayments.map((doc) {
+                                final order = doc.data();
+                                final isChecked = _selectedOverpaymentIds.contains(doc.id);
+                                final label = order.invoiceNumber.isNotEmpty
+                                    ? order.invoiceNumber
+                                    : 'Date: ${Helperfunctions.formatTimestampForDisplay(order.orderDate)}';
+                                return CheckboxListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  value: isChecked,
+                                  title: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                  subtitle: Text(
+                                    'Credit: ${_currencyFormat.format(order.overpayment)}',
+                                    style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.bold),
+                                  ),
+                                  onChanged: (v) => setState(() {
+                                    if (v == true) {
+                                      _selectedOverpaymentIds.add(doc.id);
+                                    } else {
+                                      _selectedOverpaymentIds.remove(doc.id);
+                                    }
+                                  }),
+                                );
+                              }),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
 
-              if (!isNewRecord)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    child: AuditHistoryWidget(
-                      createdBy: widget.purchaseorder.createdBy,
-                      createdDate: widget.purchaseorder.createdDate,
-                      createdPage: widget.purchaseorder.createdPage,
-                      lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
-                      lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
-                      lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+                if (!isNewRecord)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      child: AuditHistoryWidget(
+                        createdBy: widget.purchaseorder.createdBy,
+                        createdDate: widget.purchaseorder.createdDate,
+                        createdPage: widget.purchaseorder.createdPage,
+                        lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
+                        lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
+                        lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-        );
-      },
-    ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
