@@ -427,6 +427,7 @@ class Helperfunctions {
 
   static BuildContext? _activeLoadingContext;
   static bool _isLoadingDialogOpen = false;
+  static bool _isProgrammaticDismiss = false;
 
   static Future<void> showLoading({
     BuildContext? context,
@@ -436,15 +437,17 @@ class Helperfunctions {
     ValueNotifier<String>? statusNotifier,
     VoidCallback? onCancel,
     bool showCancelButton = false,
+    bool barrierDismissible = false,
   }) async {
     if (showLoading) {
       if (_isLoadingDialogOpen) return;
       if (context == null || !context.mounted) return;
       _isLoadingDialogOpen = true;
+      _isProgrammaticDismiss = false;
 
       showDialog<void>(
         context: context,
-        barrierDismissible: onCancel != null, // Allows closing by tapping outside if cancellable
+        barrierDismissible: barrierDismissible,
         useRootNavigator: true,
         builder: (BuildContext dialogContext) {
           _activeLoadingContext = dialogContext;
@@ -463,7 +466,7 @@ class Helperfunctions {
           return PopScope(
             canPop: canCancel, // Allows closing via physical back button or swipe if cancellable
             onPopInvokedWithResult: (didPop, result) {
-              if (didPop && onCancel != null) {
+              if (didPop && onCancel != null && !_isProgrammaticDismiss && result != true) {
                 _isLoadingDialogOpen = false;
                 _activeLoadingContext = null;
                 onCancel();
@@ -575,17 +578,19 @@ class Helperfunctions {
         },
       ).then((_) {
         _isLoadingDialogOpen = false;
+        _isProgrammaticDismiss = false;
         _activeLoadingContext = null;
       });
     } else {
       if (!_isLoadingDialogOpen && _activeLoadingContext == null) return;
       _isLoadingDialogOpen = false;
+      _isProgrammaticDismiss = true;
 
       final dialogCtx = _activeLoadingContext;
       _activeLoadingContext = null;
 
       if (dialogCtx != null && dialogCtx.mounted) {
-        Navigator.of(dialogCtx).pop();
+        Navigator.of(dialogCtx).pop(true);
       }
     }
   }

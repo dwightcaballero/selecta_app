@@ -180,7 +180,8 @@ class GeminiAiService {
     'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
   ];
-  static const Duration requestTimeout = Duration(seconds: 25);
+  static const Duration requestTimeout = Duration(seconds: 35);
+  static const Duration visionTimeout = Duration(seconds: 120);
   static const String _usageCollection = 'ai_usage_metrics';
   static const String defaultApiKey = '';
 
@@ -421,7 +422,7 @@ class GeminiAiService {
     final lower = errStr.toLowerCase();
 
     if (lower.contains('timeoutexception') || lower.contains('timed out')) {
-      return 'Request timed out after 25 seconds. Please check your network connection and try again.';
+      return 'Request timed out. Please check your network connection and try again.';
     }
     if (lower.contains('api key') || lower.contains('api_key') || lower.contains('unauthenticated')) {
       return 'Invalid or missing Gemini API Key. Please verify your API key in Configurations.';
@@ -516,6 +517,7 @@ class GeminiAiService {
             .sendMessage(Content.text(userMessage))
             .timeout(requestTimeout);
         await recordAiUsage();
+        _activeModelIndex = 0;
         return response.text ?? 'No response received from Gemini.';
       } catch (e) {
         lastError = e;
@@ -555,6 +557,7 @@ class GeminiAiService {
             .generateContent([Content.text(prompt)])
             .timeout(requestTimeout);
         await recordAiUsage();
+        _activeModelIndex = 0;
         return response.text ?? 'No response generated.';
       } catch (e) {
         lastError = e;
@@ -760,8 +763,9 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
 
         final content = [Content.multi(parts)];
 
-        final response = await model.generateContent(content).timeout(requestTimeout);
+        final response = await model.generateContent(content).timeout(visionTimeout);
         await recordAiUsage();
+        _activeModelIndex = 0;
         final rawText = response.text ?? '';
         return _parseExtractedPurchaseOrderData(rawText, catalog, knownMappings);
       } catch (e) {
@@ -935,8 +939,9 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
 
         final response = await model
             .generateContent([Content.multi(parts)])
-            .timeout(requestTimeout);
+            .timeout(visionTimeout);
         await recordAiUsage();
+        _activeModelIndex = 0;
         return _parseExtractedPurchaseOrderData(response.text ?? '', catalog, knownMappings);
       } catch (e) {
         lastError = e;
@@ -1042,8 +1047,9 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
 
         final response = await model
             .generateContent([Content.multi(parts)])
-            .timeout(requestTimeout);
+            .timeout(visionTimeout);
         await recordAiUsage();
+        _activeModelIndex = 0;
         final rawText = response.text ?? '';
         return _parseInvoiceComparisonResult(rawText, originalPoItems);
       } catch (e) {
@@ -1427,8 +1433,9 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
         }
 
         final content = [Content.multi(parts)];
-        final response = await model.generateContent(content).timeout(requestTimeout);
+        final response = await model.generateContent(content).timeout(visionTimeout);
         await recordAiUsage();
+        _activeModelIndex = 0;
         final rawText = response.text ?? '';
         return _parseExtractedSupplierStockData(rawText, selectaCatalog);
       } catch (e) {

@@ -34,7 +34,7 @@ void main() {
     test('formatAiError returns clear, actionable error messages for various failure types', () {
       expect(
         GeminiAiService.formatAiError(Exception('TimeoutException after 0:00:25.000000')),
-        contains('Request timed out after 25 seconds'),
+        contains('Request timed out'),
       );
       expect(
         GeminiAiService.formatAiError(Exception('ClientException: models/gemini-3.5-flash is not found')),

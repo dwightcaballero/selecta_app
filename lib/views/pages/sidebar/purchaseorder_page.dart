@@ -35,13 +35,11 @@ class PurchaseorderPage extends StatefulWidget {
     required this.purchaseorderID,
     required this.purchaseorder,
     this.initialOpenManualPicker = false,
-    this.initialOpenScanner = false,
     this.initialLines,
   });
   final Purchaseorder purchaseorder;
   final String purchaseorderID;
   final bool initialOpenManualPicker;
-  final bool initialOpenScanner;
   final List<PoExtractedLine>? initialLines;
 
   @override
@@ -64,8 +62,6 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
   bool isNewRecord = false;
   String networkImagePath = '';
-  final List<File> _pickedImages = [];
-  File? get _pickedImage => _pickedImages.isNotEmpty ? _pickedImages.first : null;
 
   DateTime _selectedOrderDate = DateTime.now();
   DateTime _officialInvoiceDate = DateTime.now();
@@ -73,19 +69,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   List<QueryDocumentSnapshot<Purchaseorder>> _unsettledOverpayments = [];
   final Set<String> _selectedOverpaymentIds = {};
 
-  // Document Lines in the exact order read from the document
+  // Document Lines in the exact order selected from the catalog
   final List<PoExtractedLine> _documentLines = [];
 
-  // Metadata read directly from the document by AI
-  double _docTotalAmountRead = 0.0;
-  int _docTotalUnitsRead = 0;
-
   bool _isSaving = false;
-  bool _isAnalyzingWithAi = false;
   bool _isComparingWithAi = false;
   bool _showDetailsCard = true;
 
-  String? _aiExtractionSummary;
   final List<File> _officialInvoiceImages = [];
   InvoiceComparisonResult? _comparisonResult;
 
@@ -96,7 +86,6 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   int _invoiceSelectedTab = 0;
   bool _showMatchedItems = false;
   bool _hasTriggeredInitialManualPicker = false;
-  bool _hasTriggeredInitialScanner = false;
   bool _hasPrioritizedInitialLines = false;
   bool _showPhase2Inline = false;
   bool _showPreOrderChips = false;
@@ -105,7 +94,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   bool get _isPending => widget.purchaseorder.status == 'pending';
   bool get _isConfirmed => widget.purchaseorder.status == 'confirmed' || widget.purchaseorder.status == 'invoiced';
 
-  // Real-time calculated properties from the extracted line items
+  // Real-time calculated properties from the line items
   int get _currentListUnits => _documentLines.fold(0, (acc, l) => acc + l.quantity);
   double get _currentListTotalCost => _documentLines.fold(0.0, (acc, l) => acc + l.lineTotal);
   int get _currentListCount => _documentLines.where((l) => l.quantity > 0).length;
@@ -115,8 +104,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     if (isNewRecord) {
       return _documentLines.isNotEmpty ||
           orderNumberController.text.trim().isNotEmpty ||
-          _officialInvoiceNumberController.text.trim().isNotEmpty ||
-          _pickedImages.isNotEmpty;
+          _officialInvoiceNumberController.text.trim().isNotEmpty;
     }
     if (orderNumberController.text.trim() != widget.purchaseorder.poNumber &&
         orderNumberController.text.trim() != widget.purchaseorder.invoiceNumber) {
@@ -125,7 +113,6 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     if (_officialInvoiceNumberController.text.trim() != widget.purchaseorder.invoiceNumber) {
       return true;
     }
-    if (_pickedImages.isNotEmpty) return true;
     if (_documentLines.length != widget.purchaseorder.items.length) return true;
     for (final line in _documentLines) {
       final origMatches = widget.purchaseorder.items.where((it) => it.productId == line.productId);
@@ -153,9 +140,6 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       _officialInvoiceAmountController.text = widget.purchaseorder.invoiceAmount > 0
           ? Helperfunctions.formatDoubleAmountForField(widget.purchaseorder.invoiceAmount)
           : '';
-      _docTotalAmountRead = widget.purchaseorder.invoiceAmount > 0
-          ? widget.purchaseorder.invoiceAmount
-          : widget.purchaseorder.orderAmount;
 
       // Populate document lines from existing pending/confirmed items
       for (final item in widget.purchaseorder.items) {
@@ -172,14 +156,10 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           rawDocText: item.productName,
         ));
       }
-      _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
     } else {
       if (widget.initialLines != null && widget.initialLines!.isNotEmpty) {
         _documentLines.addAll(widget.initialLines!);
-        _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
-        _docTotalAmountRead = _currentListTotalCost;
         orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
-        _aiExtractionSummary = '📋 Selected ${_documentLines.length} products ($_currentListUnits units)';
       }
       _loadUnsettledOverpayments();
     }
@@ -252,12 +232,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           ..clear()
           ..addAll(selectedLines);
         _prioritizePreOrderDeficitLines(allInventory);
-        _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
-        _docTotalAmountRead = _currentListTotalCost;
         orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
-        _aiExtractionSummary = _documentLines.isNotEmpty
-            ? '📋 Manually selected ${_documentLines.length} products ($_currentListUnits units)'
-            : null;
       });
       if (_documentLines.isNotEmpty && mounted) {
         ShowMessage.success(
@@ -316,11 +291,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           ..clear()
           ..addAll(suggestedLines);
         _prioritizePreOrderDeficitLines(allInventory);
-        _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
-        _docTotalAmountRead = _currentListTotalCost;
         orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
-        _aiExtractionSummary =
-            '✨ Auto-suggested ${_documentLines.length} products ($_currentListUnits units)';
       });
       if (mounted) {
         ShowMessage.success(
@@ -358,10 +329,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         }
       }
       _prioritizePreOrderDeficitLines(allInventory);
-      _docTotalUnitsRead = _documentLines.fold(0, (acc, l) => acc + l.quantity);
-      _docTotalAmountRead = _currentListTotalCost;
       orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
-      _aiExtractionSummary = '⭐ Added ${deficitItems.length} recommended pre-order items';
     });
     ShowMessage.success(
       context,
@@ -369,223 +337,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
   }
 
-  Future<void> _showImageSourcePicker(List<InventoryItem> allInventory, {bool append = false}) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library_outlined, color: Colors.orange, size: 28),
-                title: Text(
-                  append ? 'Add More Screenshots' : 'Upload Screenshot(s) from Gallery',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: const Text('Pick 1 scrolling screenshot (auto-sliced) or multiple screenshots'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handlePickMultiImagePhase1(allInventory, append: append);
-                },
-              ),
-              const Divider(height: 8),
-              ListTile(
-                leading: const Icon(Icons.document_scanner_outlined, color: Colors.blue, size: 28),
-                title: const Text('Scan Document (Auto-Crop, up to 4 pages)', style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text('Best clarity for paper invoices and physical receipts'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handleScanPhase1(allInventory, append: append);
-                },
-              ),
-              const Divider(height: 8),
-              ListTile(
-                leading: const Icon(Icons.camera_alt_outlined, color: Colors.green, size: 28),
-                title: const Text('Take Photo with Camera', style: TextStyle(fontWeight: FontWeight.bold)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _handlePickSingleImagePhase1(ImageSource.camera, allInventory, append: append);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _handleScanPhase1(List<InventoryItem> allInventory, {bool append = false}) async {
-    try {
-      final scanned = await FlutterDocScanner().getScannedDocumentAsImages(page: 4);
-      if (scanned != null && scanned.images.isNotEmpty) {
-        final newFiles = scanned.images.map((p) => File(p.replaceFirst('file://', ''))).toList();
-        final targetList = append ? [..._pickedImages, ...newFiles] : newFiles;
-        await _processImagesWithAi(targetList, allInventory);
-      }
-    } catch (e) {
-      if (mounted) ShowMessage.error(context, 'Scanner error: $e');
-    }
-  }
-
-  Future<void> _handlePickMultiImagePhase1(List<InventoryItem> allInventory, {bool append = false}) async {
-    try {
-      final List<XFile> pickedList = await _picker.pickMultiImage(
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 85,
-      );
-      if (pickedList.isNotEmpty) {
-        final newFiles = pickedList.map((x) => File(x.path)).toList();
-        final targetList = append ? [..._pickedImages, ...newFiles] : newFiles;
-        await _processImagesWithAi(targetList, allInventory);
-      }
-    } catch (e) {
-      if (mounted) ShowMessage.error(context, 'Picker error: $e');
-    }
-  }
-  Future<void> _handlePickSingleImagePhase1(ImageSource source, List<InventoryItem> allInventory, {bool append = false}) async {
-    try {
-      final picked = await _picker.pickImage(
-        source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 85,
-      );
-      if (picked != null) {
-        final file = File(picked.path);
-        final targetList = append ? [..._pickedImages, file] : [file];
-        await _processImagesWithAi(targetList, allInventory);
-      }
-    } catch (e) {
-      if (mounted) ShowMessage.error(context, 'Camera error: $e');
-    }
-  }
-
-  Future<void> _processImagesWithAi(List<File> files, List<InventoryItem> allInventory) async {
-    if (files.isEmpty) return;
-    setState(() {
-      _pickedImages
-        ..clear()
-        ..addAll(files);
-      networkImagePath = '';
-      _isAnalyzingWithAi = true;
-      _aiExtractionSummary = null;
-    });
-
-    bool isCancelled = false;
-    void handleCancel() {
-      if (isCancelled) return;
-      isCancelled = true;
-      if (mounted) {
-        setState(() {
-          _isAnalyzingWithAi = false;
-        });
-        ShowMessage.info(context, 'Document scanning was cancelled.');
-      }
-    }
-
-    final statusNotifier = ValueNotifier<String>('Step 1/3: Preparing document images...');
-    Helperfunctions.showLoading(
-      context: context,
-      showLoading: true,
-      message: 'Processing Purchase Order',
-      subtitle: 'Please wait while Sedy AI analyzes your document.',
-      statusNotifier: statusNotifier,
-      onCancel: handleCancel,
-      showCancelButton: true,
-    );
-
-    try {
-      final knownMappings = await _mappingService.getAllMappings();
-      if (isCancelled) return;
-
-      final List<Uint8List> bytesList = [];
-      final List<String> mimeTypes = [];
-      for (int i = 0; i < files.length; i++) {
-        if (isCancelled) return;
-        final file = files[i];
-        statusNotifier.value = 'Step 1/3: Preparing document image ${i + 1} of ${files.length}...';
-        final rawBytes = await file.readAsBytes();
-        final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
-        bytesList.add(preparedBytes);
-        final ext = file.path.split('.').last.toLowerCase();
-        mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
-      }
-
-      if (isCancelled) return;
-      statusNotifier.value = 'Step 2/3: Sedy AI reading products & quantities...';
-      final result = await _aiService.extractPurchaseOrderFromImages(
-        imagesBytesList: bytesList,
-        mimeTypes: mimeTypes,
-        catalog: allInventory,
-        knownMappings: knownMappings,
-      );
-      if (isCancelled || !mounted) return;
-
-      statusNotifier.value = 'Step 3/3: Matching with inventory catalog...';
-      // Dismiss loading modal before interactive disambiguation if user selection is required
-      Helperfunctions.showLoading(context: context, showLoading: false);
-
-      final lines = await _resolveExtractionResultWithCatalog(
-        result: result,
-        allInventory: allInventory,
-        knownMappings: knownMappings,
-        onLiveUpdate: (currentLines) {
-          if (isCancelled || !mounted) return;
-          setState(() {
-            _documentLines
-              ..clear()
-              ..addAll(currentLines);
-            _prioritizePreOrderDeficitLines(allInventory);
-            orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost);
-          });
-        },
-      );
-
-      if (isCancelled || !mounted) return;
-
-      // Populate document lines in document sequence with pre-orders prioritized at top
-      _documentLines
-        ..clear()
-        ..addAll(lines);
-      _prioritizePreOrderDeficitLines(allInventory);
-
-      // Record document totals read by AI
-      _docTotalAmountRead = result.totalAmount;
-      _docTotalUnitsRead = result.totalExtractedUnits;
-
-      if (result.invoiceNumber.isNotEmpty && orderNumberController.text.trim().isEmpty) {
-        orderNumberController.text = result.invoiceNumber;
-      }
-      if (result.invoiceDate != null) _selectedOrderDate = result.invoiceDate!;
-      orderAmountController.text = Helperfunctions.formatDoubleAmountForField(_currentListTotalCost > 0 ? _currentListTotalCost : result.totalAmount);
-
-      setState(() {
-        _isAnalyzingWithAi = false;
-        _aiExtractionSummary =
-            '✨ Sedy AI read ${_documentLines.length} products ($_currentListUnits units)';
-      });
-
-      if (mounted) {
-        ShowMessage.success(context, 'Document analyzed! Review products below in document order.');
-      }
-    } catch (e) {
-      if (isCancelled) return;
-      if (mounted) {
-        setState(() => _isAnalyzingWithAi = false);
-        ShowMessage.error(context, 'AI: ${e.toString().replaceAll('Exception: ', '')}');
-      }
-    } finally {
-      if (mounted) {
-        Helperfunctions.showLoading(context: context, showLoading: false);
-      }
-    }
-  }
-
-  /// Reusable catalog matching pipeline for both P.O. documents and official invoices.
+  /// Reusable catalog matching pipeline for official invoices (Phase 2).
   /// Runs collision guard, truncation check, multi-match mappings, and launches
   /// [ProductDisambiguationSheet] when human verification is required.
   Future<List<PoExtractedLine>> _resolveExtractionResultWithCatalog({
@@ -1699,7 +1451,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         context: context,
         orderAmount: orderAmt,
         selectedOrderDate: _selectedOrderDate,
-        pickedImage: _pickedImage,
+        pickedImage: null,
         selectedOverpaymentIds: _selectedOverpaymentIds,
         unsettledOverpayments: _unsettledOverpayments,
         items: items,
@@ -1741,7 +1493,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         currentOrder: widget.purchaseorder,
         poNumber: orderNumberController.text.trim(),
         selectedOrderDate: _selectedOrderDate,
-        pickedImage: _pickedImage,
+        pickedImage: null,
         networkImagePath: networkImagePath,
         items: items,
         updatedOrderAmount: _currentListTotalCost,
@@ -1934,7 +1686,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   // UI Builder Components
   // ============================================================
 
-  // Document Reconciliation Header Card
+  // Purchase Order Details Header Card
   Widget _buildDocumentReconciliationHeader(List<InventoryItem> allInventory) {
     return PoReconciliationHeader(
       isNewRecord: isNewRecord,
@@ -1942,31 +1694,12 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       selectedOrderDate: _selectedOrderDate,
       onPickOrderDate: _pickOrderDate,
       onOrderNumberChanged: (_) => setState(() {}),
-      docTotalAmountRead: _docTotalAmountRead,
-      docTotalUnitsRead: _docTotalUnitsRead,
       currentListTotalCost: _currentListTotalCost,
       currentListUnits: _currentListUnits,
       currentListCount: _currentListCount,
       showDetailsCard: _showDetailsCard,
       onToggleDetailsCard: () => setState(() => _showDetailsCard = !_showDetailsCard),
-      pickedImages: _pickedImages,
-      networkImagePath: networkImagePath,
-      pickedImage: _pickedImage,
-      isAnalyzingWithAi: _isAnalyzingWithAi,
-      aiExtractionSummary: _aiExtractionSummary,
-      onShowImageSourcePicker: (
-          {required bool append, required List<InventoryItem> allInventory}) =>
-          _showImageSourcePicker(allInventory, append: append),
-      onRemoveImage: (i) {
-        setState(() {
-          _pickedImages.removeAt(i);
-        });
-        if (_pickedImages.isNotEmpty) {
-          _processImagesWithAi(_pickedImages, allInventory);
-        }
-      },
       currencyFormat: _currencyFormat,
-      allInventory: allInventory,
     );
   }
 
@@ -2465,7 +2198,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isLocked = _isSaving || _isAnalyzingWithAi || _isComparingWithAi;
+    final isLocked = _isSaving || _isComparingWithAi;
 
     // Phase 3: confirmed / invoiced PO (read-only view)
     if (_isEditing && _isConfirmed) {
@@ -2556,18 +2289,6 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             _prioritizePreOrderDeficitLines(allInventory);
           }
 
-          if (widget.initialOpenScanner &&
-              !_hasTriggeredInitialScanner &&
-              allInventory.isNotEmpty &&
-              _documentLines.isEmpty) {
-            _hasTriggeredInitialScanner = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                _showImageSourcePicker(allInventory);
-              }
-            });
-          }
-
           if (widget.initialOpenManualPicker &&
               !_hasTriggeredInitialManualPicker &&
               allInventory.isNotEmpty &&
@@ -2585,13 +2306,6 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               title: 'Purchase Order',
               subtitle: isNewRecord ? 'New Purchase Order' : '🟡 Pending Delivery',
               onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.document_scanner_outlined),
-                  tooltip: 'Scan or Attach Document',
-                  onPressed: isLocked ? null : () => _showImageSourcePicker(allInventory),
-                ),
-              ],
             ),
           bottomNavigationBar: _buildStickyBottomBar(allInventory),
           body: CustomScrollView(
@@ -2607,8 +2321,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               // Pre-Order Shortage Recommendations Banner
               SliverToBoxAdapter(child: _buildPreOrderRecommendationsBanner(allInventory, colorScheme)),
 
-              // If no items added yet and not loading: Prompt to select catalog products
-              if (_documentLines.isEmpty && !_isAnalyzingWithAi)
+              // If no items added yet: Prompt to select catalog products
+              if (_documentLines.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
@@ -2653,12 +2367,6 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                                 label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 14),
-                          TextButton.icon(
-                            onPressed: () => _showImageSourcePicker(allInventory),
-                            icon: const Icon(Icons.document_scanner_outlined, size: 16),
-                            label: const Text('Prefer to scan supplier document?', style: TextStyle(fontSize: 12.5)),
                           ),
                         ],
                       ),

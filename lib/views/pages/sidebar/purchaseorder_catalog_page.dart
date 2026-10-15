@@ -1,13 +1,16 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/inventory_controller.dart';
+import 'package:selecta_ops/controllers/purchaseorder_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/po_extracted_line.dart';
 import 'package:selecta_ops/models/purchaseorder.dart';
-import 'package:selecta_ops/views/pages/sidebar/purchaseorder_page.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
@@ -39,10 +42,14 @@ class PurchaseOrderCatalogPage extends StatefulWidget {
 
 class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
   late final InventoryController? _inventoryController;
+  final PurchaseOrderController _poController = PurchaseOrderController();
   final TextEditingController _searchController = TextEditingController();
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
   final Map<String, int> _selectedQuantities = {};
+  /// Tracks the exact order in which products had quantity added (FIFO / Add-to-cart sorting).
+  final List<String> _addedProductIdsOrder = [];
+  List<QueryDocumentSnapshot<Purchaseorder>> _unsettledOverpayments = [];
   String _selectedCategory = 'all';
   String _searchQuery = '';
 
@@ -57,8 +64,38 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
     for (final line in widget.existingLines) {
       if (line.quantity > 0) {
         _selectedQuantities[line.productId] = line.quantity;
+        if (!_addedProductIdsOrder.contains(line.productId)) {
+          _addedProductIdsOrder.add(line.productId);
+        }
       }
     }
+    _loadUnsettledOverpayments();
+  }
+
+  Future<void> _loadUnsettledOverpayments() async {
+    try {
+      final records = await _poController.getUnsettledOverpayments();
+      if (mounted) {
+        setState(() => _unsettledOverpayments = records);
+      }
+    } catch (_) {}
+  }
+
+  /// Updates a product's quantity while tracking chronological add-to-cart order.
+  void _updateQuantity(String productId, int newQty) {
+    setState(() {
+      if (newQty <= 0) {
+        _selectedQuantities.remove(productId);
+        _addedProductIdsOrder.remove(productId);
+      } else {
+        if (!_selectedQuantities.containsKey(productId) || _selectedQuantities[productId] == 0) {
+          if (!_addedProductIdsOrder.contains(productId)) {
+            _addedProductIdsOrder.add(productId);
+          }
+        }
+        _selectedQuantities[productId] = newQty;
+      }
+    });
   }
 
   @override
@@ -125,34 +162,19 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
     );
 
     if (result != null && mounted) {
-      setState(() {
-        if (result <= 0) {
-          _selectedQuantities.remove(item.id);
-        } else {
-          _selectedQuantities[item.id] = result;
-        }
-      });
+      _updateQuantity(item.id, result);
     }
   }
 
   List<PoExtractedLine> _buildOrderLines(List<InventoryItem> allInventory) {
     final Map<String, InventoryItem> invMap = {for (final i in allInventory) i.id: i};
-
-    final selectaCatalog = allInventory.where((i) => i.source == InventoryProductSource.selecta).toList();
-
-    final bestSellerProducts = selectaCatalog.where((i) => ProductTag.isBestSeller(i.tag)).toList()..sort(_compareProducts);
-    final nonBestSellerSelecta = selectaCatalog.where((i) => !ProductTag.isBestSeller(i.tag)).toList();
-    final caseProducts = nonBestSellerSelecta.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
-    final pieceProducts = nonBestSellerSelecta.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
-
-    final orderedCatalog = [...bestSellerProducts, ...caseProducts, ...pieceProducts];
-
     final List<PoExtractedLine> result = [];
 
-    // Add selected products in catalog sequence
-    for (final item in orderedCatalog) {
-      final qty = _selectedQuantities[item.id] ?? 0;
-      if (qty > 0) {
+    // Strictly order based on the chronological sequence products were added to cart (FIFO)
+    for (final productId in _addedProductIdsOrder) {
+      final qty = _selectedQuantities[productId] ?? 0;
+      final item = invMap[productId];
+      if (qty > 0 && item != null) {
         result.add(
           PoExtractedLine(
             productId: item.id,
@@ -170,23 +192,23 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
       }
     }
 
-    // Include any other items not in standard Selecta sequence (edge cases)
+    // Safety fallback for any items in _selectedQuantities that were not in _addedProductIdsOrder
     for (final entry in _selectedQuantities.entries) {
       if (entry.value > 0 && !result.any((r) => r.productId == entry.key)) {
-        final inv = invMap[entry.key];
-        if (inv != null) {
+        final item = invMap[entry.key];
+        if (item != null) {
           result.add(
             PoExtractedLine(
-              productId: inv.id,
-              productName: inv.productName,
-              imageUrl: inv.imageUrl,
-              productSource: inv.source.key,
-              category: inv.category,
-              tag: inv.tag,
-              buyingPrice: inv.buyingPrice,
-              sellingPrice: inv.sellingPrice,
+              productId: item.id,
+              productName: item.productName,
+              imageUrl: item.imageUrl,
+              productSource: item.source.key,
+              category: item.category,
+              tag: item.tag,
+              buyingPrice: item.buyingPrice,
+              sellingPrice: item.sellingPrice,
               quantity: entry.value,
-              rawDocText: inv.productName,
+              rawDocText: item.productName,
             ),
           );
         }
@@ -207,21 +229,12 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
             title: const Text('No Items Selected', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             content: const Text(
-              'You have not selected any products yet.\n\nDo you want to proceed with a blank purchase order or stay in the catalog?',
+              'You have not selected any products yet.\n\nPlease add products to your purchase order before proceeding.',
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Stay in Catalog')),
               FilledButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty()),
-                    ),
-                  );
-                },
-                child: const Text('Proceed Blank P.O.'),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
               ),
             ],
           ),
@@ -229,28 +242,499 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
         return;
       }
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty(), initialLines: lines),
-        ),
-      );
+      _showConfirmationBottomSheet(lines);
     } else {
       Navigator.pop(context, lines);
     }
   }
 
-  void _openScannerFlow() {
-    if (widget.isDirectCreationFlow) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PurchaseorderPage(purchaseorderID: '', purchaseorder: Purchaseorder.empty(), initialOpenScanner: true),
-        ),
-      );
-    } else {
-      Navigator.pop(context);
+  void _showConfirmationBottomSheet(List<PoExtractedLine> lines) {
+    final poNumberController = TextEditingController(
+      text: 'PO-${DateFormat('yyyyMMdd-HHmm').format(DateTime.now())}',
+    );
+    DateTime selectedDate = DateTime.now();
+    final Set<String> selectedOverpaymentIds = {};
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final colorScheme = Theme.of(context).colorScheme;
+            final totalUnits = lines.fold<int>(0, (acc, l) => acc + l.quantity);
+            final grossCost = lines.fold<double>(0.0, (acc, l) => acc + (l.buyingPrice * l.quantity));
+            final totalDeductions = _poController.calculateTotalSelectedOverpayments(
+              unsettledDocs: _unsettledOverpayments,
+              selectedIds: selectedOverpaymentIds,
+            );
+            final netPayable = (grossCost - totalDeductions) > 0 ? (grossCost - totalDeductions) : 0.0;
+
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.88,
+              ),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 10, bottom: 6),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colorScheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+
+                  // Header Bar
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 4, 12, 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.receipt_long_rounded, color: colorScheme.primary, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Confirm Purchase Order',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                '${lines.length} items • $totalUnits units (FIFO sorted)',
+                                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: isSaving ? null : () => Navigator.pop(sheetContext),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+
+                  // Scrollable Body
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ── P.O. Details (Number & Date) ─────────────
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: TextField(
+                                  controller: poNumberController,
+                                  decoration: InputDecoration(
+                                    labelText: 'P.O. Number',
+                                    prefixIcon: const Icon(Icons.tag_rounded, size: 18),
+                                    suffixIcon: poNumberController.text.isNotEmpty
+                                        ? IconButton(
+                                            icon: const Icon(Icons.clear, size: 16),
+                                            onPressed: () {
+                                              poNumberController.clear();
+                                              setModalState(() {});
+                                            },
+                                          )
+                                        : null,
+                                    filled: true,
+                                    fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                  ),
+                                  onChanged: (_) => setModalState(() {}),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                flex: 2,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () async {
+                                    final picked = await showDatePicker(
+                                      context: sheetContext,
+                                      initialDate: selectedDate,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime(2035),
+                                    );
+                                    if (picked != null) {
+                                      setModalState(() => selectedDate = picked);
+                                    }
+                                  },
+                                  child: Container(
+                                    height: 48,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.7)),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.calendar_today_rounded, size: 16, color: colorScheme.primary),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            DateFormat('MMM dd, yyyy').format(selectedDate),
+                                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // ── Ordered Products (FIFO / Add-to-Cart Order) ──
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Order Items (Added Order)',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '${lines.length} items',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+
+                          Container(
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                            ),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: lines.length,
+                              separatorBuilder: (context, index) => Divider(
+                                height: 1,
+                                indent: 56,
+                                color: colorScheme.outlineVariant.withValues(alpha: 0.3),
+                              ),
+                              itemBuilder: (context, index) {
+                                final line = lines[index];
+                                final lineTotal = line.buyingPrice * line.quantity;
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  child: Row(
+                                    children: [
+                                      // Item number badge
+                                      Container(
+                                        width: 20,
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          '${index + 1}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      CachedProductImage(imageUrl: line.imageUrl, size: 38, borderRadius: 8),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              line.productName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${_currencyFormat.format(line.buyingPrice)} × ${line.quantity} pcs',
+                                              style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        _currencyFormat.format(lineTotal),
+                                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // ── Overpayment Credit Deductions (if any exist) ──
+                          if (_unsettledOverpayments.isNotEmpty) ...[
+                            Text(
+                              'Available Overpayment Credits',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: 6),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                              ),
+                              child: Column(
+                                children: _unsettledOverpayments.map((doc) {
+                                  final order = doc.data();
+                                  final isChecked = selectedOverpaymentIds.contains(doc.id);
+                                  final label = order.invoiceNumber.isNotEmpty ? 'Inv #${order.invoiceNumber}' : 'PO #${order.poNumber}';
+                                  return CheckboxListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    dense: true,
+                                    title: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                                    subtitle: Text(
+                                      'Credit: ${_currencyFormat.format(order.overpayment)} • ${DateFormat('MMM dd, yyyy').format(order.orderDate.toDate())}',
+                                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                    ),
+                                    value: isChecked,
+                                    onChanged: (val) {
+                                      setModalState(() {
+                                        if (val == true) {
+                                          selectedOverpaymentIds.add(doc.id);
+                                        } else {
+                                          selectedOverpaymentIds.remove(doc.id);
+                                        }
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // ── Financial Breakdown Card ───────────────────
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: colorScheme.primary.withValues(alpha: 0.2)),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Gross Order Amount', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                                    Text(_currencyFormat.format(grossCost), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                                if (totalDeductions > 0) ...[
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('Overpayment Credits Applied', style: TextStyle(fontSize: 12.5, color: Colors.green.shade700)),
+                                      Text('- ${_currencyFormat.format(totalDeductions)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green.shade700)),
+                                    ],
+                                  ),
+                                ],
+                                const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1)),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Net Order Amount', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                    Text(
+                                      _currencyFormat.format(netPayable),
+                                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: colorScheme.primary),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // ── Bottom Action Buttons ───────────────────────────
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4))),
+                    ),
+                    child: Row(
+                      children: [
+                        OutlinedButton(
+                          onPressed: isSaving ? null : () => Navigator.pop(sheetContext),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Edit Items'),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: isSaving
+                                ? null
+                                : () async {
+                                    setModalState(() => isSaving = true);
+                                    await _saveOrderDirectly(
+                                      sheetContext: sheetContext,
+                                      lines: lines,
+                                      poNumber: poNumberController.text,
+                                      orderDate: selectedDate,
+                                      selectedOverpaymentIds: selectedOverpaymentIds,
+                                      onFailure: () {
+                                        if (sheetContext.mounted) {
+                                          setModalState(() => isSaving = false);
+                                        }
+                                      },
+                                    );
+                                  },
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: isSaving
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text('Confirm & Create Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _saveOrderDirectly({
+    required BuildContext sheetContext,
+    required List<PoExtractedLine> lines,
+    required String poNumber,
+    required DateTime orderDate,
+    required Set<String> selectedOverpaymentIds,
+    required VoidCallback onFailure,
+  }) async {
+    final cleanPoNumber = poNumber.trim().toUpperCase();
+    if (cleanPoNumber.isEmpty) {
+      ShowMessage.error(sheetContext, 'Please enter a valid P.O. Number.');
+      onFailure();
+      return;
     }
+
+    final items = lines.map((l) {
+      return OrderItem(
+        productId: l.productId,
+        productName: l.productName,
+        imageUrl: l.imageUrl,
+        productSource: l.productSource,
+        category: l.category,
+        tag: l.tag,
+        buyingPrice: l.buyingPrice,
+        sellingPrice: l.sellingPrice,
+        orderedQuantity: l.quantity,
+        pickedQuantity: l.quantity,
+        isPicked: false,
+      );
+    }).toList();
+
+    final grossCost = lines.fold<double>(0.0, (acc, l) => acc + (l.buyingPrice * l.quantity));
+
+    try {
+      await _poController.savePurchaseOrder(
+        context: context,
+        orderAmount: grossCost,
+        selectedOrderDate: orderDate,
+        pickedImage: null,
+        selectedOverpaymentIds: selectedOverpaymentIds,
+        unsettledOverpayments: _unsettledOverpayments,
+        items: items,
+        poNumber: cleanPoNumber,
+      );
+
+      if (sheetContext.mounted) {
+        Navigator.pop(sheetContext);
+      }
+      if (mounted) {
+        Navigator.pop(context);
+        ShowMessage.success(context, 'Purchase order $cleanPoNumber created successfully.');
+      }
+    } catch (e, stack) {
+      ErrorLogService.logError(
+        page: AppPages.purchaseOrder,
+        action: 'Save Purchase Order Direct',
+        error: e,
+        stackTrace: stack,
+      );
+      if (sheetContext.mounted) {
+        ShowMessage.error(sheetContext, 'Failed to create purchase order: $e');
+      }
+      onFailure();
+    }
+  }
+
+  void _addAllRecommendedPreOrders(List<InventoryItem> items) {
+    HapticFeedback.mediumImpact();
+    for (final item in items) {
+      final neededQty = item.recommendedPreOrderOrderQuantity > 0 ? item.recommendedPreOrderOrderQuantity : 1;
+      final current = _selectedQuantities[item.id] ?? 0;
+      if (current < neededQty) {
+        _updateQuantity(item.id, neededQty);
+      }
+    }
+    ShowMessage.success(context, 'Added recommended quantities for ${items.length} shortage product(s).');
   }
 
   @override
@@ -357,14 +841,6 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
         appBar: CustomAppbar(
           title: widget.isDirectCreationFlow ? 'Restock Catalog' : 'Manual Purchase Order',
           subtitle: widget.isDirectCreationFlow ? 'Restock from Selecta • Select Products' : 'Update Purchase Order Items',
-          actions: [
-            if (widget.isDirectCreationFlow)
-              IconButton(
-                icon: const Icon(Icons.document_scanner_outlined, color: Colors.white),
-                tooltip: 'Scan Supplier Invoice / Document',
-                onPressed: _openScannerFlow,
-              ),
-          ],
         ),
       bottomNavigationBar: _buildStickyBottomBar(
         context: context,
@@ -437,7 +913,22 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                 // 1. Recommended Pre-Orders placed at the VERY TOP
                 if (_selectedCategory == 'all' || _selectedCategory == 'recommended')
                   if (recommendedPreOrders.isNotEmpty) ...[
-                    _buildSliverHeader('Recommended Pre-Orders', recommendedPreOrders.length, Icons.auto_awesome_rounded, const Color(0xFF7C3AED)),
+                    _buildSliverHeader(
+                      'Recommended Pre-Orders',
+                      recommendedPreOrders.length,
+                      Icons.auto_awesome_rounded,
+                      const Color(0xFF7C3AED),
+                      trailing: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          foregroundColor: const Color(0xFF7C3AED),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        ),
+                        icon: const Icon(Icons.add_shopping_cart_rounded, size: 14),
+                        label: const Text('Add All Shortages', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        onPressed: () => _addAllRecommendedPreOrders(recommendedPreOrders),
+                      ),
+                    ),
                     _buildSliverProductList(recommendedPreOrders),
                   ],
 
@@ -510,7 +1001,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
     );
   }
 
-  Widget _buildSliverHeader(String title, int count, IconData icon, Color accentColor) {
+  Widget _buildSliverHeader(String title, int count, IconData icon, Color accentColor, {Widget? trailing}) {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
@@ -531,6 +1022,10 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accentColor),
               ),
             ),
+            if (trailing != null) ...[
+              const Spacer(),
+              trailing,
+            ],
           ],
         ),
       ),
@@ -569,7 +1064,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
           if (!isSelected) {
             HapticFeedback.lightImpact();
             final initialQty = item.isPreOrderRecommended ? item.recommendedPreOrderOrderQuantity : 1;
-            setState(() => _selectedQuantities[item.id] = initialQty);
+            _updateQuantity(item.id, initialQty);
           } else {
             _promptDirectQuantityDialog(item);
           }
@@ -674,7 +1169,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                   onPressed: () {
                     HapticFeedback.lightImpact();
                     final initialQty = item.isPreOrderRecommended ? item.recommendedPreOrderOrderQuantity : 1;
-                    setState(() => _selectedQuantities[item.id] = initialQty);
+                    _updateQuantity(item.id, initialQty);
                   },
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -700,13 +1195,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                           borderRadius: const BorderRadius.horizontal(left: Radius.circular(18)),
                           onTap: () {
                             HapticFeedback.lightImpact();
-                            setState(() {
-                              if (qty <= 1) {
-                                _selectedQuantities.remove(item.id);
-                              } else {
-                                _selectedQuantities[item.id] = qty - 1;
-                              }
-                            });
+                            _updateQuantity(item.id, qty - 1);
                           },
                           child: SizedBox(
                             width: 32,
@@ -740,7 +1229,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                           borderRadius: const BorderRadius.horizontal(right: Radius.circular(18)),
                           onTap: () {
                             HapticFeedback.lightImpact();
-                            setState(() => _selectedQuantities[item.id] = qty + 1);
+                            _updateQuantity(item.id, qty + 1);
                           },
                           child: SizedBox(width: 32, height: 36, child: Icon(Icons.add_rounded, size: 17, color: colorScheme.primary)),
                         ),
@@ -795,9 +1284,11 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
-            icon: Icon(widget.isDirectCreationFlow ? Icons.arrow_forward_rounded : Icons.check_rounded, size: 20),
+            icon: Icon(widget.isDirectCreationFlow ? Icons.receipt_long_rounded : Icons.check_rounded, size: 20),
             label: Text(
-              widget.isDirectCreationFlow ? (totalUnits > 0 ? 'Proceed to P.O. ($totalUnits)' : 'Proceed to P.O.') : 'Apply to P.O. ($totalUnits)',
+              widget.isDirectCreationFlow
+                  ? (totalUnits > 0 ? 'Create Order ($totalUnits)' : 'Create Order')
+                  : 'Apply to P.O. ($totalUnits)',
             ),
           ),
         ],
