@@ -176,9 +176,9 @@ class AiStatusCheck {
 /// including remote key fetching, master enable/disable, and quota tracking/enforcement.
 class GeminiAiService {
   static const List<String> _candidateModels = [
-    'gemini-1.5-flash',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
   ];
   static const Duration requestTimeout = Duration(seconds: 25);
   static const String _usageCollection = 'ai_usage_metrics';
@@ -313,6 +313,7 @@ class GeminiAiService {
     _cachedApiKey = null;
     _model = null;
     _chatSession = null;
+    _activeModelIndex = 0;
   }
 
   /// Initializes or re-initializes the generative model with system instructions.
@@ -377,8 +378,10 @@ class GeminiAiService {
   /// Optional listener/callback for retry events across the app.
   static void Function(String message)? onRetryNotification;
 
-  void _notifyRetry(int attemptNumber, int totalAttempts) {
-    final message = 'Network slowed down — retrying (attempt $attemptNumber of $totalAttempts)...';
+  void _notifyRetry(int attemptNumber, int totalAttempts, {bool isModelSwitch = false}) {
+    final message = isModelSwitch
+        ? 'Switching AI model — retrying (attempt $attemptNumber of $totalAttempts)...'
+        : 'Network slowed down — retrying (attempt $attemptNumber of $totalAttempts)...';
     SnackBarWidget.showRetryToast(message);
     onRetryNotification?.call(message);
   }
@@ -389,13 +392,23 @@ class GeminiAiService {
   @visibleForTesting
   bool isRetryableError(dynamic e) => _isOverloadedError(e);
 
+  bool _isModelNotFoundError(dynamic e) {
+    final errStr = e.toString().toLowerCase();
+    return errStr.contains('not found') ||
+        errStr.contains('404') ||
+        errStr.contains('no longer available') ||
+        errStr.contains('not available') ||
+        errStr.contains('deprecated');
+  }
+
   Future<void> _handleRetry({
     required int attempt,
     Future<void> Function()? onBeforeRetry,
+    bool isModelNotFound = false,
   }) async {
     _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
-    _notifyRetry(attempt + 2, _candidateModels.length);
-    final delayMs = 1000 * (1 << attempt);
+    _notifyRetry(attempt + 2, _candidateModels.length, isModelSwitch: isModelNotFound);
+    final delayMs = isModelNotFound ? 100 : 1000 * (1 << attempt);
     await Future.delayed(Duration(milliseconds: delayMs));
     if (onBeforeRetry != null) {
       await onBeforeRetry();
@@ -413,8 +426,11 @@ class GeminiAiService {
     if (lower.contains('api key') || lower.contains('api_key') || lower.contains('unauthenticated')) {
       return 'Invalid or missing Gemini API Key. Please verify your API key in Configurations.';
     }
-    if (lower.contains('not found') || lower.contains('404')) {
-      return 'AI model not found: ${errStr.replaceFirst(RegExp(r'^(Exception|ClientException):\s*'), '')}';
+    if (lower.contains('not found') ||
+        lower.contains('404') ||
+        lower.contains('no longer available') ||
+        lower.contains('not available')) {
+      return 'AI model not found or unavailable: ${errStr.replaceFirst(RegExp(r'^(Exception|ClientException):\s*'), '')}';
     }
     if (lower.contains('429') ||
         lower.contains('quota') ||
@@ -503,9 +519,11 @@ class GeminiAiService {
         return response.text ?? 'No response received from Gemini.';
       } catch (e) {
         lastError = e;
-        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
+        final isNotFound = _isModelNotFoundError(e);
+        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
           await _handleRetry(
             attempt: attempt,
+            isModelNotFound: isNotFound,
             onBeforeRetry: () => startChat(contextPrompt: _cachedContextPrompt),
           );
           continue;
@@ -540,8 +558,9 @@ class GeminiAiService {
         return response.text ?? 'No response generated.';
       } catch (e) {
         lastError = e;
-        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt);
+        final isNotFound = _isModelNotFoundError(e);
+        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
+          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
           continue;
         }
 
@@ -747,8 +766,9 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
         return _parseExtractedPurchaseOrderData(rawText, catalog, knownMappings);
       } catch (e) {
         lastError = e;
-        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt);
+        final isNotFound = _isModelNotFoundError(e);
+        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
+          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
           continue;
         }
 
@@ -920,8 +940,9 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
         return _parseExtractedPurchaseOrderData(response.text ?? '', catalog, knownMappings);
       } catch (e) {
         lastError = e;
-        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt);
+        final isNotFound = _isModelNotFoundError(e);
+        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
+          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
           continue;
         }
 
@@ -1027,8 +1048,9 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
         return _parseInvoiceComparisonResult(rawText, originalPoItems);
       } catch (e) {
         lastError = e;
-        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt);
+        final isNotFound = _isModelNotFoundError(e);
+        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
+          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
           continue;
         }
 
@@ -1411,8 +1433,9 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
         return _parseExtractedSupplierStockData(rawText, selectaCatalog);
       } catch (e) {
         lastError = e;
-        if (_isOverloadedError(e) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt);
+        final isNotFound = _isModelNotFoundError(e);
+        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
+          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
           continue;
         }
 
