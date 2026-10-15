@@ -126,7 +126,7 @@ class DashboardSidebar extends StatelessWidget {
                     ),
                   ),
                   _buildItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-                  _buildItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: isDealer ? 'Dealer' : (currentUser?.role ?? 'Salesman'))),
+                  _buildItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: currentUser?.role ?? (isDealer ? 'Dealer' : 'Salesman'))),
                   _buildItem(context, Icons.file_download_outlined, 'Export Reports', const ExportReportsPage()),
 
                   const _SidebarDivider(),
@@ -297,7 +297,7 @@ class DashboardSidebar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    isDealer ? 'Dealer' : 'Salesman',
+                    currentUser?.role ?? (isDealer ? 'Dealer' : 'Salesman'),
                     style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
                   ),
                 ),

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:selecta_ops/data/constants.dart';
 
 class Users {
   String username;
@@ -14,6 +15,12 @@ class Users {
     required this.dealerName,
     this.dailyRate = 0.0,
   });
+
+  /// True if the user is an Admin.
+  bool get isAdmin => role == BusinessRole.admin;
+
+  /// True if the user is either a Dealer or an Admin (inheriting Dealer rights).
+  bool get isDealerOrAdmin => role == BusinessRole.dealer || role == BusinessRole.admin;
 
   static Users empty() =>
       Users(username: '', role: '', email: '', dealerName: '', dailyRate: 0.0);

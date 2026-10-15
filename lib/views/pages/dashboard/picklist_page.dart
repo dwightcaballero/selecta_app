@@ -39,6 +39,7 @@ class _PicklistPageState extends State<PicklistPage> {
   File? _pickedImage;
   String _networkImagePath = '';
   bool _isDealer = true;
+  bool _isAdmin = false;
   bool _isSaving = false;
 
   String _itemFilter = 'All'; // 'All', 'Pending', 'Picked'
@@ -293,9 +294,11 @@ class _PicklistPageState extends State<PicklistPage> {
 
   Future<void> _prefetchData() async {
     final dealer = await _controller.checkIsDealer();
+    final admin = await _controller.checkIsAdmin();
     if (mounted) {
       setState(() {
         _isDealer = dealer;
+        _isAdmin = admin;
       });
     }
 
@@ -1126,6 +1129,51 @@ class _PicklistPageState extends State<PicklistPage> {
     }
   }
 
+  Future<void> _onAdminDeleteOrder() async {
+    if (_isSaving) return;
+
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Delete Order (Admin)',
+      message: 'Permanently delete this order record for [${_currentDelivery.storeName}]?\n\n'
+          '• Document will be deleted from the database.\n'
+          '• Any deducted inventory will be automatically restored to warehouse stock.\n'
+          '• Any floating reserved stock will be released.',
+      confirmText: 'Delete Permanently',
+      isDestructive: true,
+      icon: Icons.delete_forever,
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isSaving = true);
+    await Helperfunctions.showLoading(context: context, showLoading: true, message: 'Deleting order & reversing inventory...');
+    if (!mounted) return;
+
+    try {
+      await _controller.deleteDelivery(
+        context: context,
+        deliveryId: widget.deliveryID,
+        delivery: _currentDelivery,
+        isAdmin: true,
+      );
+      if (mounted) {
+        await Helperfunctions.showLoading(showLoading: false);
+        if (mounted) {
+          ShowMessage.success(context, 'Order record deleted and inventory reversed.');
+          Navigator.pop(context, true);
+        }
+      }
+    } catch (e) {
+      await Helperfunctions.showLoading(showLoading: false);
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to delete order: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   Widget _buildAppBarIconAction({required IconData icon, required String tooltip, required VoidCallback? onTap}) {
     return Container(
       decoration: BoxDecoration(
@@ -1789,6 +1837,21 @@ class _PicklistPageState extends State<PicklistPage> {
                     icon: const Icon(Icons.block, size: 22),
                   ),
                   const SizedBox(width: 8),
+                  if (_isAdmin) ...[
+                    IconButton.outlined(
+                      onPressed: _isSaving ? null : _onAdminDeleteOrder,
+                      tooltip: 'Delete Record (Admin)',
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(48, 48),
+                        foregroundColor: Colors.red.shade900,
+                        backgroundColor: Colors.red.shade50,
+                        side: BorderSide(color: Colors.red.shade400),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.delete_forever, size: 22),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                 ],
                 Expanded(
                   flex: 2,

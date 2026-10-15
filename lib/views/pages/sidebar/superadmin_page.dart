@@ -12,6 +12,9 @@ import 'package:selecta_ops/views/pages/sidebar/error_logs_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/users.dart';
+import 'package:selecta_ops/services/user_services.dart';
 
 /// Hidden Super Admin developer control panel for managing AI settings,
 /// quota limits, API keys, and switching business roles.
@@ -40,7 +43,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   bool _obscureApiKey = true;
   bool _aiEnabled = true;
   int _currentMonthUsage = 0;
-  bool _isDealer = false;
+  String _currentRole = BusinessRole.dealer;
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isSwitchingRole = false;
@@ -69,6 +72,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       final usage = await _configController.getCurrentAiUsage();
       final isDealer = await _dashboardController.isCurrentUserDealer();
       final pendingLogs = await ErrorLogService.getPendingLogCount();
+      final currentUser = await KVariables.getUser();
+      final currentRole = currentUser?.role ?? (isDealer ? BusinessRole.dealer : BusinessRole.salesman);
 
       if (mounted) {
         setState(() {
@@ -78,7 +83,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
           _monthlyLimitController.text = configResult.config.aiMonthlyRequestLimit.toString();
           _apiKeyController.text = apiKey ?? configResult.config.geminiApiKey;
           _currentMonthUsage = usage;
-          _isDealer = isDealer;
+          _currentRole = currentRole;
           _pendingLogsCount = pendingLogs;
           _adminPasswordIsSet = configResult.config.superAdminPasswordHash.isNotEmpty;
           _isLoading = false;
@@ -93,25 +98,72 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   }
 
   Future<void> _handleRoleSwitch() async {
-    final confirmed = await ShowMessage.confirm(
-      context,
-      title: 'Switch Role',
-      message: 'Switch active business role to ${_isDealer ? "Salesman" : "Dealer"}?',
-      confirmText: 'Switch',
-      icon: Icons.swap_horiz_rounded,
+    final selectedRole = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return SimpleDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Switch Active Role', style: TextStyle(fontWeight: FontWeight.bold)),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, BusinessRole.admin),
+              child: ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: const Color(0xFF7C3AED).withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: const Icon(Icons.admin_panel_settings_rounded, color: Color(0xFF7C3AED)),
+                ),
+                title: const Text('Admin', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Superuser: All dealer access + hard-delete testing permissions'),
+                trailing: _currentRole == BusinessRole.admin ? const Icon(Icons.check, color: Color(0xFF7C3AED)) : null,
+              ),
+            ),
+            const Divider(),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, BusinessRole.dealer),
+              child: ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: const Icon(Icons.store_rounded, color: Colors.blue),
+                ),
+                title: const Text('Dealer', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Operational dealer view: void-only protection for business safety'),
+                trailing: _currentRole == BusinessRole.dealer ? const Icon(Icons.check, color: Colors.blue) : null,
+              ),
+            ),
+            const Divider(),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, BusinessRole.salesman),
+              child: ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: const Icon(Icons.badge_outlined, color: Colors.teal),
+                ),
+                title: const Text('Salesman', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Salesman view: routes, store visits, and order booking'),
+                trailing: _currentRole == BusinessRole.salesman ? const Icon(Icons.check, color: Colors.teal) : null,
+              ),
+            ),
+          ],
+        );
+      },
     );
 
-    if (!confirmed) return;
+    if (selectedRole == null || selectedRole == _currentRole) return;
 
     setState(() => _isSwitchingRole = true);
     try {
-      final newRole = await _dashboardController.switchUserRole(_isDealer);
+      final newRole = await _dashboardController.switchUserRoleTo(selectedRole);
       if (!mounted) return;
 
-      ShowMessage.success(context, 'Switched role to $newRole');
+      ShowMessage.success(context, 'Switched active role to $newRole');
       Navigator.of(context).pushAndRemoveUntil(
         PageRouteBuilder(
-          pageBuilder: (_, _, _) => newRole == BusinessRole.dealer ? const DashboardPage() : const SalesmanDashboardPage(),
+          pageBuilder: (_, _, _) => (newRole == BusinessRole.dealer || newRole == BusinessRole.admin)
+              ? const DashboardPage()
+              : const SalesmanDashboardPage(),
           transitionDuration: Duration.zero,
           reverseTransitionDuration: Duration.zero,
         ),
@@ -123,6 +175,300 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
         ShowMessage.error(context, 'Failed to switch role: $e');
       }
     }
+  }
+
+  Future<void> _handleDeleteUserAccount(BuildContext modalCtx, Users user, UserService userService) async {
+    final displayName = user.username.isNotEmpty ? user.username : user.email;
+    final confirmed = await ShowMessage.confirm(
+      modalCtx,
+      title: 'Delete Account',
+      message: 'Are you sure you want to permanently delete the account for "$displayName" (${user.email})?\n\nThis will remove the user record from the database. This action cannot be undone.',
+      confirmText: 'Delete Account',
+      isDestructive: true,
+      icon: Icons.person_remove_rounded,
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await userService.deleteUserAccount(user);
+      if (modalCtx.mounted) {
+        ShowMessage.success(modalCtx, 'Account for $displayName deleted successfully.');
+      }
+    } catch (e) {
+      if (modalCtx.mounted) {
+        ShowMessage.error(modalCtx, 'Failed to delete account: $e');
+      }
+    }
+  }
+
+  Future<void> _openManageUserRolesModal() async {
+    final userService = UserService();
+    final currentUser = await KVariables.getUser();
+    final currentEmail = currentUser?.email.toLowerCase().trim() ?? '';
+    String searchQuery = '';
+
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (modalCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return DraggableScrollableSheet(
+              initialChildSize: 0.8,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (context, scrollController) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.manage_accounts_rounded, size: 24),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'User Accounts & Roles',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(modalCtx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Search username, email, or role...',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.grey.withValues(alpha: 0.08),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                        onChanged: (val) {
+                          setModalState(() {
+                            searchQuery = val.trim().toLowerCase();
+                          });
+                        },
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    Expanded(
+                      child: StreamBuilder<List<Users>>(
+                        stream: userService.getAllUsersStream(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          final allUsers = snapshot.data ?? [];
+                          final users = allUsers.where((u) {
+                            if (searchQuery.isEmpty) return true;
+                            return u.username.toLowerCase().contains(searchQuery) ||
+                                u.email.toLowerCase().contains(searchQuery) ||
+                                u.role.toLowerCase().contains(searchQuery) ||
+                                u.dealerName.toLowerCase().contains(searchQuery);
+                          }).toList();
+
+                          if (users.isEmpty) {
+                            return Center(
+                              child: Text(
+                                searchQuery.isNotEmpty
+                                    ? 'No accounts match "$searchQuery"'
+                                    : 'No users found in database.',
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                            );
+                          }
+
+                          return ListView.separated(
+                            controller: scrollController,
+                            padding: const EdgeInsets.all(16),
+                            itemCount: users.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final user = users[index];
+                              final role = user.role;
+                              final isAdmin = user.isAdmin;
+                              final isDealer = role == BusinessRole.dealer;
+                              final isSelf = user.email.toLowerCase().trim() == currentEmail;
+
+                              final badgeColor = isAdmin
+                                  ? const Color(0xFF7C3AED)
+                                  : (isDealer ? Colors.blue : Colors.teal);
+
+                              return Card(
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                                ),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: badgeColor.withValues(alpha: 0.15),
+                                    child: Icon(
+                                      isAdmin
+                                          ? Icons.admin_panel_settings_rounded
+                                          : (isDealer ? Icons.store_rounded : Icons.badge_outlined),
+                                      color: badgeColor,
+                                    ),
+                                  ),
+                                  title: Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          user.username.isNotEmpty ? user.username : 'Unnamed User',
+                                          style: const TextStyle(fontWeight: FontWeight.bold),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (isSelf) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.withValues(alpha: 0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: const Text(
+                                            'You',
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        user.email,
+                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (user.dealerName.isNotEmpty)
+                                        Text(
+                                          'Dealer: ${user.dealerName}',
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      PopupMenuButton<String>(
+                                        initialValue: role,
+                                        tooltip: 'Change Role',
+                                        child: Chip(
+                                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                                          label: Text(
+                                            role.isNotEmpty ? role : 'Unknown',
+                                            style: TextStyle(
+                                              color: badgeColor,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                          backgroundColor: badgeColor.withValues(alpha: 0.1),
+                                          side: BorderSide(color: badgeColor.withValues(alpha: 0.3)),
+                                        ),
+                                        onSelected: (newRole) async {
+                                          if (newRole == role) return;
+                                          try {
+                                            await userService.updateUserRoleByEmail(user.email, newRole);
+                                            if (modalCtx.mounted) {
+                                              ShowMessage.success(modalCtx, 'Updated ${user.username} to $newRole');
+                                            }
+                                          } catch (e) {
+                                            if (modalCtx.mounted) {
+                                              ShowMessage.error(modalCtx, 'Failed to update role: $e');
+                                            }
+                                          }
+                                        },
+                                        itemBuilder: (context) => [
+                                          const PopupMenuItem(
+                                            value: BusinessRole.admin,
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.admin_panel_settings_rounded, color: Color(0xFF7C3AED), size: 18),
+                                                SizedBox(width: 8),
+                                                Text('Admin'),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: BusinessRole.dealer,
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.store_rounded, color: Colors.blue, size: 18),
+                                                SizedBox(width: 8),
+                                                Text('Dealer'),
+                                              ],
+                                            ),
+                                          ),
+                                          const PopupMenuItem(
+                                            value: BusinessRole.salesman,
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.badge_outlined, color: Colors.teal, size: 18),
+                                                SizedBox(width: 8),
+                                                Text('Salesman'),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(width: 4),
+                                      if (!isSelf)
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+                                          tooltip: 'Delete Account',
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                          onPressed: () => _handleDeleteUserAccount(modalCtx, user, userService),
+                                        )
+                                      else
+                                        const SizedBox(
+                                          width: 36,
+                                          child: Tooltip(
+                                            message: 'Current active session (cannot delete self)',
+                                            child: Icon(Icons.shield_outlined, color: Colors.grey, size: 18),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _handleSetAdminPassword() async {
@@ -265,13 +611,20 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: (_isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.12),
+                                  color: (_currentRole == BusinessRole.admin
+                                          ? const Color(0xFF7C3AED)
+                                          : (_currentRole == BusinessRole.dealer ? colorScheme.primary : colorScheme.tertiary))
+                                      .withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Icon(
-                                  _isDealer ? Icons.store_rounded : Icons.badge_outlined,
+                                  _currentRole == BusinessRole.admin
+                                      ? Icons.admin_panel_settings_rounded
+                                      : (_currentRole == BusinessRole.dealer ? Icons.store_rounded : Icons.badge_outlined),
                                   size: 22,
-                                  color: _isDealer ? colorScheme.primary : colorScheme.tertiary,
+                                  color: _currentRole == BusinessRole.admin
+                                      ? const Color(0xFF7C3AED)
+                                      : (_currentRole == BusinessRole.dealer ? colorScheme.primary : colorScheme.tertiary),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -282,8 +635,14 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                                     const Text('Role Management', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                     const SizedBox(height: 2),
                                     Text(
-                                      'Current role: ${_isDealer ? "Dealer" : "Salesman"}',
-                                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                      'Active Role: $_currentRole',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: _currentRole == BusinessRole.admin
+                                            ? const Color(0xFF7C3AED)
+                                            : colorScheme.onSurfaceVariant,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -291,20 +650,43 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             ],
                           ),
                           const Divider(height: 28),
-                          FilledButton.icon(
-                            onPressed: _isSwitchingRole ? null : _handleRoleSwitch,
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size(double.infinity, 48),
-                              backgroundColor: _isDealer ? colorScheme.tertiary : colorScheme.primary,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            icon: _isSwitchingRole
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Icon(Icons.swap_horiz_rounded, size: 20),
-                            label: Text(
-                              _isSwitchingRole ? 'Switching Role...' : 'Switch to ${_isDealer ? "Salesman" : "Dealer"} View',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: _isSwitchingRole ? null : _handleRoleSwitch,
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size(0, 48),
+                                    backgroundColor: _currentRole == BusinessRole.admin
+                                        ? const Color(0xFF7C3AED)
+                                        : colorScheme.primary,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  icon: _isSwitchingRole
+                                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                      : const Icon(Icons.swap_horiz_rounded, size: 20),
+                                  label: Text(
+                                    _isSwitchingRole ? 'Switching...' : 'Switch Role',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _openManageUserRolesModal,
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(0, 48),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  icon: const Icon(Icons.manage_accounts_outlined, size: 20),
+                                  label: const Text(
+                                    'Manage Accounts',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

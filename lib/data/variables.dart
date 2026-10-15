@@ -10,7 +10,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 class KVariables {
   static Future<bool> getIsDealer() async {
     final user = await getUser();
-    return user?.role == BusinessRole.dealer;
+    return user?.role == BusinessRole.dealer || user?.role == BusinessRole.admin;
+  }
+
+  static Future<bool> getIsAdmin() async {
+    final user = await getUser();
+    return user?.role == BusinessRole.admin;
   }
 
   static Future<Users?> getUser() async {

@@ -494,6 +494,79 @@ class InventoryService {
     }
   }
 
+  /// Reverses stock deductions and/or releases floating stock when an order is deleted.
+  /// Used by Admin test deletions to ensure warehouse inventory balances are restored cleanly.
+  Future<void> reverseStockForDeletedOrder({
+    required String storeName,
+    required List<OrderItem> items,
+    required bool wasDeducted,
+    required bool wasReserved,
+  }) async {
+    if (items.isEmpty) return;
+    final now = Timestamp.now();
+    final createdBy = _currentActorName();
+    final batch = _firestore.batch();
+    bool hasUpdates = false;
+
+    for (final item in items) {
+      if (item.productId.isEmpty) continue;
+      final collectionName = _collectionForSource(item.productSource);
+      final productRef = _firestore.collection(collectionName).doc(item.productId);
+      final snap = await productRef.get();
+      if (!snap.exists) continue;
+      final data = snap.data() ?? {};
+
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
+
+      final orderedQty = item.effectiveQuantity;
+      // Subtract any already returned quantity that was already restocked
+      final diff = orderedQty - item.returnedQuantity;
+      final int netDeductedQty = diff < 0 ? 0 : diff;
+
+      int nextStock = currentStock;
+      int nextReserved = currentReserved;
+
+      if (wasDeducted && netDeductedQty > 0) {
+        nextStock = currentStock + netDeductedQty;
+        final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+        final movement = InventoryMovement(
+          id: movementRef.id,
+          productId: item.productId,
+          productName: item.productName,
+          productSource: item.productSource,
+          previousStock: currentStock,
+          newStock: nextStock,
+          delta: netDeductedQty,
+          reason: 'Admin Delete Order Reversal',
+          notes: 'Restored stock for deleted test order [$storeName]',
+          createdBy: createdBy,
+          createdAt: now,
+        );
+        batch.set(movementRef, movement.toJson());
+        hasUpdates = true;
+      }
+
+      if (wasReserved && !wasDeducted && orderedQty > 0) {
+        nextReserved = (currentReserved - orderedQty) < 0 ? 0 : (currentReserved - orderedQty);
+        hasUpdates = true;
+      }
+
+      if (nextStock != currentStock || nextReserved != currentReserved) {
+        batch.update(productRef, {
+          'stockQuantity': nextStock,
+          'reservedQuantity': nextReserved,
+          'updatedAt': now,
+        });
+        hasUpdates = true;
+      }
+    }
+
+    if (hasUpdates) {
+      await batch.commit();
+    }
+  }
+
   /// Permanently deducts picked quantities from physical `stockQuantity` and releases
   /// floating `reservedQuantity` when a Picklist is completed and marked For Delivery.
   /// Also records an [InventoryMovement] audit entry for each deducted item.

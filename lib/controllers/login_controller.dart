@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/user_services.dart';
@@ -34,15 +33,18 @@ class LoginController {
     await authService.value.signIn(email: cleanEmail, password: password);
 
     final record = await _userService.getUserByEmail(cleanEmail);
-    if (record != null) {
-      await authService.value.updateUsername(username: record.username);
-
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final jsonString = jsonEncode(record.toJson());
-      await prefs.setString('user_data', jsonString);
+    if (record == null) {
+      await authService.value.signOut();
+      throw const FormatException('Account does not exist or has been deleted. Please contact your administrator.');
     }
 
-    final isDealer = record?.role == BusinessRole.dealer;
+    await authService.value.updateUsername(username: record.username);
+
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final jsonString = jsonEncode(record.toJson());
+    await prefs.setString('user_data', jsonString);
+
+    final isDealer = record.isDealerOrAdmin;
     return LoginResult(user: record, isDealer: isDealer);
   }
 

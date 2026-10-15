@@ -87,6 +87,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   TextEditingController dropdownHapiStore = TextEditingController();
   TextEditingController dropdownStatus = TextEditingController();
   bool isDealer = true;
+  bool isAdmin = false;
   List<DropdownMenuEntry<String>> listDropdownStatus = [];
   List<DropdownMenuEntry<String>> listDropdownStore = [];
   String networkImagePath = '';
@@ -217,6 +218,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   void prefetchData() async {
     final dealer = await _controller.checkIsDealer();
+    final admin = await _controller.checkIsAdmin();
 
     if (widget.deliveryID.isNotEmpty) {
       String imgPath = _currentDelivery.imagePath;
@@ -247,6 +249,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       if (mounted) {
         setState(() {
           isDealer = dealer;
+          isAdmin = admin;
           networkImagePath = imgPath;
           listDropdownStatus = entries;
         });
@@ -256,6 +259,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       if (mounted) {
         setState(() {
           isDealer = dealer;
+          isAdmin = admin;
         });
       }
       onStoreSelected();
@@ -1654,6 +1658,50 @@ class _DeliveryPageState extends State<DeliveryPage> {
     );
   }
 
+  Future<void> _onAdminDeleteDelivery() async {
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Delete Delivery (Admin)',
+      message: 'Permanently delete this delivery record for [${_currentDelivery.storeName}]?\n\n'
+          '• Document will be deleted from the database.\n'
+          '• Any deducted inventory will be automatically restored to warehouse stock.\n'
+          '• Any floating reserved stock will be released.',
+      confirmText: 'Delete Permanently',
+      isDestructive: true,
+      icon: Icons.delete_forever,
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    await Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Deleting delivery & restoring inventory...',
+    );
+    if (!mounted) return;
+
+    try {
+      await _controller.deleteDelivery(
+        context: context,
+        deliveryId: widget.deliveryID,
+        delivery: _currentDelivery,
+        isAdmin: true,
+      );
+      if (mounted) {
+        await Helperfunctions.showLoading(showLoading: false);
+        if (mounted) {
+          ShowMessage.success(context, 'Delivery record deleted and inventory restored.');
+          Navigator.pop(context, true);
+        }
+      }
+    } catch (e) {
+      await Helperfunctions.showLoading(showLoading: false);
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to delete delivery: $e');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isDelivered = dropdownStatus.text == DeliveryStatus.delivered;
@@ -1670,6 +1718,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
               icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
               tooltip: 'Digital Receipt & Thermal Print',
               onPressed: () => DigitalReceiptDialog.show(context, delivery: _currentDelivery, deliveryId: widget.deliveryID, proceedLabel: 'Close'),
+            ),
+          if (isAdmin && widget.deliveryID.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_forever_rounded, color: Colors.white),
+              tooltip: 'Delete Record (Admin)',
+              onPressed: _onAdminDeleteDelivery,
             ),
         ],
       ),

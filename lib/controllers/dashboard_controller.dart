@@ -120,24 +120,28 @@ class DashboardController {
   /// Switches the business role between Dealer and Salesman, updating Firestore and local cache.
   Future<String> switchUserRole(bool isCurrentlyDealer) async {
     final newRole = isCurrentlyDealer ? BusinessRole.salesman : BusinessRole.dealer;
+    return await switchUserRoleTo(newRole);
+  }
 
+  /// Switches active business role to the specified target role (Admin, Dealer, or Salesman).
+  Future<String> switchUserRoleTo(String targetRole) async {
     // 1. Update Firebase Firestore
     final currentEmail = FirebaseAuth.instance.currentUser?.email;
     if (currentEmail != null && currentEmail.isNotEmpty) {
-      await _userService.updateUserRoleByEmail(currentEmail, newRole);
+      await _userService.updateUserRoleByEmail(currentEmail, targetRole);
     }
 
     // 2. Update SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     final currentUser = await KVariables.getUser();
     if (currentUser != null) {
-      final updatedUser = currentUser.copyWith(role: newRole);
+      final updatedUser = currentUser.copyWith(role: targetRole);
       await prefs.setString('user_data', jsonEncode(updatedUser.toJson()));
     }
-    await prefs.setString(SharedPrefKeys.role, newRole);
+    await prefs.setString(SharedPrefKeys.role, targetRole);
 
     HapiStoreService.invalidateCache();
-    return newRole;
+    return targetRole;
   }
 
   /// Signs out the current user via auth service.

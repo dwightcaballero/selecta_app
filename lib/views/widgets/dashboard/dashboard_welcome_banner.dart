@@ -47,6 +47,15 @@ class _DashboardWelcomeBannerState extends State<DashboardWelcomeBanner> {
     final displayName = widget.currentUser?.username ?? (widget.isDealer ? 'Dealer' : 'Salesman');
     final hasSyncTime = widget.lastSyncDateTime.isNotEmpty && widget.lastSyncDateTime != 'Never';
 
+    final isAdmin = widget.currentUser?.isAdmin ?? false;
+    final roleColor = isAdmin
+        ? const Color(0xFF7C3AED)
+        : (widget.isDealer ? colorScheme.primary : colorScheme.tertiary);
+    final roleIcon = isAdmin
+        ? Icons.admin_panel_settings_rounded
+        : (widget.isDealer ? Icons.store_rounded : Icons.badge_outlined);
+    final roleLabel = isAdmin ? 'Admin' : (widget.isDealer ? 'Dealer' : 'Salesman');
+
     return GestureDetector(
       onTap: _handleTap,
       behavior: HitTestBehavior.opaque,
@@ -74,12 +83,12 @@ class _DashboardWelcomeBannerState extends State<DashboardWelcomeBanner> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (widget.isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: isDark ? 0.22 : 0.1),
+                color: roleColor.withValues(alpha: isDark ? 0.22 : 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                widget.isDealer ? Icons.store_rounded : Icons.badge_outlined,
-                color: widget.isDealer ? colorScheme.primary : colorScheme.tertiary,
+                roleIcon,
+                color: roleColor,
                 size: 24,
               ),
             ),
@@ -103,15 +112,15 @@ class _DashboardWelcomeBannerState extends State<DashboardWelcomeBanner> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: (widget.isDealer ? colorScheme.primary : colorScheme.tertiary).withValues(alpha: 0.12),
+                          color: roleColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          widget.isDealer ? 'Dealer' : 'Salesman',
+                          roleLabel,
                           style: TextStyle(
                             fontSize: 11.5,
                             fontWeight: FontWeight.w800,
-                            color: widget.isDealer ? colorScheme.primary : colorScheme.tertiary,
+                            color: roleColor,
                           ),
                         ),
                       ),

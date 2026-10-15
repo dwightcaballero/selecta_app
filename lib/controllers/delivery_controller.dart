@@ -117,6 +117,11 @@ class DeliveryController {
     return await KVariables.getIsDealer();
   }
 
+  /// Verifies whether the currently logged-in user possesses admin privileges.
+  Future<bool> checkIsAdmin() async {
+    return await KVariables.getIsAdmin();
+  }
+
   /// Checks if a cash breakdown has already been recorded for the specified [date].
   ///
   /// When recorded, salesmen are locked from modifying delivery records for that day.
@@ -1256,18 +1261,33 @@ class DeliveryController {
     await _placementService.savePlacement(placement);
   }
 
-  /// Deletes a delivery record, releases any floating reserved inventory if still in
-  /// `Pending Picklist`, and removes its associated uploaded image from storage.
-  Future<void> deleteDelivery({required BuildContext context, required String deliveryId, required Delivery delivery}) async {
-    if (delivery.isReturnApprovedByDealer) {
-      throw Exception('Cannot delete a delivery record that has already been approved by dealer.');
+  /// Deletes a delivery record, automatically restoring physical stock deductions or
+  /// releasing floating reserved inventory, and removes its associated uploaded image.
+  /// If [isAdmin] is false, standard business validation rules (settled/approved checks) are enforced.
+  Future<void> deleteDelivery({
+    required BuildContext context,
+    required String deliveryId,
+    required Delivery delivery,
+    bool isAdmin = false,
+  }) async {
+    if (!isAdmin) {
+      if (delivery.isReturnApprovedByDealer) {
+        throw Exception('Cannot delete a delivery record that has already been approved by dealer.');
+      }
+      if (delivery.isInventorySettled) {
+        throw Exception('Cannot delete a delivery record for a date that has already been verified and locked.');
+      }
     }
-    if (delivery.isInventorySettled) {
-      throw Exception('Cannot delete a delivery record for a date that has already been verified and locked.');
+
+    if (delivery.items.isNotEmpty) {
+      await _inventoryService.reverseStockForDeletedOrder(
+        storeName: delivery.storeName,
+        items: delivery.items,
+        wasDeducted: delivery.isInventoryDeducted,
+        wasReserved: delivery.isInventoryReserved && !delivery.isInventoryDeducted,
+      );
     }
-    if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
-      await _inventoryService.releaseReservedStockForOrder(storeName: delivery.storeName, items: delivery.items);
-    }
+
     if (delivery.imagePath.isNotEmpty && context.mounted) {
       await Helperfunctions.deleteImage(context, delivery.imagePath);
     }

@@ -101,6 +101,7 @@ class ConfirmTitle {
 class BusinessRole {
   static const dealer = "Dealer";
   static const salesman = "Salesman";
+  static const admin = "Admin";
 }
 
 class ExpenseType {
@@ -167,6 +168,7 @@ class AppPages {
   static const vanLoad = "Van Load";
   static const vanSell = "Van Sell";
   static const payslip = "Payslip";
+  static const superAdmin = "Super Admin";
 }
 
 class PayslipStatus {
