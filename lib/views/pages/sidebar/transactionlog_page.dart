@@ -581,8 +581,14 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: const CustomAppbar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(
         title: 'Audit Logs',
         subtitle: 'System Activity & Changes',
       ),
@@ -652,6 +658,7 @@ class _TransactionLogPageState extends State<TransactionLogPage> {
           );
         },
       ),
-    );
-  }
+    ),
+  );
+}
 }

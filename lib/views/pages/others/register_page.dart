@@ -342,20 +342,24 @@ class _RegisterPageState extends State<RegisterPage> {
     final isDark = theme.brightness == Brightness.dark;
 
     return PopScope(
-      canPop: !_hasUnsavedChanges && !_isLoading,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_isLoading) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Registration?',
-          message: 'You have entered registration details. Are you sure you want to leave and discard them?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Registration?',
+            message: 'You have entered registration details. Are you sure you want to leave and discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

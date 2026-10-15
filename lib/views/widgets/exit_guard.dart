@@ -45,6 +45,16 @@ class _ExitGuardState extends State<ExitGuard> {
       onPopInvokedWithResult: (bool didPop, dynamic result) {
         if (didPop) return;
 
+        // If this route is not currently the top route (e.g. a child page is on top or still popping),
+        // or if Navigator can still pop, do not intercept or reset tabs.
+        final modalRoute = ModalRoute.of(context);
+        if (modalRoute != null && !modalRoute.isCurrent) {
+          return;
+        }
+        if (Navigator.of(context).canPop()) {
+          return;
+        }
+
         // 1. Give parent a chance to handle (e.g. close drawer or switch to tab 0)
         if (widget.onBackIntercept != null && widget.onBackIntercept!()) {
           _lastBackTime = null; // Reset exit timer on tab switch / intercept

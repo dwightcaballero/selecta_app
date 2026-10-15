@@ -417,7 +417,7 @@ class _PicklistContinuousScannerPageState extends State<PicklistContinuousScanne
     final progress = _totalCount == 0 ? 0.0 : _pickedCount / _totalCount;
 
     return PopScope(
-      canPop: true,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         Navigator.pop(context, _items);

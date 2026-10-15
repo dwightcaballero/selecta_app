@@ -316,8 +316,14 @@ class _PjpMapPageState extends State<PjpMapPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: 'PJP Route Map',
         subtitle: '$_selectedDay • ${_allStores.length} stores scheduled',
       ),
@@ -599,8 +605,9 @@ class _PjpMapPageState extends State<PjpMapPage> {
             ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildStorePreviewCard(MappedStoreItem item, ColorScheme colorScheme) {
     final store = item.store;

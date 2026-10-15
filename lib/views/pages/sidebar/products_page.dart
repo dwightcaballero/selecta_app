@@ -528,9 +528,15 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     final colorScheme = Theme.of(context).colorScheme;
     final isSelectaTab = _tabController.index == 0;
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Products',
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Products',
         subtitle: _isAdmin
             ? (isSelectaTab ? 'Admin Selecta Master Catalog' : 'Admin Other Products Catalog')
             : (_isSalesman ? 'Selecta & Other Products Reference' : 'Dealer Products Catalog'),
@@ -615,6 +621,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
       ),
       body: TabBarView(controller: _tabController, children: [_buildSelectaProductsTab(colorScheme), _buildOtherProductsTab(colorScheme)]),
       floatingActionButton: _buildFloatingActionButton(colorScheme),
+    ),
     );
   }
 

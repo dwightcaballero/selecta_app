@@ -760,7 +760,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
             final colorScheme = Theme.of(sheetCtx).colorScheme;
             final totalAmount = _deliveryController.computeItemsOrderAmount(items);
-            final totalUnits = items.fold<int>(0, (sum, i) => sum + i.pickedQuantity);
+            final totalUnits = items.fold<int>(0, (acc, i) => acc + i.pickedQuantity);
 
             return DraggableScrollableSheet(
               expand: false,
@@ -1075,7 +1075,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
     final storeName = _storeController.text.trim();
     final totalAmount = _deliveryController.computeItemsOrderAmount(orderItems);
-    final totalUnits = orderItems.fold<int>(0, (sum, i) => sum + i.pickedQuantity);
+    final totalUnits = orderItems.fold<int>(0, (acc, i) => acc + i.pickedQuantity);
 
     final confirmed = await ShowMessage.confirm(
       context,
@@ -1757,7 +1757,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
         final orderItems = _buildOrderItemsList(allInventory);
         final totalAmount = _deliveryController.computeItemsOrderAmount(orderItems);
-        final totalUnits = orderItems.fold<int>(0, (sum, i) => sum + i.pickedQuantity);
+        final totalUnits = orderItems.fold<int>(0, (acc, i) => acc + i.pickedQuantity);
         final unplacedCount = allInventory
             .where(
               (i) =>
@@ -1770,23 +1770,27 @@ class _BookOrderPageState extends State<BookOrderPage> {
         final isLocked = _isSaving || _isScanning;
 
         return PopScope(
-          canPop: !_hasUnsavedChanges && !isLocked,
+          canPop: false,
           onPopInvokedWithResult: (didPop, _) async {
             if (didPop) return;
             if (isLocked) {
               ShowMessage.warning(context, 'Operation in progress. Please wait.');
               return;
             }
-            final shouldDiscard = await ShowMessage.confirm(
-              context,
-              title: 'Discard Order Changes?',
-              message: 'You have unsaved changes or items selected in this order. Are you sure you want to go back and discard them?',
-              confirmText: 'Discard',
-              cancelText: 'Keep Editing',
-              isDestructive: true,
-              icon: Icons.warning_amber_rounded,
-            );
-            if (shouldDiscard && context.mounted) {
+            if (_hasUnsavedChanges) {
+              final shouldDiscard = await ShowMessage.confirm(
+                context,
+                title: 'Discard Order Changes?',
+                message: 'You have unsaved changes or items selected in this order. Are you sure you want to go back and discard them?',
+                confirmText: 'Discard',
+                cancelText: 'Keep Editing',
+                isDestructive: true,
+                icon: Icons.warning_amber_rounded,
+              );
+              if (shouldDiscard && context.mounted) {
+                Navigator.pop(context);
+              }
+            } else {
               Navigator.pop(context);
             }
           },

@@ -628,60 +628,67 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     final pulloutCount = scanningList.where((s) => s.status == ScanningStatus.pullout).length;
     final unassignedCount = scanningList.where((s) => s.status == ScanningStatus.unassigned).length;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surfaceContainerLowest,
-      appBar: widget.showAppBar
-          ? CustomAppbar(title: 'Scanning List', subtitle: 'Track barcode scanning progress', actions: [_buildSortMenu()])
-          : null,
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: Column(
-          children: [
-            _buildSearchField(),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _enterBarcodeManually,
-                icon: const Icon(Icons.keyboard_outlined, size: 18),
-                label: const Text('Enter barcode manually', style: TextStyle(fontSize: 13)),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        backgroundColor: colorScheme.surfaceContainerLowest,
+        appBar: widget.showAppBar
+            ? CustomAppbar(title: 'Scanning List', subtitle: 'Track barcode scanning progress', actions: [_buildSortMenu()])
+            : null,
+        body: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Column(
+            children: [
+              _buildSearchField(),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _enterBarcodeManually,
+                  icon: const Icon(Icons.keyboard_outlined, size: 18),
+                  label: const Text('Enter barcode manually', style: TextStyle(fontSize: 13)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            _buildStatusFilterBar(
-              notScannedCount: notScannedCount,
-              pendingCount: pendingCount,
-              scannedCount: scannedCount,
-              pulloutCount: pulloutCount,
-              unassignedCount: unassignedCount,
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: prefetchData,
-                child: _scanningListView(
-                  const [
-                    ScanningStatus.notScanned,
-                    ScanningStatus.pending,
-                    ScanningStatus.scanned,
-                    ScanningStatus.pullout,
-                    ScanningStatus.unassigned,
-                  ][_currentIndex],
+              const SizedBox(height: 10),
+              _buildStatusFilterBar(
+                notScannedCount: notScannedCount,
+                pendingCount: pendingCount,
+                scannedCount: scannedCount,
+                pulloutCount: pulloutCount,
+                unassignedCount: unassignedCount,
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: prefetchData,
+                  child: _scanningListView(
+                    const [
+                      ScanningStatus.notScanned,
+                      ScanningStatus.pending,
+                      ScanningStatus.scanned,
+                      ScanningStatus.pullout,
+                      ScanningStatus.unassigned,
+                    ][_currentIndex],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: null,
-        onPressed: _scanBarcode,
-        icon: const Icon(Icons.qr_code_scanner_rounded),
-        label: const Text('Scan barcode'),
+        floatingActionButton: FloatingActionButton.extended(
+          heroTag: null,
+          onPressed: _scanBarcode,
+          icon: const Icon(Icons.qr_code_scanner_rounded),
+          label: const Text('Scan barcode'),
+        ),
       ),
     );
   }

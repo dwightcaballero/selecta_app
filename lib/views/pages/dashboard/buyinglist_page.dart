@@ -339,63 +339,70 @@ class _BuyinglistPageState extends State<BuyinglistPage> {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _controller,
-      builder: (context, _) {
-        final isBuying = _controller.isBuyingTab;
-
-        return Scaffold(
-          appBar: widget.showAppBar
-              ? CustomAppbar(
-                  title: isBuying ? 'KPI - Buying' : 'KPI - Non Buying',
-                  subtitle: isBuying ? 'Buying store performance' : 'Stores requiring attention',
-                  actions: [_buildSortMenu(isBuying: isBuying)],
-                )
-              : null,
-          body: _controller.isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _controller.errorMessage != null
-              ? _buildErrorState(_controller.errorMessage!)
-              : _buildScreenList(stores: _controller.filteredAndSortedStores, isBuying: isBuying),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: _controller.currentIndex,
-            onDestinationSelected: (int index) {
-              _searchController.clear();
-              _controller.setTabIndex(index);
-            },
-            destinations: [
-              NavigationDestination(
-                icon: Badge(
-                  label: Text('${_controller.buyingStoreCount}'),
-                  isLabelVisible: !_controller.isLoading && _controller.buyingStoreCount > 0,
-                  child: const Icon(Icons.storefront_outlined),
-                ),
-                selectedIcon: Badge(
-                  label: Text('${_controller.buyingStoreCount}'),
-                  isLabelVisible: !_controller.isLoading && _controller.buyingStoreCount > 0,
-                  child: const Icon(Icons.storefront),
-                ),
-                label: 'Buying Stores',
-              ),
-              NavigationDestination(
-                icon: Badge(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  label: Text('${_controller.nonBuyingStoreCount}'),
-                  isLabelVisible: !_controller.isLoading && _controller.nonBuyingStoreCount > 0,
-                  child: const Icon(Icons.remove_shopping_cart_outlined),
-                ),
-                selectedIcon: Badge(
-                  backgroundColor: Theme.of(context).colorScheme.error,
-                  label: Text('${_controller.nonBuyingStoreCount}'),
-                  isLabelVisible: !_controller.isLoading && _controller.nonBuyingStoreCount > 0,
-                  child: const Icon(Icons.remove_shopping_cart),
-                ),
-                label: 'Non Buying Stores',
-              ),
-            ],
-          ),
-        );
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
       },
+      child: ListenableBuilder(
+        listenable: _controller,
+        builder: (context, _) {
+          final isBuying = _controller.isBuyingTab;
+
+          return Scaffold(
+            appBar: widget.showAppBar
+                ? CustomAppbar(
+                    title: isBuying ? 'KPI - Buying' : 'KPI - Non Buying',
+                    subtitle: isBuying ? 'Buying store performance' : 'Stores requiring attention',
+                    actions: [_buildSortMenu(isBuying: isBuying)],
+                  )
+                : null,
+            body: _controller.isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _controller.errorMessage != null
+                ? _buildErrorState(_controller.errorMessage!)
+                : _buildScreenList(stores: _controller.filteredAndSortedStores, isBuying: isBuying),
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: _controller.currentIndex,
+              onDestinationSelected: (int index) {
+                _searchController.clear();
+                _controller.setTabIndex(index);
+              },
+              destinations: [
+                NavigationDestination(
+                  icon: Badge(
+                    label: Text('${_controller.buyingStoreCount}'),
+                    isLabelVisible: !_controller.isLoading && _controller.buyingStoreCount > 0,
+                    child: const Icon(Icons.storefront_outlined),
+                  ),
+                  selectedIcon: Badge(
+                    label: Text('${_controller.buyingStoreCount}'),
+                    isLabelVisible: !_controller.isLoading && _controller.buyingStoreCount > 0,
+                    child: const Icon(Icons.storefront),
+                  ),
+                  label: 'Buying Stores',
+                ),
+                NavigationDestination(
+                  icon: Badge(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    label: Text('${_controller.nonBuyingStoreCount}'),
+                    isLabelVisible: !_controller.isLoading && _controller.nonBuyingStoreCount > 0,
+                    child: const Icon(Icons.remove_shopping_cart_outlined),
+                  ),
+                  selectedIcon: Badge(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    label: Text('${_controller.nonBuyingStoreCount}'),
+                    isLabelVisible: !_controller.isLoading && _controller.nonBuyingStoreCount > 0,
+                    child: const Icon(Icons.remove_shopping_cart),
+                  ),
+                  label: 'Non Buying Stores',
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

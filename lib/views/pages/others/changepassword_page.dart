@@ -36,19 +36,23 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_hasUnsavedChanges,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Changes?',
-          message: 'You have entered password information. Are you sure you want to discard it?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Changes?',
+            message: 'You have entered password information. Are you sure you want to discard it?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

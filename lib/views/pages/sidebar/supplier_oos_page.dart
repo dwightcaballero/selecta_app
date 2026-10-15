@@ -108,9 +108,15 @@ class _SupplierOosPageState extends State<SupplierOosPage> {
     final isDark = theme.brightness == Brightness.dark;
     final monthStr = DateFormat('MMMM yyyy').format(_selectedMonth);
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Supplier Out of Stock',
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Supplier Out of Stock',
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline_rounded),
@@ -325,6 +331,7 @@ class _SupplierOosPageState extends State<SupplierOosPage> {
           );
         },
       ),
+    ),
     );
   }
 

@@ -780,8 +780,14 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Configurations', subtitle: 'App & Campaign Settings'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(title: 'Configurations', subtitle: 'App & Campaign Settings'),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -884,6 +890,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                 ],
               ),
             ),
+      ),
     );
   }
 

@@ -495,8 +495,14 @@ class _TasklistPageState extends State<TasklistPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Tasks', subtitle: 'Store & Operational Tasks'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(title: 'Tasks', subtitle: 'Store & Operational Tasks'),
       floatingActionButton: _isDealer
           ? FloatingActionButton.extended(
               onPressed: _navigateToAddTask,
@@ -582,6 +588,7 @@ class _TasklistPageState extends State<TasklistPage> {
           );
         },
       ),
-    );
+    ),
+  );
   }
 }

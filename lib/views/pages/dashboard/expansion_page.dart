@@ -416,50 +416,57 @@ class _ExpansionPageState extends State<ExpansionPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: widget.showAppBar
-          ? const CustomAppbar(
-              title: 'Expansion',
-              subtitle: 'New store acquisition & growth',
-            )
-          : null,
-      body: RefreshIndicator(
-        onRefresh: prefetchData,
-        child: isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : loadError != null
-                ? _buildErrorState()
-                : ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                    children: [
-                      _buildProgressSummary(),
-                      const SizedBox(height: 16),
-                      _buildSection(
-                        title: 'Expansion Overview',
-                        icon: Icons.analytics_outlined,
-                        children: [
-                          _buildMetricRow('Opened this month', '$totalExpansionThisMonth stores', Icons.storefront_outlined),
-                          const Divider(height: 1, indent: 16, endIndent: 16),
-                          _buildMetricRow(
-                            'Remaining to target',
-                            '${(monthlyTarget - totalExpansionThisMonth).clamp(0, monthlyTarget)} stores',
-                            Icons.flag_outlined,
-                            valueColor: totalExpansionThisMonth >= monthlyTarget ? Colors.green : null,
-                          ),
-                          const Divider(height: 1, indent: 16, endIndent: 16),
-                          _buildMetricRow('Opened in past 3 months', '$totalExpansionPastThreeMonths stores', Icons.date_range_outlined),
-                          const Divider(height: 1, indent: 16, endIndent: 16),
-                          _buildMetricRow(
-                            'Monthly average',
-                            '${(totalExpansionPastThreeMonths / 3).toStringAsFixed(1)} stores/mo',
-                            Icons.trending_up_outlined,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      _buildStoreSection(),
-                    ],
-                  ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: widget.showAppBar
+            ? const CustomAppbar(
+                title: 'Expansion',
+                subtitle: 'New store acquisition & growth',
+              )
+            : null,
+        body: RefreshIndicator(
+          onRefresh: prefetchData,
+          child: isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : loadError != null
+                  ? _buildErrorState()
+                  : ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                      children: [
+                        _buildProgressSummary(),
+                        const SizedBox(height: 16),
+                        _buildSection(
+                          title: 'Expansion Overview',
+                          icon: Icons.analytics_outlined,
+                          children: [
+                            _buildMetricRow('Opened this month', '$totalExpansionThisMonth stores', Icons.storefront_outlined),
+                            const Divider(height: 1, indent: 16, endIndent: 16),
+                            _buildMetricRow(
+                              'Remaining to target',
+                              '${(monthlyTarget - totalExpansionThisMonth).clamp(0, monthlyTarget)} stores',
+                              Icons.flag_outlined,
+                              valueColor: totalExpansionThisMonth >= monthlyTarget ? Colors.green : null,
+                            ),
+                            const Divider(height: 1, indent: 16, endIndent: 16),
+                            _buildMetricRow('Opened in past 3 months', '$totalExpansionPastThreeMonths stores', Icons.date_range_outlined),
+                            const Divider(height: 1, indent: 16, endIndent: 16),
+                            _buildMetricRow(
+                              'Monthly average',
+                              '${(totalExpansionPastThreeMonths / 3).toStringAsFixed(1)} stores/mo',
+                              Icons.trending_up_outlined,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildStoreSection(),
+                      ],
+                    ),
+        ),
       ),
     );
   }

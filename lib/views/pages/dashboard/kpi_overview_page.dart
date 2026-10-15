@@ -59,51 +59,58 @@ class _KpiOverviewPageState extends State<KpiOverviewPage> with SingleTickerProv
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'KPI & Analytics Hub',
-        subtitle: 'Performance metrics, trends & store coverage',
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
-          child: Container(
-            color: isDark ? const Color(0xFF1E2430) : theme.colorScheme.primary,
-            child: TabBar(
-              controller: _tabController,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              indicatorColor: isDark ? colorScheme.primary : Colors.white,
-              indicatorWeight: 3,
-              labelColor: isDark ? colorScheme.primary : Colors.white,
-              unselectedLabelColor: isDark ? const Color(0xFF94A3B8) : Colors.white.withValues(alpha: 0.72),
-              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-              tabs: _tabs
-                  .map(
-                    (tab) => Tab(
-                      icon: Icon(tab.icon, size: 18),
-                      text: tab.label,
-                      iconMargin: const EdgeInsets.only(bottom: 2),
-                    ),
-                  )
-                  .toList(),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'KPI & Analytics Hub',
+          subtitle: 'Performance metrics, trends & store coverage',
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(48),
+            child: Container(
+              color: isDark ? const Color(0xFF1E2430) : theme.colorScheme.primary,
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                indicatorColor: isDark ? colorScheme.primary : Colors.white,
+                indicatorWeight: 3,
+                labelColor: isDark ? colorScheme.primary : Colors.white,
+                unselectedLabelColor: isDark ? const Color(0xFF94A3B8) : Colors.white.withValues(alpha: 0.72),
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                tabs: _tabs
+                    .map(
+                      (tab) => Tab(
+                        icon: Icon(tab.icon, size: 18),
+                        text: tab.label,
+                        iconMargin: const EdgeInsets.only(bottom: 2),
+                      ),
+                    )
+                    .toList(),
+              ),
             ),
           ),
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          const AnalyticsPage(showAppBar: false),
-          const SalesPage(showAppBar: false),
-          const BuyinglistPage(showAppBar: false),
-          ThruputPage(
-            dashboardDTO: widget.dashboardDTO ?? DashboardDTO.empty(),
-            showAppBar: false,
-          ),
-          const PlacementlistPage(showAppBar: false),
-          const ScanninglistPage(showAppBar: false),
-          const ExpansionPage(showAppBar: false),
-        ],
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            const AnalyticsPage(showAppBar: false),
+            const SalesPage(showAppBar: false),
+            const BuyinglistPage(showAppBar: false),
+            ThruputPage(
+              dashboardDTO: widget.dashboardDTO ?? DashboardDTO.empty(),
+              showAppBar: false,
+            ),
+            const PlacementlistPage(showAppBar: false),
+            const ScanninglistPage(showAppBar: false),
+            const ExpansionPage(showAppBar: false),
+          ],
+        ),
       ),
     );
   }

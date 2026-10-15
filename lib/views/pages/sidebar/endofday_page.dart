@@ -526,86 +526,93 @@ class _EndofdayPageState extends State<EndofdayPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: CustomAppbar(title: 'End of Day Report', subtitle: DateFormat('EEEE, d MMM yyyy').format(_selectedDate)),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: RefreshIndicator(
-        onRefresh: getData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 16,
-            children: [
-              // 1. Date Navigation Header
-              _buildDateNavigator(),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(title: 'End of Day Report', subtitle: DateFormat('EEEE, d MMM yyyy').format(_selectedDate)),
+        bottomNavigationBar: _buildStickyBottomBar(),
+        body: RefreshIndicator(
+          onRefresh: getData,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 16,
+              children: [
+                // 1. Date Navigation Header
+                _buildDateNavigator(),
 
-              // 2. Pending Status Warning (if any)
-              if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
+                // 2. Pending Status Warning (if any)
+                if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
 
-              // 2a. Orders in Pending Picklist Notice (if any exist for this date)
-              if (endOfDayData.pendingPicklistStatus > 0)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.purple.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.fact_check_outlined, size: 20, color: Colors.purple.shade800),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          endOfDayData.pendingPicklistStatus == 1
-                              ? '1 order is currently Booked (Awaiting Picklist) and not included in delivery reconciliation.'
-                              : '${endOfDayData.pendingPicklistStatus} orders are currently Booked (Awaiting Picklist) and not included in delivery reconciliation.',
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Colors.purple.shade900),
+                // 2a. Orders in Pending Picklist Notice (if any exist for this date)
+                if (endOfDayData.pendingPicklistStatus > 0)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.purple.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.fact_check_outlined, size: 20, color: Colors.purple.shade800),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            endOfDayData.pendingPicklistStatus == 1
+                                ? '1 order is currently Booked (Awaiting Picklist) and not included in delivery reconciliation.'
+                                : '${endOfDayData.pendingPicklistStatus} orders are currently Booked (Awaiting Picklist) and not included in delivery reconciliation.',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Colors.purple.shade900),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
-              // 2b. Empty state notice if no activity recorded
-              if (endOfDayData.totaldelivery == 0)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 20, color: colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'No delivery transactions recorded for this date.',
-                          style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                // 2b. Empty state notice if no activity recorded
+                if (endOfDayData.totaldelivery == 0)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 20, color: colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'No delivery transactions recorded for this date.',
+                            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
-              // 3. Delivery Volume & Status Grid
-              _buildDeliveryStatusGrid(),
+                // 3. Delivery Volume & Status Grid
+                _buildDeliveryStatusGrid(),
 
-              // 4. Sales & Collections Card
-              _buildSalesAndCollectionsCard(),
+                // 4. Sales & Collections Card
+                _buildSalesAndCollectionsCard(),
 
-              // 5. Deductions & Returns Card
-              _buildDeductionsCard(),
+                // 5. Deductions & Returns Card
+                _buildDeductionsCard(),
 
-              // 6. Cash Reconciliation Summary Card
-              _buildCashReconciliationCard(),
-            ],
+                // 6. Cash Reconciliation Summary Card
+                _buildCashReconciliationCard(),
+              ],
+            ),
           ),
         ),
       ),

@@ -195,9 +195,15 @@ class _PayslipDetailPageState extends State<PayslipDetailPage> {
     final colorScheme = theme.colorScheme;
     final statusColor = _getStatusColor(_currentPayslip.status);
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Digital Payslip',
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Digital Payslip',
         actions: [
           if (widget.isDealer)
             IconButton(
@@ -630,6 +636,7 @@ class _PayslipDetailPageState extends State<PayslipDetailPage> {
                 ],
               ),
             ),
+      ),
     );
   }
 

@@ -1091,17 +1091,21 @@ class _ScanningPageState extends State<ScanningPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_hasUnsavedChanges,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        final leave = await ShowMessage.confirm(
-          context,
-          title: 'Discard Changes',
-          message: 'You have unsaved changes. Are you sure you want to discard them?',
-          confirmText: 'Discard',
-          isDestructive: true,
-        );
-        if (leave && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final leave = await ShowMessage.confirm(
+            context,
+            title: 'Discard Changes',
+            message: 'You have unsaved changes. Are you sure you want to discard them?',
+            confirmText: 'Discard',
+            isDestructive: true,
+          );
+          if (leave && context.mounted) {
+            Navigator.of(context).pop();
+          }
+        } else {
           Navigator.of(context).pop();
         }
       },

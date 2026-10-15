@@ -1921,18 +1921,22 @@ class _PicklistPageState extends State<PicklistPage> {
     int calcUnits(List<int> idxs) => idxs.fold<int>(0, (total, i) => total + _items[i].pickedQuantity);
 
     return PopScope(
-      canPop: !_isSaving && !_hasUnsavedChanges,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_isSaving) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Changes?',
-          message: 'You have unsaved picklist progress. Are you sure you want to leave without saving?',
-          confirmText: 'Discard',
-          isDestructive: true,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Changes?',
+            message: 'You have unsaved picklist progress. Are you sure you want to leave without saving?',
+            confirmText: 'Discard',
+            isDestructive: true,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

@@ -504,35 +504,42 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(
-        title: 'Hapi Stores',
-        subtitle: 'Store Masterlist & Schedules',
-      ),
-      floatingActionButton: _isDealer
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => HapiStorePage(
-                      hapiStoreID: '',
-                      hapistore: Hapistore.empty(),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(
+          title: 'Hapi Stores',
+          subtitle: 'Store Masterlist & Schedules',
+        ),
+        floatingActionButton: _isDealer
+            ? FloatingActionButton.extended(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HapiStorePage(
+                        hapiStoreID: '',
+                        hapistore: Hapistore.empty(),
+                      ),
                     ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Add Store'),
-            )
-          : null,
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          _buildPjpFilterChips(),
-          const SizedBox(height: 4),
-          Expanded(child: _buildStoreListView()),
-        ],
+                  );
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Store'),
+              )
+            : null,
+        body: Column(
+          children: [
+            _buildSearchBar(),
+            _buildPjpFilterChips(),
+            const SizedBox(height: 4),
+            Expanded(child: _buildStoreListView()),
+          ],
+        ),
       ),
     );
   }

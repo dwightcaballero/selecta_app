@@ -152,7 +152,13 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return StreamBuilder<List<ErrorLogItem>>(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: StreamBuilder<List<ErrorLogItem>>(
       stream: ErrorLogService.streamFirestoreLogs(),
       builder: (context, snapshot) {
         final allLogs = snapshot.data ?? [];
@@ -398,8 +404,9 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
           ),
         );
       },
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildMetricTile({
     required IconData icon,

@@ -193,81 +193,88 @@ class ThruputPage extends StatelessWidget {
     // Controller calculates all throughput metrics safely
     final metrics = _controller.calculateMetrics(dashboardDTO, target: effectiveTarget);
 
-    return Scaffold(
-      appBar: showAppBar
-          ? const CustomAppbar(title: 'KPI - Throughput', subtitle: 'Store throughput and activity')
-          : null,
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-        children: [
-          _buildThruputSummary(context, metrics: metrics),
-          const SizedBox(height: 18),
-          _buildSection(
-            context,
-            title: 'Store Coverage',
-            icon: Icons.storefront_outlined,
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-              child: Text(
-                '${metrics.conversionRate.toStringAsFixed(1)}% Active',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: showAppBar
+            ? const CustomAppbar(title: 'KPI - Throughput', subtitle: 'Store throughput and activity')
+            : null,
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          children: [
+            _buildThruputSummary(context, metrics: metrics),
+            const SizedBox(height: 18),
+            _buildSection(
+              context,
+              title: 'Store Coverage',
+              icon: Icons.storefront_outlined,
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                  '${metrics.conversionRate.toStringAsFixed(1)}% Active',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+                ),
               ),
+              children: [
+                _buildMetricRow(context, label: 'Total accounts', value: '${metrics.totalStores} stores', icon: Icons.business_outlined),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                _buildMetricRow(
+                  context,
+                  label: 'Buying stores',
+                  value: '${dashboardDTO.buyingCount}',
+                  icon: Icons.check_circle_outline,
+                  valueColor: Theme.of(context).colorScheme.primary,
+                  onTap: () => Helperfunctions.navigateTo(context, const BuyinglistPage()),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                _buildMetricRow(
+                  context,
+                  label: 'Non-buying stores',
+                  value: '${dashboardDTO.nonBuyingCount}',
+                  icon: Icons.remove_shopping_cart_outlined,
+                  valueColor: Theme.of(context).colorScheme.error,
+                  onTap: () => Helperfunctions.navigateTo(context, const BuyinglistPage()),
+                ),
+              ],
             ),
-            children: [
-              _buildMetricRow(context, label: 'Total accounts', value: '${metrics.totalStores} stores', icon: Icons.business_outlined),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              _buildMetricRow(
-                context,
-                label: 'Buying stores',
-                value: '${dashboardDTO.buyingCount}',
-                icon: Icons.check_circle_outline,
-                valueColor: Theme.of(context).colorScheme.primary,
-                onTap: () => Helperfunctions.navigateTo(context, const BuyinglistPage()),
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              _buildMetricRow(
-                context,
-                label: 'Non-buying stores',
-                value: '${dashboardDTO.nonBuyingCount}',
-                icon: Icons.remove_shopping_cart_outlined,
-                valueColor: Theme.of(context).colorScheme.error,
-                onTap: () => Helperfunctions.navigateTo(context, const BuyinglistPage()),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildSection(
-            context,
-            title: 'Sales Activity',
-            icon: Icons.receipt_long_outlined,
-            children: [
-              _buildMetricRow(
-                context,
-                label: 'Buying store sales',
-                value: Helperfunctions.formatDoubleAmountForDisplay(dashboardDTO.totalBuyingSales),
-                icon: Icons.payments_outlined,
-                valueColor: Theme.of(context).colorScheme.primary,
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              _buildMetricRow(context, label: 'Total transactions', value: '${dashboardDTO.totaltransactionCount}', icon: Icons.receipt_outlined),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              _buildMetricRow(
-                context,
-                label: 'Average sale per transaction',
-                value: Helperfunctions.formatDoubleAmountForDisplay(metrics.averageSale),
-                icon: Icons.trending_up_outlined,
-              ),
-              const Divider(height: 1, indent: 16, endIndent: 16),
-              _buildMetricRow(
-                context,
-                label: 'Average transactions per store',
-                value: metrics.averageTransactions.toStringAsFixed(1),
-                icon: Icons.analytics_outlined,
-              ),
-            ],
-          ),
-        ],
+            const SizedBox(height: 16),
+            _buildSection(
+              context,
+              title: 'Sales Activity',
+              icon: Icons.receipt_long_outlined,
+              children: [
+                _buildMetricRow(
+                  context,
+                  label: 'Buying store sales',
+                  value: Helperfunctions.formatDoubleAmountForDisplay(dashboardDTO.totalBuyingSales),
+                  icon: Icons.payments_outlined,
+                  valueColor: Theme.of(context).colorScheme.primary,
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                _buildMetricRow(context, label: 'Total transactions', value: '${dashboardDTO.totaltransactionCount}', icon: Icons.receipt_outlined),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                _buildMetricRow(
+                  context,
+                  label: 'Average sale per transaction',
+                  value: Helperfunctions.formatDoubleAmountForDisplay(metrics.averageSale),
+                  icon: Icons.trending_up_outlined,
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                _buildMetricRow(
+                  context,
+                  label: 'Average transactions per store',
+                  value: metrics.averageTransactions.toStringAsFixed(1),
+                  icon: Icons.analytics_outlined,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

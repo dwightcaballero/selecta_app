@@ -598,7 +598,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
     final theme = Theme.of(context);
 
     return PopScope(
-      canPop: !_hasUnsavedChanges && !_isCreatingNew,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_hasUnsavedChanges) {

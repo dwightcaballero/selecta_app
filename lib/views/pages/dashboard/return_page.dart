@@ -795,10 +795,16 @@ class _ReturnPageState extends State<ReturnPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Return Details',
-        subtitle: _delivery.storeName,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Return Details',
+          subtitle: _delivery.storeName,
         actions: [
           if (_delivery.items.isNotEmpty)
             IconButton(
@@ -1028,6 +1034,7 @@ class _ReturnPageState extends State<ReturnPage> {
           ],
         ),
       ),
+    ),
     );
   }
 }

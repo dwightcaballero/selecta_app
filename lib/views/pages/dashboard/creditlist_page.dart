@@ -558,62 +558,69 @@ class _CreditlistPageState extends State<CreditlistPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(
-        title: 'Credit List',
-        subtitle: 'Unpaid Store Accounts',
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _creditStream,
-        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-          if (snapshot.hasError) {
-            return _buildErrorState();
-          }
-          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(
+          title: 'Credit List',
+          subtitle: 'Unpaid Store Accounts',
+        ),
+        body: StreamBuilder<QuerySnapshot>(
+          stream: _creditStream,
+          builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
+            if (snapshot.hasError) {
+              return _buildErrorState();
+            }
+            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          final allDocs = snapshot.data?.docs ?? [];
-          if (allDocs.isEmpty) {
-            return _buildEmptyState();
-          }
+            final allDocs = snapshot.data?.docs ?? [];
+            if (allDocs.isEmpty) {
+              return _buildEmptyState();
+            }
 
-          // Delegate metric computation, filtering, and sorting to the controller
-          final metrics = _controller.computeMetrics(
-            docs: allDocs,
-            searchQuery: _searchQuery,
-            sort: _selectedSort,
-            agingFilter: _selectedAging,
-          );
+            // Delegate metric computation, filtering, and sorting to the controller
+            final metrics = _controller.computeMetrics(
+              docs: allDocs,
+              searchQuery: _searchQuery,
+              sort: _selectedSort,
+              agingFilter: _selectedAging,
+            );
 
-          return Column(
-            children: [
-              // 1. Total Outstanding Summary Header
-              _buildSummaryCard(metrics),
+            return Column(
+              children: [
+                // 1. Total Outstanding Summary Header
+                _buildSummaryCard(metrics),
 
-              // 2. Search & Sort Bar
-              _buildSearchAndFilterBar(),
+                // 2. Search & Sort Bar
+                _buildSearchAndFilterBar(),
 
-              // 3. Aging Filter Chips (0-15d, 16-30d, 31d+ Overdue)
-              _buildAgingFilterChips(metrics),
+                // 3. Aging Filter Chips (0-15d, 16-30d, 31d+ Overdue)
+                _buildAgingFilterChips(metrics),
 
-              // 4. Filtered Credits List
-              Expanded(
-                child: metrics.filteredRecords.isEmpty
-                    ? _buildNoSearchResultsState()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                        itemCount: metrics.filteredRecords.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final record = metrics.filteredRecords[index];
-                          return _buildCreditCard(record);
-                        },
-                      ),
-              ),
-            ],
-          );
-        },
+                // 4. Filtered Credits List
+                Expanded(
+                  child: metrics.filteredRecords.isEmpty
+                      ? _buildNoSearchResultsState()
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          itemCount: metrics.filteredRecords.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final record = metrics.filteredRecords[index];
+                            return _buildCreditCard(record);
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

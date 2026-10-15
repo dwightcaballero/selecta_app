@@ -459,20 +459,24 @@ class _CreditPageState extends State<CreditPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_hasUnsavedChanges && !_isUpdating,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_isUpdating) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Changes?',
-          message: 'You have unsaved changes to the credit status. Are you sure you want to discard them?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Changes?',
+            message: 'You have unsaved changes to the credit status. Are you sure you want to discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

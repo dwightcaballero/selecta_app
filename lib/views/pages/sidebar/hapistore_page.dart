@@ -886,20 +886,24 @@ class _HapiStorePageState extends State<HapiStorePage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_hasUnsavedChanges && !_isSaving,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_isSaving) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Store Changes?',
-          message: 'You have unsaved store details. Are you sure you want to go back and discard them?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Store Changes?',
+            message: 'You have unsaved store details. Are you sure you want to go back and discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

@@ -868,16 +868,20 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isCheckingRole) {
-      return const Scaffold(
-        appBar: CustomAppbar(title: 'Merch Blitz', subtitle: 'Store Merchandising Survey'),
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    return StreamBuilder<Configuration?>(
-      stream: _controller.getConfigurationStream(),
-      builder: (context, configSnapshot) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: _isCheckingRole
+          ? const Scaffold(
+              appBar: CustomAppbar(title: 'Merch Blitz', subtitle: 'Store Merchandising Survey'),
+              body: Center(child: CircularProgressIndicator()),
+            )
+          : StreamBuilder<Configuration?>(
+              stream: _controller.getConfigurationStream(),
+              builder: (context, configSnapshot) {
         final config = configSnapshot.data ?? Configuration.empty();
         final startDate = config.merchBlitzStartDate.toDate();
         final endDate = config.merchBlitzEndDate.toDate();
@@ -1099,6 +1103,7 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
           },
         );
       },
+    ),
     );
   }
 }

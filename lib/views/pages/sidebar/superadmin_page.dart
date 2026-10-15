@@ -584,8 +584,14 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Super Admin', subtitle: 'Developer & Infrastructure Controls'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(title: 'Super Admin', subtitle: 'Developer & Infrastructure Controls'),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -1153,6 +1159,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                 ],
               ),
             ),
+      ),
     );
   }
 }

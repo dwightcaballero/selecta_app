@@ -1726,19 +1726,23 @@ class _DeliveryPageState extends State<DeliveryPage> {
     bool showRemarks = isReturned || (isDelivered && (_withReturns && _selectedReturnProductIds.isNotEmpty));
 
     return PopScope(
-      canPop: !_hasUnsavedChanges,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Delivery Changes?',
-          message: 'You have unsaved changes in this delivery. Are you sure you want to go back and discard them?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Delivery Changes?',
+            message: 'You have unsaved changes in this delivery. Are you sure you want to go back and discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

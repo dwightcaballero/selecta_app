@@ -317,16 +317,23 @@ class _TransactionListPageState extends State<TransactionListPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Store Transactions',
-        subtitle: dropdownHapiStore.text.isNotEmpty ? dropdownHapiStore.text : 'Transaction History',
-      ),
-      body: Column(
-        children: [
-          _buildFilterCard(),
-          Expanded(child: _buildTransactionStream()),
-        ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Store Transactions',
+          subtitle: dropdownHapiStore.text.isNotEmpty ? dropdownHapiStore.text : 'Transaction History',
+        ),
+        body: Column(
+          children: [
+            _buildFilterCard(),
+            Expanded(child: _buildTransactionStream()),
+          ],
+        ),
       ),
     );
   }

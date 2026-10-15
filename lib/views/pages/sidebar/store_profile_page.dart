@@ -206,62 +206,69 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: _store.storeName,
-        subtitle: _store.storeAddress.isNotEmpty ? _store.storeAddress : 'Store 360° Profile',
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit Store',
-            onPressed: _editStore,
-          ),
-        ],
-      ),
-      body: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) {
-          return [
-            SliverToBoxAdapter(
-              child: _buildProfileHeader(colorScheme, isDark),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: _store.storeName,
+          subtitle: _store.storeAddress.isNotEmpty ? _store.storeAddress : 'Store 360° Profile',
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit Store',
+              onPressed: _editStore,
             ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _SliverTabBarDelegate(
-                TabBar(
-                  controller: _tabController,
-                  isScrollable: true,
-                  labelColor: isDark ? colorScheme.primary : colorScheme.primary,
-                  unselectedLabelColor: colorScheme.onSurfaceVariant,
-                  indicatorColor: colorScheme.primary,
-                  indicatorWeight: 3,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                  tabs: const [
-                    Tab(text: 'Overview', icon: Icon(Icons.dashboard_outlined, size: 20)),
-                    Tab(text: 'Orders', icon: Icon(Icons.shopping_bag_outlined, size: 20)),
-                    Tab(text: 'Credit / AR', icon: Icon(Icons.credit_card_outlined, size: 20)),
-                    Tab(text: 'Assets', icon: Icon(Icons.kitchen_outlined, size: 20)),
-                    Tab(text: 'Visit Photos', icon: Icon(Icons.photo_library_outlined, size: 20)),
-                  ],
-                ),
-                colorScheme.surface,
-                isDark ? const Color(0xFF28303F) : colorScheme.outlineVariant.withValues(alpha: 0.5),
-              ),
-            ),
-          ];
-        },
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildOverviewTab(colorScheme, isDark),
-            _buildOrdersTab(colorScheme, isDark),
-            _buildCreditTab(colorScheme, isDark),
-            _buildAssetsTab(colorScheme, isDark),
-            _buildPhotosTab(colorScheme, isDark),
           ],
         ),
+        body: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+            return [
+              SliverToBoxAdapter(
+                child: _buildProfileHeader(colorScheme, isDark),
+              ),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _SliverTabBarDelegate(
+                  TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    labelColor: isDark ? colorScheme.primary : colorScheme.primary,
+                    unselectedLabelColor: colorScheme.onSurfaceVariant,
+                    indicatorColor: colorScheme.primary,
+                    indicatorWeight: 3,
+                    labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    tabs: const [
+                      Tab(text: 'Overview', icon: Icon(Icons.dashboard_outlined, size: 20)),
+                      Tab(text: 'Orders', icon: Icon(Icons.shopping_bag_outlined, size: 20)),
+                      Tab(text: 'Credit / AR', icon: Icon(Icons.credit_card_outlined, size: 20)),
+                      Tab(text: 'Assets', icon: Icon(Icons.kitchen_outlined, size: 20)),
+                      Tab(text: 'Visit Photos', icon: Icon(Icons.photo_library_outlined, size: 20)),
+                    ],
+                  ),
+                  colorScheme.surface,
+                  isDark ? const Color(0xFF28303F) : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+            ];
+          },
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildOverviewTab(colorScheme, isDark),
+              _buildOrdersTab(colorScheme, isDark),
+              _buildCreditTab(colorScheme, isDark),
+              _buildAssetsTab(colorScheme, isDark),
+              _buildPhotosTab(colorScheme, isDark),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _buildBottomActionBar(colorScheme, isDark),
       ),
-      bottomNavigationBar: _buildBottomActionBar(colorScheme, isDark),
     );
   }
 

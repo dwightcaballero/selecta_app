@@ -187,42 +187,49 @@ class _PjpHistoryPageState extends State<PjpHistoryPage> with SingleTickerProvid
     final uniqueStoresCount = _filteredVisits.map((v) => v.storeName).toSet().length;
     final photosCount = _filteredVisits.where((v) => v.imageUrl.isNotEmpty).length;
 
-    return Scaffold(
-      appBar: const CustomAppbar(
-        title: 'PJP Visit History',
-        subtitle: 'All completed store visits & verification photos',
-      ),
-      body: Column(
-        children: [
-          // ── Search & Filter Controls ────────────────────────────────────
-          _buildSearchAndFilterBar(colorScheme),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(
+          title: 'PJP Visit History',
+          subtitle: 'All completed store visits & verification photos',
+        ),
+        body: Column(
+          children: [
+            // ── Search & Filter Controls ────────────────────────────────────
+            _buildSearchAndFilterBar(colorScheme),
 
-          // ── Metric Summary Bar (when data loaded) ───────────────────────
-          if (!_isLoading && _errorMessage == null && _allVisits.isNotEmpty)
-            _buildStatsBar(colorScheme, uniqueStoresCount, photosCount),
+            // ── Metric Summary Bar (when data loaded) ───────────────────────
+            if (!_isLoading && _errorMessage == null && _allVisits.isNotEmpty)
+              _buildStatsBar(colorScheme, uniqueStoresCount, photosCount),
 
-          // ── Content Area ────────────────────────────────────────────────
-          Expanded(
-            child: _isLoading
-                ? _buildSkeletonList(colorScheme)
-                : _errorMessage != null
-                    ? _buildErrorState(colorScheme)
-                    : _filteredVisits.isEmpty
-                        ? _buildEmptyState(colorScheme)
-                        : RefreshIndicator(
-                            onRefresh: () async => _subscribeToHistory(),
-                            child: ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                              itemCount: monthKeys.length,
-                              itemBuilder: (context, index) {
-                                final month = monthKeys[index];
-                                final visits = grouped[month]!;
-                                return _buildMonthSection(month, visits, colorScheme);
-                              },
+            // ── Content Area ────────────────────────────────────────────────
+            Expanded(
+              child: _isLoading
+                  ? _buildSkeletonList(colorScheme)
+                  : _errorMessage != null
+                      ? _buildErrorState(colorScheme)
+                      : _filteredVisits.isEmpty
+                          ? _buildEmptyState(colorScheme)
+                          : RefreshIndicator(
+                              onRefresh: () async => _subscribeToHistory(),
+                              child: ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                                itemCount: monthKeys.length,
+                                itemBuilder: (context, index) {
+                                  final month = monthKeys[index];
+                                  final visits = grouped[month]!;
+                                  return _buildMonthSection(month, visits, colorScheme);
+                                },
+                              ),
                             ),
-                          ),
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

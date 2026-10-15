@@ -338,10 +338,16 @@ class _SalesPageState extends State<SalesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: widget.showAppBar
-          ? const CustomAppbar(title: 'Sales', subtitle: 'Monthly sales performance')
-          : null,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: widget.showAppBar
+            ? const CustomAppbar(title: 'Sales', subtitle: 'Monthly sales performance')
+            : null,
       body: RefreshIndicator(
         onRefresh: _loadPurchaseOrders,
         child: isLoading
@@ -426,6 +432,7 @@ class _SalesPageState extends State<SalesPage> {
                 ],
               ),
       ),
+    ),
     );
   }
 }

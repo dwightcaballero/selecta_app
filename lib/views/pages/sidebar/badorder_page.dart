@@ -703,11 +703,17 @@ class _BadOrderPageState extends State<BadOrderPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Bad Order Details',
-        subtitle: _badOrder.hapistore,
-      ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Bad Order Details',
+          subtitle: _badOrder.hapistore,
+        ),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -771,6 +777,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
           ],
         ),
       ),
+    ),
     );
   }
 }

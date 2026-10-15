@@ -155,47 +155,54 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: widget.showAppBar
-          ? const CustomAppbar(
-              title: 'Historical Analytics',
-              subtitle: 'Sales, delivery trends & operational performance',
-            )
-          : null,
-      body: RefreshIndicator(
-        onRefresh: _loadAnalytics,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Timeframe Selector ───────────────────────────────────────
-              _buildTimeframeSelector(colorScheme),
-
-              const SizedBox(height: 16),
-
-              if (_isLoading) ...[
-                const ShimmerBox(height: 90, borderRadius: 14),
-                const SizedBox(height: 14),
-                const ShimmerBox(height: 260, borderRadius: 14),
-                const SizedBox(height: 14),
-                const ShimmerBox(height: 220, borderRadius: 14),
-              ] else ...[
-                // ── KPI Summary Cards ──────────────────────────────────────
-                _buildSummaryGrid(colorScheme),
-
-                const SizedBox(height: 20),
-
-                // ── Sales Trend Line Chart ─────────────────────────────────
-                _buildSalesTrendCard(colorScheme),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: widget.showAppBar
+            ? const CustomAppbar(
+                title: 'Historical Analytics',
+                subtitle: 'Sales, delivery trends & operational performance',
+              )
+            : null,
+        body: RefreshIndicator(
+          onRefresh: _loadAnalytics,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Timeframe Selector ───────────────────────────────────────
+                _buildTimeframeSelector(colorScheme),
 
                 const SizedBox(height: 16),
 
-                // ── Delivery Volume Bar Chart ──────────────────────────────
-                _buildDeliveryVolumeCard(colorScheme),
+                if (_isLoading) ...[
+                  const ShimmerBox(height: 90, borderRadius: 14),
+                  const SizedBox(height: 14),
+                  const ShimmerBox(height: 260, borderRadius: 14),
+                  const SizedBox(height: 14),
+                  const ShimmerBox(height: 220, borderRadius: 14),
+                ] else ...[
+                  // ── KPI Summary Cards ──────────────────────────────────────
+                  _buildSummaryGrid(colorScheme),
+
+                  const SizedBox(height: 20),
+
+                  // ── Sales Trend Line Chart ─────────────────────────────────
+                  _buildSalesTrendCard(colorScheme),
+
+                  const SizedBox(height: 16),
+
+                  // ── Delivery Volume Bar Chart ──────────────────────────────
+                  _buildDeliveryVolumeCard(colorScheme),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

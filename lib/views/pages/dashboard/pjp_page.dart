@@ -1245,8 +1245,14 @@ class _PjpPageState extends State<PjpPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: _currentHapistore.storeName,
         subtitle: 'PJP • ${widget.selectedDay}',
         actions: [IconButton(icon: const Icon(Icons.refresh_rounded), color: Colors.white, tooltip: 'Refresh checks', onPressed: _runAllChecks)],
@@ -1898,6 +1904,7 @@ class _PjpPageState extends State<PjpPage> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

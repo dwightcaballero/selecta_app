@@ -107,8 +107,14 @@ class _SettingsPageState extends State<SettingsPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: AppBar(
         title: const Text('Settings'),
       ),
       body: SingleChildScrollView(
@@ -508,8 +514,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildPill(String text, Color color) {
     return Container(

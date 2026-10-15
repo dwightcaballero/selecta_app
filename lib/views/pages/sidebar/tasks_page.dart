@@ -443,19 +443,24 @@ class _TasksPageState extends State<TasksPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PopScope(
-      canPop: !_hasUnsavedChanges || _isLoading,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final shouldPop = await ShowMessage.confirm(
-          context,
-          title: 'Discard Changes?',
-          message: 'You have unsaved changes. Are you sure you want to discard them?',
-          isDestructive: true,
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldPop && context.mounted) {
+        if (_isLoading) return;
+        if (_hasUnsavedChanges) {
+          final shouldPop = await ShowMessage.confirm(
+            context,
+            title: 'Discard Changes?',
+            message: 'You have unsaved changes. Are you sure you want to discard them?',
+            isDestructive: true,
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldPop && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

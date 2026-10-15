@@ -90,51 +90,58 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
     final isDark = theme.brightness == Brightness.dark;
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Business Analytics',
-        subtitle: 'Profit & Loss, Cost of Goods, etc.',
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.date_range_outlined, color: Colors.white),
-            tooltip: 'Custom Date Range',
-            onPressed: _selectCustomDateRange,
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          child: Column(
-            spacing: 20,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Period Filter Chips
-              _buildPeriodChips(colorScheme, isDark),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Business Analytics',
+          subtitle: 'Profit & Loss, Cost of Goods, etc.',
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.date_range_outlined, color: Colors.white),
+              tooltip: 'Custom Date Range',
+              onPressed: _selectCustomDateRange,
+            ),
+          ],
+        ),
+        body: RefreshIndicator(
+          onRefresh: _loadData,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Column(
+              spacing: 20,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Period Filter Chips
+                _buildPeriodChips(colorScheme, isDark),
 
-              // Active Date Range Label & Health Badge
-              _buildDateRangeHeader(colorScheme, isDark),
+                // Active Date Range Label & Health Badge
+                _buildDateRangeHeader(colorScheme, isDark),
 
-              if (_isLoading)
-                _buildLoadingState(colorScheme)
-              else if (_errorMessage != null)
-                _buildErrorState(colorScheme)
-              else ...[
-                // KPI Summary Cards Row
-                _buildSummaryCards(colorScheme, isDark),
+                if (_isLoading)
+                  _buildLoadingState(colorScheme)
+                else if (_errorMessage != null)
+                  _buildErrorState(colorScheme)
+                else ...[
+                  // KPI Summary Cards Row
+                  _buildSummaryCards(colorScheme, isDark),
 
-                // Trend Chart
-                _buildTrendChart(colorScheme, isDark),
+                  // Trend Chart
+                  _buildTrendChart(colorScheme, isDark),
 
-                // Detailed P&L Income Statement Card
-                _buildBreakdownCard(colorScheme, isDark),
+                  // Detailed P&L Income Statement Card
+                  _buildBreakdownCard(colorScheme, isDark),
 
-                // Operations & Volume Stats Card
-                _buildVolumeStatsCard(colorScheme, isDark),
+                  // Operations & Volume Stats Card
+                  _buildVolumeStatsCard(colorScheme, isDark),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

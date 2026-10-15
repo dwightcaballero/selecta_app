@@ -774,19 +774,23 @@ class _BreakdownPageState extends State<BreakdownPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_hasUnsavedChanges,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Cash Breakdown?',
-          message: 'You have unsaved cash breakdown entries. Are you sure you want to go back and discard them?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Cash Breakdown?',
+            message: 'You have unsaved cash breakdown entries. Are you sure you want to go back and discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

@@ -513,10 +513,16 @@ class _ExpenselistPageState extends State<ExpenselistPage> with SingleTickerProv
   Widget build(BuildContext context) {
     final now = DateTime.now();
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Expenses',
-        subtitle: 'Salesman (Snacks) & Dealer (Ops/Gas)',
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Expenses',
+          subtitle: 'Salesman (Snacks) & Dealer (Ops/Gas)',
         bottom: TabBar(
           controller: _tabController,
           indicatorWeight: 3,
@@ -609,6 +615,7 @@ class _ExpenselistPageState extends State<ExpenselistPage> with SingleTickerProv
           );
         },
       ),
+    ),
     );
   }
 }

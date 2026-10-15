@@ -116,7 +116,13 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return StreamBuilder<List<InventoryItem>>(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: StreamBuilder<List<InventoryItem>>(
       stream: _inventoryStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
@@ -319,8 +325,9 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         );
       },
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildFilterChip(String filter, int? count, ColorScheme colorScheme, {Color? alertColor}) {
     final isSelected = _selectedFilter == filter;

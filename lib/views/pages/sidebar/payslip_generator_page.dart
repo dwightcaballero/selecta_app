@@ -306,20 +306,24 @@ class _PayslipGeneratorPageState extends State<PayslipGeneratorPage> {
     final colorScheme = theme.colorScheme;
 
     return PopScope(
-      canPop: !_hasUnsavedChanges && !_isSaving,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_isSaving) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Changes?',
-          message: 'You have unsaved changes in this payslip. Are you sure you want to discard them?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Changes?',
+            message: 'You have unsaved changes in this payslip. Are you sure you want to discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

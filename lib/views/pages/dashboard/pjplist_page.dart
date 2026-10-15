@@ -608,90 +608,101 @@ class _PjpListPageState extends State<PjpListPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Permanent Journey Plan',
-        subtitle: '$_selectedDay Route',
-        actions: [
-          if (!_isEditing) ...[
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
-              tooltip: 'More options',
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              onSelected: (value) async {
-                switch (value) {
-                  case 'map':
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay)));
-                    break;
-                  case 'rearrange':
-                    final snapshot = await _controller.getStoresForDayStream(_selectedDay).first;
-                    if (!mounted) return;
-                    _startEditing(_sortedDocs(snapshot.docs));
-                    break;
-                  case 'history':
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const PjpHistoryPage()));
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'map',
-                  child: Row(children: [Icon(Icons.map_outlined, size: 20), SizedBox(width: 10), Text('Route Map')]),
-                ),
-                if (_isDealer)
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isEditing) {
+          _cancelEditing();
+          return;
+        }
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Permanent Journey Plan',
+          subtitle: '$_selectedDay Route',
+          actions: [
+            if (!_isEditing) ...[
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                tooltip: 'More options',
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                onSelected: (value) async {
+                  switch (value) {
+                    case 'map':
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay)));
+                      break;
+                    case 'rearrange':
+                      final snapshot = await _controller.getStoresForDayStream(_selectedDay).first;
+                      if (!mounted) return;
+                      _startEditing(_sortedDocs(snapshot.docs));
+                      break;
+                    case 'history':
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const PjpHistoryPage()));
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
                   const PopupMenuItem(
-                    value: 'rearrange',
-                    child: Row(children: [Icon(Icons.swap_vert_rounded, size: 20), SizedBox(width: 10), Text('Rearrange stores')]),
+                    value: 'map',
+                    child: Row(children: [Icon(Icons.map_outlined, size: 20), SizedBox(width: 10), Text('Route Map')]),
                   ),
-                const PopupMenuItem(
-                  value: 'history',
-                  child: Row(children: [Icon(Icons.history_rounded, size: 20), SizedBox(width: 10), Text('Visit History')]),
-                ),
-              ],
-            ),
-          ] else
-            IconButton(
-              icon: const Icon(Icons.add_business_outlined, color: Colors.white),
-              tooltip: 'Add store to $_selectedDay',
-              onPressed: _showAddStorePicker,
-            ),
-        ],
-      ),
-      floatingActionButton: _isEditing
-          ? FloatingActionButton.extended(
-              heroTag: null,
-              onPressed: _isSaving ? null : _saveOrder,
-              icon: _isSaving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.check, color: Colors.white),
-              label: Text(
-                _isSaving ? 'Saving...' : 'Save Order',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: Theme.of(context).colorScheme.primary,
-            )
-          : null,
-      body: Column(
-        children: [
-          _buildDayChips(),
-          if (_isEditing)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Drag stores to reorder, or tap the add-store icon to include more stores for $_selectedDay.',
-                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  if (_isDealer)
+                    const PopupMenuItem(
+                      value: 'rearrange',
+                      child: Row(children: [Icon(Icons.swap_vert_rounded, size: 20), SizedBox(width: 10), Text('Rearrange stores')]),
                     ),
+                  const PopupMenuItem(
+                    value: 'history',
+                    child: Row(children: [Icon(Icons.history_rounded, size: 20), SizedBox(width: 10), Text('Visit History')]),
                   ),
-                  TextButton(onPressed: _isSaving ? null : _cancelEditing, child: const Text('Cancel')),
                 ],
               ),
-            ),
-          const SizedBox(height: 4),
-          Expanded(child: _buildBody()),
-        ],
+            ] else
+              IconButton(
+                icon: const Icon(Icons.add_business_outlined, color: Colors.white),
+                tooltip: 'Add store to $_selectedDay',
+                onPressed: _showAddStorePicker,
+              ),
+          ],
+        ),
+        floatingActionButton: _isEditing
+            ? FloatingActionButton.extended(
+                heroTag: null,
+                onPressed: _isSaving ? null : _saveOrder,
+                icon: _isSaving
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.check, color: Colors.white),
+                label: Text(
+                  _isSaving ? 'Saving...' : 'Save Order',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+                backgroundColor: Theme.of(context).colorScheme.primary,
+              )
+            : null,
+        body: Column(
+          children: [
+            _buildDayChips(),
+            if (_isEditing)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Drag stores to reorder, or tap the add-store icon to include more stores for $_selectedDay.',
+                        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                    TextButton(onPressed: _isSaving ? null : _cancelEditing, child: const Text('Cancel')),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 4),
+            Expanded(child: _buildBody()),
+          ],
+        ),
       ),
     );
   }

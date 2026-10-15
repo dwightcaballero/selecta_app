@@ -423,10 +423,16 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Bad Orders',
-        subtitle: 'Damaged & Expired Products',
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Bad Orders',
+          subtitle: 'Damaged & Expired Products',
         actions: [
           if (_isDealer)
             IconButton(
@@ -500,6 +506,7 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
           );
         },
       ),
+    ),
     );
   }
 }

@@ -333,19 +333,23 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
     final hasSelectedItems = _selectedQuantities.values.any((qty) => qty > 0);
 
     return PopScope(
-      canPop: !hasSelectedItems,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Selections?',
-          message: 'You have selected products in the catalog. Are you sure you want to go back and discard your selections?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (hasSelectedItems) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Selections?',
+            message: 'You have selected products in the catalog. Are you sure you want to go back and discard your selections?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

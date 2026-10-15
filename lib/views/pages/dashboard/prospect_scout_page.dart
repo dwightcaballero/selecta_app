@@ -1210,9 +1210,15 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: 'Prospect Scouting',
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: 'Prospect Scouting',
         subtitle: 'Map & scout new store opportunities',
         bottom: TabBar(
           controller: _tabController,
@@ -1323,6 +1329,7 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
               icon: const Icon(Icons.add_location_alt_rounded),
               label: const Text('Scout New Store', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
+      ),
     );
   }
 

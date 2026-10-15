@@ -443,71 +443,78 @@ class _PlacementlistPageState extends State<PlacementlistPage> {
     final totalPlacements = _completedCount + _incompleteCount;
     final overallPercent = totalPlacements == 0 ? 0 : ((_completedCount / totalPlacements) * 100).round();
 
-    return Scaffold(
-      appBar: widget.showAppBar
-          ? CustomAppbar(
-              title: 'Placement List',
-              subtitle: isCompleteTab ? 'Completed • $overallPercent% of stores finished' : 'Pending • $_incompleteCount stores need follow-up',
-              actions: [_buildSortMenu()],
-            )
-          : null,
-      body: _errorMessage != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.error_outline_rounded, size: 44, color: Theme.of(context).colorScheme.error),
-                    const SizedBox(height: 10),
-                    Text(_errorMessage!, textAlign: TextAlign.center),
-                    const SizedBox(height: 16),
-                    FilledButton.tonalIcon(onPressed: prefetchData, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
-                  ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: widget.showAppBar
+            ? CustomAppbar(
+                title: 'Placement List',
+                subtitle: isCompleteTab ? 'Completed • $overallPercent% of stores finished' : 'Pending • $_incompleteCount stores need follow-up',
+                actions: [_buildSortMenu()],
+              )
+            : null,
+        body: _errorMessage != null
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline_rounded, size: 44, color: Theme.of(context).colorScheme.error),
+                      const SizedBox(height: 10),
+                      Text(_errorMessage!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      FilledButton.tonalIcon(onPressed: prefetchData, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+                    ],
+                  ),
                 ),
+              )
+            : Column(
+                children: [
+                  _buildSearchBar(),
+                  Expanded(child: _placementListView(isCompleteTab)),
+                ],
               ),
-            )
-          : Column(
-              children: [
-                _buildSearchBar(),
-                Expanded(child: _placementListView(isCompleteTab)),
-              ],
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (int index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          destinations: [
+            NavigationDestination(
+              icon: Badge(
+                isLabelVisible: !_isLoading && _completedCount > 0,
+                label: Text('$_completedCount'),
+                child: const Icon(Icons.check_circle_outline_rounded),
+              ),
+              selectedIcon: Badge(
+                isLabelVisible: !_isLoading && _completedCount > 0,
+                label: Text('$_completedCount'),
+                child: const Icon(Icons.check_circle_rounded),
+              ),
+              label: 'Complete',
             ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (int index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        destinations: [
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: !_isLoading && _completedCount > 0,
-              label: Text('$_completedCount'),
-              child: const Icon(Icons.check_circle_outline_rounded),
+            NavigationDestination(
+              icon: Badge(
+                isLabelVisible: !_isLoading && _incompleteCount > 0,
+                label: Text('$_incompleteCount'),
+                child: const Icon(Icons.pending_actions_outlined),
+              ),
+              selectedIcon: Badge(
+                isLabelVisible: !_isLoading && _incompleteCount > 0,
+                label: Text('$_incompleteCount'),
+                child: const Icon(Icons.pending_actions_rounded),
+              ),
+              label: 'Incomplete',
             ),
-            selectedIcon: Badge(
-              isLabelVisible: !_isLoading && _completedCount > 0,
-              label: Text('$_completedCount'),
-              child: const Icon(Icons.check_circle_rounded),
-            ),
-            label: 'Complete',
-          ),
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: !_isLoading && _incompleteCount > 0,
-              label: Text('$_incompleteCount'),
-              child: const Icon(Icons.pending_actions_outlined),
-            ),
-            selectedIcon: Badge(
-              isLabelVisible: !_isLoading && _incompleteCount > 0,
-              label: Text('$_incompleteCount'),
-              child: const Icon(Icons.pending_actions_rounded),
-            ),
-            label: 'Incomplete',
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

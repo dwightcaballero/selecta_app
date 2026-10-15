@@ -241,8 +241,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final unreadCount = _notifications.where((n) => !n.isRead).length;
 
-    return Scaffold(
-      appBar: CustomAppbar(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
         title: 'Notifications',
         subtitle: unreadCount > 0 ? '$unreadCount unread alert${unreadCount == 1 ? "" : "s"}' : 'All caught up',
         actions: [
@@ -308,8 +314,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
     return Center(

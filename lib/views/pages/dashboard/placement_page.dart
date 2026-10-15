@@ -292,20 +292,27 @@ class _PlacementPageState extends State<PlacementPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: CustomAppbar(title: 'Placement', subtitle: _currentPlacement.storeName),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-              itemCount: listPlacement.length + 2,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                if (index == 0) return _buildProgressHeader(context);
-                if (index == 1) return _buildChecklistHeader(context);
-                return _buildProductCard(context, index - 2);
-              },
-            ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(title: 'Placement', subtitle: _currentPlacement.storeName),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                itemCount: listPlacement.length + 2,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  if (index == 0) return _buildProgressHeader(context);
+                  if (index == 1) return _buildChecklistHeader(context);
+                  return _buildProductCard(context, index - 2);
+                },
+              ),
+      ),
     );
   }
 }

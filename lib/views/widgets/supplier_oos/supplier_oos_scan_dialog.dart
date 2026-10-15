@@ -433,10 +433,13 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
     final isLocked = _isAnalyzing || _isSaving;
 
     return PopScope(
-      canPop: !isLocked,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
+        if (didPop) return;
+        if (isLocked) {
           ShowMessage.warning(context, 'Operation in progress. Please wait.');
+        } else {
+          Navigator.pop(context);
         }
       },
       child: Container(

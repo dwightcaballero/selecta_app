@@ -2476,10 +2476,13 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           ? ' • Inv: ${widget.purchaseorder.invoiceNumber}'
           : '';
       return PopScope(
-        canPop: !isLocked,
+        canPop: false,
         onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) {
+          if (didPop) return;
+          if (isLocked) {
             ShowMessage.warning(context, 'Operation in progress. Please wait.');
+          } else {
+            Navigator.pop(context);
           }
         },
         child: Scaffold(
@@ -2512,23 +2515,27 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     }
 
     return PopScope(
-      canPop: !_hasUnsavedChanges && !isLocked,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         if (isLocked) {
           ShowMessage.warning(context, 'Operation in progress. Please wait.');
           return;
         }
-        final shouldDiscard = await ShowMessage.confirm(
-          context,
-          title: 'Discard Changes?',
-          message: 'You have unsaved changes on this purchase order. Are you sure you want to go back and discard them?',
-          confirmText: 'Discard',
-          cancelText: 'Keep Editing',
-          isDestructive: true,
-          icon: Icons.warning_amber_rounded,
-        );
-        if (shouldDiscard && context.mounted) {
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Changes?',
+            message: 'You have unsaved changes on this purchase order. Are you sure you want to go back and discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
           Navigator.pop(context);
         }
       },

@@ -64,34 +64,41 @@ class _PayslipListPageState extends State<PayslipListPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: CustomAppbar(
-        title: _isDealer ? 'Weekly Payroll & Payslips' : 'My Digital Payslips',
-        actions: [
-          if (_isDealer && _currentUser != null)
-            IconButton(
-              tooltip: 'New Payslip',
-              icon: const Icon(Icons.add_rounded),
-              onPressed: () => _openGenerator(),
-            ),
-        ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: _isDealer ? 'Weekly Payroll & Payslips' : 'My Digital Payslips',
+          actions: [
+            if (_isDealer && _currentUser != null)
+              IconButton(
+                tooltip: 'New Payslip',
+                icon: const Icon(Icons.add_rounded),
+                onPressed: () => _openGenerator(),
+              ),
+          ],
+        ),
+        floatingActionButton: _isDealer && _currentUser != null
+            ? FloatingActionButton.extended(
+                onPressed: _openGenerator,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('New Payslip'),
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+              )
+            : null,
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _currentUser == null
+                ? const Center(child: Text('User session not found.'))
+                : _isDealer
+                    ? _buildDealerView(colorScheme)
+                    : _buildSalesmanView(colorScheme),
       ),
-      floatingActionButton: _isDealer && _currentUser != null
-          ? FloatingActionButton.extended(
-              onPressed: _openGenerator,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('New Payslip'),
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-            )
-          : null,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _currentUser == null
-              ? const Center(child: Text('User session not found.'))
-              : _isDealer
-                  ? _buildDealerView(colorScheme)
-                  : _buildSalesmanView(colorScheme),
     );
   }
 

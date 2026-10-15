@@ -448,59 +448,66 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Returned Orders', subtitle: 'Needs Redelivery or Review'),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _returnsStream,
-        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-          if (snapshot.hasError) {
-            return _buildErrorState();
-          }
-          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(title: 'Returned Orders', subtitle: 'Needs Redelivery or Review'),
+        body: StreamBuilder<QuerySnapshot>(
+          stream: _returnsStream,
+          builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
+            if (snapshot.hasError) {
+              return _buildErrorState();
+            }
+            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          final allDocs = snapshot.data?.docs ?? [];
-          if (allDocs.isEmpty) {
-            return _buildEmptyState();
-          }
+            final allDocs = snapshot.data?.docs ?? [];
+            if (allDocs.isEmpty) {
+              return _buildEmptyState();
+            }
 
-          final metrics = _controller.computeMetrics(allDocs);
-          final filteredDocs = _controller.filterReturns(
-            docs: allDocs,
-            searchQuery: _searchQuery,
-            filterTab: _selectedTab,
-          );
+            final metrics = _controller.computeMetrics(allDocs);
+            final filteredDocs = _controller.filterReturns(
+              docs: allDocs,
+              searchQuery: _searchQuery,
+              filterTab: _selectedTab,
+            );
 
-          return Column(
-            children: [
-              // 1. Summary Card
-              _buildSummaryCard(totalAmount: metrics.totalAmount, totalCount: metrics.totalCount),
+            return Column(
+              children: [
+                // 1. Summary Card
+                _buildSummaryCard(totalAmount: metrics.totalAmount, totalCount: metrics.totalCount),
 
-              // 2. Filter Tabs (Action Required, Completed, All)
-              _buildFilterTabs(),
+                // 2. Filter Tabs (Action Required, Completed, All)
+                _buildFilterTabs(),
 
-              // 3. Search Bar
-              _buildSearchBar(),
+                // 3. Search Bar
+                _buildSearchBar(),
 
-              // 3. Returned Orders List
-              Expanded(
-                child: filteredDocs.isEmpty
-                    ? _buildNoSearchResultsState()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                        itemCount: filteredDocs.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final delivery = filteredDocs[index].data() as Delivery;
-                          final deliveryID = filteredDocs[index].id;
-                          return _buildReturnCard(deliveryID: deliveryID, delivery: delivery);
-                        },
-                      ),
-              ),
-            ],
-          );
-        },
+                // 3. Returned Orders List
+                Expanded(
+                  child: filteredDocs.isEmpty
+                      ? _buildNoSearchResultsState()
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          itemCount: filteredDocs.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final delivery = filteredDocs[index].data() as Delivery;
+                            final deliveryID = filteredDocs[index].id;
+                            return _buildReturnCard(deliveryID: deliveryID, delivery: delivery);
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

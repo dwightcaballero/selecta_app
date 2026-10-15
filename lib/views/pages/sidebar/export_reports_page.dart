@@ -121,8 +121,14 @@ class _ExportReportsPageState extends State<ExportReportsPage> {
 
     final bool isDateRelevant = _selectedReport != ExportReportType.creditAging && _selectedReport != ExportReportType.inventory;
 
-    return Scaffold(
-      appBar: const CustomAppbar(title: 'Export Reports (Excel / CSV)'),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.pop(context);
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(title: 'Export Reports (Excel / CSV)'),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -467,6 +473,7 @@ class _ExportReportsPageState extends State<ExportReportsPage> {
           ],
         ),
       ),
+    ),
     );
   }
 
