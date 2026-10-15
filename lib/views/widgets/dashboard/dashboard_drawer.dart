@@ -16,6 +16,7 @@ import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistorelist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/payslip_list_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/data/constants.dart';
@@ -147,6 +148,7 @@ class DashboardDrawer extends StatelessWidget {
           _buildDrawerItem(context, Icons.directions_car_filled_outlined, 'Van Sell', const VanSellPage()),
           _buildDrawerItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
+          _buildDrawerItem(context, Icons.payments_outlined, isDealer ? 'Payroll & Payslips' : 'My Payslips', const PayslipListPage()),
           StreamBuilder<int>(
             stream: unverifiedBreakdownCountStream,
             initialData: dashboardDTO.unverifiedBreakdownCount,

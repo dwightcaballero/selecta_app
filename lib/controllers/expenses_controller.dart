@@ -13,6 +13,8 @@ class ExpenseFilterResult {
   final double periodTotalAmount;
   final double periodCashAmount;
   final double periodOnlineAmount;
+  final int todayCount;
+  final int thisWeekCount;
   final int thisMonthCount;
   final int allCount;
   final int salesmanCount;
@@ -23,6 +25,8 @@ class ExpenseFilterResult {
     required this.periodTotalAmount,
     this.periodCashAmount = 0.0,
     this.periodOnlineAmount = 0.0,
+    this.todayCount = 0,
+    this.thisWeekCount = 0,
     required this.thisMonthCount,
     required this.allCount,
     this.salesmanCount = 0,
@@ -54,6 +58,8 @@ class ExpensesController {
     required String searchQuery,
     required DateTime now,
   }) {
+    int todayCount = 0;
+    int thisWeekCount = 0;
     int thisMonthCount = 0;
     int allTabCount = 0;
     int salesmanTotalCount = 0;
@@ -64,10 +70,16 @@ class ExpensesController {
     final List<QueryDocumentSnapshot> filteredDocs = [];
     final cleanQuery = searchQuery.trim().toLowerCase();
 
+    final startOfToday = DateTime(now.year, now.month, now.day, 0, 0, 0);
+    final endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+
+    // Week starts on Monday (Dart weekday: Monday=1, Sunday=7)
+    final startOfWeek = DateTime(now.year, now.month, now.day, 0, 0, 0).subtract(Duration(days: now.weekday - 1));
+    final endOfWeek = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day + 6, 23, 59, 59, 999);
+
     for (final doc in docs) {
       final expense = doc.data() as Expenses;
       final date = expense.expenseDate.toDate();
-      final isThisMonth = date.year == now.year && date.month == now.month;
 
       if (expense.isSalesmanExpense) {
         salesmanTotalCount++;
@@ -82,9 +94,32 @@ class ExpensesController {
       if (!matchesType) continue;
 
       allTabCount++;
+
+      final isToday = !date.isBefore(startOfToday) && !date.isAfter(endOfToday);
+      final isThisWeek = !date.isBefore(startOfWeek) && !date.isAfter(endOfWeek);
+      final isThisMonth = date.year == now.year && date.month == now.month;
+
+      if (isToday) todayCount++;
+      if (isThisWeek) thisWeekCount++;
       if (isThisMonth) thisMonthCount++;
 
-      final matchesPeriod = selectedPeriod == 'All' || isThisMonth;
+      final bool matchesPeriod;
+      switch (selectedPeriod) {
+        case 'Today':
+          matchesPeriod = isToday;
+          break;
+        case 'This Week':
+          matchesPeriod = isThisWeek;
+          break;
+        case 'This Month':
+          matchesPeriod = isThisMonth;
+          break;
+        case 'All':
+        default:
+          matchesPeriod = true;
+          break;
+      }
+
       final matchesSearch = cleanQuery.isEmpty || expense.description.toLowerCase().contains(cleanQuery);
 
       if (matchesPeriod) {
@@ -106,6 +141,8 @@ class ExpensesController {
       periodTotalAmount: periodTotalAmount,
       periodCashAmount: periodCashAmount,
       periodOnlineAmount: periodOnlineAmount,
+      todayCount: todayCount,
+      thisWeekCount: thisWeekCount,
       thisMonthCount: thisMonthCount,
       allCount: allTabCount,
       salesmanCount: salesmanTotalCount,

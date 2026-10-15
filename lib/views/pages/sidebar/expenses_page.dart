@@ -502,6 +502,85 @@ class _ExpensesPageState extends State<ExpensesPage> {
     );
   }
 
+  bool _isChipSelected(String presetLabel) {
+    return txtDescription.text.trim().toLowerCase() == presetLabel.trim().toLowerCase();
+  }
+
+  void _onSelectPreset(String presetLabel) {
+    setState(() {
+      if (_isChipSelected(presetLabel)) {
+        txtDescription.clear();
+      } else {
+        txtDescription.text = presetLabel;
+        txtDescription.selection = TextSelection.fromPosition(
+          TextPosition(offset: txtDescription.text.length),
+        );
+      }
+    });
+  }
+
+  Widget _buildPresetChips() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isSalesman = _selectedExpenseType == ExpenseType.salesman;
+    final presets = isSalesman ? _salesmanPresets : _dealerPresets;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.auto_awesome, size: 14, color: colorScheme.primary),
+            const SizedBox(width: 6),
+            Text(
+              'Quick Presets (${isSalesman ? "Salesman" : "Dealer"})',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: presets.map((preset) {
+            final isSelected = _isChipSelected(preset.label);
+            return FilterChip(
+              showCheckmark: false,
+              avatar: Icon(
+                preset.icon,
+                size: 16,
+                color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.primary,
+              ),
+              label: Text(preset.label),
+              labelStyle: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurface,
+              ),
+              selected: isSelected,
+              selectedColor: colorScheme.primaryContainer,
+              backgroundColor: colorScheme.surface,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.8),
+                  width: isSelected ? 1.4 : 1.0,
+                ),
+              ),
+              onSelected: (_) => _onSelectPreset(preset.label),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildExpenseDetailsCard() {
     final colorScheme = Theme.of(context).colorScheme;
     final isSalesmanType = _selectedExpenseType == ExpenseType.salesman;
@@ -515,25 +594,46 @@ class _ExpensesPageState extends State<ExpensesPage> {
         children: [
           _buildExpenseTypeSelector(),
           _buildPaymentMethodSelector(),
-          TextFormField(
-            controller: txtDescription,
-            readOnly: isReadOnly,
-            decoration: InputDecoration(
-              labelText: 'Expense Description',
-              hintText: isReadOnly
-                  ? ''
-                  : (isSalesmanType
-                      ? 'e.g. Driver snacks, Meals, Refreshments...'
-                      : 'e.g. Fuel, Toll, Vehicle maintenance, Utilities...'),
-              prefixIcon: Icon(Icons.edit_note_outlined, size: 20, color: colorScheme.primary),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            ),
-            autovalidateMode: AutovalidateMode.onUnfocus,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) return 'Description should not be blank';
-              return null;
-            },
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: txtDescription,
+                readOnly: isReadOnly,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Expense Description',
+                  hintText: isReadOnly
+                      ? ''
+                      : (isSalesmanType
+                          ? 'e.g. Snacks, Cash Advance, Meals...'
+                          : 'e.g. Fuel, Toll, Vehicle maintenance, Utilities...'),
+                  prefixIcon: Icon(Icons.edit_note_outlined, size: 20, color: colorScheme.primary),
+                  suffixIcon: txtDescription.text.isNotEmpty && !isReadOnly
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          tooltip: 'Clear description',
+                          onPressed: () {
+                            setState(() {
+                              txtDescription.clear();
+                            });
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                ),
+                autovalidateMode: AutovalidateMode.onUnfocus,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return 'Description should not be blank';
+                  return null;
+                },
+              ),
+              if (!isReadOnly) ...[
+                const SizedBox(height: 10),
+                _buildPresetChips(),
+              ],
+            ],
           ),
           _buildMoneyField(label: 'Expense Amount', controller: txtAmount, prefixIcon: Icons.payments_outlined),
           _buildDatePickerField(label: 'Expense Date', selectedDate: _selectedDate, onTap: onChangeDate),
@@ -780,3 +880,31 @@ class _ExpensesPageState extends State<ExpensesPage> {
     );
   }
 }
+
+class _ExpensePreset {
+  final String label;
+  final IconData icon;
+
+  const _ExpensePreset(this.label, this.icon);
+}
+
+const List<_ExpensePreset> _salesmanPresets = [
+  _ExpensePreset('Snacks', Icons.cookie_outlined),
+  _ExpensePreset('Cash Advance', Icons.price_change_outlined),
+  _ExpensePreset('Meals', Icons.lunch_dining_outlined),
+  _ExpensePreset('Refreshments', Icons.local_drink_outlined),
+  _ExpensePreset('Phone Load', Icons.phone_android_outlined),
+  _ExpensePreset('Parking / Toll', Icons.local_parking_outlined),
+  _ExpensePreset('Emergency Van Repair', Icons.car_repair_outlined),
+];
+
+const List<_ExpensePreset> _dealerPresets = [
+  _ExpensePreset('Fuel / Diesel', Icons.local_gas_station_outlined),
+  _ExpensePreset('Vehicle Maintenance', Icons.car_repair_outlined),
+  _ExpensePreset('Toll & Parking', Icons.toll_outlined),
+  _ExpensePreset('Electricity / Utilities', Icons.bolt_outlined),
+  _ExpensePreset('Freezer Repair', Icons.ac_unit_outlined),
+  _ExpensePreset('Store Supplies', Icons.inventory_2_outlined),
+  _ExpensePreset('Staff Wages', Icons.badge_outlined),
+  _ExpensePreset('Permits & Taxes', Icons.receipt_long_outlined),
+];

@@ -5,16 +5,18 @@ class Users {
   String role;
   String email;
   String dealerName;
+  double dailyRate;
 
   Users({
     required this.username,
     required this.role,
     required this.email,
     required this.dealerName,
+    this.dailyRate = 0.0,
   });
 
   static Users empty() =>
-      Users(username: '', role: '', email: '', dealerName: '');
+      Users(username: '', role: '', email: '', dealerName: '', dailyRate: 0.0);
 
   Users.fromJson(Map<String, Object?> json)
     : this(
@@ -22,16 +24,18 @@ class Users {
         role: json['role']! as String,
         email: json['email']! as String,
         dealerName: json['dealerName']! as String,
+        dailyRate: (json['dailyRate'] as num?)?.toDouble() ?? 0.0,
       );
 
   factory Users.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
     if (document.data() != null) {
       final data = document.data();
       return Users(
-        username: data?['username'],
-        role: data?['role'],
-        email: data?['email'],
-        dealerName: data?['dealerName'],
+        username: data?['username'] ?? '',
+        role: data?['role'] ?? '',
+        email: data?['email'] ?? '',
+        dealerName: data?['dealerName'] ?? '',
+        dailyRate: (data?['dailyRate'] as num?)?.toDouble() ?? 0.0,
       );
     } else {
       return Users.empty();
@@ -43,12 +47,14 @@ class Users {
     String? role,
     String? email,
     String? dealerName,
+    double? dailyRate,
   }) {
     return Users(
       username: username ?? this.username,
       role: role ?? this.role,
       email: email ?? this.email,
       dealerName: dealerName ?? this.dealerName,
+      dailyRate: dailyRate ?? this.dailyRate,
     );
   }
 
@@ -58,6 +64,7 @@ class Users {
       'role': role,
       'email': email,
       'dealerName': dealerName,
+      'dailyRate': dailyRate,
     };
   }
 }

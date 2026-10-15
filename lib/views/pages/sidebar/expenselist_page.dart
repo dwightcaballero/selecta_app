@@ -25,7 +25,7 @@ class _ExpenselistPageState extends State<ExpenselistPage> with SingleTickerProv
   final FocusNode _searchFocusNode = FocusNode();
 
   String _searchQuery = '';
-  String _selectedPeriod = 'All'; // 'All' or 'This Month'
+  String _selectedPeriod = 'All'; // 'All', 'Today', 'This Week', or 'This Month'
   bool _isDealer = false;
   int _currentTabIndex = 0; // 0: Salesman, 1: Dealer
 
@@ -72,13 +72,15 @@ class _ExpenselistPageState extends State<ExpenselistPage> with SingleTickerProv
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final isSalesmanTab = _currentTabIndex == 0;
-    final String periodLabel = _selectedPeriod == 'This Month'
-        ? (isSalesmanTab
-            ? 'Salesman Expenses (${DateFormat('MMMM yyyy').format(DateTime.now())})'
-            : 'Dealer Expenses (${DateFormat('MMMM yyyy').format(DateTime.now())})')
-        : (isSalesmanTab
-            ? 'Total Salesman Expenses (All Time)'
-            : 'Total Dealer Operating Expenses (All Time)');
+    final String category = isSalesmanTab ? 'Salesman Expenses' : 'Dealer Operating Expenses';
+    final String periodLabel = switch (_selectedPeriod) {
+      'Today' => '$category (Today - ${DateFormat('MMM dd').format(DateTime.now())})',
+      'This Week' => '$category (This Week)',
+      'This Month' => '$category (${DateFormat('MMMM yyyy').format(DateTime.now())})',
+      _ => isSalesmanTab
+          ? 'Total Salesman Expenses (All Time)'
+          : 'Total Dealer Operating Expenses (All Time)',
+    };
 
     final gradientColors = isSalesmanTab
         ? [Colors.deepOrange.shade600, Colors.orange.shade800]
@@ -204,7 +206,12 @@ class _ExpenselistPageState extends State<ExpenselistPage> with SingleTickerProv
     );
   }
 
-  Widget _buildPeriodChips({required int allCount, required int thisMonthCount}) {
+  Widget _buildPeriodChips({
+    required int allCount,
+    required int todayCount,
+    required int thisWeekCount,
+    required int thisMonthCount,
+  }) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -216,6 +223,22 @@ class _ExpenselistPageState extends State<ExpenselistPage> with SingleTickerProv
             label: Text('All Records ($allCount)', style: const TextStyle(fontSize: 12)),
             selected: _selectedPeriod == 'All',
             onSelected: (_) => setState(() => _selectedPeriod = 'All'),
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+            label: Text('Today ($todayCount)', style: const TextStyle(fontSize: 12)),
+            selected: _selectedPeriod == 'Today',
+            onSelected: (_) => setState(() => _selectedPeriod = 'Today'),
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            showCheckmark: false,
+            visualDensity: VisualDensity.compact,
+            label: Text('This Week ($thisWeekCount)', style: const TextStyle(fontSize: 12)),
+            selected: _selectedPeriod == 'This Week',
+            onSelected: (_) => setState(() => _selectedPeriod = 'This Week'),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
@@ -553,10 +576,17 @@ class _ExpenselistPageState extends State<ExpenselistPage> with SingleTickerProv
                 totalAmount: periodTotalAmount,
                 cashAmount: periodCashAmount,
                 onlineAmount: periodOnlineAmount,
-                totalCount: _selectedPeriod == 'All' ? allCount : thisMonthCount,
+                totalCount: switch (_selectedPeriod) {
+                  'Today' => filterResult.todayCount,
+                  'This Week' => filterResult.thisWeekCount,
+                  'This Month' => filterResult.thisMonthCount,
+                  _ => allCount,
+                },
               ),
               _buildPeriodChips(
                 allCount: allCount,
+                todayCount: filterResult.todayCount,
+                thisWeekCount: filterResult.thisWeekCount,
                 thisMonthCount: thisMonthCount,
               ),
               _buildSearchBar(),

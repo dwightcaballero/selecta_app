@@ -166,6 +166,16 @@ class AppPages {
   static const prospectScouting = "Prospect Scouting";
   static const vanLoad = "Van Load";
   static const vanSell = "Van Sell";
+  static const payslip = "Payslip";
+}
+
+class PayslipStatus {
+  static const draft = "Draft";
+  static const issued = "Issued";
+  static const acknowledged = "Acknowledged";
+  static const paid = "Paid";
+
+  static const List<String> all = [draft, issued, acknowledged, paid];
 }
 
 class ProductTag {

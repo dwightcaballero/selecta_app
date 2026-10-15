@@ -69,6 +69,8 @@ dependencies:
   crypto: ^3.0.6
   google_fonts: ^6.2.1
   audioplayers: ^6.8.1
+  pdf: ^3.13.1
+  printing: ^5.15.1
 
 dev_dependencies:
   flutter_test:

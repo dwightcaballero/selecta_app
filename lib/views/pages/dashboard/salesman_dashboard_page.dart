@@ -19,6 +19,7 @@ import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/payslip_list_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
@@ -454,6 +455,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
           _buildDrawerItem(Icons.explore_outlined, 'Prospect Scouting', const ProspectScoutPage()),
           _buildDrawerItem(Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
           _buildDrawerItem(Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
+          _buildDrawerItem(Icons.payments_outlined, 'My Payslips', const PayslipListPage()),
           _buildDrawerItem(Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
           _buildDrawerItem(Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: 'Salesman')),
           _buildDrawerItem(Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: _dashboardDTO)),
@@ -723,6 +725,21 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> {
                             nextPage: BadOrderlistPage(),
                           ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildQuickAccessCard(
+                            label: 'My Payslips',
+                            icon: Icons.payments_outlined,
+                            iconColor: const Color(0xFF0D9488),
+                            nextPage: const PayslipListPage(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(child: SizedBox()),
                       ],
                     ),
                   ],
