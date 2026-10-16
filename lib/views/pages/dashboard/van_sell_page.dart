@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/van_sell_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/van_load.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
-import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 class VanSellPage extends StatefulWidget {
@@ -25,9 +28,9 @@ class VanSellPage extends StatefulWidget {
 class _VanSellPageState extends State<VanSellPage> {
   final VanSellController _controller = VanSellController();
   final ThermalPrinterService _printerService = ThermalPrinterService();
+  final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_PH', symbol: '₱');
 
   final TextEditingController _remarksController = TextEditingController();
-  final TextEditingController _cashReceivedController = TextEditingController();
   final TextEditingController _storeSearchController = TextEditingController();
   final TextEditingController _productSearchController = TextEditingController();
 
@@ -41,9 +44,7 @@ class _VanSellPageState extends State<VanSellPage> {
 
   Hapistore? _selectedStore;
   final Map<String, int> _sellQuantities = {}; // productId -> quantity
-  final Map<String, TextEditingController> _qtyControllers = {};
 
-  String _paymentMethod = 'Cash'; // 'Cash' | 'Online' | 'Credit'
   bool _isSaving = false;
   String _productSearchQuery = '';
 
@@ -61,12 +62,8 @@ class _VanSellPageState extends State<VanSellPage> {
   void dispose() {
     _vanLoadSub?.cancel();
     _remarksController.dispose();
-    _cashReceivedController.dispose();
     _storeSearchController.dispose();
     _productSearchController.dispose();
-    for (final c in _qtyControllers.values) {
-      c.dispose();
-    }
     super.dispose();
   }
 
@@ -88,7 +85,6 @@ class _VanSellPageState extends State<VanSellPage> {
             final max = available[id] ?? 0;
             if (qty > max) {
               _sellQuantities[id] = max;
-              _getQtyController(id).text = '$max';
             }
           });
         }
@@ -131,24 +127,95 @@ class _VanSellPageState extends State<VanSellPage> {
     return !_buyingStoreNames.contains(store.storeName.trim().toLowerCase());
   }
 
-  TextEditingController _getQtyController(String productId) {
-    return _qtyControllers.putIfAbsent(productId, () {
-      final initialVal = _sellQuantities[productId] ?? 0;
-      return TextEditingController(text: initialVal > 0 ? '$initialVal' : '');
-    });
-  }
-
   void _updateQuantity(String productId, int newQty, int availableMax) {
     final clamped = newQty.clamp(0, availableMax);
     setState(() {
       if (clamped <= 0) {
         _sellQuantities.remove(productId);
-        _getQtyController(productId).text = '';
       } else {
         _sellQuantities[productId] = clamped;
-        _getQtyController(productId).text = '$clamped';
       }
     });
+  }
+
+  Future<void> _showQuantityDialog(VanLoadItem item, int currentQty, int maxAllowed) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final defaultQty = currentQty > 0 ? currentQty : (maxAllowed >= 1 ? 1 : 0);
+    final initialText = defaultQty > 0 ? '$defaultQty' : '';
+    final controller = TextEditingController(text: initialText)
+      ..selection = TextSelection(baseOffset: 0, extentOffset: initialText.length);
+
+    final entered = await showDialog<int>(
+      context: context,
+      builder: (dCtx) {
+        return StatefulBuilder(
+          builder: (dialogCtx, setDialogState) {
+            void setVal(int v) {
+              final clamped = v.clamp(0, maxAllowed);
+              final text = clamped > 0 ? '$clamped' : '';
+              controller.value = TextEditingValue(
+                text: text,
+                selection: TextSelection(baseOffset: 0, extentOffset: text.length),
+              );
+              setDialogState(() {});
+            }
+
+            return AlertDialog(
+              title: Text(item.productName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Available on Van: $maxAllowed',
+                    style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    decoration: InputDecoration(
+                      hintText: '0',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ActionChip(label: const Text('+1'), onPressed: () => setVal((int.tryParse(controller.text) ?? 0) + 1)),
+                      ActionChip(label: const Text('+5'), onPressed: () => setVal((int.tryParse(controller.text) ?? 0) + 5)),
+                      ActionChip(label: const Text('+10'), onPressed: () => setVal((int.tryParse(controller.text) ?? 0) + 10)),
+                      ActionChip(label: const Text('Max'), onPressed: () => setVal(maxAllowed)),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.teal),
+                  onPressed: () {
+                    final qty = int.tryParse(controller.text.trim()) ?? 0;
+                    Navigator.pop(dCtx, qty);
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (entered != null) {
+      _updateQuantity(item.productId, entered, maxAllowed);
+    }
   }
 
   int get _totalSellUnits {
@@ -195,7 +262,7 @@ class _VanSellPageState extends State<VanSellPage> {
     return items;
   }
 
-  Future<void> _processSale() async {
+  Future<void> _onCompleteAndPrint() async {
     if (_activeVanLoad == null) {
       SnackBarWidget.error(context, 'No active Van Load found. Please ask Dealer to load van first.');
       return;
@@ -212,30 +279,402 @@ class _VanSellPageState extends State<VanSellPage> {
       return;
     }
 
-    final total = _totalSellAmount;
-    double cashAmt = 0.0;
-    double onlineAmt = 0.0;
-    double creditAmt = 0.0;
+    await _showSaleConfirmationDialog(items);
+  }
 
-    if (_paymentMethod == 'Cash') {
-      cashAmt = total;
-    } else if (_paymentMethod == 'Online') {
-      onlineAmt = total;
-    } else if (_paymentMethod == 'Credit') {
-      creditAmt = total;
+  Future<void> _showSaleConfirmationDialog(List<OrderItem> items) async {
+    final targetTotal = _totalSellAmount;
+    final totalUnits = _totalSellUnits;
+    final store = _selectedStore!;
+
+    // Initial payment controllers - default to Full Cash for convenience
+    final txtCash = TextEditingController(text: targetTotal > 0 ? targetTotal.toStringAsFixed(2) : '0.00');
+    final txtOnline = TextEditingController();
+    final txtCredit = TextEditingController();
+    final txtDialogRemarks = TextEditingController(text: _remarksController.text.trim());
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final cashVal = double.tryParse(txtCash.text.trim()) ?? 0.0;
+            final onlineVal = double.tryParse(txtOnline.text.trim()) ?? 0.0;
+            final creditVal = double.tryParse(txtCredit.text.trim()) ?? 0.0;
+            final totalAccounted = cashVal + onlineVal + creditVal;
+            final diff = totalAccounted - targetTotal;
+            final isBalanced = diff.abs() < 0.01;
+            final isOver = diff >= 0.01;
+
+            final Color badgeColor = isBalanced
+                ? Colors.green.shade700
+                : (isOver ? Colors.orange.shade800 : Colors.red.shade700);
+            final Color badgeBgColor = isBalanced
+                ? Colors.green.shade50
+                : (isOver ? Colors.orange.shade50 : Colors.red.shade50);
+            final Color badgeBorderColor = isBalanced
+                ? Colors.green.shade300
+                : (isOver ? Colors.orange.shade300 : Colors.red.shade300);
+
+            void quickFill(String target) {
+              final formatted = targetTotal.toStringAsFixed(2);
+              setDialogState(() {
+                if (target == 'cash') {
+                  txtCash.text = formatted;
+                  txtOnline.clear();
+                  txtCredit.clear();
+                } else if (target == 'online') {
+                  txtOnline.text = formatted;
+                  txtCash.clear();
+                  txtCredit.clear();
+                } else if (target == 'credit') {
+                  txtCredit.text = formatted;
+                  txtCash.clear();
+                  txtOnline.clear();
+                } else {
+                  txtCash.clear();
+                  txtOnline.clear();
+                  txtCredit.clear();
+                }
+              });
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.check_circle_outline, color: Colors.teal, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Confirm Van Sale', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('Review order & payment details', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: MediaQuery.of(ctx).size.width * 0.9,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Divider(height: 1),
+                      const SizedBox(height: 12),
+
+                      // Customer Store info card
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.storefront_outlined, color: Colors.teal.shade700, size: 22),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    store.storeName,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                  ),
+                                  if (store.storeAddress.isNotEmpty)
+                                    Text(
+                                      store.storeAddress,
+                                      style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Sale Summary: Units and Total
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.shade50.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.teal.shade100),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Total Items', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                                Text('$totalUnits units (${items.length} SKUs)', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                const Text('Total Amount', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+                                Text(
+                                  Helperfunctions.formatDoubleAmountForDisplay(targetTotal),
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Quick-Fill Chips
+                      Row(
+                        children: [
+                          Icon(Icons.bolt, size: 16, color: Colors.amber.shade800),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'Quick-Fill Payment:',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.black87),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            ActionChip(
+                              avatar: const Icon(Icons.payments_outlined, size: 16, color: Colors.teal),
+                              label: const Text('Full Cash', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              onPressed: () => quickFill('cash'),
+                            ),
+                            const SizedBox(width: 6),
+                            ActionChip(
+                              avatar: const Icon(Icons.account_balance_outlined, size: 16, color: Colors.teal),
+                              label: const Text('Full Online', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              onPressed: () => quickFill('online'),
+                            ),
+                            const SizedBox(width: 6),
+                            ActionChip(
+                              avatar: const Icon(Icons.credit_card_outlined, size: 16, color: Colors.teal),
+                              label: const Text('Full Credit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              onPressed: () => quickFill('credit'),
+                            ),
+                            const SizedBox(width: 6),
+                            ActionChip(
+                              avatar: Icon(Icons.restart_alt, size: 16, color: Colors.red.shade700),
+                              label: Text('Clear', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.red.shade700)),
+                              onPressed: () => quickFill('clear'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Cash, Online, Credit Input Fields
+                      _buildPaymentAmountField(
+                        label: 'Cash Amount',
+                        controller: txtCash,
+                        icon: Icons.payments_outlined,
+                        onChanged: (_) => setDialogState(() {}),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildPaymentAmountField(
+                        label: 'Online Amount',
+                        controller: txtOnline,
+                        icon: Icons.account_balance_outlined,
+                        onChanged: (_) => setDialogState(() {}),
+                      ),
+                      const SizedBox(height: 10),
+                      _buildPaymentAmountField(
+                        label: 'Credit Amount',
+                        controller: txtCredit,
+                        icon: Icons.credit_card_outlined,
+                        onChanged: (_) => setDialogState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Balance status badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: badgeBgColor,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: badgeBorderColor, width: 1.2),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isBalanced ? Icons.check_circle : (isOver ? Icons.error_outline : Icons.warning_amber_rounded),
+                              size: 20,
+                              color: badgeColor,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    isBalanced
+                                        ? 'Payment Balanced'
+                                        : (isOver
+                                            ? 'Overpaid by ${Helperfunctions.formatDoubleAmountForDisplay(diff.abs())}'
+                                            : 'Short by ${Helperfunctions.formatDoubleAmountForDisplay(diff.abs())}'),
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: badgeColor),
+                                  ),
+                                  Text(
+                                    'Accounted: ${Helperfunctions.formatDoubleAmountForDisplay(totalAccounted)} / Target: ${Helperfunctions.formatDoubleAmountForDisplay(targetTotal)}',
+                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Remarks field
+                      TextField(
+                        controller: txtDialogRemarks,
+                        maxLines: 2,
+                        style: const TextStyle(fontSize: 13),
+                        decoration: InputDecoration(
+                          labelText: 'Remarks (Optional)',
+                          hintText: 'e.g., GCash ref#, notes, etc.',
+                          prefixIcon: const Icon(Icons.note_alt_outlined, size: 20),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx, false),
+                  child: const Text('Cancel / Keep Editing'),
+                ),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: isBalanced ? Colors.teal : Colors.grey,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('Confirm & Complete'),
+                  onPressed: isBalanced
+                      ? () {
+                          Navigator.pop(dialogCtx, true);
+                        }
+                      : () {
+                          SnackBarWidget.error(context, 'Payment must balance with total amount before completing.');
+                        },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed == true && mounted) {
+      final cash = double.tryParse(txtCash.text.trim()) ?? 0.0;
+      final online = double.tryParse(txtOnline.text.trim()) ?? 0.0;
+      final credit = double.tryParse(txtCredit.text.trim()) ?? 0.0;
+      final remarks = txtDialogRemarks.text.trim();
+
+      String method;
+      if (cash > 0 && online == 0 && credit == 0) {
+        method = 'Cash';
+      } else if (online > 0 && cash == 0 && credit == 0) {
+        method = 'Online';
+      } else if (credit > 0 && cash == 0 && online == 0) {
+        method = 'Credit';
+      } else {
+        method = 'Split';
+      }
+
+      await _executeSaleWithPayment(
+        items: items,
+        paymentMethod: method,
+        cashAmount: cash,
+        onlineAmount: online,
+        creditAmount: credit,
+        remarks: remarks,
+      );
     }
 
+    txtCash.dispose();
+    txtOnline.dispose();
+    txtCredit.dispose();
+    txtDialogRemarks.dispose();
+  }
+
+  Widget _buildPaymentAmountField({
+    required String label,
+    required TextEditingController controller,
+    required IconData icon,
+    required ValueChanged<String> onChanged,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
+      textAlign: TextAlign.end,
+      onChanged: onChanged,
+      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        prefixIcon: Icon(icon, size: 20, color: Colors.teal),
+        prefixText: '₱ ',
+        prefixStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        hintText: '0.00',
+      ),
+    );
+  }
+
+  Future<void> _executeSaleWithPayment({
+    required List<OrderItem> items,
+    required String paymentMethod,
+    required double cashAmount,
+    required double onlineAmount,
+    required double creditAmount,
+    required String remarks,
+  }) async {
     setState(() => _isSaving = true);
     try {
       final result = await _controller.completeVanSale(
         vanLoad: _activeVanLoad!,
         store: _selectedStore!,
         items: items,
-        paymentMethod: _paymentMethod,
-        cashAmount: cashAmt,
-        onlineAmount: onlineAmt,
-        creditAmount: creditAmt,
-        remarks: _remarksController.text.trim(),
+        paymentMethod: paymentMethod,
+        cashAmount: cashAmount,
+        onlineAmount: onlineAmount,
+        creditAmount: creditAmount,
+        remarks: remarks,
       );
 
       if (!mounted) return;
@@ -256,11 +695,7 @@ class _VanSellPageState extends State<VanSellPage> {
         setState(() {
           _selectedStore = null;
           _sellQuantities.clear();
-          for (final c in _qtyControllers.values) {
-            c.clear();
-          }
           _remarksController.clear();
-          _cashReceivedController.clear();
         });
       }
     } catch (e) {
@@ -632,151 +1067,48 @@ class _VanSellPageState extends State<VanSellPage> {
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   itemCount: vanItems.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, i) {
                     final item = vanItems[i];
                     final currentQty = _sellQuantities[item.productId] ?? 0;
-                    final qtyCtrl = _getQtyController(item.productId);
+                    final invItem = InventoryItem(
+                      id: item.productId,
+                      productName: item.productName,
+                      imageUrl: item.imageUrl,
+                      barcode: item.barcode,
+                      buyingPrice: item.buyingPrice,
+                      sellingPrice: item.sellingPrice,
+                      isActive: true,
+                      stockQuantity: item.availableQuantity,
+                      lowStockThreshold: 5,
+                      source: InventoryProductSource.fromKey(item.productSource),
+                      category: item.category,
+                      tag: item.tag,
+                    );
 
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        children: [
-                          CachedProductImage(imageUrl: item.imageUrl, size: 44),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.productName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                                const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    Text(
-                                      Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice),
-                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.teal),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.shade50,
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: Colors.blue.shade200),
-                                      ),
-                                      child: Text(
-                                        'Van Stock: ${item.availableQuantity}',
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Stepper
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline, color: Colors.teal),
-                                onPressed: currentQty > 0
-                                    ? () => _updateQuantity(item.productId, currentQty - 1, item.availableQuantity)
-                                    : null,
-                              ),
-                              SizedBox(
-                                width: 44,
-                                height: 36,
-                                child: TextField(
-                                  controller: qtyCtrl,
-                                  keyboardType: TextInputType.number,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                  decoration: InputDecoration(
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    hintText: '0',
-                                  ),
-                                  onChanged: (val) {
-                                    final parsed = int.tryParse(val) ?? 0;
-                                    _updateQuantity(item.productId, parsed, item.availableQuantity);
-                                  },
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add_circle_outline, color: Colors.teal),
-                                onPressed: currentQty < item.availableQuantity
-                                    ? () => _updateQuantity(item.productId, currentQty + 1, item.availableQuantity)
-                                    : null,
-                              ),
-                            ],
-                          ),
-                        ],
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: ProductOrderCard(
+                        item: invItem,
+                        selectedQty: currentQty,
+                        maxOrderable: item.availableQuantity,
+                        isPlaced: false,
+                        currencyFormat: _currencyFormat,
+                        onTap: () => _showQuantityDialog(item, currentQty, item.availableQuantity),
+                        onIncrement: () {
+                          HapticFeedback.lightImpact();
+                          _updateQuantity(item.productId, currentQty + 1, item.availableQuantity);
+                        },
+                        onDecrement: () {
+                          HapticFeedback.lightImpact();
+                          _updateQuantity(item.productId, currentQty - 1, item.availableQuantity);
+                        },
                       ),
                     );
                   },
                 ),
-        ),
-
-        // Payment Method Selector
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Colors.grey.shade200)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Payment Method:', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.grey)),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  for (final method in ['Cash', 'Online', 'Credit'])
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 3),
-                        child: ChoiceChip(
-                          label: Center(
-                            child: Text(
-                              method,
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.bold,
-                                color: _paymentMethod == method ? Colors.teal.shade900 : Colors.black87,
-                              ),
-                            ),
-                          ),
-                          selected: _paymentMethod == method,
-                          selectedColor: Colors.teal.shade100,
-                          onSelected: (sel) {
-                            if (sel) setState(() => _paymentMethod = method);
-                          },
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              if (_paymentMethod == 'Credit')
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 14, color: Colors.purple.shade700),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Will be recorded as Unpaid Credit receivable for this store.',
-                        style: TextStyle(fontSize: 11.5, color: Colors.purple.shade800, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
         ),
       ],
     );
@@ -825,7 +1157,7 @@ class _VanSellPageState extends State<VanSellPage> {
                 _isSaving ? 'Processing...' : 'Complete & Print',
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
-              onPressed: _isSaving ? null : _processSale,
+              onPressed: _isSaving ? null : _onCompleteAndPrint,
             ),
           ],
         ),
