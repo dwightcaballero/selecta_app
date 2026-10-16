@@ -64,6 +64,11 @@ class BadOrder {
   Timestamp lastupdatedDate;
   String createdPage;
   String lastUpdatedPage;
+  bool isStoreRefunded;
+  Timestamp? storeRefundedDate;
+  String? storeRefundedBy;
+  String? batchId;
+  String? batchNumber;
 
   BadOrder({
     this.id = '',
@@ -81,6 +86,11 @@ class BadOrder {
     required this.lastupdatedDate,
     this.createdPage = '',
     this.lastUpdatedPage = '',
+    this.isStoreRefunded = false,
+    this.storeRefundedDate,
+    this.storeRefundedBy,
+    this.batchId,
+    this.batchNumber,
   }) : badorderAmount = badorderAmount ??
             items.fold<double>(0.0, (total, item) => total + item.subtotal);
 
@@ -108,6 +118,9 @@ class BadOrder {
         lastUpdatedBy: '',
         createdDate: Timestamp.now(),
         lastupdatedDate: Timestamp.now(),
+        isStoreRefunded: false,
+        storeRefundedDate: null,
+        storeRefundedBy: null,
       );
 
   factory BadOrder.fromJson(Map<String, Object?> json, [String docId = '']) {
@@ -142,6 +155,11 @@ class BadOrder {
       lastupdatedDate: json['lastupdatedDate'] as Timestamp? ?? Timestamp.now(),
       createdPage: json['createdPage'] as String? ?? '',
       lastUpdatedPage: json['lastUpdatedPage'] as String? ?? '',
+      isStoreRefunded: json['isStoreRefunded'] as bool? ?? false,
+      storeRefundedDate: json['storeRefundedDate'] as Timestamp?,
+      storeRefundedBy: json['storeRefundedBy'] as String?,
+      batchId: json['batchId'] as String?,
+      batchNumber: json['batchNumber'] as String?,
     );
   }
 
@@ -171,6 +189,12 @@ class BadOrder {
     Timestamp? lastupdatedDate,
     String? createdPage,
     String? lastUpdatedPage,
+    bool? isStoreRefunded,
+    Timestamp? storeRefundedDate,
+    String? storeRefundedBy,
+    String? batchId,
+    String? batchNumber,
+    bool clearBatch = false,
   }) {
     return BadOrder(
       id: id ?? this.id,
@@ -188,6 +212,11 @@ class BadOrder {
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
       createdPage: createdPage ?? this.createdPage,
       lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
+      isStoreRefunded: isStoreRefunded ?? this.isStoreRefunded,
+      storeRefundedDate: storeRefundedDate ?? this.storeRefundedDate,
+      storeRefundedBy: storeRefundedBy ?? this.storeRefundedBy,
+      batchId: clearBatch ? null : (batchId ?? this.batchId),
+      batchNumber: clearBatch ? null : (batchNumber ?? this.batchNumber),
     );
   }
 
@@ -208,6 +237,11 @@ class BadOrder {
       'lastupdatedDate': lastupdatedDate,
       'createdPage': createdPage,
       'lastUpdatedPage': lastUpdatedPage,
+      'isStoreRefunded': isStoreRefunded,
+      if (storeRefundedDate != null) 'storeRefundedDate': storeRefundedDate,
+      if (storeRefundedBy != null) 'storeRefundedBy': storeRefundedBy,
+      if (batchId != null) 'batchId': batchId,
+      if (batchNumber != null) 'batchNumber': batchNumber,
     };
   }
 }

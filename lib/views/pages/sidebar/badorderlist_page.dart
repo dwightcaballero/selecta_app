@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,10 +6,14 @@ import 'package:selecta_ops/controllers/selecta_product_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/badorder.dart';
+import 'package:selecta_ops/models/badorder_batch.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
+import 'package:selecta_ops/views/pages/sidebar/badorder_batch_create_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/badorder_batch_detail_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorder_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/pages/sidebar/badorder_form_page.dart';
 import 'package:intl/intl.dart';
 
 class BadOrderlistPage extends StatefulWidget {
@@ -21,21 +23,32 @@ class BadOrderlistPage extends StatefulWidget {
   State<BadOrderlistPage> createState() => _BadOrderlistPageState();
 }
 
-class _BadOrderlistPageState extends State<BadOrderlistPage> {
+class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerProviderStateMixin {
   final BadOrderController _controller = BadOrderController();
 
+  late final TabController _tabController;
   late final Stream<QuerySnapshot<BadOrder>> _badOrdersStream;
+  late final Stream<QuerySnapshot<BadOrderBatch>> _batchesStream;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
   String _selectedPeriod = 'All'; // 'All' or 'This Month'
   String _selectedStatus = 'All'; // 'All', 'Store Pullout', 'Warehouse Pullout', 'Settled'
+  String _selectedRefund = 'All'; // 'All', 'Store Refunded', 'Store Not Refunded'
   bool _isDealer = false;
+
+  List<QueryDocumentSnapshot<BadOrder>> _cachedAllBadOrders = [];
+  int _cachedBatchesCount = 0;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _badOrdersStream = _controller.getBadOrdersStream();
+    _batchesStream = _controller.getBatchesStream();
     _controller.checkIsDealer().then((dealer) {
       if (mounted) setState(() => _isDealer = dealer);
     });
@@ -43,9 +56,14 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _openAddBadOrderPage() {
+    Helperfunctions.navigateTo(context, const BadOrderFormPage());
   }
 
   void _openByCaseConfigModal() {
@@ -57,163 +75,433 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
     );
   }
 
-  Widget _buildSummaryCard({required double totalAmount, required int totalCount}) {
+  void _openCreateBatchPage() {
+    final pending = _cachedAllBadOrders.where((doc) {
+      final bo = doc.data();
+      return bo.isNewRecord &&
+          bo.items.isNotEmpty &&
+          bo.status == BadOrderStatus.storePullout &&
+          (bo.batchId == null || bo.batchId!.isEmpty);
+    }).toList();
+
+    if (pending.isEmpty) {
+      ShowMessage.info(context, 'There are no pending store bad orders in the warehouse freezer to batch.');
+      return;
+    }
+
+    Helperfunctions.navigateTo(
+      context,
+      BadOrderBatchCreatePage(
+        pendingOrders: pending,
+        existingBatchCount: _cachedBatchesCount,
+      ),
+    );
+  }
+
+  int get _secondaryFilterCount {
+    int count = 0;
+    if (_selectedPeriod != 'All') count++;
+    if (_selectedRefund != 'All') count++;
+    return count;
+  }
+
+  void _openFilterModal({
+    required int allCount,
+    required int thisMonthCount,
+    required int storeRefundedCount,
+    required int storeNotRefundedCount,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalCtx) {
+        String tempPeriod = _selectedPeriod;
+        String tempRefund = _selectedRefund;
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final theme = Theme.of(context);
+            final colorScheme = theme.colorScheme;
+
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              decoration: BoxDecoration(
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Filter Records',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setModalState(() {
+                              tempPeriod = 'All';
+                              tempRefund = 'All';
+                            });
+                          },
+                          child: const Text('Reset'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Time Period',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          showCheckmark: false,
+                          visualDensity: VisualDensity.compact,
+                          label: Text('All Time ($allCount)', style: const TextStyle(fontSize: 12)),
+                          selected: tempPeriod == 'All',
+                          onSelected: (_) => setModalState(() => tempPeriod = 'All'),
+                        ),
+                        ChoiceChip(
+                          showCheckmark: false,
+                          visualDensity: VisualDensity.compact,
+                          label: Text('This Month ($thisMonthCount)', style: const TextStyle(fontSize: 12)),
+                          selected: tempPeriod == 'This Month',
+                          onSelected: (_) => setModalState(() => tempPeriod = 'This Month'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Store Refund Status',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          showCheckmark: false,
+                          visualDensity: VisualDensity.compact,
+                          label: const Text('All', style: TextStyle(fontSize: 12)),
+                          selected: tempRefund == 'All',
+                          onSelected: (_) => setModalState(() => tempRefund = 'All'),
+                        ),
+                        ChoiceChip(
+                          showCheckmark: false,
+                          visualDensity: VisualDensity.compact,
+                          avatar: const Icon(Icons.check_circle_outline, size: 14, color: Colors.green),
+                          label: Text('Store Refunded ($storeRefundedCount)', style: const TextStyle(fontSize: 12)),
+                          selected: tempRefund == 'Store Refunded',
+                          onSelected: (_) => setModalState(() => tempRefund = 'Store Refunded'),
+                        ),
+                        ChoiceChip(
+                          showCheckmark: false,
+                          visualDensity: VisualDensity.compact,
+                          avatar: Icon(Icons.schedule, size: 14, color: Colors.amber.shade800),
+                          label: Text('Store Not Refunded ($storeNotRefundedCount)', style: const TextStyle(fontSize: 12)),
+                          selected: tempRefund == 'Store Not Refunded',
+                          onSelected: (_) => setModalState(() => tempRefund = 'Store Not Refunded'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: FilledButton(
+                        onPressed: () {
+                          setState(() {
+                            _selectedPeriod = tempPeriod;
+                            _selectedRefund = tempRefund;
+                          });
+                          Navigator.pop(modalCtx);
+                        },
+                        child: const Text('Apply Filters', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildCompactSummary({
+    required double totalAmount,
+    required int totalCount,
+    required int unrefundedCount,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [colorScheme.primary, colorScheme.primary.withValues(alpha: 0.85)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.primary.withValues(alpha: 0.25),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: colorScheme.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.primary.withValues(alpha: 0.18)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _selectedPeriod == 'This Month'
-                    ? 'Bad Orders (${DateFormat('MMMM').format(DateTime.now())})'
-                    : 'Total Bad Orders (Active)',
-                style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
-                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(10),
-            ),
+          Expanded(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Records', style: TextStyle(color: Colors.white70, fontSize: 11)),
                 Text(
-                  '$totalCount',
-                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  _selectedPeriod == 'This Month'
+                      ? 'Bad Orders (${DateFormat('MMMM').format(DateTime.now())})'
+                      : 'Total Bad Orders',
+                  style: TextStyle(
+                    color: colorScheme.onPrimaryContainer.withValues(alpha: 0.8),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.45)),
+                ),
+                child: Text(
+                  '$totalCount record${totalCount == 1 ? '' : 's'}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              if (unrefundedCount > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade300, width: 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.schedule, size: 12, color: Colors.amber.shade900),
+                      const SizedBox(width: 3),
+                      Text(
+                        '$unrefundedCount unrefunded',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildFilterChips({required int allCount, required int thisMonthCount}) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+  Widget _buildSearchBar({required VoidCallback onOpenFilter}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final filterCount = _secondaryFilterCount;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 6.0, 16.0, 4.0),
       child: Row(
         children: [
-          ChoiceChip(
-            showCheckmark: false,
-            visualDensity: VisualDensity.compact,
-            label: Text('All Records ($allCount)', style: const TextStyle(fontSize: 12)),
-            selected: _selectedPeriod == 'All',
-            onSelected: (_) => setState(() => _selectedPeriod = 'All'),
+          Expanded(
+            child: SizedBox(
+              height: 40,
+              child: TextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                onChanged: (val) => setState(() => _searchQuery = val.trim()),
+                style: const TextStyle(fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'Search store, product, or notes...',
+                  hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                  prefixIcon: Icon(Icons.search, size: 18, color: colorScheme.primary),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 16),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                  ),
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 8),
-          ChoiceChip(
-            showCheckmark: false,
-            visualDensity: VisualDensity.compact,
-            label: Text('This Month ($thisMonthCount)', style: const TextStyle(fontSize: 12)),
-            selected: _selectedPeriod == 'This Month',
-            onSelected: (_) => setState(() => _selectedPeriod = 'This Month'),
-          ),
-          const SizedBox(width: 12),
-          Container(height: 18, width: 1, color: Colors.grey.shade300),
-          const SizedBox(width: 12),
-          ChoiceChip(
-            showCheckmark: false,
-            visualDensity: VisualDensity.compact,
-            label: const Text('All Statuses', style: TextStyle(fontSize: 12)),
-            selected: _selectedStatus == 'All',
-            onSelected: (_) => setState(() => _selectedStatus = 'All'),
-          ),
-          const SizedBox(width: 6),
-          ChoiceChip(
-            showCheckmark: false,
-            visualDensity: VisualDensity.compact,
-            label: const Text('Store Pullout', style: TextStyle(fontSize: 12)),
-            selected: _selectedStatus == BadOrderStatus.storePullout,
-            onSelected: (_) => setState(() => _selectedStatus = BadOrderStatus.storePullout),
-          ),
-          const SizedBox(width: 6),
-          ChoiceChip(
-            showCheckmark: false,
-            visualDensity: VisualDensity.compact,
-            label: const Text('Warehouse Pullout', style: TextStyle(fontSize: 12)),
-            selected: _selectedStatus == BadOrderStatus.warehousePullout,
-            onSelected: (_) => setState(() => _selectedStatus = BadOrderStatus.warehousePullout),
-          ),
-          const SizedBox(width: 6),
-          ChoiceChip(
-            showCheckmark: false,
-            visualDensity: VisualDensity.compact,
-            label: const Text('Settled', style: TextStyle(fontSize: 12)),
-            selected: _selectedStatus == BadOrderStatus.settled,
-            onSelected: (_) => setState(() => _selectedStatus = BadOrderStatus.settled),
+          Badge(
+            isLabelVisible: filterCount > 0,
+            label: Text('$filterCount', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+            child: IconButton.outlined(
+              style: IconButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                side: BorderSide(
+                  color: filterCount > 0
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant.withValues(alpha: 0.4),
+                ),
+                backgroundColor: filterCount > 0
+                    ? colorScheme.primary.withValues(alpha: 0.1)
+                    : Colors.transparent,
+              ),
+              icon: Icon(
+                Icons.filter_list_rounded,
+                size: 20,
+                color: filterCount > 0 ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              ),
+              tooltip: 'Filter Records',
+              onPressed: onOpenFilter,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchBar() {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _buildStatusBar() {
+    final statuses = [
+      'All',
+      BadOrderStatus.storePullout,
+      BadOrderStatus.warehousePullout,
+      BadOrderStatus.settled,
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      child: Row(
+        children: statuses.map((status) {
+          final isSelected = _selectedStatus == status;
+          final label = status == 'All' ? 'All Status' : status;
+          return Padding(
+            padding: const EdgeInsets.only(right: 6.0),
+            child: ChoiceChip(
+              showCheckmark: false,
+              visualDensity: VisualDensity.compact,
+              label: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              selected: isSelected,
+              onSelected: (_) => setState(() => _selectedStatus = status),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildActiveFiltersBar() {
+    final hasActiveSecondary = _secondaryFilterCount > 0;
+    if (!hasActiveSecondary) return const SizedBox.shrink();
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-      child: SizedBox(
-        height: 40,
-        child: TextField(
-          controller: _searchController,
-          focusNode: _searchFocusNode,
-          onChanged: (val) => setState(() => _searchQuery = val.trim()),
-          style: const TextStyle(fontSize: 13),
-          decoration: InputDecoration(
-            hintText: 'Search by store, product, or notes...',
-            hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
-            prefixIcon: Icon(Icons.search, size: 18, color: colorScheme.primary),
-            suffixIcon: _searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear, size: 16),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  )
-                : null,
-            filled: true,
-            fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 2.0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            if (_selectedPeriod != 'All') ...[
+              InputChip(
+                visualDensity: VisualDensity.compact,
+                label: const Text('This Month', style: TextStyle(fontSize: 11)),
+                onDeleted: () => setState(() => _selectedPeriod = 'All'),
+              ),
+              const SizedBox(width: 6),
+            ],
+            if (_selectedRefund != 'All') ...[
+              InputChip(
+                visualDensity: VisualDensity.compact,
+                label: Text(
+                  _selectedRefund == 'Store Refunded' ? 'Store Refunded' : 'Store Not Refunded',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                onDeleted: () => setState(() => _selectedRefund = 'All'),
+              ),
+              const SizedBox(width: 6),
+            ],
+            TextButton(
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(40, 24),
+              ),
+              onPressed: () => setState(() {
+                _selectedPeriod = 'All';
+                _selectedRefund = 'All';
+              }),
+              child: const Text('Reset', style: TextStyle(fontSize: 11)),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
-            ),
-          ),
+          ],
         ),
       ),
     );
@@ -232,13 +520,58 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
     }
   }
 
+  String _getDateGroup(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final recordDate = DateTime(date.year, date.month, date.day);
+
+    final diffDays = today.difference(recordDate).inDays;
+    if (diffDays == 0) {
+      return 'Today';
+    } else if (diffDays == 1) {
+      return 'Yesterday';
+    } else if (date.year == now.year && date.month == now.month) {
+      return 'Earlier This Month';
+    } else {
+      return DateFormat('MMMM yyyy').format(date);
+    }
+  }
+
+  Widget _buildSectionHeader(String title) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12.0, bottom: 6.0),
+      child: Row(
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Divider(
+              height: 1,
+              color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBadOrderCard({required String badorderID, required BadOrder badorder}) {
     final colorScheme = Theme.of(context).colorScheme;
     final statusColor = _getStatusColor(badorder.status);
-    final hasImage = badorder.imagePath.trim().isNotEmpty;
 
     return Card(
       elevation: 0,
+      margin: EdgeInsets.zero,
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -246,116 +579,183 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Helperfunctions.navigateTo(
-          context,
-          BadOrderPage(recID: badorderID, badorder: badorder),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Photo thumbnail or default icon
-              Container(
-                width: 48,
-                height: 48,
+        onTap: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: badorderID, badorder: badorder)),
+        child: Stack(
+          children: [
+            // Status left accent stripe
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 4,
+              child: Container(
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: hasImage
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: badorder.imagePath.startsWith('http')
-                            ? Image.network(
-                                badorder.imagePath,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Icon(Icons.broken_image, size: 22, color: colorScheme.primary),
-                              )
-                            : Image.file(
-                                File(badorder.imagePath),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Icon(Icons.broken_image, size: 22, color: colorScheme.primary),
-                              ),
-                      )
-                    : Icon(Icons.remove_shopping_cart_outlined, color: colorScheme.primary, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            badorder.hapistore,
-                            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                          decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            badorder.status,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: statusColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.inventory_2_outlined, size: 13, color: colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${badorder.items.length} item${badorder.items.length == 1 ? '' : 's'}',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
-                        ),
-                        const SizedBox(width: 10),
-                        Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Text(
-                          Helperfunctions.formatTimestampForDisplay(badorder.badorderDate),
-                          style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                    if (badorder.notes.trim().isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        badorder.notes,
-                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(badorder.totalAmount),
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                  color: statusColor,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    bottomLeft: Radius.circular(12),
                   ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 11, 12, 11),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Main information
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Line 1: Store Name & Total Amount
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                badorder.hapistore,
+                                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              Helperfunctions.formatDoubleAmountForDisplay(badorder.totalAmount),
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        // Line 2: Meta (date + item count)
+                        Text(
+                          '${Helperfunctions.formatTimestampForDisplay(badorder.badorderDate)} • ${badorder.items.length} item${badorder.items.length == 1 ? '' : 's'}',
+                          style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 5),
+                        // Line 3: Status & Refund Badges in a Wrap to prevent any overflow
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            // Status Pill
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                badorder.status,
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: statusColor),
+                              ),
+                            ),
+                            if (badorder.batchNumber != null && badorder.batchNumber!.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.inventory_2_outlined, size: 10, color: Colors.blue.shade700),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      badorder.batchNumber!,
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.blue.shade800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else if (badorder.status == BadOrderStatus.storePullout)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Text(
+                                  'In Warehouse',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blue.shade800,
+                                  ),
+                                ),
+                              ),
+                            // Compact Refund Indicator
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: badorder.isStoreRefunded
+                                    ? Colors.green.withValues(alpha: 0.1)
+                                    : Colors.amber.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    badorder.isStoreRefunded ? Icons.check : Icons.schedule,
+                                    size: 10,
+                                    color: badorder.isStoreRefunded ? Colors.green.shade700 : Colors.amber.shade900,
+                                  ),
+                                  const SizedBox(width: 2.5),
+                                  Text(
+                                    badorder.isStoreRefunded ? 'Refunded' : 'Unrefunded',
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: badorder.isStoreRefunded ? Colors.green.shade800 : Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Line 3: Notes (only if present)
+                        if (badorder.notes.trim().isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.notes_rounded, size: 12, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  badorder.notes,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontStyle: FontStyle.italic,
+                                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.chevron_right_rounded, size: 18, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
                 ],
               ),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right, size: 18, color: colorScheme.onSurfaceVariant),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -370,17 +770,14 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 44),
             ),
             const SizedBox(height: 16),
             const Text('No Bad Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             const Text(
-              'No damaged or expired goods recorded.\nBad orders can be recorded by salesmen during delivery.',
+              'No damaged or expired goods recorded.\nBad orders can be recorded by salesmen and dealers.',
               style: TextStyle(fontSize: 13, color: Colors.black54),
               textAlign: TextAlign.center,
             ),
@@ -409,6 +806,7 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
                 _searchQuery = '';
                 _selectedPeriod = 'All';
                 _selectedStatus = 'All';
+                _selectedRefund = 'All';
               });
             },
             icon: const Icon(Icons.refresh, size: 16),
@@ -419,9 +817,320 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
     );
   }
 
+  Widget _buildBatchesTab() {
+    return StreamBuilder<QuerySnapshot<BadOrderBatch>>(
+      stream: _batchesStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Center(child: Text('Unable to load warehouse batches.'));
+        }
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final batches = snapshot.data?.docs ?? [];
+        _cachedBatchesCount = batches.length;
+
+        if (batches.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.warehouse_outlined, color: Colors.blue.shade700, size: 44),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('No Warehouse Batches', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'When the supplier conducts a pullout of accumulated bad orders from your warehouse, create a batch here to track pullout slips and supplier refund settlements.',
+                    style: TextStyle(fontSize: 13, color: Colors.black54),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (_isDealer) ...[
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _openCreateBatchPage,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Create First Warehouse Batch', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }
+
+        final totalSubmitted = batches.fold<double>(0.0, (acc, b) => acc + b.data().totalBatchAmount);
+        final totalCredited = batches.fold<double>(0.0, (acc, b) => acc + (b.data().supplierRefundAmount ?? 0.0));
+        final settledCount = batches.where((b) => b.data().isSettled).length;
+        final pendingCount = batches.length - settledCount;
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Total Batches', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        Text('${batches.length} batch${batches.length == 1 ? '' : 'es'}',
+                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('$settledCount settled • $pendingCount awaiting CM',
+                            style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+                      ],
+                    ),
+                  ),
+                  Container(height: 36, width: 1, color: Colors.grey.shade300),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Supplier Credited', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
+                        Text(
+                          Helperfunctions.formatDoubleAmountForDisplay(totalCredited),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                        ),
+                        const SizedBox(height: 2),
+                        Text('Submitted: ${Helperfunctions.formatDoubleAmountForDisplay(totalSubmitted)}',
+                            style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...batches.map((doc) {
+              final batch = doc.data();
+              final isSettled = batch.isSettled;
+              final statusColor = isSettled ? Colors.green.shade700 : Colors.blue.shade700;
+
+              return Card(
+                elevation: 0,
+                margin: const EdgeInsets.only(bottom: 10),
+                color: Theme.of(context).colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    Helperfunctions.navigateTo(
+                      context,
+                      BadOrderBatchDetailPage(batchId: doc.id, batch: batch),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(14.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.inventory_2_outlined, size: 18, color: statusColor),
+                                const SizedBox(width: 6),
+                                Text(
+                                  batch.batchNumber,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                ),
+                              ],
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                batch.status,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Text(
+                              'Pullout: ${Helperfunctions.formatDateForDisplay(batch.pulloutDate.toDate())}',
+                              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            ),
+                            if (batch.supplierRefNo.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Text('• Slip: ${batch.supplierRefNo}',
+                                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${batch.badOrderIds.length} store pullouts (${batch.totalItemsCount} items)',
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
+                            ),
+                            Text(
+                              Helperfunctions.formatDoubleAmountForDisplay(batch.totalBatchAmount),
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+                            ),
+                          ],
+                        ),
+                        if (isSettled) ...[
+                          const Divider(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green.shade200, width: 0.8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.check_circle, size: 14, color: Colors.green.shade700),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'CM: ${batch.supplierCreditMemoNo} • Credited: ${Helperfunctions.formatDoubleAmountForDisplay(batch.supplierRefundAmount ?? batch.totalBatchAmount)}'
+                                    '${batch.varianceAmount.abs() > 0.01 ? " (${batch.varianceAmount >= 0 ? '+' : ''}${Helperfunctions.formatDoubleAmountForDisplay(batch.varianceAmount)})" : ""}',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          const Divider(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade300, width: 0.8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.schedule, size: 14, color: Colors.amber.shade900),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Awaiting Supplier Credit Memo / Refund${_isDealer ? ' (Tap to settle)' : ''}',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
+
+    final pendingCount = _cachedAllBadOrders.where((doc) {
+      final bo = doc.data();
+      return bo.isNewRecord &&
+          bo.items.isNotEmpty &&
+          bo.status == BadOrderStatus.storePullout &&
+          (bo.batchId == null || bo.batchId!.isEmpty);
+    }).length;
+
+    Widget? fab;
+    if (_tabController.index == 0) {
+      if (_isDealer && pendingCount > 0) {
+        fab = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton.extended(
+              heroTag: 'batchPulloutFab',
+              onPressed: _openCreateBatchPage,
+              icon: const Icon(Icons.warehouse_outlined, color: Colors.white),
+              label: Text(
+                'Batch Pullout ($pendingCount)',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: Colors.blue.shade700,
+            ),
+            const SizedBox(width: 8),
+            FloatingActionButton.extended(
+              heroTag: 'addStorePulloutFab',
+              onPressed: _openAddBadOrderPage,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text(
+                'Add Record',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+            ),
+          ],
+        );
+      } else {
+        fab = FloatingActionButton.extended(
+          heroTag: 'addStorePulloutFab',
+          onPressed: _openAddBadOrderPage,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text(
+            'Add Bad Order Record',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        );
+      }
+    } else {
+      if (_isDealer) {
+        fab = FloatingActionButton.extended(
+          heroTag: 'newBatchFab',
+          onPressed: _openCreateBatchPage,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: Text(
+            'New Warehouse Batch${pendingCount > 0 ? ' ($pendingCount pending)' : ''}',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: Colors.blue.shade700,
+        );
+      }
+    }
 
     return PopScope(
       canPop: false,
@@ -433,82 +1142,140 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> {
         appBar: CustomAppbar(
           title: 'Bad Orders',
           subtitle: 'Damaged & Expired Products',
-        actions: [
-          if (_isDealer)
-            IconButton(
-              tooltip: 'Configure By Case B.O. Prices',
-              icon: const Icon(Icons.tune_outlined),
-              onPressed: _openByCaseConfigModal,
-            ),
-        ],
-      ),
-      floatingActionButton: _isDealer
-          ? FloatingActionButton.extended(
-              onPressed: _openByCaseConfigModal,
-              icon: const Icon(Icons.tune, color: Colors.white),
-              label: const Text('By Case Pricing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              backgroundColor: Theme.of(context).colorScheme.primary,
-            )
-          : null,
-      body: StreamBuilder<QuerySnapshot<BadOrder>>(
-        stream: _badOrdersStream,
-        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot<BadOrder>> snapshot) {
-          if (snapshot.hasError) {
-            return const Center(child: Text('Unable to load bad orders. Please try again.'));
-          }
-          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final allDocs = snapshot.data?.docs ?? [];
-          final filterResult = _controller.filterBadOrders(
-            docs: allDocs,
-            selectedPeriod: _selectedPeriod,
-            searchQuery: _searchQuery,
-            now: now,
-            statusFilter: _selectedStatus,
-          );
-          final filteredDocs = filterResult.filteredDocs;
-          final periodTotalAmount = filterResult.periodTotalAmount;
-          final thisMonthCount = filterResult.thisMonthCount;
-
-          if (filterResult.allCount == 0 && _searchQuery.isEmpty && _selectedStatus == 'All') {
-            return _buildEmptyState();
-          }
-
-          return Column(
-            children: [
-              _buildSummaryCard(
-                totalAmount: periodTotalAmount,
-                totalCount: _selectedPeriod == 'All' ? filterResult.allCount : thisMonthCount,
+          actions: [
+            if (_isDealer)
+              IconButton(
+                tooltip: 'Configure By Case B.O. Prices',
+                icon: const Icon(Icons.tune_outlined, color: Colors.white),
+                onPressed: _openByCaseConfigModal,
               ),
-              _buildFilterChips(
-                allCount: filterResult.allCount,
-                thisMonthCount: thisMonthCount,
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            tabs: const [
+              Tab(
+                icon: Icon(Icons.storefront_outlined, size: 18),
+                text: 'Store Pullouts',
               ),
-              _buildSearchBar(),
-              const SizedBox(height: 4),
-              Expanded(
-                child: filteredDocs.isEmpty
-                    ? _buildNoSearchResultsState()
-                    : ListView.separated(
-                        padding: EdgeInsets.fromLTRB(16, 4, 16, _isDealer ? 80 : 20),
-                        itemCount: filteredDocs.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final badorder = filteredDocs[index].data();
-                          final badorderID = filteredDocs[index].id;
-                          return _buildBadOrderCard(badorderID: badorderID, badorder: badorder);
-                        },
-                      ),
+              Tab(
+                icon: Icon(Icons.warehouse_outlined, size: 18),
+                text: 'Warehouse Batches',
               ),
             ],
-          );
-        },
+          ),
+        ),
+        floatingActionButton: fab,
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            // Tab 0: Store Pullouts
+            StreamBuilder<QuerySnapshot<BadOrder>>(
+              stream: _badOrdersStream,
+              builder: (BuildContext context, AsyncSnapshot<QuerySnapshot<BadOrder>> snapshot) {
+                if (snapshot.hasError) {
+                  return const Center(child: Text('Unable to load bad orders. Please try again.'));
+                }
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final allDocs = snapshot.data?.docs ?? [];
+                _cachedAllBadOrders = allDocs;
+
+                final filterResult = _controller.filterBadOrders(
+                  docs: allDocs,
+                  selectedPeriod: _selectedPeriod,
+                  searchQuery: _searchQuery,
+                  now: now,
+                  statusFilter: _selectedStatus,
+                  refundFilter: _selectedRefund,
+                );
+                final filteredDocs = filterResult.filteredDocs;
+                final periodTotalAmount = filterResult.periodTotalAmount;
+                final thisMonthCount = filterResult.thisMonthCount;
+
+                if (filterResult.allCount == 0 && _searchQuery.isEmpty && _selectedStatus == 'All' && _selectedRefund == 'All') {
+                  return _buildEmptyState();
+                }
+
+                // Build grouped list items with section headers
+                final List<_BadOrderListItem> listItems = [];
+                String? lastGroup;
+                for (final doc in filteredDocs) {
+                  final group = _getDateGroup(doc.data().badorderDate);
+                  if (group != lastGroup) {
+                    lastGroup = group;
+                    listItems.add(_BadOrderListItem.header(group));
+                  }
+                  listItems.add(_BadOrderListItem.doc(doc));
+                }
+
+                return Column(
+                  children: [
+                    _buildCompactSummary(
+                      totalAmount: periodTotalAmount,
+                      totalCount: _selectedPeriod == 'All' ? filterResult.allCount : thisMonthCount,
+                      unrefundedCount: filterResult.storeNotRefundedCount,
+                    ),
+                    _buildSearchBar(
+                      onOpenFilter: () => _openFilterModal(
+                        allCount: filterResult.allCount,
+                        thisMonthCount: thisMonthCount,
+                        storeRefundedCount: filterResult.storeRefundedCount,
+                        storeNotRefundedCount: filterResult.storeNotRefundedCount,
+                      ),
+                    ),
+                    _buildStatusBar(),
+                    _buildActiveFiltersBar(),
+                    const SizedBox(height: 4),
+                    Expanded(
+                      child: filteredDocs.isEmpty
+                          ? _buildNoSearchResultsState()
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+                              itemCount: listItems.length,
+                              itemBuilder: (context, index) {
+                                final item = listItems[index];
+                                if (item.header != null) {
+                                  return _buildSectionHeader(item.header!);
+                                }
+                                final doc = item.doc!;
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0),
+                                  child: _buildBadOrderCard(
+                                    badorderID: doc.id,
+                                    badorder: doc.data(),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                );
+              },
+            ),
+
+            // Tab 1: Warehouse Batches
+            _buildBatchesTab(),
+          ],
+        ),
       ),
-    ),
     );
   }
+}
+
+/// Helper model for grouped list rendering with date headers
+class _BadOrderListItem {
+  final String? header;
+  final QueryDocumentSnapshot<BadOrder>? doc;
+
+  _BadOrderListItem.header(this.header) : doc = null;
+  _BadOrderListItem.doc(this.doc) : header = null;
 }
 
 /// Bottom sheet modal for dealers to view and configure `badOrderPricePerPiece`
@@ -533,9 +1300,7 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
 
   void _showEditPriceDialog(SelectaProduct product) {
     final textController = TextEditingController(
-      text: product.badOrderPricePerPiece != null && product.badOrderPricePerPiece! > 0
-          ? product.badOrderPricePerPiece!.toStringAsFixed(2)
-          : '',
+      text: product.badOrderPricePerPiece != null && product.badOrderPricePerPiece! > 0 ? product.badOrderPricePerPiece!.toStringAsFixed(2) : '',
     );
 
     showDialog(
@@ -568,10 +1333,7 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
           FilledButton(
             onPressed: () async {
               final val = double.tryParse(textController.text.trim()) ?? 0.0;
@@ -617,10 +1379,7 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
               width: 36,
               height: 4,
               margin: const EdgeInsets.only(top: 8, bottom: 4),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade400,
-                borderRadius: BorderRadius.circular(2),
-              ),
+              decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
             ),
           ),
           // Title
@@ -632,10 +1391,7 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'By Case Bad Order Pricing',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
+                      const Text('By Case Bad Order Pricing', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       Text(
                         'Set the individual piece price for By Case products during pullout.',
                         style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
@@ -643,10 +1399,7 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
               ],
             ),
           ),
@@ -692,10 +1445,7 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
 
                 if (caseProducts.isEmpty) {
                   return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24.0),
-                      child: Text('No "By Case" Selecta products found.'),
-                    ),
+                    child: Padding(padding: EdgeInsets.all(24.0), child: Text('No "By Case" Selecta products found.')),
                   );
                 }
 
@@ -711,19 +1461,13 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isConfigured ? Colors.green.shade200 : Colors.red.shade200,
-                          width: 1.2,
-                        ),
+                        side: BorderSide(color: isConfigured ? Colors.green.shade200 : Colors.red.shade200, width: 1.2),
                       ),
                       child: ListTile(
                         leading: Container(
                           width: 44,
                           height: 44,
-                          decoration: BoxDecoration(
-                            color: Colors.purple.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+                          decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
                           child: product.imageUrl.isNotEmpty
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
@@ -747,16 +1491,10 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
                             Text.rich(
                               TextSpan(
                                 text: 'B.O. Piece: ',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade700,
-                                ),
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
                                 children: [
                                   TextSpan(
-                                    text: isConfigured
-                                        ? '₱${product.badOrderPricePerPiece!.toStringAsFixed(2)} / pc'
-                                        : 'Not Configured',
+                                    text: isConfigured ? '₱${product.badOrderPricePerPiece!.toStringAsFixed(2)} / pc' : 'Not Configured',
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,

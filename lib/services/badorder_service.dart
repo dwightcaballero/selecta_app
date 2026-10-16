@@ -45,6 +45,22 @@ class BadOrderService {
     });
   }
 
+  Future<void> updateBadOrderStoreRefunded(
+    String badorderID,
+    bool isStoreRefunded, {
+    required String updatedBy,
+    String page = '',
+  }) async {
+    await _badorderRef.doc(badorderID).update({
+      'isStoreRefunded': isStoreRefunded,
+      'storeRefundedDate': isStoreRefunded ? Timestamp.now() : null,
+      'storeRefundedBy': isStoreRefunded ? updatedBy : null,
+      'lastUpdatedBy': updatedBy,
+      'lastupdatedDate': Timestamp.now(),
+      'lastUpdatedPage': page,
+    });
+  }
+
   Future<void> deleteBadOrder(String badorderID) async {
     await _badorderRef.doc(badorderID).delete();
   }
