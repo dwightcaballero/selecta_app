@@ -75,15 +75,39 @@ void main() {
       expect(find.text('Add'), findsNothing);
     });
 
-    testWidgets('For tomorrow/future (isFutureDelivery=true) with 0 stock: allows ordering and shows Restock via PO', (tester) async {
-      bool tapped = false;
+    testWidgets('For tomorrow/future (isFutureDelivery=true) with 0 stock: renders Out of stock and disables ordering', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: ProductOrderCard(
               item: outOfStockItem,
               selectedQty: 0,
-              maxOrderable: 9999,
+              maxOrderable: 0,
+              isPlaced: false,
+              currencyFormat: currencyFormat,
+              isFutureDelivery: true,
+              onTap: () {},
+            ),
+          ),
+        ),
+      );
+
+      // Verify "Out of stock" indicator is displayed
+      expect(find.text('Out of stock'), findsOneWidget);
+      // The Add button is not shown when out of stock for tomorrow/future
+      expect(find.text('Add'), findsNothing);
+      expect(find.text('0 stock'), findsOneWidget);
+    });
+
+    testWidgets('For tomorrow/future (isFutureDelivery=true) with positive stock: shows available units and allows ordering', (tester) async {
+      bool tapped = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ProductOrderCard(
+              item: inStockItem,
+              selectedQty: 0,
+              maxOrderable: 10,
               isPlaced: false,
               currencyFormat: currencyFormat,
               isFutureDelivery: true,
@@ -94,35 +118,10 @@ void main() {
         ),
       );
 
-      // Should NOT say 'Out of stock'
-      expect(find.text('Out of stock'), findsNothing);
-      // Should show 'Restock via PO' badge
-      expect(find.text('Restock via PO'), findsOneWidget);
-      // Add button should be present and clickable
+      expect(find.text('• 10 available'), findsOneWidget);
       expect(find.text('Add'), findsOneWidget);
       await tester.tap(find.text('Add'));
       expect(tapped, isTrue);
-    });
-
-    testWidgets('For tomorrow/future (isFutureDelivery=true) with positive stock: shows available units without blocking', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ProductOrderCard(
-              item: inStockItem,
-              selectedQty: 0,
-              maxOrderable: 9999,
-              isPlaced: false,
-              currencyFormat: currencyFormat,
-              isFutureDelivery: true,
-              onTap: () {},
-            ),
-          ),
-        ),
-      );
-
-      expect(find.text('• 10 available'), findsOneWidget);
-      expect(find.text('Add'), findsOneWidget);
     });
   });
 
@@ -178,11 +177,14 @@ void main() {
               builder: (ctx) => Center(
                 child: ElevatedButton(
                   onPressed: () {
-                    ManualPoProductPickerDialog.show(
+                    showModalBottomSheet(
                       context: ctx,
-                      allInventory: catalog,
-                      existingLines: [],
-                      currencyFormat: currencyFormat,
+                      isScrollControlled: true,
+                      builder: (_) => ManualPoProductPickerDialog(
+                        allInventory: catalog,
+                        existingLines: [],
+                        currencyFormat: currencyFormat,
+                      ),
                     );
                   },
                   child: const Text('Open Dialog'),
@@ -262,12 +264,9 @@ void main() {
       );
 
       final unsorted = [p150, p10, p50];
-      unsorted.sort((a, b) => Helperfunctions.compareBySrpAndName(
-        nameA: a.productName,
-        priceA: a.sellingPrice,
-        nameB: b.productName,
-        priceB: b.sellingPrice,
-      ));
+      unsorted.sort(
+        (a, b) => Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice),
+      );
 
       expect(unsorted[0].productName, equals('P10 ICE CANDY'));
       expect(unsorted[1].productName, equals('P50 CORNETTO'));
@@ -276,27 +275,19 @@ void main() {
   });
 
   group('Future Delivery Reservation Calculation Tests', () {
-    test('Calculates isInventoryReserved=false for tomorrow or future delivery dates', () {
+    test('Ensures isInventoryReserved=true for both today and tomorrow/future delivery dates', () {
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
       final tomorrow = today.add(const Duration(days: 1));
       final nextWeek = today.add(const Duration(days: 7));
 
-      bool isTomorrowOrFuture(DateTime date) {
-        final d = DateTime(date.year, date.month, date.day);
-        return d.isAfter(today);
-      }
+      // With unified reservation pool (Option A):
+      // All booked orders reserve inventory regardless of delivery date
+      bool shouldReserveOrder(DateTime date) => true;
 
-      expect(isTomorrowOrFuture(today), isFalse);
-      expect(isTomorrowOrFuture(tomorrow), isTrue);
-      expect(isTomorrowOrFuture(nextWeek), isTrue);
-
-      // When saving:
-      final reservedForToday = !isTomorrowOrFuture(today);
-      final reservedForTomorrow = !isTomorrowOrFuture(tomorrow);
-
-      expect(reservedForToday, isTrue, reason: "Today's order must reserve on-hand inventory");
-      expect(reservedForTomorrow, isFalse, reason: "Tomorrow's order must NOT reserve on-hand inventory");
+      expect(shouldReserveOrder(today), isTrue, reason: "Today's order must reserve on-hand inventory");
+      expect(shouldReserveOrder(tomorrow), isTrue, reason: "Tomorrow's order must reserve on-hand inventory to prevent overselling");
+      expect(shouldReserveOrder(nextWeek), isTrue, reason: "Future orders must reserve on-hand inventory");
     });
   });
 
@@ -467,11 +458,7 @@ void main() {
       final allInv = [invItemNormal, invItemLowStockWarning, invItemShortage];
       final Map<String, InventoryItem> invById = {for (final i in allInv) i.id: i};
 
-      final lines = [
-        invItemNormal,
-        invItemLowStockWarning,
-        invItemShortage,
-      ];
+      final lines = [invItemNormal, invItemLowStockWarning, invItemShortage];
 
       // Sort function matching _prioritizePreOrderDeficitLines
       lines.sort((a, b) {
@@ -526,11 +513,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: InventoryCard(
-              item: item,
-              currencyFormat: currencyFormat,
-              onTapCard: () {},
-            ),
+            body: InventoryCard(item: item, currencyFormat: currencyFormat, onTapCard: () {}),
           ),
         ),
       );
@@ -578,11 +561,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: ManualPoProductPickerDialog(
-              allInventory: [normalItem, deficitItem],
-              existingLines: const [],
-              currencyFormat: currencyFormat,
-            ),
+            body: ManualPoProductPickerDialog(allInventory: [normalItem, deficitItem], existingLines: const [], currencyFormat: currencyFormat),
           ),
         ),
       );
@@ -596,5 +575,3 @@ void main() {
     });
   });
 }
-
-

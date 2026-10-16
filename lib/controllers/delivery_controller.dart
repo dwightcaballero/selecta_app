@@ -509,12 +509,6 @@ class DeliveryController {
     final double orderAmount = computeItemsOrderAmount(cleanItems);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final deliveryDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
-    final isTomorrowOrFuture = deliveryDay.isAfter(today);
-    final shouldReserve = !isTomorrowOrFuture;
-
     final newRecord = Delivery(
       storeName: storeName,
       remarks: remarks.trim(),
@@ -534,14 +528,12 @@ class DeliveryController {
       createdPage: AppPages.bookOrder,
       lastUpdatedPage: AppPages.bookOrder,
       items: cleanItems,
-      isInventoryReserved: shouldReserve,
+      isInventoryReserved: true,
       isInventoryDeducted: false,
     );
 
-    // 1. Reserve floating inventory only if delivery is for today (so today's actual stock is not blocked by advance orders)
-    if (shouldReserve) {
-      await _inventoryService.reserveStockForOrder(storeName: storeName, items: cleanItems);
-    }
+    // 1. Reserve floating inventory for all booked orders (today and future dates)
+    await _inventoryService.reserveStockForOrder(storeName: storeName, items: cleanItems);
 
     // 2. Persist unified transaction in `delivery` collection
     final String newId = await _deliveryService.addDelivery(newRecord);
@@ -566,23 +558,15 @@ class DeliveryController {
     final double orderAmount = computeItemsOrderAmount(cleanItems);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final deliveryDay = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
-    final isTomorrowOrFuture = deliveryDay.isAfter(today);
-
-    if (isTomorrowOrFuture) {
-      // If order previously reserved inventory, release it since it is now an advance order
-      if (currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
-        await _inventoryService.releaseReservedStockForOrder(storeName: storeName, items: currentDelivery.items);
-      }
-    } else {
-      // If delivery is for today/same-day:
-      if (currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
-        await _inventoryService.adjustReservedStockForOrderUpdate(storeName: storeName, oldItems: currentDelivery.items, newItems: cleanItems);
-      } else if (!currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
-        await _inventoryService.reserveStockForOrder(storeName: storeName, items: cleanItems);
-      }
+    // Adjust reserved floating inventory for order update regardless of delivery date
+    if (currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
+      await _inventoryService.adjustReservedStockForOrderUpdate(
+        storeName: storeName,
+        oldItems: currentDelivery.items,
+        newItems: cleanItems,
+      );
+    } else if (!currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
+      await _inventoryService.reserveStockForOrder(storeName: storeName, items: cleanItems);
     }
 
     final updated = currentDelivery.copyWith(
@@ -591,7 +575,7 @@ class DeliveryController {
       deliveryDate: Timestamp.fromDate(selectedDate),
       orderAmount: orderAmount,
       items: cleanItems,
-      isInventoryReserved: !isTomorrowOrFuture && !currentDelivery.isInventoryDeducted,
+      isInventoryReserved: !currentDelivery.isInventoryDeducted,
       lastUpdatedBy: currentUserName,
       lastupdatedDate: Timestamp.now(),
       lastUpdatedPage: AppPages.bookOrder,

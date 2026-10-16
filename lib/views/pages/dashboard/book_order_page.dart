@@ -261,13 +261,10 @@ class _BookOrderPageState extends State<BookOrderPage> {
   int _getSelectedQty(InventoryItem item) => _selectedQuantities[_itemKey(item)] ?? 0;
 
   /// Effective available stock for this item, including any units already reserved by this order.
-  /// If the delivery date is in the future (e.g. tomorrow), stock availability does not restrict ordering.
+  /// Regardless of delivery date, the user can only add quantity based on available stock.
   int _getMaxOrderableQty(InventoryItem item) {
-    if (_isFutureDeliveryDate) {
-      return 9999;
-    }
     final alreadyInThisOrder = _initialOrderQuantities[_itemKey(item)] ?? 0;
-    return item.availableQuantity + alreadyInThisOrder;
+    return (item.availableQuantity + alreadyInThisOrder).clamp(0, 999999);
   }
 
   void _setSelectedQty(InventoryItem item, int newQty) {
@@ -275,7 +272,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     final maxAllowed = _getMaxOrderableQty(item);
     final clamped = newQty.clamp(0, maxAllowed);
 
-    if (!_isFutureDeliveryDate && newQty > maxAllowed && maxAllowed >= 0) {
+    if (newQty > maxAllowed && maxAllowed >= 0) {
       final incomingInfo = item.incomingQuantity > 0 ? ' (including ${item.incomingQuantity} incoming via PO)' : '';
       final reservedInfo = item.reservedQuantity > 0 ? ' (${item.reservedQuantity} reserved in pending picklists)' : '';
       ShowMessage.error(context, 'Only $maxAllowed available for "${item.productName}"$incomingInfo$reservedInfo.');
@@ -290,9 +287,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
     });
   }
 
-  /// When switching delivery date from future (e.g. Tomorrow) to Today/same-day,
-  /// clamps any quantities that exceed today's on-hand available stock.
-  void _clampQuantitiesForSameDay(List<InventoryItem> inventory) {
+  /// Clamps any selected quantities that exceed available stock.
+  void _clampQuantitiesToAvailableStock(List<InventoryItem> inventory) {
     if (_selectedQuantities.isEmpty || inventory.isEmpty) return;
     final Map<String, InventoryItem> invMap = {for (final item in inventory) _itemKey(item): item};
 
@@ -303,13 +299,13 @@ class _BookOrderPageState extends State<BookOrderPage> {
       final item = invMap[key];
       if (item != null) {
         final alreadyInOrder = _initialOrderQuantities[key] ?? 0;
-        final maxSameDay = (item.availableQuantity + alreadyInOrder).clamp(0, 999999);
-        if (qty > maxSameDay) {
+        final maxAllowed = (item.availableQuantity + alreadyInOrder).clamp(0, 999999);
+        if (qty > maxAllowed) {
           clampedAny = true;
-          if (maxSameDay <= 0) {
+          if (maxAllowed <= 0) {
             toRemove.add(key);
           } else {
-            _selectedQuantities[key] = maxSameDay;
+            _selectedQuantities[key] = maxAllowed;
           }
         }
       }
@@ -320,7 +316,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     }
 
     if (clampedAny && mounted) {
-      ShowMessage.warning(context, 'Delivery date set to Today: item quantities adjusted to available on-hand stock.');
+      ShowMessage.warning(context, 'Item quantities adjusted to available stock.');
     }
   }
 
@@ -460,11 +456,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     ),
                                     Text('•', style: TextStyle(color: colorScheme.outline)),
                                     Text(
-                                      _isFutureDeliveryDate
-                                          ? (item.availableQuantity > 0
-                                                ? '${item.availableQuantity} in stock • Advance Order'
-                                                : 'Advance Order (Restock via PO)')
-                                          : '$maxAllowed available',
+                                      '$maxAllowed available',
                                       style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                                     ),
                                   ],
@@ -1083,7 +1075,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       message: _isEditing
           ? 'Save changes to $storeName order (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})?'
           : 'Save order for $storeName (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})?\n\n'
-                '${_isFutureDeliveryDate ? 'This order is scheduled for advance delivery. Stock will not be reserved from current inventory so today\'s orders remain unaffected.' : 'This will book the order for delivery and hold reserved stock.'}',
+                'This will book the order for delivery and hold reserved stock.',
       icon: Icons.check_circle_outline,
       confirmText: 'Save Order',
     );
@@ -1095,7 +1087,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       context: context,
       showLoading: true,
       message: _isEditing ? 'Updating Order' : 'Saving Order',
-      subtitle: _isFutureDeliveryDate ? 'Booking advance order for $storeName...' : 'Reserving inventory stock for $storeName...',
+      subtitle: _isEditing ? 'Updating order for $storeName...' : 'Reserving inventory stock for $storeName...',
     );
     try {
       final isOnline = await OfflineSyncService.isOnline();
@@ -2249,15 +2241,14 @@ class _BookOrderPageState extends State<BookOrderPage> {
       final newStore = result.storeName;
       final storeChanged = _storeController.text.trim() != newStore;
       final dateChanged = _selectedDate != result.selectedDate;
-      final wasFuture = _isFutureDeliveryDate;
       setState(() {
         _storeController.text = newStore;
         _selectedDate = result.selectedDate;
         _remarksController.text = result.remarks;
         _hasUserManuallyPickedDate = true;
       });
-      if (wasFuture && !_isFutureDeliveryDate) {
-        _clampQuantitiesForSameDay(_latestInventory);
+      if (dateChanged) {
+        _clampQuantitiesToAvailableStock(_latestInventory);
       }
       if (storeChanged || dateChanged) {
         _loadPlacedProductsForStore(_storeController.text, _selectedDate);

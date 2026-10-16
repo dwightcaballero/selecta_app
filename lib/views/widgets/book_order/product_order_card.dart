@@ -46,7 +46,7 @@ class ProductOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isSelected = selectedQty > 0;
-    final isOutOfStock = !isFutureDelivery && maxOrderable <= 0;
+    final isOutOfStock = maxOrderable <= 0;
 
     final bool isBestSeller = ProductTag.isBestSeller(item.tag);
     final bool isNewProduct = ProductTag.isNewProduct(item.tag);
@@ -214,21 +214,13 @@ class ProductOrderCard extends StatelessWidget {
                                     const SizedBox(width: 4),
                                     Text(
                                       'SCANNED ON DOCUMENT:',
-                                      style: TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 0.4,
-                                        color: Colors.amber.shade900,
-                                      ),
+                                      style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 0.4, color: Colors.amber.shade900),
                                     ),
                                     if (isCorrected) ...[
                                       const Spacer(),
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blue.shade100,
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
+                                        decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(4)),
                                         child: Text(
                                           '✓ Corrected',
                                           style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
@@ -240,12 +232,7 @@ class ProductOrderCard extends StatelessWidget {
                                 const SizedBox(height: 2),
                                 Text(
                                   rawReceiptText!.trim(),
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.black87,
-                                    height: 1.25,
-                                  ),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black87, height: 1.25),
                                 ),
                               ],
                             ),
@@ -264,11 +251,7 @@ class ProductOrderCard extends StatelessWidget {
                                     const SizedBox(width: 3),
                                     Text(
                                       'Correct AI Reading',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.blue.shade700,
-                                      ),
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
                                     ),
                                   ],
                                 ),
@@ -302,60 +285,35 @@ class ProductOrderCard extends StatelessWidget {
                             currencyFormat.format(item.sellingPrice),
                             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.primary),
                           ),
-                          if (!isFutureDelivery) ...[
-                            if (isOutOfStock)
-                              Text(
-                                'Out of stock',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: stockColor),
-                              )
-                            else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                decoration: BoxDecoration(color: const Color(0xFF0284C7).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.local_shipping_outlined, size: 11, color: Color(0xFF0284C7)),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      '${item.incomingQuantity} incoming PO',
-                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else
-                              Text(
-                                '• $maxOrderable available',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                          if (isOutOfStock)
+                            Text(
+                              'Out of stock',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: stockColor),
+                            )
+                          else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0284C7).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(4),
                               ),
-                          ] else ...[
-                            if (item.availableQuantity > 0)
-                              Text(
-                                '• ${item.availableQuantity} available',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
-                              )
-                            else
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.shade50,
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: Colors.amber.shade300, width: 0.8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.inventory_2_outlined, size: 11, color: Colors.amber.shade900),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      'Restock via PO',
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.amber.shade900),
-                                    ),
-                                  ],
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.local_shipping_outlined, size: 11, color: Color(0xFF0284C7)),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${item.incomingQuantity} incoming PO',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0369A1)),
+                                  ),
+                                ],
                               ),
-                          ],
+                            )
+                          else
+                            Text(
+                              '• $maxOrderable available',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                            ),
                         ],
                       ),
                     ),
@@ -421,11 +379,7 @@ class ProductOrderCard extends StatelessWidget {
                               alignment: Alignment.center,
                               child: Text(
                                 '$selectedQty',
-                                style: TextStyle(
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: colorScheme.primary,
-                                ),
+                                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: colorScheme.primary),
                               ),
                             ),
                           ),
@@ -440,9 +394,7 @@ class ProductOrderCard extends StatelessWidget {
                                 child: Icon(
                                   Icons.add_rounded,
                                   size: 19,
-                                  color: (selectedQty < maxOrderable && maxOrderable > 0)
-                                      ? colorScheme.primary
-                                      : colorScheme.outlineVariant,
+                                  color: (selectedQty < maxOrderable && maxOrderable > 0) ? colorScheme.primary : colorScheme.outlineVariant,
                                 ),
                               ),
                             ),
