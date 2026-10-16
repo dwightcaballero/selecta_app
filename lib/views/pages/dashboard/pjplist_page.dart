@@ -610,14 +610,12 @@ class _PjpListPageState extends State<PjpListPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: !_isEditing,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (_isEditing) {
           _cancelEditing();
-          return;
         }
-        Navigator.pop(context);
       },
       child: Scaffold(
         appBar: CustomAppbar(

@@ -52,4 +52,49 @@ void main() {
     expect(intercepted, isFalse);
     expect(find.text('Open Child'), findsOneWidget);
   });
+
+  testWidgets('ExitGuard intercepts back gesture on non-zero tab and returns to Home tab', (tester) async {
+    int currentTabIndex = 1;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            return ExitGuard(
+              onBackIntercept: () {
+                if (currentTabIndex != 0) {
+                  setState(() => currentTabIndex = 0);
+                  return true;
+                }
+                return false;
+              },
+              child: Scaffold(
+                body: IndexedStack(
+                  index: currentTabIndex,
+                  children: const [
+                    Text('Home Tab Screen'),
+                    Text('Inventory Tab Screen'),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    // Initial state: Inventory tab is visible
+    expect(find.text('Inventory Tab Screen'), findsOneWidget);
+    expect(currentTabIndex, equals(1));
+
+    // Simulate system back gesture (e.g. edge swipe or back button)
+    final dynamic widgetsAppState = tester.state(find.byType(WidgetsApp));
+    await widgetsAppState.didPopRoute();
+    await tester.pumpAndSettle();
+
+    // Verify back navigation switched to Home tab and did not pop root route
+    expect(currentTabIndex, equals(0));
+    expect(find.text('Home Tab Screen'), findsOneWidget);
+  });
 }
+

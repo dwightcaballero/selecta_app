@@ -896,7 +896,7 @@ class _VanSellPageState extends State<VanSellPage> {
     final theme = Theme.of(context);
 
     return PopScope(
-      canPop: false,
+      canPop: !_hasUnsavedChanges && !_isSaving,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_isSaving) return;
@@ -911,10 +911,15 @@ class _VanSellPageState extends State<VanSellPage> {
             icon: Icons.warning_amber_rounded,
           );
           if (shouldDiscard && context.mounted) {
-            Navigator.pop(context);
+            setState(() {
+              _selectedStore = null;
+              _sellQuantities.clear();
+              _remarksController.clear();
+            });
+            if (Navigator.of(context).canPop()) {
+              Navigator.pop(context);
+            }
           }
-        } else {
-          Navigator.pop(context);
         }
       },
       child: Scaffold(
