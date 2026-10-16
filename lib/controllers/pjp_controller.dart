@@ -69,18 +69,34 @@ class PlacementCheckResult {
   });
 }
 
-/// Result container for Book Order checklist check.
+/// Result container for Book Order / Same-Day Delivery / Van-Sell checklist check.
 class BookOrderCheckResult {
   final bool passed;
   final String status;
   final bool hasBookedOrder;
   final String? noOrderReason;
 
+  /// True if an existing pre-sold delivery order is scheduled for delivery today.
+  final bool hasDeliveryToday;
+
+  /// The active delivery document for today, if found.
+  final Delivery? deliveryToday;
+
+  /// Firestore document ID of the delivery, if found.
+  final String? deliveryId;
+
+  /// True if a completed van-sell transaction was recorded today.
+  final bool isVanSellToday;
+
   const BookOrderCheckResult({
     required this.passed,
     required this.status,
     this.hasBookedOrder = false,
     this.noOrderReason,
+    this.hasDeliveryToday = false,
+    this.deliveryToday,
+    this.deliveryId,
+    this.isVanSellToday = false,
   });
 }
 
@@ -707,50 +723,94 @@ class PjpController {
     }
   }
 
-  /// Verifies whether an order has been booked for the store today or a no-order reason was provided.
+  /// Verifies whether an order has been delivered/booked for the store today or a no-order reason was provided.
   Future<BookOrderCheckResult> checkBookOrder(String storeName) async {
     try {
       final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day, 0, 0, 0);
-      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-      bool hasOrderToday = false;
+      Delivery? foundDelivery;
+      String? foundDeliveryId;
+      bool isVanSell = false;
+      bool isDelivered = false;
+
+      // Query recent delivery records for this store
       try {
         final querySnap = await FirebaseFirestore.instance
             .collection(DELIVERY_COLLECTION_REF)
             .where(DeliveryModelString.storeName, isEqualTo: storeName)
-            .where(DeliveryModelString.createdDate, isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-            .where(DeliveryModelString.createdDate, isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
-            .limit(1)
+            .limit(25)
             .get();
-        hasOrderToday = querySnap.docs.isNotEmpty;
-      } catch (_) {
-        // Fallback in case composite index is not yet built
-        try {
-          final querySnap = await FirebaseFirestore.instance
-              .collection(DELIVERY_COLLECTION_REF)
-              .where(DeliveryModelString.storeName, isEqualTo: storeName)
-              .limit(10)
-              .get();
-          for (final doc in querySnap.docs) {
-            final data = doc.data();
-            final ts = data[DeliveryModelString.createdDate] as Timestamp?;
-            if (ts != null) {
-              final d = ts.toDate();
-              if (d.year == now.year && d.month == now.month && d.day == now.day) {
-                hasOrderToday = true;
-                break;
-              }
+
+        for (final doc in querySnap.docs) {
+          final data = doc.data();
+          final status = (data['transactionStatus'] as String? ?? '').trim();
+          if (status == DeliveryStatus.voided) continue;
+
+          final dDateTs = data[DeliveryModelString.deliveryDate] as Timestamp?;
+          final cDateTs = data[DeliveryModelString.createdDate] as Timestamp?;
+          final orderType = (data['orderType'] as String? ?? OrderType.preSell).trim();
+
+          bool isToday = false;
+          if (dDateTs != null) {
+            final d = dDateTs.toDate();
+            if (d.year == now.year && d.month == now.month && d.day == now.day) {
+              isToday = true;
             }
           }
-        } catch (_) {}
-      }
+          if (!isToday && cDateTs != null) {
+            final c = cDateTs.toDate();
+            if (c.year == now.year && c.month == now.month && c.day == now.day) {
+              isToday = true;
+            }
+          }
 
-      if (hasOrderToday) {
-        return const BookOrderCheckResult(
-          passed: true,
-          status: 'Order booked for today (Pending Picklist).',
+          if (isToday) {
+            final deliveryObj = Delivery.fromJson(data);
+            final thisIsVanSell = (orderType == OrderType.vanSell);
+            final thisIsDelivered = (status == DeliveryStatus.delivered);
+
+            // Prioritize delivered orders or van-sell orders
+            if (foundDelivery == null || thisIsDelivered || (!isDelivered && thisIsVanSell)) {
+              foundDelivery = deliveryObj;
+              foundDeliveryId = doc.id;
+              isVanSell = thisIsVanSell;
+              isDelivered = thisIsDelivered;
+            }
+          }
+        }
+      } catch (_) {}
+
+      if (foundDelivery != null) {
+        if (isVanSell) {
+          return BookOrderCheckResult(
+            passed: true,
+            status: 'Van Sell recorded today • ₱${foundDelivery.orderAmount.toStringAsFixed(2)}',
+            hasBookedOrder: true,
+            isVanSellToday: true,
+            deliveryToday: foundDelivery,
+            deliveryId: foundDeliveryId,
+          );
+        }
+
+        if (isDelivered) {
+          return BookOrderCheckResult(
+            passed: true,
+            status: 'Pre-sold order delivered today • ₱${foundDelivery.orderAmount.toStringAsFixed(2)}',
+            hasBookedOrder: true,
+            hasDeliveryToday: true,
+            deliveryToday: foundDelivery,
+            deliveryId: foundDeliveryId,
+          );
+        }
+
+        // Pending pre-sell delivery scheduled for today
+        return BookOrderCheckResult(
+          passed: false,
+          status: 'Pre-sold delivery scheduled for today (${foundDelivery.transactionStatus}) • ₱${foundDelivery.orderAmount.toStringAsFixed(2)}',
           hasBookedOrder: true,
+          hasDeliveryToday: true,
+          deliveryToday: foundDelivery,
+          deliveryId: foundDeliveryId,
         );
       }
 
@@ -767,8 +827,9 @@ class PjpController {
 
       return const BookOrderCheckResult(
         passed: false,
-        status: 'Order not yet booked and no reason recorded.',
+        status: 'No delivery order found for today.',
         hasBookedOrder: false,
+        hasDeliveryToday: false,
       );
     } catch (e) {
       return BookOrderCheckResult(
@@ -928,38 +989,41 @@ class PjpController {
         storeBarcodeStats[lower] = (scanned: scannedOrPendingCount, total: active.length);
       }
 
-      // 2. Check Booked Orders for today in delivery collection
+      // 2. Check Booked / Delivered Orders for today in delivery collection
       try {
         final deliverySnap = await FirebaseFirestore.instance
             .collection(DELIVERY_COLLECTION_REF)
             .where(DeliveryModelString.storeName, whereIn: chunk)
-            .where(DeliveryModelString.createdDate, isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-            .where(DeliveryModelString.createdDate, isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
             .get();
 
         for (final doc in deliverySnap.docs) {
-          final sName = (doc.data()[DeliveryModelString.storeName] as String? ?? '').trim();
-          if (sName.isNotEmpty) bookedStores.add(sName.toLowerCase());
-        }
-      } catch (_) {
-        // Fallback without composite index: query by storeName and filter createdDate in-memory
-        try {
-          final deliverySnap = await FirebaseFirestore.instance
-              .collection(DELIVERY_COLLECTION_REF)
-              .where(DeliveryModelString.storeName, whereIn: chunk)
-              .get();
-          for (final doc in deliverySnap.docs) {
-            final ts = doc.data()[DeliveryModelString.createdDate] as Timestamp?;
-            if (ts != null) {
-              final d = ts.toDate();
-              if (d.year == now.year && d.month == now.month && d.day == now.day) {
-                final sName = (doc.data()[DeliveryModelString.storeName] as String? ?? '').trim();
-                if (sName.isNotEmpty) bookedStores.add(sName.toLowerCase());
-              }
+          final data = doc.data();
+          final status = (data['transactionStatus'] as String? ?? '').trim();
+          if (status == DeliveryStatus.voided) continue;
+
+          final cTs = data[DeliveryModelString.createdDate] as Timestamp?;
+          final dTs = data[DeliveryModelString.deliveryDate] as Timestamp?;
+
+          bool isToday = false;
+          if (dTs != null) {
+            final d = dTs.toDate();
+            if (d.year == now.year && d.month == now.month && d.day == now.day) {
+              isToday = true;
             }
           }
-        } catch (_) {}
-      }
+          if (!isToday && cTs != null) {
+            final c = cTs.toDate();
+            if (c.year == now.year && c.month == now.month && c.day == now.day) {
+              isToday = true;
+            }
+          }
+
+          if (isToday) {
+            final sName = (data[DeliveryModelString.storeName] as String? ?? '').trim();
+            if (sName.isNotEmpty) bookedStores.add(sName.toLowerCase());
+          }
+        }
+      } catch (_) {}
 
       // 3. Check No-Order decisions for today
       try {

@@ -8,6 +8,7 @@ import 'package:selecta_ops/views/pages/dashboard/pjp_map_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjphistory_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/pjp/pjp_sms_broadcast_dialog.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 import 'package:intl/intl.dart';
 
@@ -624,12 +625,21 @@ class _PjpListPageState extends State<PjpListPage> {
           subtitle: '$_selectedDay Route',
           actions: [
             if (!_isEditing) ...[
+              if (_isDealer)
+                IconButton(
+                  icon: const Icon(Icons.campaign_rounded, color: Colors.white),
+                  tooltip: 'SMS Blast Tomorrow\'s Stores',
+                  onPressed: () => PjpSmsBroadcastDialog.show(context: context, initialDay: _selectedDay),
+                ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
                 tooltip: 'More options',
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 onSelected: (value) async {
                   switch (value) {
+                    case 'sms_blast':
+                      PjpSmsBroadcastDialog.show(context: context, initialDay: _selectedDay);
+                      break;
                     case 'map':
                       Navigator.push(context, MaterialPageRoute(builder: (_) => PjpMapPage(initialDay: _selectedDay)));
                       break;
@@ -644,6 +654,11 @@ class _PjpListPageState extends State<PjpListPage> {
                   }
                 },
                 itemBuilder: (context) => [
+                  if (_isDealer)
+                    const PopupMenuItem(
+                      value: 'sms_blast',
+                      child: Row(children: [Icon(Icons.campaign_rounded, size: 20, color: Colors.teal), SizedBox(width: 10), Text('SMS Pre-Order Blast')]),
+                    ),
                   const PopupMenuItem(
                     value: 'map',
                     child: Row(children: [Icon(Icons.map_outlined, size: 20), SizedBox(width: 10), Text('Route Map')]),

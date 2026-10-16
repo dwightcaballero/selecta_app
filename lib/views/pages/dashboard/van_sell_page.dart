@@ -245,6 +245,12 @@ class _VanSellPageState extends State<VanSellPage> {
       // Prompt for thermal print
       await _promptThermalPrint(result.delivery, result.deliveryId);
 
+      // If opened for a specific store from PJP visit, pop back with true
+      if (widget.preselectedStoreName != null && mounted) {
+        Navigator.pop(context, true);
+        return;
+      }
+
       // Reset form for next customer
       if (mounted) {
         setState(() {

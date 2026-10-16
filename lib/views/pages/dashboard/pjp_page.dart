@@ -21,6 +21,9 @@ import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/views/pages/dashboard/delivery_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:image_picker/image_picker.dart';
 
 /// Presentation view for inspecting and completing individual PJP store visits.
@@ -59,7 +62,7 @@ class _PjpPageState extends State<PjpPage> {
   String _scanningStatus = '';
   List<Scanning> _storeScannings = [];
 
-  // Step 3: Book Order state
+  // Step 3: Book Order / Delivery / Van Sell state
   bool _isLoadingBookOrder = true;
   bool _bookOrderPassed = false;
   bool _hasBookedOrder = false;
@@ -68,6 +71,11 @@ class _PjpPageState extends State<PjpPage> {
   bool _isLoadingRecommendations = false;
   int? _unplacedRecommendationsCount;
   int? _outOfStockCount;
+  bool _hasDeliveryToday = false;
+  Delivery? _deliveryToday;
+  String? _deliveryTodayId;
+  bool _isVanSellToday = false;
+  bool _hasPromptedVanSell = false;
 
   String get _recommendationsButtonLabel {
     if (_isLoadingRecommendations) {
@@ -167,7 +175,7 @@ class _PjpPageState extends State<PjpPage> {
     await Future.wait([
       _checkLocation(),
       _checkScanning(),
-      _checkBookOrder(),
+      _checkBookOrder(allowAutoPrompt: true),
       _checkProofOfVisit(),
       _checkTasks(),
       _checkMerchBlitz(),
@@ -211,7 +219,7 @@ class _PjpPageState extends State<PjpPage> {
     });
   }
 
-  Future<void> _checkBookOrder() async {
+  Future<void> _checkBookOrder({bool allowAutoPrompt = false}) async {
     if (!mounted) return;
     setState(() => _isLoadingBookOrder = true);
 
@@ -224,9 +232,20 @@ class _PjpPageState extends State<PjpPage> {
       _bookOrderStatus = result.status;
       _hasBookedOrder = result.hasBookedOrder;
       _noOrderReason = result.noOrderReason;
+      _hasDeliveryToday = result.hasDeliveryToday;
+      _deliveryToday = result.deliveryToday;
+      _deliveryTodayId = result.deliveryId;
+      _isVanSellToday = result.isVanSellToday;
     });
 
     _loadRecommendationsSummary();
+
+    if (allowAutoPrompt && !_hasPromptedVanSell && !_hasBookedOrder && !_hasDeliveryToday && _noOrderReason == null) {
+      _hasPromptedVanSell = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onBookOrderDecisionPrompt();
+      });
+    }
   }
 
   Future<void> _loadRecommendationsSummary() async {
@@ -715,44 +734,84 @@ class _PjpPageState extends State<PjpPage> {
     );
   }
 
-  // --- Step 3: Book Order Handlers ---
+  // --- Step 3: Book Order / Delivery / Van Sell Handlers ---
 
   Future<void> _onBookOrderDecisionPrompt() async {
-    // Show a modal to select whether to book an order or not
+    // Show a modal to select whether to van sell, book advance order, or record reason
     final choice = await showModalBottomSheet<String>(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 38,
                 height: 4,
-                margin: const EdgeInsets.symmetric(vertical: 6),
+                margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: Text(
-                  'Book Order for ${_currentHapistore.storeName}',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.storefront_outlined, color: Theme.of(context).colorScheme.primary),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Order / Delivery for ${_currentHapistore.storeName}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const Text('No existing delivery scheduled for today', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.local_shipping_rounded, color: Colors.teal),
                 ),
+                title: const Text('Van Sell Now', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Sell directly from loaded van stock on the spot'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.pop(ctx, 'van_sell'),
               ),
               ListTile(
-                leading: const Icon(Icons.add_shopping_cart_rounded, color: Colors.green),
-                title: const Text('Yes, Book an Order', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Create a new order for this store'),
-                onTap: () => Navigator.pop(ctx, 'yes'),
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.add_shopping_cart_rounded, color: Colors.blue),
+                ),
+                title: const Text('Book Advance Order', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Place an order for future route delivery'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.pop(ctx, 'book_order'),
               ),
               ListTile(
-                leading: const Icon(Icons.do_not_disturb_on_outlined, color: Colors.orange),
-                title: const Text('Will Not Book an Order', style: TextStyle(fontWeight: FontWeight.w600)),
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.do_not_disturb_on_outlined, color: Colors.orange),
+                ),
+                title: const Text('Will Not Order Today', style: TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: const Text('Provide a required reason why no order is placed'),
-                onTap: () => Navigator.pop(ctx, 'no'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.pop(ctx, 'no_order'),
               ),
             ],
           ),
@@ -760,11 +819,45 @@ class _PjpPageState extends State<PjpPage> {
       ),
     );
 
-    if (choice == 'yes') {
+    if (choice == 'van_sell') {
+      await _onVanSellAction();
+    } else if (choice == 'book_order') {
       await _onBookOrderYes();
-    } else if (choice == 'no') {
+    } else if (choice == 'no_order') {
       await _onBookOrderNo();
     }
+  }
+
+  Future<void> _onVanSellAction() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VanSellPage(preselectedStoreName: _currentHapistore.storeName),
+      ),
+    );
+
+    if (!mounted) return;
+    await _checkBookOrder();
+
+    if (result == true && mounted) {
+      ShowMessage.success(context, 'Van sale recorded! Delivery step marked as passed.');
+    }
+  }
+
+  Future<void> _onFulfillDeliveryAction() async {
+    if (_deliveryToday == null || _deliveryTodayId == null) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DeliveryPage(
+          deliveryID: _deliveryTodayId!,
+          delivery: _deliveryToday!,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    await _checkBookOrder();
   }
 
   Future<void> _onBookOrderYes() async {
@@ -1579,20 +1672,40 @@ class _PjpPageState extends State<PjpPage> {
                 : null,
           ),
 
-          // Step 3: Book Order (Replaces Product Placement)
+          // Step 3: Book Order / Delivery / Van Sell
           _buildChecklistCard(
             stepNumber: 3,
-            title: 'Book Order',
-            icon: Icons.shopping_bag_outlined,
+            title: _hasDeliveryToday
+                ? 'Pre-Sold Delivery'
+                : (_isVanSellToday ? 'Van Sell Transaction' : 'Delivery / Van Sell'),
+            icon: _hasDeliveryToday
+                ? Icons.local_shipping_outlined
+                : (_isVanSellToday ? Icons.storefront_outlined : Icons.shopping_bag_outlined),
             isLoading: _isLoadingBookOrder,
             isPassed: _bookOrderPassed,
             statusMessage: _bookOrderStatus,
-            actionLabel: 'Order Options',
-            actionIcon: Icons.touch_app_outlined,
-            showActionWhenNotPassed: false,
-            actionLabelWhenPassed: _hasBookedOrder ? 'Add / View Order' : 'Change Decision',
+            actionLabel: _hasDeliveryToday
+                ? (_deliveryToday?.transactionStatus == DeliveryStatus.delivered ? 'View Receipt' : 'Fulfill Delivery')
+                : (_isVanSellToday ? 'View Receipt' : 'Order Options'),
+            actionIcon: _hasDeliveryToday
+                ? Icons.local_shipping_rounded
+                : (_isVanSellToday ? Icons.receipt_long_rounded : Icons.touch_app_outlined),
+            showActionWhenNotPassed: true,
+            actionLabelWhenPassed: _hasDeliveryToday
+                ? 'View Delivery'
+                : (_isVanSellToday ? 'View Receipt' : (_hasBookedOrder ? 'Add / View Order' : 'Change Decision')),
             showActionWhenPassed: true,
-            onAction: _hasBookedOrder ? _onBookOrderYes : _onBookOrderDecisionPrompt,
+            onAction: () {
+              if (_hasDeliveryToday && _deliveryToday != null) {
+                _onFulfillDeliveryAction();
+              } else if (_isVanSellToday && _deliveryToday != null) {
+                _onFulfillDeliveryAction();
+              } else if (_hasBookedOrder) {
+                _onBookOrderYes();
+              } else {
+                _onBookOrderDecisionPrompt();
+              }
+            },
             extraContent: Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(
@@ -1607,46 +1720,165 @@ class _PjpPageState extends State<PjpPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _bookOrderPassed
-                          ? (_hasBookedOrder ? 'An order has been booked for this store.' : 'Decision: No order booked (Reason: $_noOrderReason)')
-                          : 'Will you book an order for this store today?',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: _bookOrderPassed ? Colors.green.shade800 : colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: _isLoadingBookOrder ? null : _onBookOrderYes,
-                            icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
-                            label: Text(_hasBookedOrder ? 'View / New Order' : 'Book Order (Yes)', style: const TextStyle(fontSize: 12)),
-                            style: FilledButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    if (_hasDeliveryToday && _deliveryToday != null) ...[
+                      Row(
+                        children: [
+                          Icon(
+                            _deliveryToday!.transactionStatus == DeliveryStatus.delivered
+                                ? Icons.check_circle_rounded
+                                : Icons.schedule_rounded,
+                            size: 16,
+                            color: _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? Colors.green : Colors.orange.shade800,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _deliveryToday!.transactionStatus == DeliveryStatus.delivered
+                                  ? 'Pre-sold order delivered (₱${_deliveryToday!.orderAmount.toStringAsFixed(2)})'
+                                  : 'Pre-sold order scheduled for delivery today (${_deliveryToday!.transactionStatus})',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.bold,
+                                color: _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? Colors.green.shade800 : colorScheme.onSurface,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _isLoadingBookOrder ? null : _onBookOrderNo,
-                            icon: Icon(_noOrderReason != null ? Icons.edit_note_rounded : Icons.do_not_disturb_on_outlined, size: 15),
-                            label: Text(_noOrderReason != null ? 'Edit Reason' : 'Will Not Book', style: const TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _isLoadingBookOrder ? null : _onFulfillDeliveryAction,
+                              icon: Icon(
+                                _deliveryToday!.transactionStatus == DeliveryStatus.delivered
+                                    ? Icons.receipt_long_rounded
+                                    : Icons.local_shipping_rounded,
+                                size: 15,
+                              ),
+                              label: Text(
+                                _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? 'View Receipt' : 'Fulfill Delivery Now',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
+                            icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
+                            label: const Text('Add Van Sell', style: TextStyle(fontSize: 12)),
                             style: OutlinedButton.styleFrom(
                               visualDensity: VisualDensity.compact,
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
                           ),
+                        ],
+                      ),
+                    ] else if (_isVanSellToday && _deliveryToday != null) ...[
+                      Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, size: 16, color: Colors.green),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Van Sell recorded (₱${_deliveryToday!.orderAmount.toStringAsFixed(2)})',
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.tonalIcon(
+                              onPressed: _isLoadingBookOrder ? null : _onFulfillDeliveryAction,
+                              icon: const Icon(Icons.receipt_long_rounded, size: 15),
+                              label: const Text('View Receipt', style: TextStyle(fontSize: 12)),
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
+                              icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
+                              label: const Text('New Van Sell', style: TextStyle(fontSize: 12)),
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      Text(
+                        _bookOrderPassed
+                            ? (_hasBookedOrder
+                                ? 'An advance order has been booked for this store.'
+                                : 'Decision: No order booked (Reason: $_noOrderReason)')
+                            : 'No delivery order scheduled for this store today.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: _bookOrderPassed ? Colors.green.shade800 : colorScheme.onSurface,
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
+                              icon: const Icon(Icons.local_shipping_rounded, size: 15),
+                              label: const Text('Van Sell Now', style: TextStyle(fontSize: 12)),
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                backgroundColor: Colors.teal.shade700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isLoadingBookOrder ? null : _onBookOrderYes,
+                              icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
+                              label: const Text('Advance Order', style: TextStyle(fontSize: 12)),
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton.outlined(
+                            onPressed: _isLoadingBookOrder ? null : _onBookOrderNo,
+                            tooltip: _noOrderReason != null ? 'Edit Reason' : 'Will Not Order',
+                            icon: Icon(_noOrderReason != null ? Icons.edit_note_rounded : Icons.do_not_disturb_on_outlined, size: 18),
+                            style: IconButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.all(6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     SizedBox(
                       width: double.infinity,
