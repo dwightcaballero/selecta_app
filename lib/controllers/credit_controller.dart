@@ -1,11 +1,16 @@
+import 'package:another_telephony/telephony.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/configuration.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/services/auth_service.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Available sorting options for outstanding credit records.
 enum CreditSort {
@@ -254,5 +259,106 @@ class CreditController {
     Helperfunctions.logUpdate(updatedDelivery.storeName, currentDelivery.toJson(), updatedDelivery.toJson(), page: AppPages.credit);
 
     return updatedDelivery;
+  }
+
+  // ==========================================
+  // Communication & Collection Operations (Call & SMS)
+  // ==========================================
+
+  /// Fetches the store contact number by store name.
+  Future<String> getStoreContact(String storeName) async {
+    return await HapiStoreService.getContactByStoreName(storeName);
+  }
+
+  /// Fetches the configured credit reminder SMS template from configuration.
+  Future<String> getCreditReminderTemplate() async {
+    try {
+      final config = await ConfigurationService().getConfiguration();
+      if (config.creditReminderSmsTemplate.trim().isNotEmpty) {
+        return config.creditReminderSmsTemplate;
+      }
+    } catch (_) {}
+    return Configuration.defaultCreditReminderSmsTemplate;
+  }
+
+  /// Builds a rendered SMS message replacing dynamic placeholders with actual credit metrics.
+  String buildReminderMessage({
+    required String template,
+    required String storeName,
+    required double creditAmount,
+    required DateTime? creditDate,
+    required int daysOverdue,
+  }) {
+    final formattedAmount = Helperfunctions.formatDoubleAmountForDisplay(creditAmount);
+    final formattedDate = creditDate != null ? Helperfunctions.formatDateForDisplay(creditDate) : 'N/A';
+
+    return template
+        .replaceAll('{storeName}', storeName)
+        .replaceAll('{creditAmount}', formattedAmount)
+        .replaceAll('{creditDate}', formattedDate)
+        .replaceAll('{daysOverdue}', daysOverdue.toString());
+  }
+
+  /// Sanitizes phone number string by removing non-dialable characters.
+  String sanitizePhoneNumber(String phone) {
+    return phone.replaceAll(RegExp(r'[^0-9+]'), '');
+  }
+
+  /// Formats phone number for local carrier / Telephony dispatch (e.g. 09xx to +639xx).
+  String formatPhoneNumberForTelephony(String phone) {
+    var cleaned = sanitizePhoneNumber(phone);
+    if (cleaned.startsWith('09')) {
+      cleaned = cleaned.replaceFirst('09', '+639');
+    }
+    return cleaned;
+  }
+
+  /// Initiates a direct phone call using the system dialer.
+  Future<bool> makePhoneCall(String phone) async {
+    final cleaned = sanitizePhoneNumber(phone);
+    if (cleaned.isEmpty) return false;
+    final uri = Uri.parse('tel:$cleaned');
+    if (await canLaunchUrl(uri)) {
+      return await launchUrl(uri);
+    }
+    return false;
+  }
+
+  /// Opens the default SMS application with pre-populated recipient and body.
+  Future<bool> launchSmsApp({required String phone, required String message}) async {
+    final cleaned = sanitizePhoneNumber(phone);
+    if (cleaned.isEmpty) return false;
+    final uri = Uri(
+      scheme: 'sms',
+      path: cleaned,
+      queryParameters: <String, String>{
+        'body': message,
+      },
+    );
+    if (await canLaunchUrl(uri)) {
+      return await launchUrl(uri);
+    }
+    return false;
+  }
+
+  /// Directly dispatches an SMS using the in-app Telephony service.
+  ///
+  /// Requests required permissions if not yet granted.
+  Future<bool> sendDirectSms({required String phone, required String message}) async {
+    final formattedNumber = formatPhoneNumberForTelephony(phone);
+    if (formattedNumber.isEmpty) return false;
+
+    final telephony = Telephony.instance;
+    final permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
+    if (permissionsGranted != true) {
+      return false;
+    }
+
+    await telephony.sendSms(
+      to: formattedNumber,
+      message: message,
+      isMultipart: true,
+    );
+    return true;
   }
 }

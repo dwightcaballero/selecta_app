@@ -1,10 +1,13 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/credit_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/credit/credit_sms_dialog.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 
@@ -32,11 +35,38 @@ class _CreditPageState extends State<CreditPage> {
   /// Whether an update request is currently being processed.
   bool _isUpdating = false;
 
+  /// Store contact number loaded asynchronously.
+  String _storeContact = '';
+  bool _isLoadingContact = true;
+
+  int get _agingDays {
+    final date = widget.delivery.deliveryDate?.toDate() ?? widget.delivery.createdDate.toDate();
+    final days = DateTime.now().difference(date).inDays;
+    return days < 0 ? 0 : days;
+  }
+
   @override
   void initState() {
     super.initState();
     // Resolve initial status via the controller
     _selectedStatus = _controller.resolveInitialStatus(widget.delivery);
+    _fetchStoreContact();
+  }
+
+  Future<void> _fetchStoreContact() async {
+    try {
+      final contact = await _controller.getStoreContact(widget.delivery.storeName);
+      if (mounted) {
+        setState(() {
+          _storeContact = contact;
+          _isLoadingContact = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingContact = false);
+      }
+    }
   }
 
   /// Triggers the credit update operation through the controller.
@@ -147,31 +177,40 @@ class _CreditPageState extends State<CreditPage> {
           ),
           const Divider(height: 24),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Credit Amount', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
-                  const SizedBox(height: 2),
-                  Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount),
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isUnpaid ? Colors.red.shade700 : Colors.green.shade700),
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Credit Amount', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        Helperfunctions.formatDoubleAmountForDisplay(widget.delivery.creditAmount),
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: isUnpaid ? Colors.red.shade700 : Colors.green.shade700),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text('Credit Date', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                  _buildAgingBadge(_agingDays),
                   const SizedBox(height: 4),
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.calendar_month_outlined, size: 14, color: colorScheme.onSurfaceVariant),
+                      Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
                       Text(
                         widget.delivery.deliveryDate != null ? Helperfunctions.formatDateForDisplay(widget.delivery.deliveryDate!.toDate()) : 'N/A',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -182,6 +221,206 @@ class _CreditPageState extends State<CreditPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildAgingBadge(int days) {
+    final Color bgColor;
+    final Color textColor;
+    final String text;
+
+    if (days <= 15) {
+      bgColor = Colors.green.withValues(alpha: 0.12);
+      textColor = Colors.green.shade800;
+      text = '$days d';
+    } else if (days <= 30) {
+      bgColor = Colors.amber.withValues(alpha: 0.18);
+      textColor = Colors.orange.shade900;
+      text = '$days d Due';
+    } else {
+      bgColor = Colors.red.withValues(alpha: 0.14);
+      textColor = Colors.red.shade800;
+      text = '$days d Overdue';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: textColor),
+      ),
+    );
+  }
+
+  /// Builds customer contact card providing 1-tap Phone Call and SMS reminder options.
+  Widget _buildCommunicationCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasContact = _storeContact.trim().isNotEmpty;
+
+    return _buildSectionCard(
+      title: 'Customer Contact & Follow-up',
+      icon: Icons.contact_phone_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: hasContact
+                      ? colorScheme.primary.withValues(alpha: 0.1)
+                      : Colors.orange.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  hasContact ? Icons.phone_android_rounded : Icons.phone_disabled_rounded,
+                  size: 20,
+                  color: hasContact ? colorScheme.primary : Colors.orange.shade800,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Store Contact Number',
+                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 2),
+                    _isLoadingContact
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            hasContact ? _storeContact : 'No contact registered',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: hasContact ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                  ],
+                ),
+              ),
+              IconButton.outlined(
+                tooltip: 'Edit Store Contact',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                onPressed: _openEditContactDialog,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              // 1. Call Store Button
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: _handleCallStore,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green.withValues(alpha: 0.14),
+                    foregroundColor: Colors.green.shade800,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.phone_in_talk_rounded, size: 18),
+                  label: const Text('Call Store', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              // 2. Text Reminder Button
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _handleTextStore,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFF97316),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.sms_rounded, size: 18),
+                  label: const Text('Text Reminder', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleCallStore() async {
+    String phone = _storeContact.trim();
+    if (phone.isEmpty) {
+      await _openEditContactDialog();
+      phone = _storeContact.trim();
+      if (phone.isEmpty) return;
+    }
+
+    final success = await _controller.makePhoneCall(phone);
+    if (!success && mounted) {
+      ShowMessage.error(context, 'Could not initiate phone call to $phone.');
+    }
+  }
+
+  void _handleTextStore() {
+    CreditSmsDialog.show(
+      context: context,
+      storeName: widget.delivery.storeName,
+      creditAmount: widget.delivery.creditAmount,
+      creditDate: widget.delivery.deliveryDate?.toDate(),
+      daysOverdue: _agingDays,
+      initialPhoneNumber: _storeContact,
+    );
+  }
+
+  Future<void> _openEditContactDialog() async {
+    final textController = TextEditingController(text: _storeContact);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Store Contact Number', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: textController,
+          keyboardType: TextInputType.phone,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Phone Number',
+            hintText: 'e.g. 09171234567',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogCtx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final newPhone = textController.text.trim();
+      setState(() => _storeContact = newPhone);
+      try {
+        final query = await FirebaseFirestore.instance
+            .collection(HAPISTORE_COLLECTION_REF)
+            .where('storeName', isEqualTo: widget.delivery.storeName)
+            .limit(1)
+            .get();
+        if (query.docs.isNotEmpty) {
+          await query.docs.first.reference.update({'storeContact': newPhone});
+          HapiStoreService.invalidateCache();
+        }
+      } catch (_) {}
+    }
   }
 
   /// Builds the breakdown list showing cash, online, and returns deductions.
@@ -492,7 +731,10 @@ class _CreditPageState extends State<CreditPage> {
               // 1. Credit Overview Card
               _buildCreditOverviewCard(),
 
-              // 2. Status Selector Card
+              // 2. Customer Contact & Collections Follow-up Card
+              _buildCommunicationCard(),
+
+              // 3. Status Selector Card
               _buildStatusCard(),
 
               // 3. Payment & Order Breakdown Card

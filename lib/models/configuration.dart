@@ -23,8 +23,17 @@ class Configuration {
   // Placement product pairs (when either is delivered, both are placed)
   List<PlacementPair> placementPairs;
 
+  // Credit Reminder SMS Template
+  static const String defaultCreditReminderSmsTemplate =
+      '[SELECTA CREDIT REMINDER]\n'
+      'Good day {storeName}!\n'
+      'This is a friendly reminder regarding your outstanding Selecta credit balance of {creditAmount} from {creditDate} ({daysOverdue} days overdue).\n'
+      'Kindly prepare the payment for our sales representative. Thank you for your continued partnership!';
+
   /// Whether barcode scanning is enabled for picklists
   bool enablePicklistBarcodeScanner;
+
+  String creditReminderSmsTemplate;
 
   Configuration({
     required this.merchBlitzStartDate,
@@ -41,6 +50,7 @@ class Configuration {
     this.expansionTarget = 10,
     this.placementPairs = const [],
     this.enablePicklistBarcodeScanner = true,
+    this.creditReminderSmsTemplate = defaultCreditReminderSmsTemplate,
   });
 
   /// Returns true if [plainTextPassword] matches the stored SHA-256 hash.
@@ -76,6 +86,7 @@ class Configuration {
         expansionTarget: 10,
         placementPairs: const [],
         enablePicklistBarcodeScanner: true,
+        creditReminderSmsTemplate: defaultCreditReminderSmsTemplate,
       );
 
   Configuration.fromJson(Map<String, Object?> json)
@@ -107,6 +118,7 @@ class Configuration {
                   .toList()
               : const [],
           enablePicklistBarcodeScanner: json['enablePicklistBarcodeScanner'] as bool? ?? true,
+          creditReminderSmsTemplate: json['creditReminderSmsTemplate'] as String? ?? defaultCreditReminderSmsTemplate,
         );
 
   Configuration copyWith({
@@ -124,6 +136,7 @@ class Configuration {
     int? expansionTarget,
     List<PlacementPair>? placementPairs,
     bool? enablePicklistBarcodeScanner,
+    String? creditReminderSmsTemplate,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -140,6 +153,7 @@ class Configuration {
       expansionTarget: expansionTarget ?? this.expansionTarget,
       placementPairs: placementPairs ?? List.from(this.placementPairs),
       enablePicklistBarcodeScanner: enablePicklistBarcodeScanner ?? this.enablePicklistBarcodeScanner,
+      creditReminderSmsTemplate: creditReminderSmsTemplate ?? this.creditReminderSmsTemplate,
     );
   }
 
@@ -160,6 +174,7 @@ class Configuration {
       'expansionTarget': expansionTarget,
       'placementPairs': placementPairs.map((p) => p.toJson()).toList(),
       'enablePicklistBarcodeScanner': enablePicklistBarcodeScanner,
+      'creditReminderSmsTemplate': creditReminderSmsTemplate,
     };
   }
 }

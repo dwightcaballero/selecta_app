@@ -43,6 +43,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   late final TextEditingController _salesTargetController;
   late final TextEditingController _throughputTargetController;
   late final TextEditingController _expansionTargetController;
+  late final TextEditingController _creditSmsTemplateController;
 
   @override
   void initState() {
@@ -50,6 +51,10 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     _salesTargetController = TextEditingController(text: '1000000');
     _throughputTargetController = TextEditingController(text: '8000');
     _expansionTargetController = TextEditingController(text: '10');
+    _creditSmsTemplateController = TextEditingController(text: Configuration.defaultCreditReminderSmsTemplate);
+    _creditSmsTemplateController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadConfiguration();
   }
 
@@ -58,6 +63,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     _salesTargetController.dispose();
     _throughputTargetController.dispose();
     _expansionTargetController.dispose();
+    _creditSmsTemplateController.dispose();
     super.dispose();
   }
 
@@ -78,6 +84,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           _salesTargetController.text = result.config.salesTarget.toStringAsFixed(0);
           _throughputTargetController.text = result.config.throughputTarget.toStringAsFixed(0);
           _expansionTargetController.text = result.config.expansionTarget.toString();
+          _creditSmsTemplateController.text = result.config.creditReminderSmsTemplate;
           _enablePicklistBarcodeScanner = result.config.enablePicklistBarcodeScanner;
           _thermalPaperSize = paperSize;
           _printerName = pName;
@@ -157,6 +164,12 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       return;
     }
 
+    final smsTemplate = _creditSmsTemplateController.text.trim();
+    if (smsTemplate.isEmpty) {
+      ShowMessage.error(context, 'Credit SMS reminder template cannot be empty.');
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -175,6 +188,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         scanningTargetPercentage: 100.0,
         expansionTarget: expansionTarget,
         enablePicklistBarcodeScanner: _enablePicklistBarcodeScanner,
+        creditReminderSmsTemplate: smsTemplate,
       );
 
       _configExistsInDb = true;
@@ -540,6 +554,196 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     }
   }
 
+  void _insertSmsPlaceholder(String token) {
+    final text = _creditSmsTemplateController.text;
+    final selection = _creditSmsTemplateController.selection;
+    if (selection.start >= 0 && selection.end >= 0) {
+      final newText = text.replaceRange(selection.start, selection.end, token);
+      _creditSmsTemplateController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: selection.start + token.length),
+      );
+    } else {
+      _creditSmsTemplateController.text = '$text $token';
+    }
+  }
+
+  Widget _buildPlaceholderChip(String token, String label, ColorScheme colorScheme) {
+    return ActionChip(
+      avatar: const Icon(Icons.add_rounded, size: 14),
+      label: Text('$token ($label)'),
+      labelStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+      visualDensity: VisualDensity.compact,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+      backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.7)),
+      onPressed: () => _insertSmsPlaceholder(token),
+    );
+  }
+
+  Widget _buildCreditReminderSmsCard(ColorScheme colorScheme) {
+    final currentText = _creditSmsTemplateController.text;
+    final charCount = currentText.length;
+    final segmentCount = (charCount == 0) ? 1 : ((charCount - 1) ~/ 153) + 1;
+
+    final sampleDateStr = DateFormat('MMM d, yyyy').format(DateTime.now().subtract(const Duration(days: 7)));
+    final previewText = currentText
+        .replaceAll('{storeName}', 'ALENG TINDERA STORE')
+        .replaceAll('{creditAmount}', '₱4,850.00')
+        .replaceAll('{creditDate}', sampleDateStr)
+        .replaceAll('{daysOverdue}', '7');
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF97316).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.sms_rounded, size: 22, color: Color(0xFFF97316)),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Credit Reminder SMS Template', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 2),
+                      Text(
+                        'Preconfigured text message for following up on overdue credit balances',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+
+            Text(
+              'Dynamic Placeholders (Tap to insert):',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _buildPlaceholderChip('{storeName}', 'Store Name', colorScheme),
+                _buildPlaceholderChip('{creditAmount}', 'Credit Amount', colorScheme),
+                _buildPlaceholderChip('{creditDate}', 'Credit Date', colorScheme),
+                _buildPlaceholderChip('{daysOverdue}', 'Days Overdue', colorScheme),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            TextField(
+              controller: _creditSmsTemplateController,
+              maxLines: 4,
+              minLines: 3,
+              style: const TextStyle(fontSize: 13.5, height: 1.4),
+              decoration: InputDecoration(
+                alignLabelWithHint: true,
+                labelText: 'Message Template *',
+                hintText: 'Enter credit reminder SMS message template...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '$charCount chars • ~$segmentCount SMS segment${segmentCount > 1 ? 's' : ''}',
+                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _creditSmsTemplateController.text = Configuration.defaultCreditReminderSmsTemplate;
+                    });
+                  },
+                  icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                  label: const Text('Reset to Default', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Live Preview Card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.visibility_outlined, size: 14, color: colorScheme.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Live Customer SMS Preview',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surface,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
+                        bottomRight: Radius.circular(12),
+                        bottomLeft: Radius.circular(2),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      previewText,
+                      style: const TextStyle(fontSize: 12.5, height: 1.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildWarehouseBarcodeCard(ColorScheme colorScheme) {
     return Card(
       elevation: 0,
@@ -857,6 +1061,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
                   // KPI Monthly Targets Card
                   _buildKpiTargetsCard(),
+
+                  const SizedBox(height: 16),
+
+                  // Credit Overdue SMS Reminder Card
+                  _buildCreditReminderSmsCard(colorScheme),
 
                   const SizedBox(height: 16),
 

@@ -64,6 +64,7 @@ class ConfigurationController {
     int? expansionTarget,
     String? superAdminPasswordHash,
     bool? enablePicklistBarcodeScanner,
+    String? creditReminderSmsTemplate,
   }) async {
     if (endDate.isBefore(startDate)) {
       throw ArgumentError('Merch Blitz End Date must be after or equal to the Start Date.');
@@ -79,6 +80,7 @@ class ConfigurationController {
     final finalExpansionTarget = expansionTarget ?? originalConfig?.expansionTarget ?? 10;
     final finalSuperAdminHash = superAdminPasswordHash ?? originalConfig?.superAdminPasswordHash ?? '';
     final finalEnableScanner = enablePicklistBarcodeScanner ?? originalConfig?.enablePicklistBarcodeScanner ?? true;
+    final finalCreditSmsTemplate = creditReminderSmsTemplate ?? originalConfig?.creditReminderSmsTemplate ?? Configuration.defaultCreditReminderSmsTemplate;
 
     final config = Configuration(
       merchBlitzStartDate: newStartDateTs,
@@ -95,6 +97,7 @@ class ConfigurationController {
       expansionTarget: finalExpansionTarget,
       placementPairs: originalConfig?.placementPairs ?? const [],
       enablePicklistBarcodeScanner: finalEnableScanner,
+      creditReminderSmsTemplate: finalCreditSmsTemplate,
     );
 
     await _configService.saveConfiguration(config);
