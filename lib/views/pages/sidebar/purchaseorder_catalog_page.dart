@@ -774,11 +774,10 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
       return i.productName.toLowerCase().contains(q) || i.itemCode.toLowerCase().contains(q);
     }).toList();
 
-    // Grouping identical to BookOrderPage
+    // Grouping: Sort only by case (by SRP) then by piece (by SRP)
+    final caseProducts = selectaCatalog.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
+    final pieceProducts = selectaCatalog.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
     final bestSellerProducts = selectaCatalog.where((i) => ProductTag.isBestSeller(i.tag)).toList()..sort(_compareProducts);
-    final nonBestSeller = selectaCatalog.where((i) => !ProductTag.isBestSeller(i.tag)).toList();
-    final caseProducts = nonBestSeller.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
-    final pieceProducts = nonBestSeller.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
 
     // Recommended Pre-Orders: Products where pre-orders exceed warehouse stock (shortage)
     // or leave remaining stock at or below lowStockThreshold
@@ -894,11 +893,13 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                   ),
                 ],
                 const SizedBox(width: 8),
-                _buildFilterChip('best_sellers', 'Best Sellers (${bestSellerProducts.length})', Icons.star_rounded, Colors.amber.shade700),
-                const SizedBox(width: 8),
                 _buildFilterChip('by_case', 'By Case (${caseProducts.length})', Icons.all_inbox_rounded, Colors.orange.shade800),
                 const SizedBox(width: 8),
                 _buildFilterChip('by_piece', 'By Piece (${pieceProducts.length})', Icons.icecream_outlined, colorScheme.primary),
+                if (bestSellerProducts.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  _buildFilterChip('best_sellers', 'Best Sellers (${bestSellerProducts.length})', Icons.star_rounded, Colors.amber.shade700),
+                ],
               ],
             ),
           ),
@@ -932,25 +933,25 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                     _buildSliverProductList(recommendedPreOrders),
                   ],
 
-                // 2. Best Sellers
-                if (_selectedCategory == 'all' || _selectedCategory == 'best_sellers')
-                  if (bestSellerProducts.isNotEmpty) ...[
-                    _buildSliverHeader('Best Sellers', bestSellerProducts.length, Icons.star_rounded, const Color(0xFFD97706)),
-                    _buildSliverProductList(bestSellerProducts),
-                  ],
-
-                // 3. By Case
+                // 2. By Case (sorted by SRP)
                 if (_selectedCategory == 'all' || _selectedCategory == 'by_case')
                   if (caseProducts.isNotEmpty) ...[
                     _buildSliverHeader('By Case', caseProducts.length, Icons.all_inbox_rounded, const Color(0xFFEA580C)),
                     _buildSliverProductList(caseProducts),
                   ],
 
-                // 4. By Piece
+                // 3. By Piece (sorted by SRP)
                 if (_selectedCategory == 'all' || _selectedCategory == 'by_piece')
                   if (pieceProducts.isNotEmpty) ...[
                     _buildSliverHeader('By Piece', pieceProducts.length, Icons.icecream_outlined, colorScheme.primary),
                     _buildSliverProductList(pieceProducts),
+                  ],
+
+                // 4. Best Sellers (only if explicitly filtered)
+                if (_selectedCategory == 'best_sellers')
+                  if (bestSellerProducts.isNotEmpty) ...[
+                    _buildSliverHeader('Best Sellers', bestSellerProducts.length, Icons.star_rounded, const Color(0xFFD97706)),
+                    _buildSliverProductList(bestSellerProducts),
                   ],
 
                 if (selectaCatalog.isEmpty)

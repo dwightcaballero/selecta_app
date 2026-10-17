@@ -75,6 +75,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   bool _isSaving = false;
   bool _isComparingWithAi = false;
   bool _showDetailsCard = true;
+  bool _showItemsList = true;
 
   final List<File> _officialInvoiceImages = [];
   InvoiceComparisonResult? _comparisonResult;
@@ -1503,6 +1504,416 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     }
   }
 
+  Future<void> _showReceiveDeliveryOptions(List<InventoryItem> allInventory) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    final totalUnits = _documentLines.isNotEmpty
+        ? _documentLines.fold<int>(0, (acc, l) => acc + l.quantity)
+        : widget.purchaseorder.items.fold<int>(0, (acc, i) => acc + i.effectiveQuantity);
+    final itemCount = _documentLines.isNotEmpty ? _documentLines.length : widget.purchaseorder.items.length;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      backgroundColor: colorScheme.surface,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(colors: [Colors.teal, Colors.green]),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.local_shipping_outlined, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Receive Delivery',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '$itemCount items • $totalUnits units to be received',
+                          style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Option 1: Receive Everything (Instant Restock)
+              InkWell(
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _confirmReceiveEverything(allInventory);
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.green.shade300, width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade600,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.done_all_rounded, color: Colors.white, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text(
+                                  'Receive Everything',
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade100,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'Instant',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Confirm all stocks arrived in full. No missing items or overpayment — replenish inventory immediately.',
+                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: colorScheme.onSurfaceVariant),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Option 2: Scan Document / Invoice
+              InkWell(
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  setState(() => _showPhase2Inline = true);
+                  _showOfficialInvoiceSourcePicker(allInventory: allInventory);
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.teal.shade300, width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.shade700,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.document_scanner_outlined, color: Colors.white, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Scan Document / Invoice',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Capture or upload supplier invoice to cross-reference items and detect shortages or overpayment credits.',
+                              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: colorScheme.onSurfaceVariant),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmReceiveEverything(List<InventoryItem> allInventory) async {
+    final List<ConfirmedInvoiceItem> confirmed = (_documentLines.isNotEmpty
+            ? _documentLines.map((l) => ConfirmedInvoiceItem(
+                  productId: l.productId,
+                  productName: l.productName,
+                  imageUrl: l.imageUrl,
+                  productSource: l.productSource,
+                  category: l.category,
+                  tag: l.tag,
+                  unitCost: l.buyingPrice,
+                  sellingPrice: l.sellingPrice,
+                  orderedQuantity: l.quantity,
+                  deliveredQuantity: l.quantity,
+                ))
+            : widget.purchaseorder.items.map((i) => ConfirmedInvoiceItem(
+                  productId: i.productId,
+                  productName: i.productName,
+                  imageUrl: i.imageUrl,
+                  productSource: i.productSource,
+                  category: i.category,
+                  tag: i.tag,
+                  unitCost: i.buyingPrice,
+                  sellingPrice: i.sellingPrice,
+                  orderedQuantity: i.orderedQuantity,
+                  deliveredQuantity: i.effectiveQuantity,
+                )))
+        .toList();
+
+    if (confirmed.isEmpty) {
+      ShowMessage.error(context, 'No items to receive in this purchase order.');
+      return;
+    }
+
+    final totalDeliveredUnits = confirmed.fold<int>(0, (acc, i) => acc + i.deliveredQuantity);
+    final confirmedTotal = confirmed.fold<double>(0.0, (acc, i) => acc + (i.unitCost * i.deliveredQuantity));
+    final defaultInvoiceNum = widget.purchaseorder.invoiceNumber.isNotEmpty
+        ? widget.purchaseorder.invoiceNumber
+        : widget.purchaseorder.poNumber;
+
+    final invoiceController = TextEditingController(text: defaultInvoiceNum);
+    DateTime invoiceDate = DateTime.now();
+
+    final confirmedByUser = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final colorScheme = Theme.of(ctx).colorScheme;
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.green.shade100, shape: BoxShape.circle),
+                  child: Icon(Icons.done_all_rounded, color: Colors.green.shade800, size: 24),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text('Receive Everything', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Confirm that you received ALL ordered stocks without missing items or overpayment.',
+                    style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Delivered Products', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                            Text('${confirmed.length} items ($totalDeliveredUnits pcs)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Total Restock Value', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                            Text(_currencyFormat.format(confirmedTotal), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: colorScheme.primary)),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Overpayment Credit', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                            const Text('₱0.00 (None)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline_rounded, size: 16, color: colorScheme.primary),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Stocks will be added to your physical inventory immediately. Incoming stock allocation will be cleared.',
+                            style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: invoiceController,
+                    decoration: InputDecoration(
+                      labelText: 'Invoice / DR Number (Optional)',
+                      hintText: 'Enter invoice number if available',
+                      prefixIcon: const Icon(Icons.tag_rounded, size: 18),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: invoiceDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => invoiceDate = picked);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Received Date',
+                        prefixIcon: const Icon(Icons.calendar_today_rounded, size: 16),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      ),
+                      child: Text(DateFormat('MMM dd, yyyy').format(invoiceDate), style: const TextStyle(fontSize: 13)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton.icon(
+                onPressed: () => Navigator.pop(dialogCtx, true),
+                style: FilledButton.styleFrom(backgroundColor: Colors.teal),
+                icon: const Icon(Icons.done_all_rounded, size: 18),
+                label: const Text('Confirm & Restock', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (confirmedByUser != true || !mounted) return;
+
+    setState(() => _isSaving = true);
+    Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      message: 'Receiving Full Delivery',
+      subtitle: 'Adding stocks to inventory & updating status...',
+    );
+
+    final resolvedInvoiceNum = invoiceController.text.trim().isNotEmpty
+        ? invoiceController.text.trim()
+        : (defaultInvoiceNum.isNotEmpty ? defaultInvoiceNum : 'PO-${DateFormat('yyyyMMdd').format(invoiceDate)}');
+
+    try {
+      await _controller.confirmOfficialInvoice(
+        context: context,
+        purchaseOrderId: widget.purchaseorderID,
+        currentOrder: widget.purchaseorder,
+        confirmedItems: confirmed,
+        missingItems: const [],
+        officialInvoiceNumber: resolvedInvoiceNum,
+        officialInvoiceAmount: confirmedTotal,
+        officialInvoiceDate: invoiceDate,
+        pickedImage: null,
+      );
+      if (mounted) {
+        Helperfunctions.showLoading(showLoading: false);
+        setState(() => _isSaving = false);
+        ShowMessage.success(
+          context,
+          '✅ All stocks received! ${confirmed.length} products ($totalDeliveredUnits units) added to inventory.',
+        );
+        Navigator.pop(context);
+      }
+    } catch (e, s) {
+      Helperfunctions.showLoading(showLoading: false);
+      ErrorLogService.logError(page: 'PurchaseorderPage', action: 'Receive Everything', error: e, stackTrace: s);
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
+      }
+    } finally {
+      Helperfunctions.showLoading(showLoading: false);
+    }
+  }
+
   Future<void> onConfirmOfficialInvoice() async {
     final officialInvoiceNum = _officialInvoiceNumberController.text.trim();
     if (officialInvoiceNum.isEmpty) {
@@ -1695,22 +2106,56 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   // Phase 2 Delivery Section: Collapsible & streamlined to avoid clutter on pending orders
   Widget _buildPhase2DeliverySection(List<InventoryItem> allInventory) {
     final hasInvoiceData = _officialInvoiceImages.isNotEmpty || _officialInvoiceNumberController.text.trim().isNotEmpty || _invoiceLines.isNotEmpty;
+    final colorScheme = Theme.of(context).colorScheme;
 
     if (_showPhase2Inline) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton.icon(
-                  onPressed: () => setState(() => _showPhase2Inline = false),
-                  icon: const Icon(Icons.expand_less, size: 18),
-                  label: const Text('Minimize Invoice Reconciler', style: TextStyle(fontSize: 12)),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: Colors.teal.shade200),
+              ),
+              color: Colors.teal.withValues(alpha: 0.07),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: Colors.teal.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.document_scanner_outlined, color: Colors.teal, size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Invoice Reconciler Active', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                          Text('Scanning or verifying delivered quantities', style: TextStyle(fontSize: 11, color: Colors.teal)),
+                        ],
+                      ),
+                    ),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: Colors.teal.shade900,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      ),
+                      onPressed: () => setState(() => _showPhase2Inline = false),
+                      icon: const Icon(Icons.expand_less, size: 18),
+                      label: const Text('Minimize', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
           _buildPhase2ConfirmationCard(allInventory),
@@ -1720,58 +2165,111 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
     final discrepanciesCount = _comparisonDiscrepancies.where((d) => d.type != PoDiscrepancyType.matched).length;
 
-    return Container(
+    return Card(
+      elevation: 0,
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.teal.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.teal.shade300, width: 1.2),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: hasInvoiceData ? Colors.teal.shade300 : colorScheme.outlineVariant.withValues(alpha: 0.7)),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [Colors.teal, Colors.green]),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.local_shipping_outlined, color: Colors.white, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      color: hasInvoiceData ? Colors.teal.withValues(alpha: 0.04) : colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  hasInvoiceData
-                      ? 'Invoice Attached: ${_officialInvoiceNumberController.text.isNotEmpty ? _officialInvoiceNumberController.text : "In Progress"}'
-                      : 'Stock Arrival & Invoice Verification',
-                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.local_shipping_outlined, color: Colors.teal, size: 20),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  hasInvoiceData
-                      ? '${_invoiceLines.length} items read • $discrepanciesCount discrepancies'
-                      : 'When delivery arrives, scan or enter supplier invoice to restock',
-                  style: TextStyle(fontSize: 11.5, color: Colors.teal.shade800),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            hasInvoiceData ? 'Invoice Ready' : 'Receive Delivery',
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: hasInvoiceData ? Colors.teal.shade100 : Colors.amber.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              hasInvoiceData ? 'In Reconciler' : 'Pending Arrival',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                                color: hasInvoiceData ? Colors.teal.shade900 : Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        hasInvoiceData
+                            ? '${_invoiceLines.length} items read • $discrepanciesCount discrepancies'
+                            : 'When stocks arrive, confirm full delivery or scan the supplier invoice.',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.tonalIcon(
-            onPressed: () => setState(() => _showPhase2Inline = true),
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              backgroundColor: Colors.teal.withValues(alpha: 0.15),
-              foregroundColor: Colors.teal.shade900,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      if (hasInvoiceData) {
+                        setState(() => _showPhase2Inline = true);
+                      } else {
+                        _showReceiveDeliveryOptions(allInventory);
+                      }
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.teal,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                    ),
+                    icon: Icon(hasInvoiceData ? Icons.edit_note_rounded : Icons.check_circle_outline_rounded, size: 18),
+                    label: Text(
+                      hasInvoiceData ? 'Review & Edit Invoice' : 'Receive Delivery',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                if (hasInvoiceData) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _showReceiveDeliveryOptions(allInventory),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                    ),
+                    icon: const Icon(Icons.more_horiz_rounded, size: 18),
+                    label: const Text('Options', style: TextStyle(fontSize: 12.5)),
+                  ),
+                ],
+              ],
             ),
-            icon: Icon(hasInvoiceData ? Icons.edit_note_rounded : Icons.document_scanner_outlined, size: 16),
-            label: Text(hasInvoiceData ? 'Edit Invoice' : 'Receive Delivery', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1783,6 +2281,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       officialInvoiceImages: _officialInvoiceImages,
       isComparingWithAi: _isComparingWithAi,
       onShowOfficialInvoiceSourcePicker: _showOfficialInvoiceSourcePicker,
+      onReceiveEverything: () => _confirmReceiveEverything(allInventory),
       onRemoveOfficialInvoiceImage: (i) {
         setState(() {
           _officialInvoiceImages.removeAt(i);
@@ -2012,7 +2511,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                               ? null
                               : hasInvoice
                               ? onConfirmOfficialInvoice
-                              : () => setState(() => _showPhase2Inline = true),
+                              : () => _showReceiveDeliveryOptions(allInventory),
                           style: FilledButton.styleFrom(
                             backgroundColor: Colors.teal,
                             minimumSize: const Size(0, 48),
@@ -2311,36 +2810,93 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                     ),
                   )
                 else ...[
-                  // Section Header for Document Lines
+                  // Section Header for Document Lines (Collapsible)
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.format_list_numbered_rounded, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Items (${_documentLines.length})',
-                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                      child: InkWell(
+                        onTap: () => setState(() => _showItemsList = !_showItemsList),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                           ),
-                        ],
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.primary.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(Icons.format_list_numbered_rounded, size: 16, color: colorScheme.primary),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          'Order Items (${_documentLines.length})',
+                                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: colorScheme.primary.withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            '$_currentListUnits units',
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      _currencyFormat.format(_currentListTotalCost),
+                                      style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                _showItemsList ? 'Hide' : 'Show',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.primary),
+                              ),
+                              const SizedBox(width: 2),
+                              Icon(
+                                _showItemsList ? Icons.expand_less : Icons.expand_more,
+                                size: 20,
+                                color: colorScheme.primary,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
 
-                  // Extracted Document Lines List (Numbered in exact document sequence)
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        return _buildDocumentLineCard(index, _documentLines[index], colorScheme, allInventory);
-                      }, childCount: _documentLines.length),
+                  // Extracted Document Lines List (Numbered in exact document sequence) - Collapsible
+                  if (_showItemsList)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          return _buildDocumentLineCard(index, _documentLines[index], colorScheme, allInventory);
+                        }, childCount: _documentLines.length),
+                      ),
+                    )
+                  else
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: 8),
                     ),
-                  ),
                 ],
 
                 // Overpayment deduction selector (if unsettled overpayments exist)

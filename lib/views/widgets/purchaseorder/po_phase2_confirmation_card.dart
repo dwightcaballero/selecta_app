@@ -29,6 +29,7 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
   final void Function(PoExtractedLine line) onQuantityDecrement;
   final void Function(PoExtractedLine line) onQuantityIncrement;
   final void Function(List<InventoryItem> allInventory, {required bool isInvoice}) onAddMissingLine;
+  final VoidCallback? onReceiveEverything;
   final List<InventoryItem> allInventory;
 
   const PoPhase2ConfirmationCard({
@@ -54,6 +55,7 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
     required this.onQuantityDecrement,
     required this.onQuantityIncrement,
     required this.onAddMissingLine,
+    this.onReceiveEverything,
     required this.allInventory,
   });
 
@@ -239,6 +241,23 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                 ],
               ],
             ),
+
+            if (officialInvoiceImages.isEmpty && onReceiveEverything != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: isComparingWithAi ? null : onReceiveEverything,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.green.shade800,
+                    side: BorderSide(color: Colors.green.shade400),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.done_all_rounded, size: 18),
+                  label: const Text('Receive Everything (No Scanning)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                ),
+              ),
+            ],
 
             if (isComparingWithAi) ...[
               const SizedBox(height: 12),

@@ -145,18 +145,15 @@ class _ManualPoProductPickerDialogState extends State<ManualPoProductPickerDialo
   void _onApply() {
     final Map<String, InventoryItem> invMap = {for (final i in widget.allInventory) i.id: i};
 
-    // Partition and sort exactly matching Book Order Page
     final selectaCatalog = widget.allInventory
         .where((i) => i.source == InventoryProductSource.selecta)
         .toList();
 
-    final bestSellerProducts = selectaCatalog.where((i) => ProductTag.isBestSeller(i.tag)).toList()..sort(_compareProducts);
-    final nonBestSellerSelecta = selectaCatalog.where((i) => !ProductTag.isBestSeller(i.tag)).toList();
-    final caseProducts = nonBestSellerSelecta.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
-    final pieceProducts = nonBestSellerSelecta.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
+    // Grouping: Sort only by case (by SRP) then by piece (by SRP)
+    final caseProducts = selectaCatalog.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
+    final pieceProducts = selectaCatalog.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
 
     final orderedCatalog = [
-      ...bestSellerProducts,
       ...caseProducts,
       ...pieceProducts,
     ];
@@ -224,11 +221,10 @@ class _ManualPoProductPickerDialogState extends State<ManualPoProductPickerDialo
         })
         .toList();
 
-    // Grouping identical to BookOrderPage
+    // Grouping: Sort only by case (by SRP) then by piece (by SRP)
+    final caseProducts = selectaCatalog.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
+    final pieceProducts = selectaCatalog.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
     final bestSellerProducts = selectaCatalog.where((i) => ProductTag.isBestSeller(i.tag)).toList()..sort(_compareProducts);
-    final nonBestSeller = selectaCatalog.where((i) => !ProductTag.isBestSeller(i.tag)).toList();
-    final caseProducts = nonBestSeller.where((i) => i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
-    final pieceProducts = nonBestSeller.where((i) => !i.category.trim().toLowerCase().contains('case')).toList()..sort(_compareProducts);
 
     // Recommended Pre-Orders: Products where pre-orders exceed warehouse stock (shortage)
     // or leave remaining stock at or below lowStockThreshold
@@ -362,11 +358,13 @@ class _ManualPoProductPickerDialogState extends State<ManualPoProductPickerDialo
                   _buildFilterChip('recommended', 'Recommended (${recommendedPreOrders.length})', Icons.auto_awesome_rounded, const Color(0xFF7C3AED)),
                 ],
                 const SizedBox(width: 8),
-                _buildFilterChip('best_sellers', 'Best Sellers (${bestSellerProducts.length})', Icons.star_rounded, Colors.amber.shade700),
-                const SizedBox(width: 8),
                 _buildFilterChip('by_case', 'By Case (${caseProducts.length})', Icons.all_inbox_rounded, Colors.orange.shade800),
                 const SizedBox(width: 8),
                 _buildFilterChip('by_piece', 'By Piece (${pieceProducts.length})', Icons.icecream_outlined, colorScheme.primary),
+                if (bestSellerProducts.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  _buildFilterChip('best_sellers', 'Best Sellers (${bestSellerProducts.length})', Icons.star_rounded, Colors.amber.shade700),
+                ],
               ],
             ),
           ),
@@ -384,25 +382,25 @@ class _ManualPoProductPickerDialogState extends State<ManualPoProductPickerDialo
                     _buildSliverProductList(recommendedPreOrders),
                   ],
 
-                // 2. Best Sellers
-                if (_selectedCategory == 'all' || _selectedCategory == 'best_sellers')
-                  if (bestSellerProducts.isNotEmpty) ...[
-                    _buildSliverHeader('Best Sellers', bestSellerProducts.length, Icons.star_rounded, const Color(0xFFD97706)),
-                    _buildSliverProductList(bestSellerProducts),
-                  ],
-
-                // 3. By Case
+                // 2. By Case (sorted by SRP)
                 if (_selectedCategory == 'all' || _selectedCategory == 'by_case')
                   if (caseProducts.isNotEmpty) ...[
                     _buildSliverHeader('By Case', caseProducts.length, Icons.all_inbox_rounded, const Color(0xFFEA580C)),
                     _buildSliverProductList(caseProducts),
                   ],
 
-                // 4. By Piece
+                // 3. By Piece (sorted by SRP)
                 if (_selectedCategory == 'all' || _selectedCategory == 'by_piece')
                   if (pieceProducts.isNotEmpty) ...[
                     _buildSliverHeader('By Piece', pieceProducts.length, Icons.icecream_outlined, colorScheme.primary),
                     _buildSliverProductList(pieceProducts),
+                  ],
+
+                // 4. Best Sellers (only if explicitly filtered)
+                if (_selectedCategory == 'best_sellers')
+                  if (bestSellerProducts.isNotEmpty) ...[
+                    _buildSliverHeader('Best Sellers', bestSellerProducts.length, Icons.star_rounded, const Color(0xFFD97706)),
+                    _buildSliverProductList(bestSellerProducts),
                   ],
 
                 if (selectaCatalog.isEmpty)
