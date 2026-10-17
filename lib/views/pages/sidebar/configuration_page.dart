@@ -39,13 +39,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   late final TextEditingController _expansionTargetController;
   late final TextEditingController _creditSmsTemplateController;
 
-  // Expansion tile controllers and state for collapsible cards
-  final ExpansionTileController _merchBlitzTileController = ExpansionTileController();
-  final ExpansionTileController _kpiTargetsTileController = ExpansionTileController();
-  final ExpansionTileController _creditSmsTileController = ExpansionTileController();
-  final ExpansionTileController _warehouseTileController = ExpansionTileController();
-  final ExpansionTileController _printerTileController = ExpansionTileController();
-
+  // State for collapsible cards
   bool _isMerchBlitzExpanded = false;
   bool _isKpiTargetsExpanded = false;
   bool _isCreditSmsExpanded = false;
@@ -68,22 +62,6 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       _isWarehouseExpanded = shouldExpand;
       _isPrinterExpanded = shouldExpand;
     });
-
-    try {
-      if (shouldExpand) {
-        _merchBlitzTileController.expand();
-        _kpiTargetsTileController.expand();
-        _creditSmsTileController.expand();
-        _warehouseTileController.expand();
-        _printerTileController.expand();
-      } else {
-        _merchBlitzTileController.collapse();
-        _kpiTargetsTileController.collapse();
-        _creditSmsTileController.collapse();
-        _warehouseTileController.collapse();
-        _printerTileController.collapse();
-      }
-    } catch (_) {}
   }
 
   @override
@@ -285,9 +263,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   /// Generic reusable container for collapsible configuration sections
   Widget _buildCollapsibleSectionCard({
-    required ExpansionTileController controller,
     required bool isExpanded,
-    required ValueChanged<bool> onExpansionChanged,
+    required VoidCallback onToggle,
     required Color iconColor,
     required IconData icon,
     required String title,
@@ -306,71 +283,100 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          controller: controller,
-          initiallyExpanded: isExpanded,
-          onExpansionChanged: onExpansionChanged,
-          maintainState: true,
-          shape: const Border(),
-          collapsedShape: const Border(),
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
-          expandedAlignment: Alignment.topLeft,
-          leading: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 22, color: iconColor),
-          ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: iconColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, size: 22, color: iconColor),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                title,
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                            if (badgeText != null) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: badgeColor?.withValues(alpha: 0.12) ?? colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: badgeColor?.withValues(alpha: 0.3) ?? colorScheme.outlineVariant.withValues(alpha: 0.5),
+                                  ),
+                                ),
+                                child: Text(
+                                  badgeText,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: badgeColor ?? colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  AnimatedRotation(
+                    turns: isExpanded ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 250),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: colorScheme.onSurfaceVariant,
+                      size: 24,
+                    ),
+                  ),
+                ],
               ),
-              if (badgeText != null) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: badgeColor?.withValues(alpha: 0.12) ?? colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: badgeColor?.withValues(alpha: 0.3) ?? colorScheme.outlineVariant.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  child: Text(
-                    badgeText,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: badgeColor ?? colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 2.0),
-            child: Text(
-              subtitle,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ),
-          children: [
-            const Divider(height: 1),
-            const SizedBox(height: 16),
-            ...children,
-          ],
-        ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox(width: double.infinity, height: 0),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Divider(height: 1),
+                  const SizedBox(height: 16),
+                  ...children,
+                ],
+              ),
+            ),
+            crossFadeState: isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 250),
+            sizeCurve: Curves.easeInOut,
+          ),
+        ],
       ),
     );
   }
@@ -380,9 +386,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         '${DateFormat('MMM d').format(_startDate)} – ${DateFormat('MMM d').format(_endDate)}';
 
     return _buildCollapsibleSectionCard(
-      controller: _merchBlitzTileController,
       isExpanded: _isMerchBlitzExpanded,
-      onExpansionChanged: (val) => setState(() => _isMerchBlitzExpanded = val),
+      onToggle: () => setState(() => _isMerchBlitzExpanded = !_isMerchBlitzExpanded),
       icon: Icons.campaign_outlined,
       iconColor: const Color(0xFF0284C7),
       title: 'Merch Blitz Schedule',
@@ -412,9 +417,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     final salesTargetStr = _salesTargetController.text.isNotEmpty ? '₱${_salesTargetController.text}' : 'Target';
 
     return _buildCollapsibleSectionCard(
-      controller: _kpiTargetsTileController,
       isExpanded: _isKpiTargetsExpanded,
-      onExpansionChanged: (val) => setState(() => _isKpiTargetsExpanded = val),
+      onToggle: () => setState(() => _isKpiTargetsExpanded = !_isKpiTargetsExpanded),
       icon: Icons.track_changes_rounded,
       iconColor: const Color(0xFF6366F1),
       title: 'KPI Monthly Targets',
@@ -727,9 +731,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         .replaceAll('{daysOverdue}', '7');
 
     return _buildCollapsibleSectionCard(
-      controller: _creditSmsTileController,
       isExpanded: _isCreditSmsExpanded,
-      onExpansionChanged: (val) => setState(() => _isCreditSmsExpanded = val),
+      onToggle: () => setState(() => _isCreditSmsExpanded = !_isCreditSmsExpanded),
       icon: Icons.sms_rounded,
       iconColor: const Color(0xFFF97316),
       title: 'Credit Reminder SMS',
@@ -848,9 +851,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   Widget _buildWarehouseBarcodeCard(ColorScheme colorScheme) {
     return _buildCollapsibleSectionCard(
-      controller: _warehouseTileController,
       isExpanded: _isWarehouseExpanded,
-      onExpansionChanged: (val) => setState(() => _isWarehouseExpanded = val),
+      onToggle: () => setState(() => _isWarehouseExpanded = !_isWarehouseExpanded),
       icon: Icons.qr_code_scanner_rounded,
       iconColor: const Color(0xFF0284C7),
       title: 'Warehouse & Picking',
@@ -882,9 +884,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     final badgeText = '${_thermalPaperSize.code} • $statusText';
 
     return _buildCollapsibleSectionCard(
-      controller: _printerTileController,
       isExpanded: _isPrinterExpanded,
-      onExpansionChanged: (val) => setState(() => _isPrinterExpanded = val),
+      onToggle: () => setState(() => _isPrinterExpanded = !_isPrinterExpanded),
       icon: Icons.print_outlined,
       iconColor: const Color(0xFF6366F1),
       title: 'Thermal Printer Setup',
