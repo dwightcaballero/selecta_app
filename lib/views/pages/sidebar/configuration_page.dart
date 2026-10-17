@@ -4,8 +4,6 @@ import 'package:selecta_ops/models/configuration.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
-import 'package:selecta_ops/models/app_version_info.dart';
-import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 
@@ -36,19 +34,65 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   bool _isPrinterConnected = false;
   bool _isTestingPrint = false;
 
-  String _localVersion = '1.0.0';
-  int _localBuildNumber = 0;
-  AppVersionInfo? _remoteVersionInfo;
-
   late final TextEditingController _salesTargetController;
   late final TextEditingController _throughputTargetController;
   late final TextEditingController _expansionTargetController;
   late final TextEditingController _creditSmsTemplateController;
 
+  // Expansion tile controllers and state for collapsible cards
+  final ExpansionTileController _merchBlitzTileController = ExpansionTileController();
+  final ExpansionTileController _kpiTargetsTileController = ExpansionTileController();
+  final ExpansionTileController _creditSmsTileController = ExpansionTileController();
+  final ExpansionTileController _warehouseTileController = ExpansionTileController();
+  final ExpansionTileController _printerTileController = ExpansionTileController();
+
+  bool _isMerchBlitzExpanded = false;
+  bool _isKpiTargetsExpanded = false;
+  bool _isCreditSmsExpanded = false;
+  bool _isWarehouseExpanded = false;
+  bool _isPrinterExpanded = false;
+
+  bool get _allExpanded =>
+      _isMerchBlitzExpanded &&
+      _isKpiTargetsExpanded &&
+      _isCreditSmsExpanded &&
+      _isWarehouseExpanded &&
+      _isPrinterExpanded;
+
+  void _toggleAllSections() {
+    final shouldExpand = !_allExpanded;
+    setState(() {
+      _isMerchBlitzExpanded = shouldExpand;
+      _isKpiTargetsExpanded = shouldExpand;
+      _isCreditSmsExpanded = shouldExpand;
+      _isWarehouseExpanded = shouldExpand;
+      _isPrinterExpanded = shouldExpand;
+    });
+
+    try {
+      if (shouldExpand) {
+        _merchBlitzTileController.expand();
+        _kpiTargetsTileController.expand();
+        _creditSmsTileController.expand();
+        _warehouseTileController.expand();
+        _printerTileController.expand();
+      } else {
+        _merchBlitzTileController.collapse();
+        _kpiTargetsTileController.collapse();
+        _creditSmsTileController.collapse();
+        _warehouseTileController.collapse();
+        _printerTileController.collapse();
+      }
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
     _salesTargetController = TextEditingController(text: '1000000');
+    _salesTargetController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _throughputTargetController = TextEditingController(text: '8000');
     _expansionTargetController = TextEditingController(text: '10');
     _creditSmsTemplateController = TextEditingController(text: Configuration.defaultCreditReminderSmsTemplate);
@@ -90,17 +134,6 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           _printerName = pName;
           _isPrinterConnected = isConnected;
           _isLoading = false;
-        });
-      }
-
-      // Load app version info in background
-      final pkg = await AppUpdateService.getCurrentPackageInfo();
-      final latest = await AppUpdateService().getLatestVersionInfo();
-      if (mounted) {
-        setState(() {
-          _localVersion = pkg.version;
-          _localBuildNumber = int.tryParse(pkg.buildNumber) ?? 0;
-          _remoteVersionInfo = latest;
         });
       }
     } catch (e) {
@@ -250,142 +283,242 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     );
   }
 
-  Widget _buildKpiTargetsCard() {
+  /// Generic reusable container for collapsible configuration sections
+  Widget _buildCollapsibleSectionCard({
+    required ExpansionTileController controller,
+    required bool isExpanded,
+    required ValueChanged<bool> onExpansionChanged,
+    required Color iconColor,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    String? badgeText,
+    Color? badgeColor,
+    required List<Widget> children,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Card(
       elevation: 0,
       color: colorScheme.surface,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(18.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: const Color(0xFF6366F1).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.track_changes_rounded, size: 22, color: Color(0xFF6366F1)),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          controller: controller,
+          initiallyExpanded: isExpanded,
+          onExpansionChanged: onExpansionChanged,
+          maintainState: true,
+          shape: const Border(),
+          collapsedShape: const Border(),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+          expandedAlignment: Alignment.topLeft,
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 22, color: iconColor),
+          ),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('KPI Monthly Targets', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 2),
-                      Text('Set monthly operational goals and performance benchmarks', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
+              ),
+              if (badgeText != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: badgeColor?.withValues(alpha: 0.12) ?? colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: badgeColor?.withValues(alpha: 0.3) ?? colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: badgeColor ?? colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
+            ],
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 2.0),
+            child: Text(
+              subtitle,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
-            const Divider(height: 28),
-
-            // Subsection: Self-Input Monthly Targets
-            Text(
-              'CUSTOM MONTHLY TARGETS',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: colorScheme.primary),
-            ),
-            const SizedBox(height: 12),
-
-            // Sales Target
-            TextFormField(
-              controller: _salesTargetController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Sales Target *',
-                hintText: '1,000,000',
-                prefixText: '₱ ',
-                prefixIcon: const Icon(Icons.payments_outlined, size: 20),
-                helperText: 'Monthly total invoiced sales target (Default: ₱1,000,000)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Throughput Target
-            TextFormField(
-              controller: _throughputTargetController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Throughput Target *',
-                hintText: '8,000',
-                prefixText: '₱ ',
-                prefixIcon: const Icon(Icons.speed_outlined, size: 20),
-                helperText: 'Target average sales per buying store (Default: ₱8,000)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Expansion Target
-            TextFormField(
-              controller: _expansionTargetController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Expansion Target *',
-                hintText: '10',
-                prefixIcon: const Icon(Icons.store_mall_directory_outlined, size: 20),
-                suffixText: 'stores',
-                helperText: 'Target number of newly opened stores this month (Default: 10)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              ),
-            ),
-
-            const SizedBox(height: 24),
+          ),
+          children: [
             const Divider(height: 1),
             const SizedBox(height: 16),
-
-            // Subsection: Fixed Targets
-            Row(
-              children: [
-                Icon(Icons.lock_outline, size: 14, color: colorScheme.onSurfaceVariant),
-                const SizedBox(width: 6),
-                Text(
-                  'FIXED BENCHMARK TARGETS',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            _buildFixedTargetTile(
-              title: 'Buying Target',
-              value: '80%',
-              scope: '80% of all stores',
-              icon: Icons.shopping_cart_outlined,
-              accentColor: const Color(0xFF10B981),
-            ),
-            const SizedBox(height: 10),
-
-            _buildFixedTargetTile(
-              title: 'Placement Target',
-              value: '80%',
-              scope: '80% of all stores',
-              icon: Icons.grid_view_outlined,
-              accentColor: const Color(0xFFF59E0B),
-            ),
-            const SizedBox(height: 10),
-
-            _buildFixedTargetTile(
-              title: 'Scanning Target',
-              value: '100%',
-              scope: '100% of all cabinets',
-              icon: Icons.qr_code_scanner_outlined,
-              accentColor: const Color(0xFF3B82F6),
-            ),
+            ...children,
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMerchBlitzCard() {
+    final dateRangeStr =
+        '${DateFormat('MMM d').format(_startDate)} – ${DateFormat('MMM d').format(_endDate)}';
+
+    return _buildCollapsibleSectionCard(
+      controller: _merchBlitzTileController,
+      isExpanded: _isMerchBlitzExpanded,
+      onExpansionChanged: (val) => setState(() => _isMerchBlitzExpanded = val),
+      icon: Icons.campaign_outlined,
+      iconColor: const Color(0xFF0284C7),
+      title: 'Merch Blitz Schedule',
+      subtitle: 'Configure campaign duration for store merchandising',
+      badgeText: dateRangeStr,
+      badgeColor: const Color(0xFF0284C7),
+      children: [
+        _buildDateField(
+          label: 'Merch Blitz Start Date *',
+          date: _startDate,
+          onTap: _pickStartDate,
+          icon: Icons.calendar_today_rounded,
+        ),
+        const SizedBox(height: 14),
+        _buildDateField(
+          label: 'Merch Blitz End Date *',
+          date: _endDate,
+          onTap: _pickEndDate,
+          icon: Icons.event_available_rounded,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKpiTargetsCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final salesTargetStr = _salesTargetController.text.isNotEmpty ? '₱${_salesTargetController.text}' : 'Target';
+
+    return _buildCollapsibleSectionCard(
+      controller: _kpiTargetsTileController,
+      isExpanded: _isKpiTargetsExpanded,
+      onExpansionChanged: (val) => setState(() => _isKpiTargetsExpanded = val),
+      icon: Icons.track_changes_rounded,
+      iconColor: const Color(0xFF6366F1),
+      title: 'KPI Monthly Targets',
+      subtitle: 'Set monthly operational goals and performance benchmarks',
+      badgeText: salesTargetStr,
+      badgeColor: const Color(0xFF6366F1),
+      children: [
+        // Subsection: Self-Input Monthly Targets
+        Text(
+          'CUSTOM MONTHLY TARGETS',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: colorScheme.primary),
+        ),
+        const SizedBox(height: 12),
+
+        // Sales Target
+        TextFormField(
+          controller: _salesTargetController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Sales Target *',
+            hintText: '1,000,000',
+            prefixText: '₱ ',
+            prefixIcon: const Icon(Icons.payments_outlined, size: 20),
+            helperText: 'Monthly total invoiced sales target (Default: ₱1,000,000)',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Throughput Target
+        TextFormField(
+          controller: _throughputTargetController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Throughput Target *',
+            hintText: '8,000',
+            prefixText: '₱ ',
+            prefixIcon: const Icon(Icons.speed_outlined, size: 20),
+            helperText: 'Target average sales per buying store (Default: ₱8,000)',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Expansion Target
+        TextFormField(
+          controller: _expansionTargetController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: 'Expansion Target *',
+            hintText: '10',
+            prefixIcon: const Icon(Icons.store_mall_directory_outlined, size: 20),
+            suffixText: 'stores',
+            helperText: 'Target number of newly opened stores this month (Default: 10)',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+        const Divider(height: 1),
+        const SizedBox(height: 16),
+
+        // Subsection: Fixed Targets
+        Row(
+          children: [
+            Icon(Icons.lock_outline, size: 14, color: colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              'FIXED BENCHMARK TARGETS',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        _buildFixedTargetTile(
+          title: 'Buying Target',
+          value: '80%',
+          scope: '80% of all stores',
+          icon: Icons.shopping_cart_outlined,
+          accentColor: const Color(0xFF10B981),
+        ),
+        const SizedBox(height: 10),
+
+        _buildFixedTargetTile(
+          title: 'Placement Target',
+          value: '80%',
+          scope: '80% of all stores',
+          icon: Icons.grid_view_outlined,
+          accentColor: const Color(0xFFF59E0B),
+        ),
+        const SizedBox(height: 10),
+
+        _buildFixedTargetTile(
+          title: 'Scanning Target',
+          value: '100%',
+          scope: '100% of all cabinets',
+          icon: Icons.qr_code_scanner_outlined,
+          accentColor: const Color(0xFF3B82F6),
+        ),
+      ],
     );
   }
 
@@ -593,390 +726,301 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         .replaceAll('{creditDate}', sampleDateStr)
         .replaceAll('{daysOverdue}', '7');
 
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(18.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return _buildCollapsibleSectionCard(
+      controller: _creditSmsTileController,
+      isExpanded: _isCreditSmsExpanded,
+      onExpansionChanged: (val) => setState(() => _isCreditSmsExpanded = val),
+      icon: Icons.sms_rounded,
+      iconColor: const Color(0xFFF97316),
+      title: 'Credit Reminder SMS',
+      subtitle: 'Preconfigured text message for following up on overdue credit balances',
+      badgeText: '$charCount chars',
+      badgeColor: const Color(0xFFF97316),
+      children: [
+        Text(
+          'Dynamic Placeholders (Tap to insert):',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF97316).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.sms_rounded, size: 22, color: Color(0xFFF97316)),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Credit Reminder SMS Template', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 2),
-                      Text(
-                        'Preconfigured text message for following up on overdue credit balances',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 28),
+            _buildPlaceholderChip('{storeName}', 'Store Name', colorScheme),
+            _buildPlaceholderChip('{creditAmount}', 'Credit Amount', colorScheme),
+            _buildPlaceholderChip('{creditDate}', 'Credit Date', colorScheme),
+            _buildPlaceholderChip('{daysOverdue}', 'Days Overdue', colorScheme),
+          ],
+        ),
+        const SizedBox(height: 14),
 
+        TextField(
+          controller: _creditSmsTemplateController,
+          maxLines: 4,
+          minLines: 3,
+          style: const TextStyle(fontSize: 13.5, height: 1.4),
+          decoration: InputDecoration(
+            alignLabelWithHint: true,
+            labelText: 'Message Template *',
+            hintText: 'Enter credit reminder SMS message template...',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
             Text(
-              'Dynamic Placeholders (Tap to insert):',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+              '$charCount chars • ~$segmentCount SMS segment${segmentCount > 1 ? 's' : ''}',
+              style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                _buildPlaceholderChip('{storeName}', 'Store Name', colorScheme),
-                _buildPlaceholderChip('{creditAmount}', 'Credit Amount', colorScheme),
-                _buildPlaceholderChip('{creditDate}', 'Credit Date', colorScheme),
-                _buildPlaceholderChip('{daysOverdue}', 'Days Overdue', colorScheme),
-              ],
-            ),
-            const SizedBox(height: 14),
-
-            TextField(
-              controller: _creditSmsTemplateController,
-              maxLines: 4,
-              minLines: 3,
-              style: const TextStyle(fontSize: 13.5, height: 1.4),
-              decoration: InputDecoration(
-                alignLabelWithHint: true,
-                labelText: 'Message Template *',
-                hintText: 'Enter credit reminder SMS message template...',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '$charCount chars • ~$segmentCount SMS segment${segmentCount > 1 ? 's' : ''}',
-                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _creditSmsTemplateController.text = Configuration.defaultCreditReminderSmsTemplate;
-                    });
-                  },
-                  icon: const Icon(Icons.restart_alt_rounded, size: 16),
-                  label: const Text('Reset to Default', style: TextStyle(fontSize: 12)),
-                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Live Preview Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.visibility_outlined, size: 14, color: colorScheme.primary),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Live Customer SMS Preview',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surface,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(12),
-                        topRight: Radius.circular(12),
-                        bottomRight: Radius.circular(12),
-                        bottomLeft: Radius.circular(2),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      previewText,
-                      style: const TextStyle(fontSize: 12.5, height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _creditSmsTemplateController.text = Configuration.defaultCreditReminderSmsTemplate;
+                });
+              },
+              icon: const Icon(Icons.restart_alt_rounded, size: 16),
+              label: const Text('Reset to Default', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 12),
+
+        // Live Preview Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.visibility_outlined, size: 14, color: colorScheme.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Live Customer SMS Preview',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
+                    bottomRight: Radius.circular(12),
+                    bottomLeft: Radius.circular(2),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  previewText,
+                  style: const TextStyle(fontSize: 12.5, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildWarehouseBarcodeCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(18.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.qr_code_scanner_rounded, size: 22, color: Color(0xFF0284C7)),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Warehouse & Picking', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 2),
-                      Text(
-                        'Barcode verification settings for delivery picklist preparation',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 28),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Picklist Barcode Verification', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              subtitle: const Text(
-                'Require scanning outer carton / tub barcodes or checking items to prevent picking incorrect products.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              value: _enablePicklistBarcodeScanner,
-              activeTrackColor: const Color(0xFF0284C7),
-              onChanged: (val) {
-                setState(() {
-                  _enablePicklistBarcodeScanner = val;
-                });
-              },
-            ),
-          ],
+    return _buildCollapsibleSectionCard(
+      controller: _warehouseTileController,
+      isExpanded: _isWarehouseExpanded,
+      onExpansionChanged: (val) => setState(() => _isWarehouseExpanded = val),
+      icon: Icons.qr_code_scanner_rounded,
+      iconColor: const Color(0xFF0284C7),
+      title: 'Warehouse & Picking',
+      subtitle: 'Barcode verification settings for delivery picklist preparation',
+      badgeText: _enablePicklistBarcodeScanner ? 'Active' : 'Disabled',
+      badgeColor: _enablePicklistBarcodeScanner ? const Color(0xFF10B981) : Colors.grey,
+      children: [
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Picklist Barcode Verification', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          subtitle: const Text(
+            'Require scanning outer carton / tub barcodes or checking items to prevent picking incorrect products.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          value: _enablePicklistBarcodeScanner,
+          activeTrackColor: const Color(0xFF0284C7),
+          onChanged: (val) {
+            setState(() {
+              _enablePicklistBarcodeScanner = val;
+            });
+          },
         ),
-      ),
+      ],
     );
   }
 
   Widget _buildThermalPrinterCard(ColorScheme colorScheme) {
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(18.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.print_outlined, size: 22, color: Color(0xFF6366F1)),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Thermal Printer Setup', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 2),
-                      Text(
-                        'Paper width (58mm / 80mm) & Bluetooth connection for delivery receipts',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 28),
+    final statusText = _isPrinterConnected ? 'Connected' : 'Offline';
+    final badgeText = '${_thermalPaperSize.code} • $statusText';
 
-            // Paper Size Selection
-            const Text(
-              'Paper Roll Width *',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Choose your thermal printer paper roll size. Text formatting and line wrapping automatically adjust.',
-              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: SegmentedButton<ThermalPaperSize>(
-                segments: const [
-                  ButtonSegment<ThermalPaperSize>(
-                    value: ThermalPaperSize.mm58,
-                    label: Text('58mm (32 cols)'),
-                    icon: Icon(Icons.receipt_outlined, size: 18),
-                  ),
-                  ButtonSegment<ThermalPaperSize>(
-                    value: ThermalPaperSize.mm80,
-                    label: Text('80mm (48 cols)'),
-                    icon: Icon(Icons.receipt_long_outlined, size: 18),
-                  ),
-                ],
-                selected: {_thermalPaperSize},
-                onSelectionChanged: (val) => _setThermalPaperSize(val.first),
-                style: SegmentedButton.styleFrom(
-                  selectedBackgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.15),
-                  selectedForegroundColor: const Color(0xFF6366F1),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Bluetooth Connection Status
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: _isPrinterConnected
-                              ? Colors.green.withValues(alpha: 0.15)
-                              : Colors.grey.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          _isPrinterConnected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_rounded,
-                          size: 20,
-                          color: _isPrinterConnected ? Colors.green.shade700 : Colors.grey.shade700,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _printerName != null && _printerName!.isNotEmpty
-                                  ? _printerName!
-                                  : 'No Printer Selected',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _isPrinterConnected ? 'Connected via Bluetooth' : 'Not Connected',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                color: _isPrinterConnected ? Colors.green.shade700 : Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (_isPrinterConnected)
-                        IconButton(
-                          icon: const Icon(Icons.link_off_rounded, color: Colors.red),
-                          tooltip: 'Disconnect Printer',
-                          onPressed: _disconnectPrinter,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _openPrinterDevicePicker,
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                          ),
-                          icon: const Icon(Icons.bluetooth_searching_rounded, size: 18),
-                          label: Text(_isPrinterConnected ? 'Change Printer' : 'Select Printer'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton.tonalIcon(
-                          onPressed: _isTestingPrint ? null : _testPrintReceipt,
-                          style: FilledButton.styleFrom(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                          ),
-                          icon: _isTestingPrint
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.print_rounded, size: 18),
-                          label: Text(_isTestingPrint ? 'Testing...' : 'Test Print'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return _buildCollapsibleSectionCard(
+      controller: _printerTileController,
+      isExpanded: _isPrinterExpanded,
+      onExpansionChanged: (val) => setState(() => _isPrinterExpanded = val),
+      icon: Icons.print_outlined,
+      iconColor: const Color(0xFF6366F1),
+      title: 'Thermal Printer Setup',
+      subtitle: 'Paper width (58mm / 80mm) & Bluetooth connection for delivery receipts',
+      badgeText: badgeText,
+      badgeColor: _isPrinterConnected ? const Color(0xFF10B981) : const Color(0xFF6366F1),
+      children: [
+        // Paper Size Selection
+        const Text(
+          'Paper Roll Width *',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
         ),
-      ),
+        const SizedBox(height: 6),
+        Text(
+          'Choose your thermal printer paper roll size. Text formatting and line wrapping automatically adjust.',
+          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<ThermalPaperSize>(
+            segments: const [
+              ButtonSegment<ThermalPaperSize>(
+                value: ThermalPaperSize.mm58,
+                label: Text('58mm (32 cols)'),
+                icon: Icon(Icons.receipt_outlined, size: 18),
+              ),
+              ButtonSegment<ThermalPaperSize>(
+                value: ThermalPaperSize.mm80,
+                label: Text('80mm (48 cols)'),
+                icon: Icon(Icons.receipt_long_outlined, size: 18),
+              ),
+            ],
+            selected: {_thermalPaperSize},
+            onSelectionChanged: (val) => _setThermalPaperSize(val.first),
+            style: SegmentedButton.styleFrom(
+              selectedBackgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.15),
+              selectedForegroundColor: const Color(0xFF6366F1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Bluetooth Connection Status
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _isPrinterConnected
+                          ? Colors.green.withValues(alpha: 0.15)
+                          : Colors.grey.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isPrinterConnected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_rounded,
+                      size: 20,
+                      color: _isPrinterConnected ? Colors.green.shade700 : Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _printerName != null && _printerName!.isNotEmpty
+                              ? _printerName!
+                              : 'No Printer Selected',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _isPrinterConnected ? 'Connected via Bluetooth' : 'Not Connected',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: _isPrinterConnected ? Colors.green.shade700 : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_isPrinterConnected)
+                    IconButton(
+                      icon: const Icon(Icons.link_off_rounded, color: Colors.red),
+                      tooltip: 'Disconnect Printer',
+                      onPressed: _disconnectPrinter,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _openPrinterDevicePicker,
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      icon: const Icon(Icons.bluetooth_searching_rounded, size: 18),
+                      label: Text(_isPrinterConnected ? 'Change Printer' : 'Select Printer'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _isTestingPrint ? null : _testPrintReceipt,
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      icon: _isTestingPrint
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.print_rounded, size: 18),
+                      label: Text(_isTestingPrint ? 'Testing...' : 'Test Print'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -991,360 +1035,92 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         Navigator.pop(context);
       },
       child: Scaffold(
-        appBar: const CustomAppbar(title: 'Configurations', subtitle: 'App & Campaign Settings'),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Merch Blitz Settings Card
-                  Card(
-                    elevation: 0,
-                    color: colorScheme.surface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(18.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0284C7).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.campaign_outlined, size: 22, color: Color(0xFF0284C7)),
-                              ),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Merch Blitz Schedule', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      'Configure the campaign duration for store merchandising',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 28),
-
-                          // Start Date Picker
-                          _buildDateField(
-                            label: 'Merch Blitz Start Date *',
-                            date: _startDate,
-                            onTap: _pickStartDate,
-                            icon: Icons.calendar_today_rounded,
-                          ),
-
-                          const SizedBox(height: 14),
-
-                          // End Date Picker
-                          _buildDateField(label: 'Merch Blitz End Date *', date: _endDate, onTap: _pickEndDate, icon: Icons.event_available_rounded),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // KPI Monthly Targets Card
-                  _buildKpiTargetsCard(),
-
-                  const SizedBox(height: 16),
-
-                  // Credit Overdue SMS Reminder Card
-                  _buildCreditReminderSmsCard(colorScheme),
-
-                  const SizedBox(height: 16),
-
-                  // Warehouse Picklist Verification Card
-                  _buildWarehouseBarcodeCard(colorScheme),
-
-                  const SizedBox(height: 16),
-
-                  // Thermal Printer Configuration Card (58mm / 80mm & Bluetooth)
-                  _buildThermalPrinterCard(colorScheme),
-
-                  const SizedBox(height: 16),
-
-                  // App Version & Self-Update Card
-                  _buildAppVersionCard(colorScheme),
-
-                  const SizedBox(height: 28),
-
-                  // Save Configurations Button
-                  FilledButton.icon(
-                    onPressed: _isSaving ? null : _saveConfiguration,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    icon: _isSaving
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.save_rounded, size: 20),
-                    label: Text(_isSaving ? 'Saving...' : 'Save Configurations', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  ),
-                ],
-              ),
-            ),
-      ),
-    );
-  }
-
-  Widget _buildAppVersionCard(ColorScheme colorScheme) {
-    final hasRemote = _remoteVersionInfo != null && _remoteVersionInfo!.latestVersionCode > 0;
-    final isNewerAvailable = hasRemote && _remoteVersionInfo!.isUpdateAvailable(_localBuildNumber, currentVersionName: _localVersion);
-
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(18.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.system_update_rounded, size: 22, color: Color(0xFF10B981)),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('App Updates & Releases', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      SizedBox(height: 2),
-                      Text('Sideload and distribute seamless in-app APK updates', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 28),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Installed Version:', style: TextStyle(fontSize: 13)),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          'v$_localVersion (Build ${AppVersionInfo.normalizeBuildNumber(_localBuildNumber)})',
-                          textAlign: TextAlign.end,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Latest Release in Cloud:', style: TextStyle(fontSize: 13)),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          hasRemote
-                              ? 'v${_remoteVersionInfo!.latestVersionName} (Build ${AppVersionInfo.normalizeBuildNumber(_remoteVersionInfo!.latestVersionCode)})'
-                              : 'Not Configured',
-                          textAlign: TextAlign.end,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                            color: isNewerAvailable ? colorScheme.primary : Colors.grey,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => AppUpdateService.checkAndPromptUpdate(context, silent: false, forceRefresh: true),
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('Check for Updates'),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _openPublishUpdateModal,
-                    icon: const Icon(Icons.cloud_upload_outlined, size: 18),
-                    label: const Text('Publish Release'),
-                    style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
-                ),
-              ],
+        appBar: CustomAppbar(
+          title: 'Configurations',
+          subtitle: 'App & Campaign Settings',
+          actions: [
+            IconButton(
+              onPressed: _toggleAllSections,
+              icon: Icon(_allExpanded ? Icons.unfold_less_rounded : Icons.unfold_more_rounded),
+              tooltip: _allExpanded ? 'Collapse All' : 'Expand All',
             ),
           ],
         ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'CONFIGURATION SECTIONS',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.8,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: _toggleAllSections,
+                            icon: Icon(_allExpanded ? Icons.unfold_less_rounded : Icons.unfold_more_rounded, size: 16),
+                            label: Text(_allExpanded ? 'Collapse All' : 'Expand All', style: const TextStyle(fontSize: 12)),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Merch Blitz Settings Card
+                    _buildMerchBlitzCard(),
+
+                    const SizedBox(height: 12),
+
+                    // KPI Monthly Targets Card
+                    _buildKpiTargetsCard(),
+
+                    const SizedBox(height: 12),
+
+                    // Credit Overdue SMS Reminder Card
+                    _buildCreditReminderSmsCard(colorScheme),
+
+                    const SizedBox(height: 12),
+
+                    // Warehouse Picklist Verification Card
+                    _buildWarehouseBarcodeCard(colorScheme),
+
+                    const SizedBox(height: 12),
+
+                    // Thermal Printer Configuration Card (58mm / 80mm & Bluetooth)
+                    _buildThermalPrinterCard(colorScheme),
+
+                    const SizedBox(height: 24),
+
+                    // Save Configurations Button
+                    FilledButton.icon(
+                      onPressed: _isSaving ? null : _saveConfiguration,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      icon: _isSaving
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.save_rounded, size: 20),
+                      label: Text(_isSaving ? 'Saving...' : 'Save Configurations', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                  ],
+                ),
+              ),
       ),
-    );
-  }
-
-  void _openPublishUpdateModal() {
-    final versionNameCtrl = TextEditingController(text: _remoteVersionInfo?.latestVersionName ?? '1.0.1');
-    final normRemote = (_remoteVersionInfo != null && _remoteVersionInfo!.latestVersionCode > 0)
-        ? AppVersionInfo.normalizeBuildNumber(_remoteVersionInfo!.latestVersionCode)
-        : 0;
-    final normLocal = AppVersionInfo.normalizeBuildNumber(_localBuildNumber);
-    final nextBuild = (normRemote > 0 ? normRemote : normLocal) + 1;
-    final versionCodeCtrl = TextEditingController(text: nextBuild.toString());
-    final apkUrlCtrl = TextEditingController(text: _remoteVersionInfo?.apkUrl ?? '');
-    final notesCtrl = TextEditingController(text: _remoteVersionInfo?.releaseNotes ?? '');
-    bool isForce = _remoteVersionInfo?.forceUpdate ?? false;
-
-    showDialog(
-      context: context,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (ctx, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              title: const Row(
-                children: [
-                  Icon(Icons.cloud_upload_rounded, color: Colors.blue),
-                  SizedBox(width: 10),
-                  Text('Publish App Release', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: SizedBox(
-                  width: double.maxFinite,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: versionNameCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Version Name (e.g. 1.0.1)',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: versionCodeCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Build Number (e.g. 22)',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: apkUrlCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'APK Download URL',
-                          hintText: 'https://.../app-release.apk',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: notesCtrl,
-                        maxLines: 3,
-                        decoration: const InputDecoration(
-                          labelText: 'Release Notes / What\'s New',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Mandatory Update', style: TextStyle(fontSize: 14)),
-                        subtitle: const Text('Users must update before using app', style: TextStyle(fontSize: 11)),
-                        value: isForce,
-                        onChanged: (val) => setDialogState(() => isForce = val),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogCtx).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () async {
-                    final code = int.tryParse(versionCodeCtrl.text.trim()) ?? 0;
-                    final name = versionNameCtrl.text.trim();
-                    final url = apkUrlCtrl.text.trim();
-
-                    if (code <= 0 || name.isEmpty || url.isEmpty) {
-                      ShowMessage.error(context, 'Please enter a valid version name, build number, and APK URL.');
-                      return;
-                    }
-
-                    Navigator.of(dialogCtx).pop();
-
-                    final newInfo = AppVersionInfo(
-                      latestVersionCode: code,
-                      latestVersionName: name,
-                      apkUrl: url,
-                      releaseNotes: notesCtrl.text.trim(),
-                      forceUpdate: isForce,
-                      publishedAt: DateTime.now(),
-                    );
-
-                    await AppUpdateService().saveLatestVersionInfo(newInfo);
-                    if (mounted) {
-                      setState(() {
-                        _remoteVersionInfo = newInfo;
-                      });
-                      ShowMessage.success(context, 'Release v$name+$code published to Cloud Firestore!');
-                    }
-                  },
-                  child: const Text('Publish'),
-                ),
-              ],
-            );
-          },
-        );
-      },
     );
   }
 }
