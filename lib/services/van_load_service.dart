@@ -156,4 +156,20 @@ class VanLoadService {
       });
     });
   }
+
+  /// Get the van load manifest for a specific calendar date (if any exists).
+  Future<VanLoad?> getVanLoadForDate(DateTime date) async {
+    final startOfDay = DateTime(date.year, date.month, date.day, 0, 0, 0);
+    final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
+    final snap = await _vanLoadsRef
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+        .orderBy('date', descending: true)
+        .limit(1)
+        .get();
+    if (snap.docs.isNotEmpty) {
+      return snap.docs.first.data();
+    }
+    return null;
+  }
 }

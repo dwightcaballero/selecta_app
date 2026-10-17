@@ -69,10 +69,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
 
   void validateBeforeBreakdown() async {
     try {
-      _controller.validateBeforeBreakdown(
-        endOfDayData: endOfDayData,
-        breakdownId: breakdownID,
-      );
+      _controller.validateBeforeBreakdown(endOfDayData: endOfDayData, breakdownId: breakdownID);
     } catch (e) {
       ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       return;
@@ -130,11 +127,11 @@ class _EndofdayPageState extends State<EndofdayPage> {
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: colorScheme.primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
+                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+                        child: Text(
+                          'Today',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
                         ),
-                        child: Text('Today', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary)),
                       ),
                     ),
                   ],
@@ -142,11 +139,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right),
-            tooltip: 'Next Day',
-            onPressed: (_isDealer && !isToday) ? () => _changeDate(1) : null,
-          ),
+          IconButton(icon: const Icon(Icons.chevron_right), tooltip: 'Next Day', onPressed: (_isDealer && !isToday) ? () => _changeDate(1) : null),
         ],
       ),
     );
@@ -258,40 +251,301 @@ class _EndofdayPageState extends State<EndofdayPage> {
     );
   }
 
-  Widget _buildSalesAndCollectionsCard() {
+  Widget _buildRevenueBreakdownCard() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasPreSell = endOfDayData.preSellCount > 0 || endOfDayData.preSellAmount > 0;
+    final hasVanSell = endOfDayData.vanSellCount > 0 || endOfDayData.vanSellAmount > 0;
+
     return _buildSectionCard(
-      title: 'Sales & Collections',
+      title: 'Revenue by Channel',
+      icon: Icons.storefront_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Pre-Sell section
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.local_shipping_outlined, size: 16, color: colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Pre-Sell Deliveries',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(color: colorScheme.primaryContainer.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(6)),
+                      child: Text(
+                        '${endOfDayData.preSellCount} orders',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.onPrimaryContainer),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Delivered Sales', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellAmount),
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                if (hasPreSell) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Text(
+                        'Cash: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellCashAmount)}',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green.shade700),
+                      ),
+                      Text('•', style: TextStyle(fontSize: 11, color: colorScheme.outline)),
+                      Text(
+                        'Online: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellOnlineAmount)}',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blue.shade700),
+                      ),
+                      Text('•', style: TextStyle(fontSize: 11, color: colorScheme.outline)),
+                      Text(
+                        'Credit: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellCreditAmount)}',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.purple.shade700),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Van Sell section
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.teal.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.directions_car_filled_outlined, size: 16, color: Colors.teal),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Van Sell (Spot Sales)',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.teal),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                      decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
+                      child: Text(
+                        '${endOfDayData.vanSellCount} sales',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Van Sales Total', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                    Text(
+                      Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellAmount),
+                      style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: Colors.teal),
+                    ),
+                  ],
+                ),
+                if (hasVanSell) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Text(
+                        'Cash: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellCashAmount)}',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green.shade700),
+                      ),
+                      Text('•', style: TextStyle(fontSize: 11, color: colorScheme.outline)),
+                      Text(
+                        'Online: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellOnlineAmount)}',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.blue.shade700),
+                      ),
+                      Text('•', style: TextStyle(fontSize: 11, color: colorScheme.outline)),
+                      Text(
+                        'Credit: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellCreditAmount)}',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.purple.shade700),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCollectionsCard() {
+    final hasBoth = endOfDayData.preSellCount > 0 && endOfDayData.vanSellCount > 0;
+
+    return _buildSectionCard(
+      title: 'Payment Collections & Tender',
       icon: Icons.payments_outlined,
       child: Column(
         spacing: 10,
         children: [
-          _buildAmountRow('Total Order Amount', endOfDayData.totalorderamount, isBold: true),
-          _buildAmountRow('Total Delivered Amount', endOfDayData.totaldeliveredamount, isBold: true),
-          if (endOfDayData.vanSellCount > 0 || endOfDayData.preSellCount > 0) ...[
+          _buildAmountRow('Total Delivered Sales', endOfDayData.totaldeliveredamount, isBold: true),
+          const Divider(height: 14),
+          _buildAmountRow('Cash Collected', endOfDayData.cashamount, icon: Icons.payments_outlined, color: Colors.green),
+          if (hasBoth && endOfDayData.cashamount > 0)
             Padding(
-              padding: const EdgeInsets.only(left: 8.0, top: 2.0, bottom: 2.0),
+              padding: const EdgeInsets.only(left: 24, bottom: 2),
               child: Row(
                 children: [
-                  if (endOfDayData.preSellCount > 0)
-                    Text(
-                      'Pre-Sell: ${endOfDayData.preSellCount} (${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellAmount)})',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                    ),
-                  if (endOfDayData.preSellCount > 0 && endOfDayData.vanSellCount > 0)
-                    Text('  •  ', style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
-                  if (endOfDayData.vanSellCount > 0)
-                    Text(
-                      '🚐 Van Sell: ${endOfDayData.vanSellCount} (${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellAmount)})',
-                      style: TextStyle(fontSize: 11, color: Colors.teal.shade700, fontWeight: FontWeight.w600),
-                    ),
+                  Text(
+                    'Pre-Sell: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellCashAmount)}  •  Van Sell: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellCashAmount)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                  ),
                 ],
               ),
             ),
-          ],
-          const Divider(height: 14),
-          _buildAmountRow('Cash Collected', endOfDayData.cashamount, icon: Icons.payments_outlined, color: Colors.green),
           _buildAmountRow('Online Payment', endOfDayData.onlineamount, icon: Icons.account_balance_outlined, color: Colors.blue),
+          if (hasBoth && endOfDayData.onlineamount > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, bottom: 2),
+              child: Row(
+                children: [
+                  Text(
+                    'Pre-Sell: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellOnlineAmount)}  •  Van Sell: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellOnlineAmount)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
           _buildAmountRow('Credit / Receivables', endOfDayData.creditamount, icon: Icons.credit_card_outlined, color: Colors.purple),
+          if (hasBoth && endOfDayData.creditamount > 0)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, bottom: 2),
+              child: Row(
+                children: [
+                  Text(
+                    'Pre-Sell: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.preSellCreditAmount)}  •  Van Sell: ${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellCreditAmount)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVanStockCard() {
+    final vanLoad = endOfDayData.vanLoad;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _buildSectionCard(
+      title: 'Van Stock Reconciliation',
+      icon: Icons.inventory_2_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Truck Inventory Status', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+              if (vanLoad != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                  child: Text(
+                    vanLoad.status.toUpperCase(),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal),
+                  ),
+                ),
+            ],
+          ),
+          if (vanLoad != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Loaded', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                        Text('${vanLoad.totalLoadedUnits} pcs', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                    decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Sold', style: TextStyle(fontSize: 11, color: Colors.teal)),
+                        Text(
+                          '${vanLoad.totalSoldUnits} pcs',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.teal),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Remaining', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                        Text('${vanLoad.totalAvailableUnits} pcs', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            const SizedBox(height: 8),
+            Text(
+              '${endOfDayData.vanSellCount} van sales recorded (${Helperfunctions.formatDoubleAmountForDisplay(endOfDayData.vanSellAmount)}).',
+              style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+            ),
+          ],
         ],
       ),
     );
@@ -305,12 +559,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
         spacing: 10,
         children: [
           _buildAmountRow('Total Returns', endOfDayData.returnedAmount, color: Colors.orange.shade800),
-          _buildAmountRow(
-            'Salesman Expenses (Cash)',
-            endOfDayData.salesmanExpenseAmount,
-            icon: Icons.badge_outlined,
-            color: Colors.red.shade700,
-          ),
+          _buildAmountRow('Salesman Expenses (Cash)', endOfDayData.salesmanExpenseAmount, icon: Icons.badge_outlined, color: Colors.red.shade700),
           _buildAmountRow(
             'Dealer Expenses (Cash)',
             endOfDayData.dealerExpenseCashAmount,
@@ -356,9 +605,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: hasBreakdown
-                      ? (breakdown?.isVerifiedByDealer == true
-                          ? Colors.teal.withValues(alpha: 0.15)
-                          : Colors.green.withValues(alpha: 0.12))
+                      ? (breakdown?.isVerifiedByDealer == true ? Colors.teal.withValues(alpha: 0.15) : Colors.green.withValues(alpha: 0.12))
                       : Colors.orange.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -370,9 +617,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
                       const SizedBox(width: 4),
                     ],
                     Text(
-                      hasBreakdown
-                          ? (breakdown?.isVerifiedByDealer == true ? 'Verified by Dealer' : 'Breakdown Recorded')
-                          : 'Breakdown Pending',
+                      hasBreakdown ? (breakdown?.isVerifiedByDealer == true ? 'Verified by Dealer' : 'Breakdown Recorded') : 'Breakdown Pending',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -497,17 +742,15 @@ class _EndofdayPageState extends State<EndofdayPage> {
           icon: Icon(
             isRecordDisabled
                 ? Icons.event_busy_outlined
-                : (hasPending
-                    ? Icons.lock_outline
-                    : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined)),
+                : (hasPending ? Icons.lock_outline : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined)),
             size: 20,
           ),
           label: Text(
             isRecordDisabled
                 ? 'No Deliveries Recorded'
                 : (hasPending
-                    ? 'Settle ${endOfDayData.pendingstatus} ${endOfDayData.pendingstatus == 1 ? "Pending" : "Pendings"} to Continue'
-                    : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown')),
+                      ? 'Settle ${endOfDayData.pendingstatus} ${endOfDayData.pendingstatus == 1 ? "Pending" : "Pendings"} to Continue'
+                      : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown')),
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
           ),
         ),
@@ -550,33 +793,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
                 // 2. Pending Status Warning (if any)
                 if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
 
-                // 2a. Orders in Pending Picklist Notice (if any exist for this date)
-                if (endOfDayData.pendingPicklistStatus > 0)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.purple.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.purple.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.fact_check_outlined, size: 20, color: Colors.purple.shade800),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            endOfDayData.pendingPicklistStatus == 1
-                                ? '1 order is currently Booked (Awaiting Picklist) and not included in delivery reconciliation.'
-                                : '${endOfDayData.pendingPicklistStatus} orders are currently Booked (Awaiting Picklist) and not included in delivery reconciliation.',
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Colors.purple.shade900),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // 2b. Empty state notice if no activity recorded
+                // 2a. Empty state notice if no activity recorded
                 if (endOfDayData.totaldelivery == 0)
                   Container(
                     width: double.infinity,
@@ -603,13 +820,19 @@ class _EndofdayPageState extends State<EndofdayPage> {
                 // 3. Delivery Volume & Status Grid
                 _buildDeliveryStatusGrid(),
 
-                // 4. Sales & Collections Card
-                _buildSalesAndCollectionsCard(),
+                // 4. Revenue by Channel (Pre-Sell Deliveries vs Van Sell)
+                _buildRevenueBreakdownCard(),
 
-                // 5. Deductions & Returns Card
+                // 5. Payment Collections & Tender Breakdown
+                _buildCollectionsCard(),
+
+                // 6. Van Stock Reconciliation (if van load or van sales exist)
+                if (endOfDayData.vanLoad != null || endOfDayData.vanSellCount > 0) _buildVanStockCard(),
+
+                // 7. Deductions & Returns Card
                 _buildDeductionsCard(),
 
-                // 6. Cash Reconciliation Summary Card
+                // 8. Cash Reconciliation Summary Card
                 _buildCashReconciliationCard(),
               ],
             ),

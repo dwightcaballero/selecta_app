@@ -24,7 +24,7 @@ import 'package:intl/intl.dart';
 
 /// Aggregated counts by delivery status for summary widgets.
 class DeliverySummaryCounts {
-  /// Total number of deliveries for the selected date.
+  /// Total number of scheduled pre-sell deliveries for the selected date.
   final int all;
 
   /// Count of orders waiting for picklist completion.
@@ -51,11 +51,20 @@ class DeliverySummaryCounts {
   /// Total returned amount.
   final double returnedAmount;
 
-  /// Count of completed van sell deliveries.
+  /// Count of completed van sell transactions.
   final int vanSellCount;
 
-  /// Total sales amount from van sell deliveries.
+  /// Total sales amount from van sell transactions.
   final double vanSellAmount;
+
+  /// Cash collected from van sell transactions.
+  final double vanSellCashAmount;
+
+  /// Online payment collected from van sell transactions.
+  final double vanSellOnlineAmount;
+
+  /// Credit/receivables from van sell transactions.
+  final double vanSellCreditAmount;
 
   const DeliverySummaryCounts({
     required this.all,
@@ -69,6 +78,9 @@ class DeliverySummaryCounts {
     this.returnedAmount = 0.0,
     this.vanSellCount = 0,
     this.vanSellAmount = 0.0,
+    this.vanSellCashAmount = 0.0,
+    this.vanSellOnlineAmount = 0.0,
+    this.vanSellCreditAmount = 0.0,
   });
 }
 
@@ -193,13 +205,16 @@ class DeliveryController {
     int pending = 0;
     int delivered = 0;
     int returned = 0;
-    int validAllCount = 0;
+    int preSellAllCount = 0;
     double totalExpectedAmount = 0.0;
     double deliveredAmount = 0.0;
     double pendingAmount = 0.0;
     double returnedAmount = 0.0;
     int vanSellCount = 0;
     double vanSellAmount = 0.0;
+    double vanSellCashAmount = 0.0;
+    double vanSellOnlineAmount = 0.0;
+    double vanSellCreditAmount = 0.0;
 
     for (final item in docs) {
       final raw = item.data();
@@ -211,37 +226,44 @@ class DeliveryController {
         pendingPicklist++;
         continue;
       }
-      validAllCount++;
+
+      final double cash = delivery.cashAmount;
+      final double online = delivery.onlineAmount;
+      final double credit = delivery.creditAmount;
+      final double vTotal = cash + online + credit;
+      final double effectiveTotal = vTotal > 0 ? vTotal : delivery.orderAmount;
 
       if (delivery.isVanSell) {
         vanSellCount++;
-        final double vTotal = delivery.cashAmount + delivery.onlineAmount + delivery.creditAmount;
-        vanSellAmount += vTotal > 0 ? vTotal : delivery.orderAmount;
-      }
+        vanSellAmount += effectiveTotal;
+        vanSellCashAmount += cash;
+        vanSellOnlineAmount += online;
+        vanSellCreditAmount += credit;
+      } else {
+        preSellAllCount++;
+        final double expected = delivery.originalOrderAmount ?? delivery.orderAmount;
+        totalExpectedAmount += expected;
 
-      final double expected = delivery.originalOrderAmount ?? delivery.orderAmount;
-      totalExpectedAmount += expected;
-
-      switch (delivery.transactionStatus) {
-        case DeliveryStatus.pending:
-          pending++;
-          pendingAmount += delivery.orderAmount;
-          break;
-        case DeliveryStatus.delivered:
-          delivered++;
-          final double deliveredTotal = delivery.cashAmount + delivery.onlineAmount + delivery.creditAmount;
-          deliveredAmount += deliveredTotal > 0 ? deliveredTotal : delivery.orderAmount;
-          returnedAmount += delivery.returnAmount;
-          break;
-        case DeliveryStatus.returned:
-          returned++;
-          returnedAmount += (delivery.returnAmount > 0 ? delivery.returnAmount : expected);
-          break;
+        switch (delivery.transactionStatus) {
+          case DeliveryStatus.pending:
+            pending++;
+            pendingAmount += delivery.orderAmount;
+            break;
+          case DeliveryStatus.delivered:
+            delivered++;
+            deliveredAmount += effectiveTotal;
+            returnedAmount += delivery.returnAmount;
+            break;
+          case DeliveryStatus.returned:
+            returned++;
+            returnedAmount += (delivery.returnAmount > 0 ? delivery.returnAmount : expected);
+            break;
+        }
       }
     }
 
     return DeliverySummaryCounts(
-      all: validAllCount,
+      all: preSellAllCount,
       pendingPicklist: pendingPicklist,
       delivered: delivered,
       pending: pending,
@@ -252,16 +274,22 @@ class DeliveryController {
       returnedAmount: returnedAmount,
       vanSellCount: vanSellCount,
       vanSellAmount: vanSellAmount,
+      vanSellCashAmount: vanSellCashAmount,
+      vanSellOnlineAmount: vanSellOnlineAmount,
+      vanSellCreditAmount: vanSellCreditAmount,
     );
   }
 
   /// Filters delivery document snapshots by selected status tab and search query,
   /// and sorts the stores based on custom delivery sequence or who was processed in picklist first.
+  /// If [isVanSellOnly] is true, only van sell spot transactions are returned (sorted newest first).
+  /// If [isVanSellOnly] is false, only scheduled pre-sell deliveries are returned.
   List filterDeliveries({
     required List docs,
     required String selectedStatus,
     required String searchQuery,
     bool ignoreCustomSequence = false,
+    bool? isVanSellOnly,
   }) {
     final query = searchQuery.trim().toLowerCase();
     final filtered = docs.where((doc) {
@@ -271,10 +299,29 @@ class DeliveryController {
           delivery.transactionStatus == DeliveryStatus.voided) {
         return false;
       }
+
+      if (isVanSellOnly != null) {
+        if (isVanSellOnly && !delivery.isVanSell) return false;
+        if (!isVanSellOnly && delivery.isVanSell) return false;
+      }
+
       final matchesStatus = selectedStatus == 'All' || delivery.transactionStatus == selectedStatus;
-      final matchesSearch = query.isEmpty || delivery.storeName.toLowerCase().contains(query);
+      final matchesSearch = query.isEmpty ||
+          delivery.storeName.toLowerCase().contains(query) ||
+          delivery.remarks.toLowerCase().contains(query);
       return matchesStatus && matchesSearch;
     }).toList();
+
+    if (isVanSellOnly == true) {
+      filtered.sort((a, b) {
+        final rawA = a.data();
+        final rawB = b.data();
+        final Delivery delA = rawA is Delivery ? rawA : Delivery.fromJson(rawA as Map<String, Object?>);
+        final Delivery delB = rawB is Delivery ? rawB : Delivery.fromJson(rawB as Map<String, Object?>);
+        return delB.createdDate.compareTo(delA.createdDate);
+      });
+      return filtered;
+    }
 
     final hasCustomSequence = !ignoreCustomSequence && filtered.any((d) {
       final raw = d.data();

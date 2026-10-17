@@ -12,6 +12,7 @@ import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/delivery_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
@@ -34,6 +35,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   int? returnedDeliveryCount;
 
   DateTime _selectedDate = DateTime.now();
+  int _selectedSegment = 0; // 0 = Deliveries (Pre-Sell), 1 = Van Sell (Spot)
   String _selectedStatusFilter = 'All';
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -133,7 +135,8 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   String _dateLabel() => _controller.formatDateLabel(_selectedDate);
 
   void _startEditing(List<QueryDocumentSnapshot<Delivery>> docs) {
-    final sorted = _controller.filterDeliveries(docs: docs, selectedStatus: 'All', searchQuery: '');
+    final preSellDocs = docs.where((doc) => !doc.data().isVanSell).toList();
+    final sorted = _controller.filterDeliveries(docs: preSellDocs, selectedStatus: 'All', searchQuery: '', isVanSellOnly: false);
     setState(() {
       _isEditing = true;
       _searchQuery = '';
@@ -162,7 +165,13 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
   void _resetOrder() {
     final docs = _editableDeliveryIDs.map((id) => _editableDocsById[id]).whereType<QueryDocumentSnapshot<Delivery>>().toList();
-    final defaultSorted = _controller.filterDeliveries(docs: docs, selectedStatus: 'All', searchQuery: '', ignoreCustomSequence: true);
+    final defaultSorted = _controller.filterDeliveries(
+      docs: docs,
+      selectedStatus: 'All',
+      searchQuery: '',
+      ignoreCustomSequence: true,
+      isVanSellOnly: false,
+    );
     setState(() {
       _editableDeliveryIDs = defaultSorted.map((d) => (d as QueryDocumentSnapshot<Delivery>).id).toList();
       _editableDocsById = {for (final d in defaultSorted) (d as QueryDocumentSnapshot<Delivery>).id: d};
@@ -297,14 +306,126 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     );
   }
 
-  // Clean neutral summary bar
-  Widget _buildSummaryBar(List deliveries) {
-    final summary = _controller.computeSummaryCounts(deliveries);
+  Widget _buildSummaryStat({required String label, required String value, required Color color}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          value,
+          style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: color),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSegmentedHeader(ThemeData theme, DeliverySummaryCounts summary) {
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                if (_selectedSegment != 0) {
+                  setState(() {
+                    _selectedSegment = 0;
+                    _selectedStatusFilter = 'All';
+                  });
+                }
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                decoration: BoxDecoration(
+                  color: _selectedSegment == 0 ? colorScheme.surface : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: _selectedSegment == 0
+                      ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 2))]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.local_shipping_outlined, size: 18, color: _selectedSegment == 0 ? colorScheme.primary : colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 7),
+                    Text(
+                      'Deliveries (${summary.all})',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: _selectedSegment == 0 ? FontWeight.bold : FontWeight.w600,
+                        color: _selectedSegment == 0 ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                if (_selectedSegment != 1) {
+                  setState(() {
+                    _selectedSegment = 1;
+                    _selectedStatusFilter = 'All';
+                  });
+                }
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                decoration: BoxDecoration(
+                  color: _selectedSegment == 1 ? colorScheme.surface : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: _selectedSegment == 1
+                      ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 2))]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.directions_car_filled_outlined, size: 18, color: _selectedSegment == 1 ? Colors.teal : colorScheme.onSurfaceVariant),
+                    const SizedBox(width: 7),
+                    Text(
+                      'Van Sell (${summary.vanSellCount})',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: _selectedSegment == 1 ? FontWeight.bold : FontWeight.w600,
+                        color: _selectedSegment == 1 ? Colors.teal : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreSellSummaryBar(DeliverySummaryCounts summary) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
@@ -314,13 +435,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildSummaryStat(label: 'Deliveries', value: '${summary.all}', color: colorScheme.onSurface),
-          if (summary.vanSellCount > 0) ...[
-            Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-            _buildSummaryStat(label: 'Van Sells', value: '${summary.vanSellCount}', color: Colors.teal),
-          ],
-          Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-          _buildSummaryStat(label: 'Delivered', value: '${summary.delivered}', color: colorScheme.onSurface),
-          Container(width: 1, height: 36, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          Container(width: 1, height: 32, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+          _buildSummaryStat(label: 'Pending', value: '${summary.pending}', color: Colors.orange.shade800),
+          Container(width: 1, height: 32, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
           _buildSummaryStat(
             label: 'Expected Total',
             value: Helperfunctions.formatDoubleAmountForDisplay(summary.totalExpectedAmount),
@@ -331,25 +448,33 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     );
   }
 
-  Widget _buildSummaryStat({required String label, required String value, required Color color}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          value,
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-      ],
+  Widget _buildVanSellSummaryBar(DeliverySummaryCounts summary) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.teal.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildSummaryStat(label: 'Van Sells', value: '${summary.vanSellCount}', color: Colors.teal.shade800),
+          Container(width: 1, height: 32, color: Colors.teal.withValues(alpha: 0.2)),
+          _buildSummaryStat(
+            label: 'Total Revenue',
+            value: Helperfunctions.formatDoubleAmountForDisplay(summary.vanSellAmount),
+            color: Colors.teal.shade900,
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildSearchBar(ThemeData theme) {
     final colorScheme = theme.colorScheme;
+    final hint = _selectedSegment == 1 ? 'Search Van Sell store or receipt...' : 'Search Hapi Store...';
 
     return SizedBox(
       height: 48,
@@ -358,9 +483,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
         onChanged: (val) => setState(() => _searchQuery = val.trim()),
         style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         decoration: InputDecoration(
-          hintText: 'Search Hapi Store...',
+          hintText: hint,
           hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
-          prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
+          prefixIcon: Icon(Icons.search, size: 22, color: _selectedSegment == 1 ? Colors.teal : colorScheme.primary),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear, size: 20),
@@ -414,9 +539,151 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     );
   }
 
-  Widget floatingActionAddButton() {
+  Widget _buildVanSellCard({required BuildContext context, required Delivery delivery, required String deliveryID, required int index}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final timeStr = DateFormat('h:mm a').format(delivery.createdDate.toDate());
+
+    return Material(
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.teal.withValues(alpha: 0.3)),
+      ),
+      child: InkWell(
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+            ),
+          );
+          prefetchData();
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.point_of_sale_rounded, color: Colors.teal, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.teal.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.teal.withValues(alpha: 0.35)),
+                          ),
+                          child: Text(
+                            '#${index + 1}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            delivery.storeName.isEmpty ? 'Direct / Walk-in Buyer' : delivery.storeName,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        Text(
+                          timeStr,
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                        ),
+                        if (delivery.items.isNotEmpty)
+                          Text(
+                            '•  ${delivery.items.length} ${delivery.items.length == 1 ? "item" : "items"}',
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                          ),
+                        if (delivery.cashAmount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
+                            child: Text(
+                              'Cash: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.cashAmount)}',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                            ),
+                          ),
+                        if (delivery.onlineAmount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
+                            child: Text(
+                              'Online: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.onlineAmount)}',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.blue.shade800),
+                            ),
+                          ),
+                        if (delivery.creditAmount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(color: Colors.purple.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(4)),
+                            child: Text(
+                              'Credit: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.creditAmount)}',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.purple.shade800),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
+                    style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: Colors.teal),
+                  ),
+                  const SizedBox(height: 4),
+                  const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget floatingActionButton() {
+    if (_selectedSegment == 1) {
+      return FloatingActionButton.extended(
+        heroTag: 'van_sell_add_btn',
+        onPressed: () async {
+          await Navigator.push(context, MaterialPageRoute(builder: (context) => const VanSellPage()));
+          prefetchData();
+        },
+        backgroundColor: Colors.teal,
+        icon: const Icon(Icons.add, color: Colors.white, size: 22),
+        label: const Text(
+          'New Van Sell',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+      );
+    }
+
     return FloatingActionButton.extended(
-      heroTag: null,
+      heroTag: 'store_order_add_btn',
       onPressed: () {
         Navigator.push(context, MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)));
       },
@@ -438,26 +705,35 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       builder: (BuildContext context, AsyncSnapshot<QuerySnapshot<Delivery>> snapshot) {
         final List<QueryDocumentSnapshot<Delivery>> allDocs = (snapshot.data?.docs ?? []).where((doc) {
           final delivery = doc.data();
-          return delivery.transactionStatus != DeliveryStatus.pendingPicklist &&
-              delivery.transactionStatus != DeliveryStatus.voided;
+          return delivery.transactionStatus != DeliveryStatus.pendingPicklist && delivery.transactionStatus != DeliveryStatus.voided;
         }).toList();
 
-        final List<QueryDocumentSnapshot<Delivery>> allDeliveryDocs = allDocs;
+        final summary = _controller.computeSummaryCounts(allDocs);
+        final bool isVanSell = _selectedSegment == 1;
 
-        // Filter by status tab & search query via controller
-        final filteredDocs = _controller.filterDeliveries(docs: allDocs, selectedStatus: _selectedStatusFilter, searchQuery: _searchQuery);
+        final preSellDocs = allDocs.where((d) => !d.data().isVanSell).toList();
+        final vanSellDocs = allDocs.where((d) => d.data().isVanSell).toList();
+
+        final filteredDocs = _controller.filterDeliveries(
+          docs: allDocs,
+          selectedStatus: _selectedStatusFilter,
+          searchQuery: _searchQuery,
+          isVanSellOnly: isVanSell,
+        );
 
         return Scaffold(
           appBar: CustomAppbar(
-            title: _isEditing ? 'Rearrange Deliveries' : 'Orders & Deliveries',
-            subtitle: _isEditing ? 'Drag to reorder • ${_dateLabel()}' : 'Order → Picklist → Delivery',
+            title: _isEditing ? 'Rearrange Deliveries' : (isVanSell ? 'Van Sell Transactions' : 'Orders & Deliveries'),
+            subtitle: _isEditing
+                ? 'Drag to reorder • ${_dateLabel()}'
+                : (isVanSell ? 'Spot sales off truck • ${_dateLabel()}' : 'Order → Picklist → Delivery'),
             showBackButton: true,
             actions: [
-              if (!_isEditing && allDeliveryDocs.isNotEmpty)
+              if (!_isEditing && !isVanSell && preSellDocs.isNotEmpty)
                 IconButton(
                   icon: const Icon(Icons.swap_vert_rounded, color: Colors.white),
                   tooltip: 'Rearrange store order',
-                  onPressed: () => _startEditing(allDeliveryDocs),
+                  onPressed: () => _startEditing(preSellDocs),
                 ),
               if (_isEditing)
                 TextButton(
@@ -482,7 +758,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                   ),
                   backgroundColor: theme.colorScheme.primary,
                 )
-              : floatingActionAddButton(),
+              : floatingActionButton(),
           body: _isEditing
               ? _buildEditingList()
               : snapshot.hasError
@@ -495,201 +771,224 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                     children: [
                       _buildDateNavigator(theme),
                       _buildReturnedAlertBanner(),
-                      if (allDocs.isNotEmpty) ...[
-                        _buildSummaryBar(allDocs),
-                        const SizedBox(height: 2),
-                        _buildSearchBar(theme),
-                        const SizedBox(height: 6),
-                      ],
+                      _buildSegmentedHeader(theme, summary),
+                      if (!isVanSell) ...[_buildPreSellSummaryBar(summary)] else ...[_buildVanSellSummaryBar(summary)],
+                      const SizedBox(height: 6),
+                      _buildSearchBar(theme),
+                      const SizedBox(height: 6),
                       Expanded(
-                        child: allDocs.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.local_shipping_outlined, size: 48, color: Colors.grey.shade400),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      'No orders or deliveries for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
-                                      style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w500),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    OutlinedButton.icon(
-                                      onPressed: () =>
-                                          Navigator.push(context, MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate))),
-                                      icon: const Icon(Icons.storefront_outlined, size: 20),
-                                      label: const Text('Store Order', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : filteredDocs.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'No matching ${_selectedStatusFilter != 'All' ? _selectedStatusFilter : ''} records found',
-                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            : ListView.separated(
-                                padding: const EdgeInsets.only(bottom: 80, top: 4),
-                                itemCount: filteredDocs.length,
-                                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                                itemBuilder: (context, index) {
-                                  final Delivery delivery = filteredDocs[index].data();
-                                  final String deliveryID = filteredDocs[index].id;
-
-                                  return Material(
-                                    color: theme.colorScheme.surface,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                    ),
-                                    child: InkWell(
-                                      onTap: () async {
-                                        await Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+                        child: !isVanSell
+                            ? (preSellDocs.isEmpty
+                                  ? Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.local_shipping_outlined, size: 48, color: Colors.grey.shade400),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            'No scheduled deliveries for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
+                                            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w500),
                                           ),
-                                        );
-                                        prefetchData();
-                                      },
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                                        child: Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(10),
-                                              decoration: BoxDecoration(
-                                                color: delivery.isVanSell
-                                                    ? Colors.teal.withValues(alpha: 0.15)
-                                                    : theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-                                                borderRadius: BorderRadius.circular(10),
-                                              ),
-                                              child: Icon(
-                                                delivery.isVanSell ? Icons.local_shipping_rounded : Icons.storefront_outlined,
-                                                color: delivery.isVanSell ? Colors.teal : theme.colorScheme.primary,
-                                                size: 24,
-                                              ),
+                                          const SizedBox(height: 12),
+                                          OutlinedButton.icon(
+                                            onPressed: () => Navigator.push(
+                                              context,
+                                              MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)),
                                             ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                            icon: const Icon(Icons.storefront_outlined, size: 20),
+                                            label: const Text('Store Order', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : filteredDocs.isEmpty
+                                  ? Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'No matching ${_selectedStatusFilter != 'All' ? _selectedStatusFilter : ''} records found',
+                                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : ListView.separated(
+                                      padding: const EdgeInsets.only(bottom: 80, top: 4),
+                                      itemCount: filteredDocs.length,
+                                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                      itemBuilder: (context, index) {
+                                        final Delivery delivery = filteredDocs[index].data();
+                                        final String deliveryID = filteredDocs[index].id;
+
+                                        return Material(
+                                          color: theme.colorScheme.surface,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(12),
+                                            side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                                          ),
+                                          child: InkWell(
+                                            onTap: () async {
+                                              await Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+                                                ),
+                                              );
+                                              prefetchData();
+                                            },
+                                            borderRadius: BorderRadius.circular(12),
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                              child: Row(
                                                 children: [
-                                                  Row(
-                                                    children: [
-                                                      Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                        margin: const EdgeInsets.only(right: 6),
-                                                        decoration: BoxDecoration(
-                                                          color: delivery.isVanSell
-                                                              ? Colors.teal.withValues(alpha: 0.2)
-                                                              : theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
-                                                          borderRadius: BorderRadius.circular(6),
-                                                        ),
-                                                        child: Text(
-                                                          '#${index + 1}',
-                                                          style: TextStyle(
-                                                            fontSize: 12,
-                                                            fontWeight: FontWeight.bold,
-                                                            color: delivery.isVanSell
-                                                                ? Colors.teal.shade800
-                                                                : theme.colorScheme.onPrimaryContainer,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      if (delivery.isVanSell)
-                                                        Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                          margin: const EdgeInsets.only(right: 6),
-                                                          decoration: BoxDecoration(
-                                                            color: Colors.teal.withValues(alpha: 0.12),
-                                                            borderRadius: BorderRadius.circular(6),
-                                                            border: Border.all(color: Colors.teal.withValues(alpha: 0.4), width: 1),
-                                                          ),
-                                                          child: const Row(
-                                                            mainAxisSize: MainAxisSize.min,
-                                                            children: [
-                                                              Icon(Icons.directions_car_filled_rounded, size: 11, color: Colors.teal),
-                                                              SizedBox(width: 3),
-                                                              Text(
-                                                                'VAN SELL',
+                                                  Container(
+                                                    padding: const EdgeInsets.all(10),
+                                                    decoration: BoxDecoration(
+                                                      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                                      borderRadius: BorderRadius.circular(10),
+                                                    ),
+                                                    child: Icon(Icons.storefront_outlined, color: theme.colorScheme.primary, size: 24),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Row(
+                                                          children: [
+                                                            Container(
+                                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                              margin: const EdgeInsets.only(right: 6),
+                                                              decoration: BoxDecoration(
+                                                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
+                                                                borderRadius: BorderRadius.circular(6),
+                                                              ),
+                                                              child: Text(
+                                                                '#${index + 1}',
                                                                 style: TextStyle(
-                                                                  fontSize: 10,
-                                                                  fontWeight: FontWeight.w800,
-                                                                  color: Colors.teal,
-                                                                  letterSpacing: 0.3,
+                                                                  fontSize: 12,
+                                                                  fontWeight: FontWeight.bold,
+                                                                  color: theme.colorScheme.onPrimaryContainer,
                                                                 ),
                                                               ),
-                                                            ],
-                                                          ),
+                                                            ),
+                                                            Expanded(
+                                                              child: Text(
+                                                                delivery.storeName,
+                                                                style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
+                                                                maxLines: 1,
+                                                                overflow: TextOverflow.ellipsis,
+                                                              ),
+                                                            ),
+                                                          ],
                                                         ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          delivery.storeName,
-                                                          style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
+                                                        const SizedBox(height: 4),
+                                                        Wrap(
+                                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                                          spacing: 6,
+                                                          runSpacing: 4,
+                                                          children: [
+                                                            Text(
+                                                              Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
+                                                              style: TextStyle(
+                                                                fontSize: 15,
+                                                                fontWeight: FontWeight.w700,
+                                                                color: theme.colorScheme.onSurfaceVariant,
+                                                              ),
+                                                            ),
+                                                            if (delivery.hasReturnedItems || delivery.returnAmount > 0)
+                                                              Container(
+                                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                                decoration: BoxDecoration(
+                                                                  color: Colors.red.withValues(alpha: 0.1),
+                                                                  borderRadius: BorderRadius.circular(6),
+                                                                ),
+                                                                child: Text(
+                                                                  '${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)} ret.',
+                                                                  style: TextStyle(
+                                                                    fontSize: 11,
+                                                                    fontWeight: FontWeight.bold,
+                                                                    color: Colors.red.shade800,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                          ],
                                                         ),
-                                                      ),
-                                                    ],
+                                                      ],
+                                                    ),
                                                   ),
-                                                  const SizedBox(height: 4),
-                                                  Wrap(
-                                                    crossAxisAlignment: WrapCrossAlignment.center,
-                                                    spacing: 6,
-                                                    runSpacing: 4,
+                                                  const SizedBox(width: 8),
+                                                  Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.end,
                                                     children: [
-                                                      Text(
-                                                        Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                                                        style: TextStyle(
-                                                          fontSize: 15,
-                                                          fontWeight: FontWeight.w700,
-                                                          color: theme.colorScheme.onSurfaceVariant,
-                                                        ),
-                                                      ),
-                                                      if (delivery.hasReturnedItems || delivery.returnAmount > 0)
-                                                        Container(
-                                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                          decoration: BoxDecoration(
-                                                            color: Colors.red.withValues(alpha: 0.1),
-                                                            borderRadius: BorderRadius.circular(6),
-                                                          ),
-                                                          child: Text(
-                                                            '${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)} ret.',
-                                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.red.shade800),
-                                                          ),
-                                                        ),
+                                                      _statusBadge(delivery.transactionStatus),
+                                                      const SizedBox(height: 6),
+                                                      const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
                                                     ],
                                                   ),
                                                 ],
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
-                                            Column(
-                                              crossAxisAlignment: CrossAxisAlignment.end,
-                                              children: [
-                                                _statusBadge(delivery.transactionStatus),
-                                                const SizedBox(height: 6),
-                                                const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
+                                          ),
+                                        );
+                                      },
+                                    ))
+                            : (vanSellDocs.isEmpty
+                                  ? Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.directions_car_filled_outlined, size: 48, color: Colors.teal.shade300),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            'No Van Sell transactions for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
+                                            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            'Sell directly to stores off your van load stock.',
+                                            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          FilledButton.icon(
+                                            style: FilledButton.styleFrom(backgroundColor: Colors.teal),
+                                            onPressed: () async {
+                                              await Navigator.push(context, MaterialPageRoute(builder: (_) => const VanSellPage()));
+                                              prefetchData();
+                                            },
+                                            icon: const Icon(Icons.add, size: 20),
+                                            label: const Text('New Van Sell', style: TextStyle(fontWeight: FontWeight.bold)),
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  );
-                                },
-                              ),
+                                    )
+                                  : filteredDocs.isEmpty
+                                  ? Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
+                                          const SizedBox(height: 8),
+                                          const Text(
+                                            'No matching van sell records found',
+                                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                  : ListView.separated(
+                                      padding: const EdgeInsets.only(bottom: 80, top: 4),
+                                      itemCount: filteredDocs.length,
+                                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                      itemBuilder: (context, index) {
+                                        final Delivery delivery = filteredDocs[index].data();
+                                        final String deliveryID = filteredDocs[index].id;
+                                        return _buildVanSellCard(context: context, delivery: delivery, deliveryID: deliveryID, index: index);
+                                      },
+                                    )),
                       ),
                     ],
                   ),
@@ -826,11 +1125,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                     ),
                                     child: const Text(
                                       'VAN SELL',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.teal,
-                                      ),
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.teal),
                                     ),
                                   ),
                                 _statusBadge(delivery.transactionStatus),

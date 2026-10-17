@@ -6,6 +6,7 @@ import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/expenses_services.dart';
+import 'package:selecta_ops/services/van_load_service.dart';
 
 class EndofdayServices {
   Future<EndOfDayDTO> getListDeliveryForEndOfDay(DateTime deliveryDate) async {
@@ -36,26 +37,35 @@ class EndofdayServices {
         continue;
       }
 
-      endofday.totalorderamount += data[DeliveryModelString.orderAmount];
-      endofday.cashamount += data[DeliveryModelString.cashAmount];
-      endofday.onlineamount += data[DeliveryModelString.onlineAmount];
-      endofday.creditamount += data[DeliveryModelString.creditAmount];
-      endofday.returnedAmount += data[DeliveryModelString.returnAmount];
-      final deliveredPortion = (data[DeliveryModelString.cashAmount] as num? ?? 0).toDouble() +
-          (data[DeliveryModelString.onlineAmount] as num? ?? 0).toDouble() +
-          (data[DeliveryModelString.creditAmount] as num? ?? 0).toDouble();
+      final double cash = (data[DeliveryModelString.cashAmount] as num? ?? 0).toDouble();
+      final double online = (data[DeliveryModelString.onlineAmount] as num? ?? 0).toDouble();
+      final double credit = (data[DeliveryModelString.creditAmount] as num? ?? 0).toDouble();
+      final double orderAmt = (data[DeliveryModelString.orderAmount] as num? ?? 0).toDouble();
+      final double returnAmt = (data[DeliveryModelString.returnAmount] as num? ?? 0).toDouble();
+
+      endofday.totalorderamount += orderAmt;
+      endofday.cashamount += cash;
+      endofday.onlineamount += online;
+      endofday.creditamount += credit;
+      endofday.returnedAmount += returnAmt;
+      final deliveredPortion = cash + online + credit;
 
       final orderType = data[DeliveryModelString.orderType] as String? ?? OrderType.preSell;
       if (orderType == OrderType.vanSell) {
         endofday.vanSellCount += 1;
-        endofday.vanSellAmount += deliveredPortion;
+        endofday.vanSellAmount += (deliveredPortion > 0 ? deliveredPortion : orderAmt);
+        endofday.vanSellCashAmount += cash;
+        endofday.vanSellOnlineAmount += online;
+        endofday.vanSellCreditAmount += credit;
       } else {
         endofday.preSellCount += 1;
-        endofday.preSellAmount += deliveredPortion;
+        endofday.preSellAmount += (deliveredPortion > 0 ? deliveredPortion : orderAmt);
+        endofday.preSellCashAmount += cash;
+        endofday.preSellOnlineAmount += online;
+        endofday.preSellCreditAmount += credit;
       }
 
-      endofday.totaldeliveredamount +=
-          data[DeliveryModelString.cashAmount] + data[DeliveryModelString.onlineAmount] + data[DeliveryModelString.creditAmount];
+      endofday.totaldeliveredamount += deliveredPortion;
       endofday.totaldelivery += 1;
 
       switch (status) {
@@ -108,6 +118,11 @@ class EndofdayServices {
     }
 
     endofday.expectedcashonhand = endofday.cashamount - endofday.expenseAmount;
+
+    try {
+      final vanLoadService = VanLoadService();
+      endofday.vanLoad = await vanLoadService.getVanLoadForDate(deliveryDate);
+    } catch (_) {}
 
     return endofday;
   }
