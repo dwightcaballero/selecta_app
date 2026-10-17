@@ -107,10 +107,14 @@ class VanSellController {
     required double onlineAmount,
     required double creditAmount,
     String remarks = '',
-    String imagePath = '',
+    required String imagePath,
   }) async {
     if (vanLoad.id == null || vanLoad.id!.isEmpty) {
       throw ArgumentError('Active VanLoad must have a valid ID.');
+    }
+
+    if (imagePath.trim().isEmpty) {
+      throw ArgumentError('Proof of van selling photo is required.');
     }
 
     final stockError = validateVanStock(vanLoad, items);

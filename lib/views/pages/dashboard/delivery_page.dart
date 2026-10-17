@@ -500,10 +500,12 @@ class _DeliveryPageState extends State<DeliveryPage> {
   Widget _buildProofOfDeliveryCard() {
     final imagePath = networkImagePath.trim();
     final colorScheme = Theme.of(context).colorScheme;
+    final isVanSell = _currentDelivery.isVanSell;
+    final cardTitle = isVanSell ? 'Proof of Van Selling' : 'Proof of Delivery';
 
     if (imagePath.isEmpty) {
       return _buildSectionCard(
-        title: 'Proof of Delivery',
+        title: cardTitle,
         icon: Icons.image_outlined,
         child: Container(
           width: double.infinity,
@@ -519,7 +521,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'No Proof of Delivery photo attached.',
+                  isVanSell ? 'No Proof of Van Selling photo attached.' : 'No Proof of Delivery photo attached.',
                   style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
                 ),
               ),
@@ -530,7 +532,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     }
 
     return _buildSectionCard(
-      title: 'Proof of Delivery',
+      title: cardTitle,
       icon: Icons.image_outlined,
       trailing: OutlinedButton.icon(
         onPressed: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: null, networkImagePath: imagePath)),
@@ -575,7 +577,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     children: [
                       Icon(Icons.broken_image_outlined, size: 36, color: colorScheme.onSurfaceVariant),
                       const SizedBox(height: 6),
-                      Text('Unable to load Proof of Delivery image', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                      Text(
+                        isVanSell ? 'Unable to load Proof of Van Selling image' : 'Unable to load Proof of Delivery image',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
                     ],
                   ),
                 ),

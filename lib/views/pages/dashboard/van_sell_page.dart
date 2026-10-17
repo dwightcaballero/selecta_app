@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/van_sell_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
@@ -14,6 +16,7 @@ import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
+import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 class VanSellPage extends StatefulWidget {
@@ -44,12 +47,17 @@ class _VanSellPageState extends State<VanSellPage> {
 
   Hapistore? _selectedStore;
   final Map<String, int> _sellQuantities = {}; // productId -> quantity
+  File? _proofImage;
+  final ImagePicker _picker = ImagePicker();
 
   bool _isSaving = false;
   String _productSearchQuery = '';
 
   bool get _hasUnsavedChanges =>
-      _selectedStore != null || _sellQuantities.values.any((q) => q > 0) || _remarksController.text.trim().isNotEmpty;
+      _selectedStore != null ||
+      _sellQuantities.values.any((q) => q > 0) ||
+      _remarksController.text.trim().isNotEmpty ||
+      _proofImage != null;
 
   @override
   void initState() {
@@ -566,6 +574,10 @@ class _VanSellPageState extends State<VanSellPage> {
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
+                      const SizedBox(height: 12),
+
+                      // Proof of Van Selling section (Required)
+                      _buildDialogProofSection(dialogCtx, setDialogState),
                     ],
                   ),
                 ),
@@ -577,18 +589,22 @@ class _VanSellPageState extends State<VanSellPage> {
                 ),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: isBalanced ? Colors.teal : Colors.grey,
+                    backgroundColor: (isBalanced && _proofImage != null) ? Colors.teal : Colors.grey,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
                   icon: const Icon(Icons.check, size: 18),
                   label: const Text('Confirm & Complete'),
-                  onPressed: isBalanced
-                      ? () {
-                          Navigator.pop(dialogCtx, true);
-                        }
-                      : () {
-                          SnackBarWidget.error(context, 'Payment must balance with total amount before completing.');
-                        },
+                  onPressed: () {
+                    if (!isBalanced) {
+                      SnackBarWidget.error(context, 'Payment must balance with total amount before completing.');
+                      return;
+                    }
+                    if (_proofImage == null) {
+                      SnackBarWidget.error(context, 'Please upload proof of van selling before completing.');
+                      return;
+                    }
+                    Navigator.pop(dialogCtx, true);
+                  },
                 ),
               ],
             );
@@ -656,6 +672,391 @@ class _VanSellPageState extends State<VanSellPage> {
     );
   }
 
+  Future<void> _pickProofImage(ImageSource source, [StateSetter? setDialogState]) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+      if (pickedFile != null) {
+        setState(() {
+          _proofImage = File(pickedFile.path);
+        });
+        setDialogState?.call(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        SnackBarWidget.error(context, 'Failed to capture image: $e');
+      }
+    }
+  }
+
+  void _showImageSourceSelector([StateSetter? setDialogState]) {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Attach Proof of Van Selling', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
+                  child: const Icon(Icons.camera_alt_outlined, color: Colors.teal),
+                ),
+                title: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Capture with camera'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickProofImage(ImageSource.camera, setDialogState);
+                },
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
+                  child: const Icon(Icons.photo_library_outlined, color: Colors.teal),
+                ),
+                title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Select existing photo'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickProofImage(ImageSource.gallery, setDialogState);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _removeProofImage([StateSetter? setDialogState]) async {
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Remove Image',
+      message: 'Are you sure you want to remove the attached Proof of Van Selling image?',
+      icon: Icons.delete_outline,
+      confirmText: 'Remove',
+      isDestructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _proofImage = null;
+    });
+    setDialogState?.call(() {});
+  }
+
+  Widget _buildDialogProofSection(BuildContext ctx, StateSetter setDialogState) {
+    final hasProof = _proofImage != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: hasProof ? Colors.green.withValues(alpha: 0.04) : Colors.amber.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: hasProof ? Colors.green.withValues(alpha: 0.4) : Colors.amber.shade700,
+          width: 1.2,
+        ),
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: hasProof ? Colors.green.withValues(alpha: 0.12) : Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(
+                  hasProof ? Icons.verified_outlined : Icons.camera_alt_outlined,
+                  size: 16,
+                  color: hasProof ? Colors.green.shade800 : Colors.amber.shade900,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Row(
+                  children: [
+                    const Text(
+                      'Proof of Van Selling',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: hasProof ? Colors.green.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        hasProof ? 'Attached' : 'Required',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: hasProof ? Colors.green.shade800 : Colors.red.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasProof)
+                TextButton.icon(
+                  onPressed: () => _showImageSourceSelector(setDialogState),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  ),
+                  icon: const Icon(Icons.replay, size: 14),
+                  label: const Text('Retake', style: TextStyle(fontSize: 11.5)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (hasProof) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: _proofImage, networkImagePath: '')),
+                child: Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    Image.file(
+                      _proofImage!,
+                      height: 130,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.transparent, Colors.black.withValues(alpha: 0.75)],
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'Tap to view full screen',
+                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Helperfunctions.navigateTo(context, ImageViewerPage(image: _proofImage, networkImagePath: '')),
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.fullscreen, size: 15),
+                    label: const Text('View Full Screen', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                IconButton.outlined(
+                  onPressed: () => _removeProofImage(setDialogState),
+                  tooltip: 'Remove Image',
+                  style: IconButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade200),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  icon: const Icon(Icons.delete_outline, size: 16),
+                ),
+              ],
+            ),
+          ] else ...[
+            InkWell(
+              onTap: () => _showImageSourceSelector(setDialogState),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade300, style: BorderStyle.solid),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_a_photo_outlined, size: 28, color: Colors.teal.shade700),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Attach Proof of Van Selling',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Take a photo with camera or choose from gallery',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainScreenProofBanner() {
+    final hasProof = _proofImage != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: hasProof ? Colors.green.withValues(alpha: 0.05) : Colors.amber.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: hasProof ? Colors.green.withValues(alpha: 0.4) : Colors.amber.shade600.withValues(alpha: 0.5),
+          width: 1.2,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: hasProof
+              ? () => Helperfunctions.navigateTo(context, ImageViewerPage(image: _proofImage, networkImagePath: ''))
+              : () => _showImageSourceSelector(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                if (hasProof)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.file(_proofImage!, width: 40, height: 40, fit: BoxFit.cover),
+                  )
+                else
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.add_a_photo_outlined, color: Colors.amber.shade900, size: 20),
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Proof of Van Selling',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.bold,
+                              color: hasProof ? Colors.green.shade900 : Colors.amber.shade900,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: hasProof ? Colors.green.withValues(alpha: 0.15) : Colors.red.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              hasProof ? 'ATTACHED' : 'REQUIRED',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: hasProof ? Colors.green.shade800 : Colors.red.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        hasProof
+                            ? 'Tap to inspect or change photo'
+                            : 'Upload photo of store handover / transaction',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                if (hasProof) ...[
+                  IconButton(
+                    icon: const Icon(Icons.replay, size: 18),
+                    color: Colors.grey.shade700,
+                    tooltip: 'Retake Photo',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _showImageSourceSelector(),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    color: Colors.red.shade700,
+                    tooltip: 'Remove Photo',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _removeProofImage(),
+                  ),
+                ] else
+                  FilledButton.tonal(
+                    onPressed: () => _showImageSourceSelector(),
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    ),
+                    child: const Text('Attach', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _executeSaleWithPayment({
     required List<OrderItem> items,
     required String paymentMethod,
@@ -664,8 +1065,35 @@ class _VanSellPageState extends State<VanSellPage> {
     required double creditAmount,
     required String remarks,
   }) async {
+    if (_proofImage == null) {
+      SnackBarWidget.error(context, 'Proof of van selling photo is required.');
+      return;
+    }
+
+    final statusNotifier = ValueNotifier<String>('Uploading proof photo...');
     setState(() => _isSaving = true);
+
+    await Helperfunctions.showLoading(
+      context: context,
+      showLoading: true,
+      statusNotifier: statusNotifier,
+      message: 'Processing van sale...',
+      subtitle: 'Please wait, do not close or exit the app.',
+    );
+    if (!mounted) {
+      statusNotifier.dispose();
+      return;
+    }
+
     try {
+      // 1. Upload proof photo to Firebase Storage
+      final uploadedImageUrl = await Helperfunctions.saveImage(context, _proofImage!);
+
+      if (mounted) {
+        statusNotifier.value = 'Recording sale...';
+      }
+
+      // 2. Complete van sale record in Firestore
       final result = await _controller.completeVanSale(
         vanLoad: _activeVanLoad!,
         store: _selectedStore!,
@@ -675,7 +1103,10 @@ class _VanSellPageState extends State<VanSellPage> {
         onlineAmount: onlineAmount,
         creditAmount: creditAmount,
         remarks: remarks,
+        imagePath: uploadedImageUrl,
       );
+
+      await Helperfunctions.showLoading(showLoading: false);
 
       if (!mounted) return;
 
@@ -696,11 +1127,14 @@ class _VanSellPageState extends State<VanSellPage> {
           _selectedStore = null;
           _sellQuantities.clear();
           _remarksController.clear();
+          _proofImage = null;
         });
       }
     } catch (e) {
+      await Helperfunctions.showLoading(showLoading: false);
       if (mounted) SnackBarWidget.error(context, 'Failed to complete sale: $e');
     } finally {
+      statusNotifier.dispose();
       if (mounted) setState(() => _isSaving = false);
     }
   }
@@ -915,6 +1349,7 @@ class _VanSellPageState extends State<VanSellPage> {
               _selectedStore = null;
               _sellQuantities.clear();
               _remarksController.clear();
+              _proofImage = null;
             });
             if (Navigator.of(context).canPop()) {
               Navigator.pop(context);
@@ -1038,6 +1473,10 @@ class _VanSellPageState extends State<VanSellPage> {
                   ),
                 ),
               ),
+              if (_selectedStore != null) ...[
+                const SizedBox(height: 8),
+                _buildMainScreenProofBanner(),
+              ],
               const SizedBox(height: 10),
               // Search in van inventory
               SizedBox(
