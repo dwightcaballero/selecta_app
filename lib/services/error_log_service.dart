@@ -44,7 +44,7 @@ class ErrorLogItem {
     return {
       'id': id,
       'timestamp': timestamp.toIso8601String(),
-      'loggedDate': Timestamp.fromDate(timestamp),
+      'loggedDate': timestamp.millisecondsSinceEpoch,
       'page': page,
       'action': action,
       'error': error,
@@ -58,12 +58,20 @@ class ErrorLogItem {
     };
   }
 
+  Map<String, dynamic> toFirestore() {
+    final map = toJson();
+    map['loggedDate'] = Timestamp.fromDate(timestamp);
+    return map;
+  }
+
   factory ErrorLogItem.fromJson(Map<String, dynamic> json) {
     DateTime parsedTime;
     if (json['timestamp'] is String) {
       parsedTime = DateTime.tryParse(json['timestamp'] as String) ?? DateTime.now();
     } else if (json['loggedDate'] is Timestamp) {
       parsedTime = (json['loggedDate'] as Timestamp).toDate();
+    } else if (json['loggedDate'] is int) {
+      parsedTime = DateTime.fromMillisecondsSinceEpoch(json['loggedDate'] as int);
     } else {
       parsedTime = DateTime.now();
     }
@@ -258,7 +266,7 @@ class ErrorLogService {
   /// Silently uploads an error item to Firestore without throwing.
   static Future<void> _syncSingleLogSilently(ErrorLogItem item) async {
     try {
-      await FirebaseFirestore.instance.collection(collectionRef).doc(item.id).set(item.toJson());
+      await FirebaseFirestore.instance.collection(collectionRef).doc(item.id).set(item.toFirestore());
       // Mark as uploaded in local queue
       final logs = await _readLocalLogs();
       final index = logs.indexWhere((l) => l.id == item.id);
@@ -297,7 +305,7 @@ class ErrorLogService {
 
         for (final item in chunk) {
           final docRef = firestore.collection(collectionRef).doc(item.id);
-          batch.set(docRef, item.toJson(), SetOptions(merge: true));
+          batch.set(docRef, item.toFirestore(), SetOptions(merge: true));
         }
 
         await batch.commit();

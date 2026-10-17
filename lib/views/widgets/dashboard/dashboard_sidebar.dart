@@ -32,7 +32,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// panel (not an overlay) that sits beside the main content area.
 ///
 /// Width: 260dp. Collapses to icon-only rail at [collapsed] = true.
-class DashboardSidebar extends StatelessWidget {
+class DashboardSidebar extends StatefulWidget {
   final Users? currentUser;
   final bool isDealer;
   final bool isSyncing;
@@ -41,6 +41,11 @@ class DashboardSidebar extends StatelessWidget {
   final Stream<int> tasksCountStream;
   final Stream<int>? activeReturnsCountStream;
   final Stream<int>? unverifiedBreakdownCountStream;
+  final int? currentTabIndex;
+  final ValueChanged<int>? onTabSelected;
+  final Stream<int>? purchaseOrdersAwaitingCountStream;
+  final Stream<int>? pendingPicklistsCountStream;
+  final Stream<int>? pendingDeliveriesCountStream;
   final VoidCallback onSync;
   final VoidCallback onLogout;
   final Future<void> Function(Widget page) onNavigate;
@@ -57,10 +62,34 @@ class DashboardSidebar extends StatelessWidget {
     required this.tasksCountStream,
     this.activeReturnsCountStream,
     this.unverifiedBreakdownCountStream,
+    this.currentTabIndex,
+    this.onTabSelected,
+    this.purchaseOrdersAwaitingCountStream,
+    this.pendingPicklistsCountStream,
+    this.pendingDeliveriesCountStream,
     required this.onSync,
     required this.onLogout,
     required this.onNavigate,
   });
+
+  @override
+  State<DashboardSidebar> createState() => _DashboardSidebarState();
+}
+
+class _DashboardSidebarState extends State<DashboardSidebar> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,14 +101,15 @@ class DashboardSidebar extends StatelessWidget {
     final borderColor = isDark ? const Color(0xFF2E3644) : colorScheme.outlineVariant.withValues(alpha: 0.4);
 
     return Container(
-      width: kWidth,
+      width: DashboardSidebar.kWidth,
       decoration: BoxDecoration(
-        color: sidebarBg,
         border: Border(
           right: BorderSide(color: borderColor, width: 1),
         ),
       ),
-      child: Column(
+      child: Material(
+        color: sidebarBg,
+        child: Column(
         children: [
           // ── User Header ─────────────────────────────────────────────────
           _buildHeader(context, isDark, colorScheme),
@@ -87,53 +117,112 @@ class DashboardSidebar extends StatelessWidget {
           // ── Navigation Items ────────────────────────────────────────────
           Expanded(
             child: Scrollbar(
+              controller: _scrollController,
               thumbVisibility: true,
               child: ListView(
+                controller: _scrollController,
+                primary: false,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 children: [
+                  // ── Main Navigation Tabs (Unified) ───────────────────────────
+                  if (widget.currentTabIndex != null && widget.onTabSelected != null) ...[
+                    _buildSection(context, 'Main Navigation'),
+                    _buildNavTabItem(
+                      context,
+                      icon: Icons.dashboard_outlined,
+                      selectedIcon: Icons.dashboard_rounded,
+                      title: 'Home',
+                      tabIndex: 0,
+                    ),
+                    StreamBuilder<int>(
+                      stream: widget.purchaseOrdersAwaitingCountStream,
+                      initialData: 0,
+                      builder: (ctx, snap) => _buildNavTabItem(
+                        ctx,
+                        icon: Icons.inventory_2_outlined,
+                        selectedIcon: Icons.inventory_2_rounded,
+                        title: 'Restock',
+                        tabIndex: 1,
+                        badge: snap.data ?? 0,
+                      ),
+                    ),
+                    _buildNavTabItem(
+                      context,
+                      icon: Icons.warehouse_outlined,
+                      selectedIcon: Icons.warehouse_rounded,
+                      title: 'Inventory',
+                      tabIndex: 2,
+                    ),
+                    StreamBuilder<int>(
+                      stream: widget.pendingPicklistsCountStream,
+                      initialData: widget.dashboardDTO.pendingPicklistCount,
+                      builder: (ctx, snap) => _buildNavTabItem(
+                        ctx,
+                        icon: Icons.fact_check_outlined,
+                        selectedIcon: Icons.fact_check_rounded,
+                        title: 'PickLists',
+                        tabIndex: 3,
+                        badge: snap.data ?? widget.dashboardDTO.pendingPicklistCount,
+                      ),
+                    ),
+                    StreamBuilder<int>(
+                      stream: widget.pendingDeliveriesCountStream,
+                      initialData: widget.dashboardDTO.pendingDeliveryCount,
+                      builder: (ctx, snap) => _buildNavTabItem(
+                        ctx,
+                        icon: Icons.local_shipping_outlined,
+                        selectedIcon: Icons.local_shipping_rounded,
+                        title: 'Deliveries',
+                        tabIndex: 4,
+                        badge: snap.data ?? widget.dashboardDTO.pendingDeliveryCount,
+                      ),
+                    ),
+                    const _SidebarDivider(),
+                  ],
+
                   _buildSection(context, 'Operations'),
                   StreamBuilder<int>(
-                    stream: merchBlitzCountStream,
+                    stream: widget.merchBlitzCountStream,
                     builder: (ctx, snap) => _buildItem(ctx, Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzListPage(), badge: snap.data ?? 0),
                   ),
                   StreamBuilder<int>(
-                    stream: tasksCountStream,
+                    stream: widget.tasksCountStream,
                     builder: (ctx, snap) => _buildItem(ctx, Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badge: snap.data ?? 0),
                   ),
                   StreamBuilder<int>(
-                    stream: activeReturnsCountStream,
-                    initialData: dashboardDTO.returnedDeliveryCount,
+                    stream: widget.activeReturnsCountStream,
+                    initialData: widget.dashboardDTO.returnedDeliveryCount,
                     builder: (ctx, snap) => _buildItem(
                       ctx,
                       Icons.assignment_return_outlined,
                       'Returns',
                       const ReturnlistPage(),
-                      badge: snap.data ?? dashboardDTO.returnedDeliveryCount,
+                      badge: snap.data ?? widget.dashboardDTO.returnedDeliveryCount,
                     ),
                   ),
-                  _buildItem(context, Icons.account_balance_wallet_outlined, 'Credit List', const CreditlistPage(), badge: dashboardDTO.unpaidCreditCount),
+                  _buildItem(context, Icons.account_balance_wallet_outlined, 'Credit List', const CreditlistPage(), badge: widget.dashboardDTO.unpaidCreditCount),
                   _buildItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
                   _buildItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
                   StreamBuilder<int>(
-                    stream: unverifiedBreakdownCountStream,
-                    initialData: dashboardDTO.unverifiedBreakdownCount,
+                    stream: widget.unverifiedBreakdownCountStream,
+                    initialData: widget.dashboardDTO.unverifiedBreakdownCount,
                     builder: (ctx, snap) => _buildItem(
                       ctx,
                       Icons.today_outlined,
                       'End of Day',
                       const EndofdayPage(),
-                      badge: snap.data ?? dashboardDTO.unverifiedBreakdownCount,
+                      badge: snap.data ?? widget.dashboardDTO.unverifiedBreakdownCount,
                     ),
                   ),
                   _buildItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-                  _buildItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: currentUser?.role ?? (isDealer ? 'Dealer' : 'Salesman'))),
+                  _buildItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: widget.currentUser?.role ?? (widget.isDealer ? 'Dealer' : 'Salesman'))),
                   _buildItem(context, Icons.file_download_outlined, 'Export Reports', const ExportReportsPage()),
 
                   const _SidebarDivider(),
 
                   _buildSection(context, 'KPI & Analytics'),
-                  _buildItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: dashboardDTO)),
-                  if (isDealer) _buildItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
+                  _buildItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: widget.dashboardDTO)),
+                  if (widget.isDealer) _buildItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
 
                   const _SidebarDivider(),
 
@@ -147,13 +236,13 @@ class DashboardSidebar extends StatelessWidget {
                       null,
                       badge: count,
                       badgeColor: Colors.amber.shade800,
-                      onTap: () { if (!isSyncing) onSync(); },
+                      onTap: () { if (!widget.isSyncing) widget.onSync(); },
                     ),
                   ),
                   _buildItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
-                  if (isDealer) _buildItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
-                  if (isDealer) _buildItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
-                  _buildItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badge: dashboardDTO.pendingPjpCount),
+                  if (widget.isDealer) _buildItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
+                  if (widget.isDealer) _buildItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
+                  _buildItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badge: widget.dashboardDTO.pendingPjpCount),
                   _buildItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
                   // Settings hosts Check for Updates & Upload Error Logs; surface update status here.
                   ValueListenableBuilder<UpdateDownloadState>(
@@ -216,7 +305,7 @@ class DashboardSidebar extends StatelessWidget {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     leading: const Icon(Icons.logout_rounded, size: 20, color: Colors.red),
                     title: const Text('Logout', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.red)),
-                    onTap: onLogout,
+                    onTap: widget.onLogout,
                   ),
 
                   const SizedBox(height: 12),
@@ -243,35 +332,44 @@ class DashboardSidebar extends StatelessWidget {
           ),
         ],
       ),
+      ),
     );
   }
 
   Widget _buildHeader(BuildContext context, bool isDark, ColorScheme colorScheme) {
-    final displayName = currentUser?.username ?? (isDealer ? 'Dealer' : 'Salesman');
+    final displayName = widget.currentUser?.username ?? (widget.isDealer ? 'Dealer' : 'Salesman');
+    final topPadding = MediaQuery.paddingOf(context).top;
+    const toolbarHeight = 72.0;
+    final totalHeight = topPadding + toolbarHeight;
+
+    final appbarBg = isDark
+        ? const Color(0xFF1E2430)
+        : colorScheme.primary;
+    final bottomBorderColor = isDark
+        ? const Color(0xFF2E3644)
+        : colorScheme.primary.withAlpha(220);
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 52, 16, 16),
+      height: totalHeight,
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 0),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF1E2430), const Color(0xFF141822)]
-              : [colorScheme.primary, colorScheme.primary.withAlpha(210)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        color: appbarBg,
+        border: Border(
+          bottom: BorderSide(color: bottomBorderColor, width: 1),
         ),
-        border: isDark
-            ? const Border(bottom: BorderSide(color: Color(0xFF2E3644), width: 1))
-            : null,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           CircleAvatar(
-            radius: 22,
+            radius: 19,
             backgroundColor: Colors.white.withAlpha(50),
-            child: const Icon(Icons.person_rounded, size: 26, color: Colors.white),
+            child: const Icon(Icons.person_rounded, size: 24, color: Colors.white),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -280,26 +378,32 @@ class DashboardSidebar extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                 ),
-                if (currentUser?.email != null && currentUser!.email.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    currentUser!.email,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 11),
-                  ),
-                ],
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(40),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    currentUser?.role ?? (isDealer ? 'Dealer' : 'Salesman'),
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
-                  ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(40),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        widget.currentUser?.role ?? (widget.isDealer ? 'Dealer' : 'Salesman'),
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    if (widget.currentUser?.email != null && widget.currentUser!.email.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          widget.currentUser!.email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 11),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -319,6 +423,73 @@ class DashboardSidebar extends StatelessWidget {
           fontWeight: FontWeight.bold,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
           letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavTabItem(
+    BuildContext context, {
+    required IconData icon,
+    required IconData selectedIcon,
+    required String title,
+    required int tabIndex,
+    int badge = 0,
+    Color? badgeColor,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isSelected = widget.currentTabIndex == tabIndex;
+
+    final selectedBg = isSelected
+        ? colorScheme.primary.withValues(alpha: 0.12)
+        : Colors.transparent;
+    final itemColor = isSelected
+        ? colorScheme.primary
+        : colorScheme.onSurface;
+    final iconColor = isSelected
+        ? colorScheme.primary
+        : colorScheme.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      child: Material(
+        color: selectedBg,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => widget.onTabSelected?.call(tabIndex),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            child: Row(
+              children: [
+                Icon(isSelected ? selectedIcon : icon, size: 21, color: iconColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: itemColor,
+                    ),
+                  ),
+                ),
+                if (badge > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: badgeColor ?? Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$badge',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -358,7 +529,7 @@ class DashboardSidebar extends StatelessWidget {
         if (onTap != null) {
           onTap();
         } else if (page != null) {
-          await onNavigate(page);
+          await widget.onNavigate(page);
         }
       },
     );

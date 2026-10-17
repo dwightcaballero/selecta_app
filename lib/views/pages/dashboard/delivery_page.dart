@@ -1578,13 +1578,15 @@ class _DeliveryPageState extends State<DeliveryPage> {
                 duration: const Duration(milliseconds: 180),
                 margin: const EdgeInsets.symmetric(vertical: 3),
                 decoration: BoxDecoration(
-                  color: isPlaced ? colorScheme.primary.withValues(alpha: 0.05) : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isPlaced ? colorScheme.primary.withValues(alpha: 0.25) : Colors.transparent,
                   ),
                 ),
-                child: ListTile(
+                child: Material(
+                  color: isPlaced ? colorScheme.primary.withValues(alpha: 0.05) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -1671,6 +1673,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                             ],
                           ),
                         ),
+                ),
                 ),
               );
             },

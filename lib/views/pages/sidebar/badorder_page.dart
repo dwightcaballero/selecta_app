@@ -565,25 +565,28 @@ class _BadOrderPageState extends State<BadOrderPage> {
           ],
           const SizedBox(height: 12),
           if (_isDealer)
-            Container(
-              decoration: BoxDecoration(
-                color: isRefunded ? Colors.green.shade50 : Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: isRefunded ? Colors.green.shade200 : Colors.amber.shade200),
-              ),
-              child: SwitchListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                title: Text(
-                  'Mark Store as Refunded',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isRefunded ? Colors.green.shade900 : Colors.amber.shade900),
+            Material(
+              color: isRefunded ? Colors.green.shade50 : Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: isRefunded ? Colors.green.shade200 : Colors.amber.shade200),
                 ),
-                subtitle: Text(
-                  isRefunded ? 'Toggle off to revert to Not Refunded' : 'Toggle on once store credit or cash is disbursed',
-                  style: TextStyle(fontSize: 11.5, color: isRefunded ? Colors.green.shade700 : Colors.amber.shade800),
+                child: SwitchListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  title: Text(
+                    'Mark Store as Refunded',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isRefunded ? Colors.green.shade900 : Colors.amber.shade900),
+                  ),
+                  subtitle: Text(
+                    isRefunded ? 'Toggle off to revert to Not Refunded' : 'Toggle on once store credit or cash is disbursed',
+                    style: TextStyle(fontSize: 11.5, color: isRefunded ? Colors.green.shade700 : Colors.amber.shade800),
+                  ),
+                  value: isRefunded,
+                  activeThumbColor: Colors.green.shade700,
+                  onChanged: _isLoading ? null : (val) => _onToggleStoreRefunded(val),
                 ),
-                value: isRefunded,
-                activeThumbColor: Colors.green.shade700,
-                onChanged: _isLoading ? null : (val) => _onToggleStoreRefunded(val),
               ),
             )
           else

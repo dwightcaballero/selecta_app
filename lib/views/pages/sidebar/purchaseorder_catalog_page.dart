@@ -14,6 +14,7 @@ import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/data/responsive.dart';
 
 /// Full-page product catalog for restock / Purchase Orders.
 ///
@@ -27,6 +28,7 @@ class PurchaseOrderCatalogPage extends StatefulWidget {
   final bool isDirectCreationFlow;
 
   final InventoryController? inventoryController;
+  final PurchaseOrderController? purchaseOrderController;
 
   const PurchaseOrderCatalogPage({
     super.key,
@@ -34,6 +36,7 @@ class PurchaseOrderCatalogPage extends StatefulWidget {
     this.existingLines = const [],
     this.isDirectCreationFlow = true,
     this.inventoryController,
+    this.purchaseOrderController,
   });
 
   @override
@@ -42,7 +45,9 @@ class PurchaseOrderCatalogPage extends StatefulWidget {
 
 class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
   late final InventoryController? _inventoryController;
-  final PurchaseOrderController _poController = PurchaseOrderController();
+  PurchaseOrderController? _poControllerInstance;
+  PurchaseOrderController get _poController =>
+      widget.purchaseOrderController ?? (_poControllerInstance ??= PurchaseOrderController());
   final TextEditingController _searchController = TextEditingController();
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
@@ -515,37 +520,40 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(height: 6),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                              ),
-                              child: Column(
-                                children: _unsettledOverpayments.map((doc) {
-                                  final order = doc.data();
-                                  final isChecked = selectedOverpaymentIds.contains(doc.id);
-                                  final label = order.invoiceNumber.isNotEmpty ? 'Inv #${order.invoiceNumber}' : 'PO #${order.poNumber}';
-                                  return CheckboxListTile(
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                    dense: true,
-                                    title: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
-                                    subtitle: Text(
-                                      'Credit: ${_currencyFormat.format(order.overpayment)} • ${DateFormat('MMM dd, yyyy').format(order.orderDate.toDate())}',
-                                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                                    ),
-                                    value: isChecked,
-                                    onChanged: (val) {
-                                      setModalState(() {
-                                        if (val == true) {
-                                          selectedOverpaymentIds.add(doc.id);
-                                        } else {
-                                          selectedOverpaymentIds.remove(doc.id);
-                                        }
-                                      });
-                                    },
-                                  );
-                                }).toList(),
+                            Material(
+                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                                ),
+                                child: Column(
+                                  children: _unsettledOverpayments.map((doc) {
+                                    final order = doc.data();
+                                    final isChecked = selectedOverpaymentIds.contains(doc.id);
+                                    final label = order.invoiceNumber.isNotEmpty ? 'Inv #${order.invoiceNumber}' : 'PO #${order.poNumber}';
+                                    return CheckboxListTile(
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                      dense: true,
+                                      title: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                                      subtitle: Text(
+                                        'Credit: ${_currencyFormat.format(order.overpayment)} • ${DateFormat('MMM dd, yyyy').format(order.orderDate.toDate())}',
+                                        style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                      ),
+                                      value: isChecked,
+                                      onChanged: (val) {
+                                        setModalState(() {
+                                          if (val == true) {
+                                            selectedOverpaymentIds.add(doc.id);
+                                          } else {
+                                            selectedOverpaymentIds.remove(doc.id);
+                                          }
+                                        });
+                                      },
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -765,8 +773,6 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
   }
 
   Widget _buildScaffold(BuildContext context, List<InventoryItem> allInventory) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     // Filter items according to search query
     final selectaCatalog = allInventory.where((i) {
       if (_searchQuery.isEmpty) return true;
@@ -841,144 +847,503 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
           title: widget.isDirectCreationFlow ? 'Restock Catalog' : 'Manual Purchase Order',
           subtitle: widget.isDirectCreationFlow ? 'Restock from Selecta • Select Products' : 'Update Purchase Order Items',
         ),
-      bottomNavigationBar: _buildStickyBottomBar(
-        context: context,
-        totalSkus: totalSkus,
-        totalUnits: totalUnits,
-        totalCost: totalCost,
-        allInventory: allInventory,
-      ),
-      body: Column(
-        children: [
-          // ── Search Bar ───────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search Selecta products or codes...',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        bottomNavigationBar: ScreenSize.isTabletLandscape(context)
+            ? null
+            : _buildStickyBottomBar(
+                context: context,
+                totalSkus: totalSkus,
+                totalUnits: totalUnits,
+                totalCost: totalCost,
+                allInventory: allInventory,
               ),
-              onChanged: (val) => setState(() => _searchQuery = val.trim()),
-            ),
-          ),
+        body: ScreenSize.isTabletLandscape(context)
+            ? _buildTabletLandscapeView(
+                context: context,
+                allInventory: allInventory,
+                selectaCatalog: selectaCatalog,
+                recommendedPreOrders: recommendedPreOrders,
+                caseProducts: caseProducts,
+                pieceProducts: pieceProducts,
+                bestSellerProducts: bestSellerProducts,
+                totalSkus: totalSkus,
+                totalUnits: totalUnits,
+                totalCost: totalCost,
+                invMap: invMap,
+              )
+            : _buildCatalogContent(
+                context: context,
+                selectaCatalog: selectaCatalog,
+                recommendedPreOrders: recommendedPreOrders,
+                caseProducts: caseProducts,
+                pieceProducts: pieceProducts,
+                bestSellerProducts: bestSellerProducts,
+              ),
+      ),
+    );
+  }
 
-          // ── Category Filter Chips ────────────────────────────────────
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+  Widget _buildTabletLandscapeView({
+    required BuildContext context,
+    required List<InventoryItem> allInventory,
+    required List<InventoryItem> selectaCatalog,
+    required List<InventoryItem> recommendedPreOrders,
+    required List<InventoryItem> caseProducts,
+    required List<InventoryItem> pieceProducts,
+    required List<InventoryItem> bestSellerProducts,
+    required int totalSkus,
+    required int totalUnits,
+    required double totalCost,
+    required Map<String, InventoryItem> invMap,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Left: Product Catalog (flex: 6)
+        Expanded(
+          flex: 6,
+          child: _buildCatalogContent(
+            context: context,
+            selectaCatalog: selectaCatalog,
+            recommendedPreOrders: recommendedPreOrders,
+            caseProducts: caseProducts,
+            pieceProducts: pieceProducts,
+            bestSellerProducts: bestSellerProducts,
+          ),
+        ),
+        const VerticalDivider(width: 1, thickness: 1),
+        // Right: Order Summary & Review (flex: 4)
+        Expanded(
+          flex: 4,
+          child: _buildTabletCartPane(
+            context: context,
+            allInventory: allInventory,
+            totalSkus: totalSkus,
+            totalUnits: totalUnits,
+            totalCost: totalCost,
+            invMap: invMap,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabletCartPane({
+    required BuildContext context,
+    required List<InventoryItem> allInventory,
+    required int totalSkus,
+    required int totalUnits,
+    required double totalCost,
+    required Map<String, InventoryItem> invMap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final selectedProductIds = _addedProductIdsOrder.where((id) => (_selectedQuantities[id] ?? 0) > 0).toList();
+
+    return Container(
+      color: Colors.grey.shade50,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            color: colorScheme.surface,
             child: Row(
               children: [
-                _buildFilterChip('all', 'All Products (${selectaCatalog.length})', Icons.grid_view_rounded),
-                if (recommendedPreOrders.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  _buildFilterChip(
-                    'recommended',
-                    'Recommended (${recommendedPreOrders.length})',
-                    Icons.auto_awesome_rounded,
-                    const Color(0xFF7C3AED),
+                Icon(Icons.receipt_long_rounded, color: colorScheme.primary, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Order Cart ($totalSkus SKU${totalSkus == 1 ? '' : 's'} • $totalUnits units)',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-                const SizedBox(width: 8),
-                _buildFilterChip('by_case', 'By Case (${caseProducts.length})', Icons.all_inbox_rounded, Colors.orange.shade800),
-                const SizedBox(width: 8),
-                _buildFilterChip('by_piece', 'By Piece (${pieceProducts.length})', Icons.icecream_outlined, colorScheme.primary),
-                if (bestSellerProducts.isNotEmpty) ...[
-                  const SizedBox(width: 8),
-                  _buildFilterChip('best_sellers', 'Best Sellers (${bestSellerProducts.length})', Icons.star_rounded, Colors.amber.shade700),
-                ],
+                ),
+                if (selectedProductIds.isNotEmpty)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    ),
+                    icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                    label: const Text('Clear', style: TextStyle(fontSize: 12.5)),
+                    onPressed: () async {
+                      final confirmed = await ShowMessage.confirm(
+                        context,
+                        title: 'Clear Selections',
+                        message: 'Are you sure you want to clear all product quantities?',
+                        confirmText: 'Clear All',
+                        isDestructive: true,
+                      );
+                      if (confirmed && mounted) {
+                        setState(() {
+                          _selectedQuantities.clear();
+                          _addedProductIdsOrder.clear();
+                        });
+                      }
+                    },
+                  ),
               ],
             ),
           ),
-
           const Divider(height: 1),
 
-          // ── Grouped Product Catalog List ─────────────────────────────
-          Expanded(
-            child: CustomScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              slivers: [
-                // 1. Recommended Pre-Orders placed at the VERY TOP
-                if (_selectedCategory == 'all' || _selectedCategory == 'recommended')
-                  if (recommendedPreOrders.isNotEmpty) ...[
-                    _buildSliverHeader(
-                      'Recommended Pre-Orders',
-                      recommendedPreOrders.length,
-                      Icons.auto_awesome_rounded,
-                      const Color(0xFF7C3AED),
-                      trailing: TextButton.icon(
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          foregroundColor: const Color(0xFF7C3AED),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          // Restock PO Meta Card
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: colorScheme.surface,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.inventory_2_outlined, color: colorScheme.primary, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.isDirectCreationFlow ? 'Restock Purchase Order' : 'Manual P.O. Selection',
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                         ),
-                        icon: const Icon(Icons.add_shopping_cart_rounded, size: 14),
-                        label: const Text('Add All Shortages', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                        onPressed: () => _addAllRecommendedPreOrders(recommendedPreOrders),
-                      ),
-                    ),
-                    _buildSliverProductList(recommendedPreOrders),
-                  ],
-
-                // 2. By Case (sorted by SRP)
-                if (_selectedCategory == 'all' || _selectedCategory == 'by_case')
-                  if (caseProducts.isNotEmpty) ...[
-                    _buildSliverHeader('By Case', caseProducts.length, Icons.all_inbox_rounded, const Color(0xFFEA580C)),
-                    _buildSliverProductList(caseProducts),
-                  ],
-
-                // 3. By Piece (sorted by SRP)
-                if (_selectedCategory == 'all' || _selectedCategory == 'by_piece')
-                  if (pieceProducts.isNotEmpty) ...[
-                    _buildSliverHeader('By Piece', pieceProducts.length, Icons.icecream_outlined, colorScheme.primary),
-                    _buildSliverProductList(pieceProducts),
-                  ],
-
-                // 4. Best Sellers (only if explicitly filtered)
-                if (_selectedCategory == 'best_sellers')
-                  if (bestSellerProducts.isNotEmpty) ...[
-                    _buildSliverHeader('Best Sellers', bestSellerProducts.length, Icons.star_rounded, const Color(0xFFD97706)),
-                    _buildSliverProductList(bestSellerProducts),
-                  ],
-
-                if (selectaCatalog.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.search_off_rounded, size: 48, color: colorScheme.outline),
-                          const SizedBox(height: 12),
-                          Text(
-                            _searchQuery.isNotEmpty ? 'No products match "$_searchQuery"' : 'No Selecta products found',
-                            style: TextStyle(color: colorScheme.onSurfaceVariant),
-                          ),
-                        ],
-                      ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.isDirectCreationFlow
+                              ? 'Target: Direct Factory Order from Selecta'
+                              : 'Updating Purchase Order lines',
+                          style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
                     ),
                   ),
+                ],
+              ),
+            ),
+          ),
+          const Divider(height: 1),
 
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          // Selected Items List
+          Expanded(
+            child: selectedProductIds.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.shopping_cart_outlined, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 10),
+                        Text(
+                          'No items in order',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Select products on the left to add to Purchase Order.',
+                          style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: selectedProductIds.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final id = selectedProductIds[index];
+                      final item = invMap[id];
+                      final qty = _selectedQuantities[id] ?? 0;
+                      if (item == null) return const SizedBox.shrink();
+                      final itemTotal = item.buyingPrice * qty;
+
+                      return Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            CachedProductImage(imageUrl: item.imageUrl, size: 40, borderRadius: 8),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.productName,
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${_currencyFormat.format(item.buyingPrice)} / unit',
+                                    style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Stepper
+                            Container(
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.remove, size: 14),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 30),
+                                    onPressed: () {
+                                      HapticFeedback.lightImpact();
+                                      _updateQuantity(item.id, qty - 1);
+                                    },
+                                  ),
+                                  InkWell(
+                                    onTap: () => _promptDirectQuantityDialog(item),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                                      child: Text(
+                                        '$qty',
+                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.add, size: 14),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 30),
+                                    onPressed: () {
+                                      HapticFeedback.lightImpact();
+                                      _updateQuantity(item.id, qty + 1);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 70,
+                              child: Text(
+                                _currencyFormat.format(itemTotal),
+                                textAlign: TextAlign.right,
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          // Sticky Cart Footer
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -2)),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Total Units:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+                    Text('$totalUnits', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total Buying Cost:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text(
+                      _currencyFormat.format(totalCost),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: colorScheme.primary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: Icon(widget.isDirectCreationFlow ? Icons.receipt_long_rounded : Icons.check_rounded, size: 20),
+                    label: Text(
+                      widget.isDirectCreationFlow
+                          ? (totalUnits > 0 ? 'Create Order ($totalUnits)' : 'Create Order')
+                          : 'Apply to P.O. ($totalUnits)',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: () => _onSubmit(allInventory),
+                  ),
+                ),
               ],
             ),
           ),
         ],
       ),
-    ),
+    );
+  }
+
+  Widget _buildCatalogContent({
+    required BuildContext context,
+    required List<InventoryItem> selectaCatalog,
+    required List<InventoryItem> recommendedPreOrders,
+    required List<InventoryItem> caseProducts,
+    required List<InventoryItem> pieceProducts,
+    required List<InventoryItem> bestSellerProducts,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      children: [
+        // ── Search Bar ───────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search Selecta products or codes...',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            ),
+            onChanged: (val) => setState(() => _searchQuery = val.trim()),
+          ),
+        ),
+
+        // ── Category Filter Chips ────────────────────────────────────
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Row(
+            children: [
+              _buildFilterChip('all', 'All Products (${selectaCatalog.length})', Icons.grid_view_rounded),
+              if (recommendedPreOrders.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                _buildFilterChip(
+                  'recommended',
+                  'Recommended (${recommendedPreOrders.length})',
+                  Icons.auto_awesome_rounded,
+                  const Color(0xFF7C3AED),
+                ),
+              ],
+              const SizedBox(width: 8),
+              _buildFilterChip('by_case', 'By Case (${caseProducts.length})', Icons.all_inbox_rounded, Colors.orange.shade800),
+              const SizedBox(width: 8),
+              _buildFilterChip('by_piece', 'By Piece (${pieceProducts.length})', Icons.icecream_outlined, colorScheme.primary),
+              if (bestSellerProducts.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                _buildFilterChip('best_sellers', 'Best Sellers (${bestSellerProducts.length})', Icons.star_rounded, Colors.amber.shade700),
+              ],
+            ],
+          ),
+        ),
+
+        const Divider(height: 1),
+
+        // ── Grouped Product Catalog List ─────────────────────────────
+        Expanded(
+          child: CustomScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              // 1. Recommended Pre-Orders placed at the VERY TOP
+              if (_selectedCategory == 'all' || _selectedCategory == 'recommended')
+                if (recommendedPreOrders.isNotEmpty) ...[
+                  _buildSliverHeader(
+                    'Recommended Pre-Orders',
+                    recommendedPreOrders.length,
+                    Icons.auto_awesome_rounded,
+                    const Color(0xFF7C3AED),
+                    trailing: TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        foregroundColor: const Color(0xFF7C3AED),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      ),
+                      icon: const Icon(Icons.add_shopping_cart_rounded, size: 14),
+                      label: const Text('Add All Shortages', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                      onPressed: () => _addAllRecommendedPreOrders(recommendedPreOrders),
+                    ),
+                  ),
+                  _buildSliverProductList(recommendedPreOrders),
+                ],
+
+              // 2. By Case (sorted by SRP)
+              if (_selectedCategory == 'all' || _selectedCategory == 'by_case')
+                if (caseProducts.isNotEmpty) ...[
+                  _buildSliverHeader('By Case', caseProducts.length, Icons.all_inbox_rounded, const Color(0xFFEA580C)),
+                  _buildSliverProductList(caseProducts),
+                ],
+
+              // 3. By Piece (sorted by SRP)
+              if (_selectedCategory == 'all' || _selectedCategory == 'by_piece')
+                if (pieceProducts.isNotEmpty) ...[
+                  _buildSliverHeader('By Piece', pieceProducts.length, Icons.icecream_outlined, colorScheme.primary),
+                  _buildSliverProductList(pieceProducts),
+                ],
+
+              // 4. Best Sellers (only if explicitly filtered)
+              if (_selectedCategory == 'best_sellers')
+                if (bestSellerProducts.isNotEmpty) ...[
+                  _buildSliverHeader('Best Sellers', bestSellerProducts.length, Icons.star_rounded, const Color(0xFFD97706)),
+                  _buildSliverProductList(bestSellerProducts),
+                ],
+
+              if (selectaCatalog.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.search_off_rounded, size: 48, color: colorScheme.outline),
+                        const SizedBox(height: 12),
+                        Text(
+                          _searchQuery.isNotEmpty ? 'No products match "$_searchQuery"' : 'No Selecta products found',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

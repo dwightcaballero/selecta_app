@@ -343,7 +343,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   }
 
   // ── Shared sidebar props helper ─────────────────────────────────────────
-  DashboardSidebar _buildSidebar() => DashboardSidebar(
+  DashboardSidebar _buildSidebar({bool includeTabs = false}) => DashboardSidebar(
     currentUser: _currentUser,
     isDealer: isDealer,
     isSyncing: isSyncing,
@@ -352,6 +352,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     tasksCountStream: _tasksCountStream,
     activeReturnsCountStream: _activeReturnsCountStream,
     unverifiedBreakdownCountStream: _unverifiedBreakdownsCountStream,
+    currentTabIndex: includeTabs ? _currentTabIndex : null,
+    onTabSelected: includeTabs ? (index) => setState(() => _currentTabIndex = index) : null,
+    purchaseOrdersAwaitingCountStream: includeTabs ? _purchaseOrdersAwaitingCountStream : null,
+    pendingPicklistsCountStream: includeTabs ? _pendingPicklistsCountStream : null,
+    pendingDeliveriesCountStream: includeTabs ? _pendingDeliveriesCountStream : null,
     onSync: () => syncDashboard(force: true),
     onLogout: onLogout,
     onNavigate: _navigateToPage,
@@ -544,35 +549,39 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     return false;
   }
 
-  Widget _buildHomeDashboard(List<Widget> appBarActions, ColorScheme colorScheme) {
+  Widget _buildHomeDashboard(List<Widget> appBarActions, ColorScheme colorScheme, {required bool isWideLandscape}) {
     return Scaffold(
       key: _homeScaffoldKey,
       appBar: CustomAppbar(
         title: 'Dashboard',
         subtitle: 'Selecta Operations',
         showBackButton: false,
-        leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: const Icon(Icons.menu_rounded, color: Colors.white),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
-            tooltip: 'Open Menu',
-          ),
-        ),
+        leading: isWideLandscape
+            ? null
+            : Builder(
+                builder: (ctx) => IconButton(
+                  icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
+                  tooltip: 'Open Menu',
+                ),
+              ),
         actions: appBarActions,
       ),
-      drawer: DashboardDrawer(
-        currentUser: _currentUser,
-        isDealer: isDealer,
-        isSyncing: isSyncing,
-        dashboardDTO: dashboardDTO,
-        merchBlitzCountStream: _merchBlitzCountStream,
-        tasksCountStream: _tasksCountStream,
-        activeReturnsCountStream: _activeReturnsCountStream,
-        unverifiedBreakdownCountStream: _unverifiedBreakdownsCountStream,
-        onSync: () => syncDashboard(force: true),
-        onLogout: onLogout,
-        onNavigate: _navigateToPage,
-      ),
+      drawer: isWideLandscape
+          ? null
+          : DashboardDrawer(
+              currentUser: _currentUser,
+              isDealer: isDealer,
+              isSyncing: isSyncing,
+              dashboardDTO: dashboardDTO,
+              merchBlitzCountStream: _merchBlitzCountStream,
+              tasksCountStream: _tasksCountStream,
+              activeReturnsCountStream: _activeReturnsCountStream,
+              unverifiedBreakdownCountStream: _unverifiedBreakdownsCountStream,
+              onSync: () => syncDashboard(force: true),
+              onLogout: onLogout,
+              onNavigate: _navigateToPage,
+            ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: null,
         onPressed: () => AiChatModal.show(context, dashboardDTO: dashboardDTO, userRole: isDealer ? 'Dealer' : 'Salesman'),
@@ -589,6 +598,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Widget build(BuildContext context) {
     final isDesktop = ScreenSize.isDesktop(context);
     final isTablet = ScreenSize.isTablet(context);
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
+    final isWide = isDesktop || isTabletLandscape;
     final colorScheme = Theme.of(context).colorScheme;
 
     // ── AppBar actions (shared) ────────────────────────────────────────────
@@ -608,7 +619,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     ];
 
     final tabPages = [
-      _buildHomeDashboard(appBarActions, colorScheme),
+      _buildHomeDashboard(appBarActions, colorScheme, isWideLandscape: isWide),
       const PurchaseorderlistPage(),
       const InventoryPage(),
       const PicklistListPage(),
@@ -617,13 +628,13 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
     final Widget content;
 
-    // ── DESKTOP layout: permanent sidebar + tab content ────────────────────────
-    if (isDesktop) {
+    // ── DESKTOP / TABLET LANDSCAPE: Unified single sidebar + tab content ──
+    if (isWide) {
       content = Scaffold(
         body: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSidebar(),
+            _buildSidebar(includeTabs: true),
             const VerticalDivider(width: 1, thickness: 1),
             Expanded(
               child: IndexedStack(
@@ -635,18 +646,22 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         ),
       );
     } else if (isTablet) {
-      // ── TABLET layout: NavigationRail + tab content ─────────────────────
+      // ── TABLET PORTRAIT layout: NavigationRail + tab content (drawer for operations) ──
       content = Scaffold(
         body: Row(
           children: [
-            NavigationRail(
-              selectedIndex: _currentTabIndex,
-              onDestinationSelected: (index) {
-                setState(() => _currentTabIndex = index);
-              },
-              labelType: NavigationRailLabelType.selected,
-              minWidth: 56,
-              destinations: _navRailDestinations(),
+            SafeArea(
+              bottom: false,
+              right: false,
+              child: NavigationRail(
+                selectedIndex: _currentTabIndex,
+                onDestinationSelected: (index) {
+                  setState(() => _currentTabIndex = index);
+                },
+                labelType: NavigationRailLabelType.selected,
+                minWidth: 56,
+                destinations: _navRailDestinations(),
+              ),
             ),
             const VerticalDivider(width: 1, thickness: 1),
             Expanded(

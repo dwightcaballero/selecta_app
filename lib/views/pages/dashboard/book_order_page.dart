@@ -22,6 +22,7 @@ import 'package:selecta_ops/views/widgets/book_order/store_date_modal.dart';
 import 'package:selecta_ops/views/widgets/book_order/store_recommendations_modal.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:intl/intl.dart';
+import 'package:selecta_ops/data/responsive.dart';
 
 /// Book Order Page where users select a Hapi Store and choose products.
 /// Selecta products are categorized as Best Sellers, By Case, and By Piece, followed by Other Products at the very bottom.
@@ -1794,7 +1795,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
               onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
               actions: [_buildOverflowMenuAction(allInventory: allInventory, unplacedCount: unplacedCount, colorScheme: colorScheme)],
             ),
-            bottomNavigationBar: hasSelectedStore
+            bottomNavigationBar: (hasSelectedStore && !ScreenSize.isTabletLandscape(context))
                 ? _buildStickyOrderSummaryBar(
                     colorScheme: colorScheme,
                     allInventory: allInventory,
@@ -1805,250 +1806,622 @@ class _BookOrderPageState extends State<BookOrderPage> {
                 : null,
             body: Stack(
               children: [
-                Column(
-                  children: [
-                    if (!hasSelectedStore)
-                      Expanded(child: _buildSelectStorePrompt(colorScheme, allInventory))
-                    else ...[
-                      // ── Search & Selected Filter Bar ────────────────────────────────
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 48,
-                                    child: TextField(
-                                      controller: _searchController,
-                                      focusNode: _searchFocusNode,
-                                      autofocus: false,
-                                      onTapOutside: (_) => _searchFocusNode.unfocus(),
-                                      onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
-                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                                      decoration: InputDecoration(
-                                        hintText: 'Search product, SKU, or category...',
-                                        hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
-                                        prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
-                                        suffixIcon: _searchQuery.isNotEmpty
-                                            ? IconButton(
-                                                icon: const Icon(Icons.clear, size: 20),
-                                                onPressed: () {
-                                                  _searchController.clear();
-                                                  _searchFocusNode.unfocus();
-                                                  setState(() => _searchQuery = '');
-                                                },
-                                              )
-                                            : null,
-                                        filled: true,
-                                        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 14),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(10),
-                                          borderSide: BorderSide(color: colorScheme.outlineVariant),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(10),
-                                          borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  FilterChip(
-                                    selected: _selectedCategoryFilter == 'all',
-                                    label: Text(
-                                      'All',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _selectedCategoryFilter == 'all' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    selectedColor: colorScheme.primary,
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (_) => setState(() => _selectedCategoryFilter = 'all'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilterChip(
-                                    selected: _selectedCategoryFilter == 'selected',
-                                    label: Text(
-                                      'Selected (${orderItems.length})',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _selectedCategoryFilter == 'selected' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    selectedColor: colorScheme.primary,
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'selected' : 'all'),
-                                  ),
-                                  if (unplacedCount > 0) ...[
-                                    const SizedBox(width: 8),
-                                    FilterChip(
-                                      key: const Key('unplaced_recommendations_chip'),
-                                      selected: _selectedCategoryFilter == 'unplaced',
-                                      label: Text(
-                                        'Unplaced ($unplacedCount)',
-                                        style: TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: _selectedCategoryFilter == 'unplaced' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                        ),
-                                      ),
-                                      selectedColor: const Color(0xFFD97706),
-                                      showCheckmark: false,
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'unplaced' : 'all'),
-                                    ),
-                                  ],
-                                  const SizedBox(width: 8),
-                                  FilterChip(
-                                    selected: _selectedCategoryFilter == 'best_sellers',
-                                    label: Text(
-                                      '⭐ Best Sellers',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _selectedCategoryFilter == 'best_sellers' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    selectedColor: colorScheme.primary,
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'best_sellers' : 'all'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilterChip(
-                                    selected: _selectedCategoryFilter == 'by_case',
-                                    label: Text(
-                                      '📦 By Case',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _selectedCategoryFilter == 'by_case' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    selectedColor: colorScheme.primary,
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_case' : 'all'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilterChip(
-                                    selected: _selectedCategoryFilter == 'by_piece',
-                                    label: Text(
-                                      '🍦 By Piece',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _selectedCategoryFilter == 'by_piece' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    selectedColor: colorScheme.primary,
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_piece' : 'all'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilterChip(
-                                    selected: _selectedCategoryFilter == 'other',
-                                    label: Text(
-                                      '🛒 Other Products',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _selectedCategoryFilter == 'other' ? colorScheme.onPrimary : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    selectedColor: colorScheme.primary,
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'other' : 'all'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilterChip(
-                                    key: const Key('hide_out_of_stock_chip'),
-                                    selected: _hideOutOfStock,
-                                    avatar: Icon(
-                                      _hideOutOfStock ? Icons.visibility_off_rounded : Icons.visibility_outlined,
-                                      size: 16,
-                                      color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
-                                    ),
-                                    label: Text(
-                                      'Hide Out of Stock',
-                                      style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    selectedColor: colorScheme.primary,
-                                    showCheckmark: false,
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    onSelected: (val) => setState(() => _hideOutOfStock = val),
-                                  ),
-                                  if (_scannedReceiptOrder.isNotEmpty) ...[
-                                    const SizedBox(width: 8),
-                                    FilterChip(
-                                      key: const Key('receipt_order_toggle_chip'),
-                                      selected: _sortByReceiptOrder,
-                                      avatar: Icon(
-                                        _sortByReceiptOrder ? Icons.receipt_long_outlined : Icons.category_outlined,
-                                        size: 15,
-                                        color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurfaceVariant,
-                                      ),
-                                      label: Text(
-                                        _sortByReceiptOrder ? 'Receipt Sequence (#1–#${_scannedReceiptOrder.length})' : 'Catalog Grouping',
-                                        style: TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurface,
-                                        ),
-                                      ),
-                                      selectedColor: Colors.amber.shade100,
-                                      side: BorderSide(
-                                        color: _sortByReceiptOrder ? Colors.amber.shade400 : colorScheme.outlineVariant.withValues(alpha: 0.6),
-                                      ),
-                                      showCheckmark: false,
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      onSelected: (val) => setState(() => _sortByReceiptOrder = val),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // ── Unified Product List (Selecta first, Other Products at bottom) ──
+                if (!hasSelectedStore)
+                  _buildSelectStorePrompt(colorScheme, allInventory)
+                else if (ScreenSize.isTabletLandscape(context))
+                  _buildTabletLandscapeView(
+                    colorScheme: colorScheme,
+                    allInventory: allInventory,
+                    orderItems: orderItems,
+                    totalAmount: totalAmount,
+                    totalUnits: totalUnits,
+                    unplacedCount: unplacedCount,
+                    snapshot: snapshot,
+                  )
+                else
+                  Column(
+                    children: [
+                      _buildSearchAndFiltersHeader(colorScheme, orderItems.length, unplacedCount),
                       Expanded(
                         child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
                             ? const Center(child: CircularProgressIndicator())
                             : _buildUnifiedProductList(allInventory: allInventory, colorScheme: colorScheme),
                       ),
                     ],
-                  ],
-                ),
+                  ),
                 if (_isScanning) Positioned.fill(child: _buildScanningOverlay(colorScheme)),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSearchAndFiltersHeader(ColorScheme colorScheme, int selectedCount, int unplacedCount) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    autofocus: false,
+                    onTapOutside: (_) => _searchFocusNode.unfocus(),
+                    onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      hintText: 'Search product, SKU, or category...',
+                      hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
+                      prefixIcon: Icon(Icons.search, size: 22, color: colorScheme.primary),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 20),
+                              onPressed: () {
+                                _searchController.clear();
+                                _searchFocusNode.unfocus();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: colorScheme.outlineVariant),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                FilterChip(
+                  selected: _selectedCategoryFilter == 'all',
+                  label: Text(
+                    'All',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: _selectedCategoryFilter == 'all' ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                  ),
+                  selectedColor: colorScheme.primary,
+                  showCheckmark: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  onSelected: (_) => setState(() => _selectedCategoryFilter = 'all'),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  selected: _selectedCategoryFilter == 'selected',
+                  label: Text(
+                    'Selected ($selectedCount)',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: _selectedCategoryFilter == 'selected' ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                  ),
+                  selectedColor: colorScheme.primary,
+                  showCheckmark: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'selected' : 'all'),
+                ),
+                if (unplacedCount > 0) ...[
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    key: const Key('unplaced_recommendations_chip'),
+                    selected: _selectedCategoryFilter == 'unplaced',
+                    label: Text(
+                      'Unplaced ($unplacedCount)',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: _selectedCategoryFilter == 'unplaced' ? colorScheme.onPrimary : colorScheme.onSurface,
+                      ),
+                    ),
+                    selectedColor: const Color(0xFFD97706),
+                    showCheckmark: false,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'unplaced' : 'all'),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                FilterChip(
+                  selected: _selectedCategoryFilter == 'best_sellers',
+                  label: Text(
+                    '⭐ Best Sellers',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: _selectedCategoryFilter == 'best_sellers' ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                  ),
+                  selectedColor: colorScheme.primary,
+                  showCheckmark: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'best_sellers' : 'all'),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  selected: _selectedCategoryFilter == 'by_case',
+                  label: Text(
+                    '📦 By Case',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: _selectedCategoryFilter == 'by_case' ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                  ),
+                  selectedColor: colorScheme.primary,
+                  showCheckmark: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_case' : 'all'),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  selected: _selectedCategoryFilter == 'by_piece',
+                  label: Text(
+                    '🍦 By Piece',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: _selectedCategoryFilter == 'by_piece' ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                  ),
+                  selectedColor: colorScheme.primary,
+                  showCheckmark: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'by_piece' : 'all'),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  selected: _selectedCategoryFilter == 'other',
+                  label: Text(
+                    '🛒 Other Products',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: _selectedCategoryFilter == 'other' ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                  ),
+                  selectedColor: colorScheme.primary,
+                  showCheckmark: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  onSelected: (val) => setState(() => _selectedCategoryFilter = val ? 'other' : 'all'),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  key: const Key('hide_out_of_stock_chip'),
+                  selected: _hideOutOfStock,
+                  avatar: Icon(
+                    _hideOutOfStock ? Icons.visibility_off_rounded : Icons.visibility_outlined,
+                    size: 16,
+                    color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurfaceVariant,
+                  ),
+                  label: Text(
+                    'Hide Out of Stock',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.bold,
+                      color: _hideOutOfStock ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                  ),
+                  selectedColor: colorScheme.primary,
+                  showCheckmark: false,
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  onSelected: (val) => setState(() => _hideOutOfStock = val),
+                ),
+                if (_scannedReceiptOrder.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    key: const Key('receipt_order_toggle_chip'),
+                    selected: _sortByReceiptOrder,
+                    avatar: Icon(
+                      _sortByReceiptOrder ? Icons.receipt_long_outlined : Icons.category_outlined,
+                      size: 15,
+                      color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurfaceVariant,
+                    ),
+                    label: Text(
+                      _sortByReceiptOrder ? 'Receipt Sequence (#1–#${_scannedReceiptOrder.length})' : 'Catalog Grouping',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: _sortByReceiptOrder ? Colors.amber.shade900 : colorScheme.onSurface,
+                      ),
+                    ),
+                    selectedColor: Colors.amber.shade100,
+                    side: BorderSide(
+                      color: _sortByReceiptOrder ? Colors.amber.shade400 : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                    ),
+                    showCheckmark: false,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    onSelected: (val) => setState(() => _sortByReceiptOrder = val),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabletLandscapeView({
+    required ColorScheme colorScheme,
+    required List<InventoryItem> allInventory,
+    required List<OrderItem> orderItems,
+    required double totalAmount,
+    required int totalUnits,
+    required int unplacedCount,
+    required AsyncSnapshot<List<InventoryItem>> snapshot,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Left: Product Catalog (flex: 6)
+        Expanded(
+          flex: 6,
+          child: Column(
+            children: [
+              _buildSearchAndFiltersHeader(colorScheme, orderItems.length, unplacedCount),
+              const Divider(height: 1),
+              Expanded(
+                child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
+                    ? const Center(child: CircularProgressIndicator())
+                    : _buildUnifiedProductList(allInventory: allInventory, colorScheme: colorScheme),
+              ),
+            ],
+          ),
+        ),
+        const VerticalDivider(width: 1, thickness: 1),
+        // Right: Cart Summary Panel (flex: 4)
+        Expanded(
+          flex: 4,
+          child: _buildTabletCartPane(
+            colorScheme: colorScheme,
+            allInventory: allInventory,
+            orderItems: orderItems,
+            totalAmount: totalAmount,
+            totalUnits: totalUnits,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabletCartPane({
+    required ColorScheme colorScheme,
+    required List<InventoryItem> allInventory,
+    required List<OrderItem> orderItems,
+    required double totalAmount,
+    required int totalUnits,
+  }) {
+    final Map<String, InventoryItem> byKey = {for (final item in allInventory) _itemKey(item): item};
+
+    return Container(
+      color: Colors.grey.shade50,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            color: colorScheme.surface,
+            child: Row(
+              children: [
+                Icon(Icons.shopping_bag_outlined, color: colorScheme.primary, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Order Cart (${orderItems.length} SKU${orderItems.length == 1 ? '' : 's'} • $totalUnits units)',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (orderItems.isNotEmpty)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      foregroundColor: colorScheme.error,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    ),
+                    icon: const Icon(Icons.delete_sweep_outlined, size: 16),
+                    label: const Text('Clear', style: TextStyle(fontSize: 12.5)),
+                    onPressed: () async {
+                      final confirmed = await ShowMessage.confirm(
+                        context,
+                        title: 'Clear Order',
+                        message: 'Are you sure you want to remove all items from this order?',
+                        confirmText: 'Clear All',
+                        isDestructive: true,
+                      );
+                      if (confirmed && mounted) {
+                        setState(() => _selectedQuantities.clear());
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+
+          // Store & Delivery Date Info Card
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: colorScheme.surface,
+            child: InkWell(
+              onTap: _showStoreAndDateModal,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.storefront_outlined, color: colorScheme.primary, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _storeController.text.trim(),
+                            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Icon(Icons.calendar_today_outlined, size: 12, color: colorScheme.onSurfaceVariant),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Delivery: ${_formatAppBarDate(_selectedDate)}',
+                                style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.edit_outlined, size: 18, color: colorScheme.onSurfaceVariant),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+
+          // Items List
+          Expanded(
+            child: orderItems.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.shopping_cart_outlined, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 10),
+                        Text(
+                          'No items in cart',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Pick products from the catalog on the left.',
+                          style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: orderItems.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = orderItems[index];
+                      final itemKey = '${item.productSource}:${item.productId}';
+                      final invItem = byKey[itemKey];
+                      final maxAllowed = invItem != null ? _getMaxOrderableQty(invItem) : 9999;
+                      final receiptIdx = _scannedReceiptOrder.indexOf(itemKey);
+                      final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
+                      final isItemCorrected = _correctedReceiptKeys.contains(itemKey);
+                      final itemTotal = item.sellingPrice * item.pickedQuantity;
+
+                      return Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            CachedProductImage(imageUrl: item.imageUrl, size: 40, borderRadius: 8),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      if (receiptNum != null)
+                                        Container(
+                                          margin: const EdgeInsets.only(right: 6),
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: isItemCorrected ? Colors.blue.shade100 : Colors.amber.shade100,
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: (isItemCorrected ? Colors.blue.shade400 : Colors.amber.shade400).withValues(alpha: 0.6),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            '#$receiptNum',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                              color: isItemCorrected ? Colors.blue.shade900 : Colors.amber.shade900,
+                                            ),
+                                          ),
+                                        ),
+                                      Expanded(
+                                        child: Text(
+                                          item.productName,
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${_currencyFormat.format(item.sellingPrice)} each',
+                                    style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // Stepper
+                            Container(
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.remove, size: 14),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 30),
+                                    onPressed: () {
+                                      HapticFeedback.lightImpact();
+                                      if (invItem != null) {
+                                        _setSelectedQty(invItem, item.pickedQuantity - 1);
+                                      }
+                                    },
+                                  ),
+                                  InkWell(
+                                    onTap: invItem != null ? () => _promptQuantityDialog(invItem, allInventory: allInventory) : null,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                                      child: Text(
+                                        '${item.pickedQuantity}',
+                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.add, size: 14),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 30),
+                                    onPressed: item.pickedQuantity < maxAllowed
+                                        ? () {
+                                            HapticFeedback.lightImpact();
+                                            if (invItem != null) {
+                                              _setSelectedQty(invItem, item.pickedQuantity + 1);
+                                            }
+                                          }
+                                        : null,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 65,
+                              child: Text(
+                                _currencyFormat.format(itemTotal),
+                                textAlign: TextAlign.right,
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          // Sticky Cart Footer
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -2)),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Total Units:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+                    Text('$totalUnits', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total Amount:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    Text(
+                      _currencyFormat.format(totalAmount),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: colorScheme.primary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: _isSaving
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Icon(Icons.check_circle_outline, size: 20),
+                    label: Text(
+                      _isSaving ? 'Saving...' : (_isEditing ? 'Save Changes' : 'Book Order'),
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: (_isSaving || _isScanning) ? null : () => _onSaveOrder(allInventory),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

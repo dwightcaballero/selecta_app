@@ -38,6 +38,18 @@ class ScreenSize {
   static bool isLargeScreen(BuildContext ctx) =>
       MediaQuery.sizeOf(ctx).width >= _kTablet;
 
+  /// True when the screen is a tablet or desktop in landscape orientation with adequate dimensions.
+  /// Strictly requires landscape orientation with width >= 900dp and shortestSide >= 600dp,
+  /// ensuring mobile phones in portrait, mobile phones in landscape, and tablets in portrait
+  /// strictly preserve their native mobile layout without any alterations.
+  static bool isTabletLandscape(BuildContext ctx) {
+    final size = MediaQuery.sizeOf(ctx);
+    final orientation = MediaQuery.orientationOf(ctx);
+    return orientation == Orientation.landscape &&
+        size.width >= 900 &&
+        size.shortestSide >= 600;
+  }
+
   // ── Content width helpers ────────────────────────────────────────────────
 
   /// Maximum width for the main content area.

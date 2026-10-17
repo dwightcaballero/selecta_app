@@ -77,7 +77,7 @@ void main() {
 
       // Verify sticky bottom bar is present
       expect(find.textContaining('0 items • 0 units'), findsOneWidget);
-      expect(find.text('Proceed to P.O.'), findsOneWidget);
+      expect(find.text('Create Order'), findsOneWidget);
     });
 
     testWidgets('Adding products updates quantity, item counts, and total buying cost', (tester) async {
@@ -103,7 +103,7 @@ void main() {
 
       // Check that sticky bar updated
       expect(find.textContaining('1 items'), findsOneWidget);
-      expect(find.textContaining('Proceed to P.O.'), findsOneWidget);
+      expect(find.textContaining('Create Order'), findsOneWidget);
     });
 
     testWidgets('In modal/sub-page flow (isDirectCreationFlow: false), button says Apply to P.O. and returns selected lines', (tester) async {
