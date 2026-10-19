@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/return_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/views/pages/dashboard/return_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
@@ -26,6 +27,9 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
   String _selectedTab = 'Active';
+
+  String? _selectedDeliveryId;
+  Delivery? _selectedDelivery;
 
   @override
   void initState() {
@@ -175,21 +179,29 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
     );
   }
 
-  Widget _buildReturnCard({required String deliveryID, required Delivery delivery}) {
+  Widget _buildReturnCard({
+    required String deliveryID,
+    required Delivery delivery,
+    bool isSelected = false,
+    VoidCallback? onTap,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final displayAmount = delivery.returnAmount > 0 ? delivery.returnAmount : delivery.orderAmount;
     final isPartialReturn = delivery.returnAmount > 0 && delivery.returnAmount != delivery.orderAmount;
 
     return Card(
       elevation: 0,
-      color: colorScheme.surface,
+      color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.15) : colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(
+          color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: isSelected ? 1.5 : 1.0,
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Helperfunctions.navigateTo(context, ReturnPage(recID: deliveryID, delivery: delivery)),
+        onTap: onTap ?? () => Helperfunctions.navigateTo(context, ReturnPage(recID: deliveryID, delivery: delivery)),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Row(
@@ -198,7 +210,9 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  color: isSelected
+                      ? colorScheme.primary.withValues(alpha: 0.2)
+                      : colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(Icons.assignment_return_outlined, color: colorScheme.primary, size: 20),
@@ -379,6 +393,236 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
     );
   }
 
+  Widget _buildTabletReturnPreview(Delivery? delivery, String? deliveryId) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (delivery == null || deliveryId == null) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(0, 12, 16, 24),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.assignment_return_outlined, size: 56, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+              const SizedBox(height: 12),
+              Text(
+                'Select a returned order',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'View return items, remarks, and approval actions',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final displayAmount = delivery.returnAmount > 0 ? delivery.returnAmount : delivery.orderAmount;
+    final isPartialReturn = delivery.returnAmount > 0 && delivery.returnAmount != delivery.orderAmount;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 12, 16, 24),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.05),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+              border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        delivery.storeName,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      Helperfunctions.formatDoubleAmountForDisplay(displayAmount),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.calendar_month_outlined, size: 13, color: colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text(
+                          Helperfunctions.formatTimestampForDisplay(delivery.lastupdatedDate),
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                    if (isPartialReturn)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: Colors.amber.shade300),
+                        ),
+                        child: Text(
+                          'Partial Return (Orig: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount)})',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                        ),
+                      ),
+                    if (delivery.isReturnFinalized)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: Colors.grey.shade400),
+                        ),
+                        child: const Text('Finalized', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
+                      )
+                    else if (delivery.isRescheduled)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: Colors.blue.shade300),
+                        ),
+                        child: Text('Rescheduled', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
+                      )
+                    else if (delivery.isReturnApprovedByDealer)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: Colors.green.shade300),
+                        ),
+                        child: Text('Approved (Action Needed)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3)),
+                        ),
+                        child: const Text('Needs Approval', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0284C7))),
+                      ),
+                  ],
+                ),
+                if (delivery.remarks.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Remarks: ${delivery.remarks}',
+                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Items list
+          Expanded(
+            child: delivery.items.isEmpty
+                ? Center(
+                    child: Text('No item details recorded', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                  )
+                : ListView.separated(
+                    primary: false,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: delivery.items.length,
+                    separatorBuilder: (_, index) => const Divider(height: 12),
+                    itemBuilder: (context, index) {
+                      final item = delivery.items[index];
+                      return Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.icecream_outlined, size: 18, color: colorScheme.primary),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              item.productName,
+                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            '${item.effectiveQuantity} pcs',
+                            style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            Helperfunctions.formatDoubleAmountForDisplay(item.lineTotal),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+
+          // Bottom Action
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: FilledButton.icon(
+              onPressed: () => Helperfunctions.navigateTo(
+                context,
+                ReturnPage(recID: deliveryId, delivery: delivery),
+              ),
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: const Icon(Icons.assignment_turned_in_outlined, size: 18),
+              label: const Text('Process / Review Return', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
     return Center(
       child: Padding(
@@ -478,7 +722,20 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
               filterTab: _selectedTab,
             );
 
-            return Column(
+            if (ScreenSize.isTabletLandscape(context) && filteredDocs.isNotEmpty) {
+              if (_selectedDeliveryId == null || !filteredDocs.any((d) => d.id == _selectedDeliveryId)) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    setState(() {
+                      _selectedDeliveryId = filteredDocs.first.id;
+                      _selectedDelivery = filteredDocs.first.data() as Delivery;
+                    });
+                  }
+                });
+              }
+            }
+
+            final listWidget = Column(
               children: [
                 // 1. Summary Card
                 _buildSummaryCard(totalAmount: metrics.totalAmount, totalCount: metrics.totalCount),
@@ -496,13 +753,39 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                           itemCount: filteredDocs.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          separatorBuilder: (_, index) => const SizedBox(height: 10),
                           itemBuilder: (context, index) {
                             final delivery = filteredDocs[index].data() as Delivery;
                             final deliveryID = filteredDocs[index].id;
-                            return _buildReturnCard(deliveryID: deliveryID, delivery: delivery);
+                            final isSelected = ScreenSize.isTabletLandscape(context) && deliveryID == _selectedDeliveryId;
+                            return _buildReturnCard(
+                              deliveryID: deliveryID,
+                              delivery: delivery,
+                              isSelected: isSelected,
+                              onTap: ScreenSize.isTabletLandscape(context)
+                                  ? () => setState(() {
+                                        _selectedDeliveryId = deliveryID;
+                                        _selectedDelivery = delivery;
+                                      })
+                                  : null,
+                            );
                           },
                         ),
+                ),
+              ],
+            );
+
+            if (!ScreenSize.isTabletLandscape(context)) {
+              return listWidget;
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(flex: 5, child: listWidget),
+                Expanded(
+                  flex: 5,
+                  child: _buildTabletReturnPreview(_selectedDelivery, _selectedDeliveryId),
                 ),
               ],
             );

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
@@ -49,6 +50,9 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   bool _isSaving = false;
   List<String> _editableDeliveryIDs = [];
   Map<String, QueryDocumentSnapshot<Delivery>> _editableDocsById = {};
+
+  String? _selectedDeliveryId;
+  Delivery? _selectedDelivery;
 
   @override
   void initState() {
@@ -539,26 +543,37 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     );
   }
 
-  Widget _buildVanSellCard({required BuildContext context, required Delivery delivery, required String deliveryID, required int index}) {
+  Widget _buildVanSellCard({
+    required BuildContext context,
+    required Delivery delivery,
+    required String deliveryID,
+    required int index,
+    bool isSelected = false,
+    VoidCallback? onTap,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final timeStr = DateFormat('h:mm a').format(delivery.createdDate.toDate());
 
     return Material(
-      color: colorScheme.surface,
+      color: isSelected ? Colors.teal.withValues(alpha: 0.08) : colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.teal.withValues(alpha: 0.3)),
+        side: BorderSide(
+          color: isSelected ? Colors.teal : Colors.teal.withValues(alpha: 0.3),
+          width: isSelected ? 2.0 : 1.0,
+        ),
       ),
       child: InkWell(
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
-            ),
-          );
-          prefetchData();
-        },
+        onTap: onTap ??
+            () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+                ),
+              );
+              prefetchData();
+            },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -660,6 +675,368 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeliveryCard({
+    required BuildContext context,
+    required ThemeData theme,
+    required Delivery delivery,
+    required String deliveryID,
+    required int index,
+    bool isSelected = false,
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: isSelected ? theme.colorScheme.primaryContainer.withValues(alpha: 0.25) : theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isSelected ? theme.colorScheme.primary : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: isSelected ? 2.0 : 1.0,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap ??
+            () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+                ),
+              );
+              prefetchData();
+            },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? theme.colorScheme.primary.withValues(alpha: 0.15)
+                      : theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.storefront_outlined, color: theme.colorScheme.primary, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          margin: const EdgeInsets.only(right: 6),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '#${index + 1}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            delivery.storeName,
+                            style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        Text(
+                          Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (delivery.hasReturnedItems || delivery.returnAmount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)} ret.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  _statusBadge(delivery.transactionStatus),
+                  const SizedBox(height: 6),
+                  const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabletDeliveryDetailPreview(ThemeData theme, Delivery? delivery, String? deliveryId) {
+    if (delivery == null || deliveryId == null) {
+      return Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.touch_app_outlined, size: 52, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              const SizedBox(height: 12),
+              Text(
+                'Select a delivery to view order details',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Tap any delivery or van sell card on the left list.',
+                style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final isVan = delivery.isVanSell;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isVan ? Colors.teal.withValues(alpha: 0.12) : theme.colorScheme.primaryContainer.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    isVan ? Icons.point_of_sale_rounded : Icons.storefront_outlined,
+                    color: isVan ? Colors.teal : theme.colorScheme.primary,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        delivery.storeName.isEmpty ? 'Direct / Walk-in Buyer' : delivery.storeName,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${isVan ? "Van Sell" : "Pre-Sell Delivery"} • ${DateFormat("h:mm a, d MMM yyyy").format(delivery.createdDate.toDate())}',
+                        style: TextStyle(fontSize: 12.5, color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                _statusBadge(delivery.transactionStatus),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isVan ? Colors.teal.withValues(alpha: 0.08) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isVan ? Colors.teal.withValues(alpha: 0.25) : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildSummaryStat(
+                    label: 'Total Value',
+                    value: Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
+                    color: isVan ? Colors.teal.shade900 : theme.colorScheme.primary,
+                  ),
+                  Container(width: 1, height: 32, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                  _buildSummaryStat(
+                    label: 'Line Items',
+                    value: '${delivery.items.length}',
+                    color: theme.colorScheme.onSurface,
+                  ),
+                  Container(width: 1, height: 32, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                  _buildSummaryStat(
+                    label: 'Total Units',
+                    value: '${delivery.items.fold<int>(0, (total, i) => total + i.effectiveQuantity)}',
+                    color: Colors.green.shade800,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                if (delivery.cashAmount > 0)
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    avatar: const Icon(Icons.money, size: 16, color: Colors.green),
+                    label: Text('Cash: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.cashAmount)}'),
+                    backgroundColor: Colors.green.withValues(alpha: 0.1),
+                    side: BorderSide.none,
+                  ),
+                if (delivery.onlineAmount > 0)
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    avatar: const Icon(Icons.payment, size: 16, color: Colors.blue),
+                    label: Text('Online: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.onlineAmount)}'),
+                    backgroundColor: Colors.blue.withValues(alpha: 0.1),
+                    side: BorderSide.none,
+                  ),
+                if (delivery.creditAmount > 0)
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    avatar: const Icon(Icons.credit_score, size: 16, color: Colors.purple),
+                    label: Text('Credit: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.creditAmount)}'),
+                    backgroundColor: Colors.purple.withValues(alpha: 0.1),
+                    side: BorderSide.none,
+                  ),
+                if (delivery.returnAmount > 0)
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    avatar: Icon(Icons.assignment_return, size: 16, color: Colors.red.shade700),
+                    label: Text('Returns: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)}'),
+                    backgroundColor: Colors.red.withValues(alpha: 0.1),
+                    side: BorderSide.none,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Order Items (${delivery.items.length})',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: delivery.items.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No items in this delivery record.',
+                        style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    )
+                  : ListView.separated(
+                      primary: false,
+                      itemCount: delivery.items.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, idx) {
+                        final item = delivery.items[idx];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.productName,
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${item.effectiveQuantity} pcs @ ${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)}'
+                                      '${item.returnedQuantity > 0 ? " • ${item.returnedQuantity} returned" : ""}',
+                                      style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                Helperfunctions.formatDoubleAmountForDisplay(item.lineTotal),
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: isVan ? Colors.teal : theme.colorScheme.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DeliveryPage(deliveryID: deliveryId, delivery: delivery),
+                    ),
+                  );
+                  prefetchData();
+                },
+                icon: const Icon(Icons.open_in_new, size: 20),
+                label: const Text(
+                  'Open Full Delivery Details',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -767,230 +1144,206 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
               ? const ListSkeleton(itemCount: 6)
               : Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: Column(
-                    children: [
-                      _buildDateNavigator(theme),
-                      _buildReturnedAlertBanner(),
-                      _buildSegmentedHeader(theme, summary),
-                      if (!isVanSell) ...[_buildPreSellSummaryBar(summary)] else ...[_buildVanSellSummaryBar(summary)],
-                      const SizedBox(height: 6),
-                      _buildSearchBar(theme),
-                      const SizedBox(height: 6),
-                      Expanded(
-                        child: !isVanSell
-                            ? (preSellDocs.isEmpty
-                                  ? Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.local_shipping_outlined, size: 48, color: Colors.grey.shade400),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            'No scheduled deliveries for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
-                                            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w500),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          OutlinedButton.icon(
-                                            onPressed: () => Navigator.push(
-                                              context,
-                                              MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)),
-                                            ),
-                                            icon: const Icon(Icons.storefront_outlined, size: 20),
-                                            label: const Text('Store Order', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                  : filteredDocs.isEmpty
-                                  ? Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'No matching ${_selectedStatusFilter != 'All' ? _selectedStatusFilter : ''} records found',
-                                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                  : ListView.separated(
-                                      padding: const EdgeInsets.only(bottom: 80, top: 4),
-                                      itemCount: filteredDocs.length,
-                                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                                      itemBuilder: (context, index) {
-                                        final Delivery delivery = filteredDocs[index].data();
-                                        final String deliveryID = filteredDocs[index].id;
+                  child: Builder(
+                    builder: (context) {
+                      final isTabletLandscape = ScreenSize.isTabletLandscape(context);
+                      if (isTabletLandscape) {
+                        if (filteredDocs.isNotEmpty) {
+                          final curIndex = filteredDocs.indexWhere((d) => d.id == _selectedDeliveryId);
+                          if (curIndex == -1) {
+                            _selectedDeliveryId = filteredDocs.first.id;
+                            _selectedDelivery = filteredDocs.first.data();
+                          } else {
+                            _selectedDelivery = filteredDocs[curIndex].data();
+                          }
+                        } else {
+                          _selectedDeliveryId = null;
+                          _selectedDelivery = null;
+                        }
+                      }
 
-                                        return Material(
-                                          color: theme.colorScheme.surface,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                          ),
-                                          child: InkWell(
-                                            onTap: () async {
-                                              await Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
-                                                ),
-                                              );
-                                              prefetchData();
-                                            },
-                                            borderRadius: BorderRadius.circular(12),
-                                            child: Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                                              child: Row(
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.all(10),
-                                                    decoration: BoxDecoration(
-                                                      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-                                                      borderRadius: BorderRadius.circular(10),
-                                                    ),
-                                                    child: Icon(Icons.storefront_outlined, color: theme.colorScheme.primary, size: 24),
-                                                  ),
-                                                  const SizedBox(width: 12),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      children: [
-                                                        Row(
-                                                          children: [
-                                                            Container(
-                                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                              margin: const EdgeInsets.only(right: 6),
-                                                              decoration: BoxDecoration(
-                                                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.7),
-                                                                borderRadius: BorderRadius.circular(6),
-                                                              ),
-                                                              child: Text(
-                                                                '#${index + 1}',
-                                                                style: TextStyle(
-                                                                  fontSize: 12,
-                                                                  fontWeight: FontWeight.bold,
-                                                                  color: theme.colorScheme.onPrimaryContainer,
-                                                                ),
-                                                              ),
-                                                            ),
-                                                            Expanded(
-                                                              child: Text(
-                                                                delivery.storeName,
-                                                                style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold),
-                                                                maxLines: 1,
-                                                                overflow: TextOverflow.ellipsis,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                        const SizedBox(height: 4),
-                                                        Wrap(
-                                                          crossAxisAlignment: WrapCrossAlignment.center,
-                                                          spacing: 6,
-                                                          runSpacing: 4,
-                                                          children: [
-                                                            Text(
-                                                              Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                                                              style: TextStyle(
-                                                                fontSize: 15,
-                                                                fontWeight: FontWeight.w700,
-                                                                color: theme.colorScheme.onSurfaceVariant,
-                                                              ),
-                                                            ),
-                                                            if (delivery.hasReturnedItems || delivery.returnAmount > 0)
-                                                              Container(
-                                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                                decoration: BoxDecoration(
-                                                                  color: Colors.red.withValues(alpha: 0.1),
-                                                                  borderRadius: BorderRadius.circular(6),
-                                                                ),
-                                                                child: Text(
-                                                                  '${Helperfunctions.formatDoubleAmountForDisplay(delivery.returnAmount)} ret.',
-                                                                  style: TextStyle(
-                                                                    fontSize: 11,
-                                                                    fontWeight: FontWeight.bold,
-                                                                    color: Colors.red.shade800,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                          ],
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                                    children: [
-                                                      _statusBadge(delivery.transactionStatus),
-                                                      const SizedBox(height: 6),
-                                                      const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
+                      final Widget listContent = !isVanSell
+                          ? (preSellDocs.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.local_shipping_outlined, size: 48, color: Colors.grey.shade400),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'No scheduled deliveries for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
+                                        style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w500),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      OutlinedButton.icon(
+                                        onPressed: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)),
+                                        ),
+                                        icon: const Icon(Icons.storefront_outlined, size: 20),
+                                        label: const Text('Store Order', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : filteredDocs.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'No matching ${_selectedStatusFilter != 'All' ? _selectedStatusFilter : ''} records found',
+                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.separated(
+                                  primary: false,
+                                  padding: const EdgeInsets.only(bottom: 80, top: 4),
+                                  itemCount: filteredDocs.length,
+                                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                  itemBuilder: (context, index) {
+                                    final Delivery delivery = filteredDocs[index].data();
+                                    final String deliveryID = filteredDocs[index].id;
+                                    final isSelected = isTabletLandscape && deliveryID == _selectedDeliveryId;
+
+                                    return _buildDeliveryCard(
+                                      context: context,
+                                      theme: theme,
+                                      delivery: delivery,
+                                      deliveryID: deliveryID,
+                                      index: index,
+                                      isSelected: isSelected,
+                                      onTap: () async {
+                                        if (isTabletLandscape) {
+                                          setState(() {
+                                            _selectedDeliveryId = deliveryID;
+                                            _selectedDelivery = delivery;
+                                          });
+                                        } else {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
                                             ),
-                                          ),
-                                        );
+                                          );
+                                          prefetchData();
+                                        }
                                       },
-                                    ))
-                            : (vanSellDocs.isEmpty
-                                  ? Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.directions_car_filled_outlined, size: 48, color: Colors.teal.shade300),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            'No Van Sell transactions for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
-                                            style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            'Sell directly to stores off your van load stock.',
-                                            style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
-                                          ),
-                                          const SizedBox(height: 16),
-                                          FilledButton.icon(
-                                            style: FilledButton.styleFrom(backgroundColor: Colors.teal),
-                                            onPressed: () async {
-                                              await Navigator.push(context, MaterialPageRoute(builder: (_) => const VanSellPage()));
-                                              prefetchData();
-                                            },
-                                            icon: const Icon(Icons.add, size: 20),
-                                            label: const Text('New Van Sell', style: TextStyle(fontWeight: FontWeight.bold)),
-                                          ),
-                                        ],
+                                    );
+                                  },
+                                ))
+                          : (vanSellDocs.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.directions_car_filled_outlined, size: 48, color: Colors.teal.shade300),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        'No Van Sell transactions for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
+                                        style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
                                       ),
-                                    )
-                                  : filteredDocs.isEmpty
-                                  ? Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
-                                          const SizedBox(height: 8),
-                                          const Text(
-                                            'No matching van sell records found',
-                                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                                          ),
-                                        ],
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Sell directly to stores off your van load stock.',
+                                        style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
                                       ),
-                                    )
-                                  : ListView.separated(
-                                      padding: const EdgeInsets.only(bottom: 80, top: 4),
-                                      itemCount: filteredDocs.length,
-                                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                                      itemBuilder: (context, index) {
-                                        final Delivery delivery = filteredDocs[index].data();
-                                        final String deliveryID = filteredDocs[index].id;
-                                        return _buildVanSellCard(context: context, delivery: delivery, deliveryID: deliveryID, index: index);
+                                      const SizedBox(height: 16),
+                                      FilledButton.icon(
+                                        style: FilledButton.styleFrom(backgroundColor: Colors.teal),
+                                        onPressed: () async {
+                                          await Navigator.push(context, MaterialPageRoute(builder: (_) => const VanSellPage()));
+                                          prefetchData();
+                                        },
+                                        icon: const Icon(Icons.add, size: 20),
+                                        label: const Text('New Van Sell', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : filteredDocs.isEmpty
+                              ? Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
+                                      const SizedBox(height: 8),
+                                      const Text(
+                                        'No matching van sell records found',
+                                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.separated(
+                                  primary: false,
+                                  padding: const EdgeInsets.only(bottom: 80, top: 4),
+                                  itemCount: filteredDocs.length,
+                                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                                  itemBuilder: (context, index) {
+                                    final Delivery delivery = filteredDocs[index].data();
+                                    final String deliveryID = filteredDocs[index].id;
+                                    final isSelected = isTabletLandscape && deliveryID == _selectedDeliveryId;
+
+                                    return _buildVanSellCard(
+                                      context: context,
+                                      delivery: delivery,
+                                      deliveryID: deliveryID,
+                                      index: index,
+                                      isSelected: isSelected,
+                                      onTap: () async {
+                                        if (isTabletLandscape) {
+                                          setState(() {
+                                            _selectedDeliveryId = deliveryID;
+                                            _selectedDelivery = delivery;
+                                          });
+                                        } else {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => DeliveryPage(deliveryID: deliveryID, delivery: delivery),
+                                            ),
+                                          );
+                                          prefetchData();
+                                        }
                                       },
-                                    )),
-                      ),
-                    ],
+                                    );
+                                  },
+                                ));
+
+                      final Widget listColumn = Column(
+                        children: [
+                          _buildDateNavigator(theme),
+                          _buildReturnedAlertBanner(),
+                          _buildSegmentedHeader(theme, summary),
+                          if (!isVanSell) ...[_buildPreSellSummaryBar(summary)] else ...[_buildVanSellSummaryBar(summary)],
+                          const SizedBox(height: 6),
+                          _buildSearchBar(theme),
+                          const SizedBox(height: 6),
+                          Expanded(child: listContent),
+                        ],
+                      );
+
+                      if (isTabletLandscape) {
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(flex: 5, child: listColumn),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              flex: 5,
+                              child: _buildTabletDeliveryDetailPreview(theme, _selectedDelivery, _selectedDeliveryId),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return listColumn;
+                    },
                   ),
                 ),
         );

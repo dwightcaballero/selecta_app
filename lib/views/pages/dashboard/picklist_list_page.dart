@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
@@ -44,6 +45,9 @@ class _PicklistListPageState extends State<PicklistListPage> {
   bool _isSaving = false;
   List<String> _editableDeliveryIDs = [];
   Map<String, QueryDocumentSnapshot<Delivery>> _editableDocsById = {};
+
+  String? _selectedDeliveryId;
+  Delivery? _selectedDelivery;
 
   @override
   void initState() {
@@ -589,22 +593,552 @@ class _PicklistListPageState extends State<PicklistListPage> {
     );
   }
 
+  Widget _buildTabletPicklistDetailPreview(
+    ColorScheme colorScheme,
+    String targetPjpDay,
+    Delivery? delivery,
+    String? deliveryId,
+  ) {
+    if (delivery == null || deliveryId == null) {
+      return Card(
+        elevation: 0,
+        margin: const EdgeInsets.fromLTRB(0, 10, 16, 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.touch_app_outlined, size: 52, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              const SizedBox(height: 12),
+              Text(
+                'Select an order to view picklist details',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Review line items and stock availability before picking.',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final store = _storesByName[delivery.storeName.trim().toLowerCase()];
+    final isTodayPjp = store?.pjpSchedule?.trim().toLowerCase() == targetPjpDay.toLowerCase();
+    final shortages = _getDeliveryShortages(delivery);
+    final pickedCount = delivery.items.where((i) => i.isPicked).length;
+    final totalLines = delivery.items.length;
+    final isComplete = totalLines > 0 && pickedCount == totalLines;
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.fromLTRB(0, 10, 16, 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: shortages.isNotEmpty ? Colors.red.shade300 : colorScheme.outlineVariant.withValues(alpha: 0.6),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isTodayPjp ? colorScheme.primaryContainer.withValues(alpha: 0.6) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.storefront_outlined, color: isTodayPjp ? colorScheme.primary : colorScheme.onSurfaceVariant, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        delivery.storeName,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isTodayPjp ? Colors.green.withValues(alpha: 0.12) : Colors.amber.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              isTodayPjp
+                                  ? 'PJP Stop #${store?.pjpSequence != null ? (store!.pjpSequence! + 1) : 1}'
+                                  : (store?.pjpSchedule != null && store!.pjpSchedule!.isNotEmpty
+                                      ? 'PJP: ${store.pjpSchedule}'
+                                      : 'Not in $targetPjpDay PJP'),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: isTodayPjp ? Colors.green.shade800 : Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                          if (store?.storeContact != null && store!.storeContact.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Text('•  ${store.storeContact}', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isComplete ? Colors.green.withValues(alpha: 0.15) : colorScheme.primaryContainer.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        isComplete ? 'Ready ($pickedCount/$totalLines)' : '$pickedCount of $totalLines picked',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: isComplete ? Colors.green.shade800 : colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (shortages.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${shortages.length} item(s) have warehouse stock shortage! Review stock before picking.',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildSummaryStat(label: 'Line Items', value: '$totalLines', color: colorScheme.onSurface),
+                  Container(width: 1, height: 28, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                  _buildSummaryStat(
+                    label: 'Total Units',
+                    value: '${delivery.items.fold<int>(0, (total, i) => total + (i.pickedQuantity > 0 ? i.pickedQuantity : i.orderedQuantity))}',
+                    color: Colors.green.shade800,
+                  ),
+                  Container(width: 1, height: 28, color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                  _buildSummaryStat(
+                    label: 'Picked Units',
+                    value: '${delivery.items.where((i) => i.isPicked).fold<int>(0, (total, i) => total + i.pickedQuantity)}',
+                    color: colorScheme.primary,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('Picklist Items ($totalLines)', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Expanded(
+              child: delivery.items.isEmpty
+                  ? Center(child: Text('No items in this picklist', style: TextStyle(color: colorScheme.onSurfaceVariant)))
+                  : ListView.separated(
+                      primary: false,
+                      itemCount: delivery.items.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, idx) {
+                        final item = delivery.items[idx];
+                        final reqQty = item.pickedQuantity > 0 ? item.pickedQuantity : item.orderedQuantity;
+                        final nameKey = item.productName.trim().toLowerCase();
+                        final idStock = _inventoryStockById[item.productId] ?? 0;
+                        final nameStock = _inventoryStockByName[nameKey] ?? 0;
+                        final onHand = idStock > nameStock ? idStock : nameStock;
+                        final isShortage = onHand < reqQty;
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                          child: Row(
+                            children: [
+                              CachedProductImage(imageUrl: item.imageUrl, size: 38, borderRadius: 6),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.productName,
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          '$reqQty units @ ${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)}',
+                                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                        ),
+                                        if (isShortage) ...[
+                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(color: Colors.red.shade100, borderRadius: BorderRadius.circular(4)),
+                                            child: Text('Stock: $onHand', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red.shade900)),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    Helperfunctions.formatDoubleAmountForDisplay(item.lineTotal),
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  item.isPicked
+                                      ? const Icon(Icons.check_circle, size: 16, color: Colors.green)
+                                      : Icon(Icons.radio_button_unchecked, size: 16, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (isDealer) ...[
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
+                    onPressed: () async {
+                      await Navigator.push<Delivery>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => BookOrderPage(deliveryID: deliveryId, existingDelivery: delivery, returnUpdatedDeliveryOnSave: true),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.edit_note_rounded, size: 18),
+                    label: const Text('Edit Order'),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () => _onPicklistTileTapped(deliveryId, delivery),
+                    icon: const Icon(Icons.fact_check_rounded, size: 20),
+                    label: const Text('Fulfill Picklist', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLoadedBody(ColorScheme colorScheme, String targetPjpDay, List<QueryDocumentSnapshot<Delivery>> allDateSorted) {
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
     final filtered = allDateSorted.where((doc) {
       if (_searchQuery.isEmpty) return true;
       return doc.data().storeName.toLowerCase().contains(_searchQuery);
     }).toList();
+
+    if (isTabletLandscape) {
+      if (filtered.isNotEmpty) {
+        final curIndex = filtered.indexWhere((d) => d.id == _selectedDeliveryId);
+        if (curIndex == -1) {
+          _selectedDeliveryId = filtered.first.id;
+          _selectedDelivery = filtered.first.data();
+        } else {
+          _selectedDelivery = filtered[curIndex].data();
+        }
+      } else {
+        _selectedDeliveryId = null;
+        _selectedDelivery = null;
+      }
+    }
 
     final totalOrders = filtered.length;
     final totalUnits = filtered.fold<int>(0, (acc, doc) => acc + doc.data().totalUnits);
     final totalValue = filtered.fold<double>(0.0, (acc, doc) => acc + doc.data().orderAmount);
     final bool isToday = DateUtils.isSameDay(_selectedDate, DateTime.now());
 
-    return Column(
+    final Widget listContent = filtered.isEmpty
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5), shape: BoxShape.circle),
+                    child: Icon(Icons.fact_check_outlined, size: 48, color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('No Booked Orders', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(
+                    _searchQuery.isNotEmpty
+                        ? 'No orders matching "$_searchQuery"'
+                        : 'All booked orders for ${_dateLabel()} have been picked and moved to Delivery.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13.5, height: 1.35, color: colorScheme.onSurfaceVariant),
+                  ),
+                  if (!isToday && _searchQuery.isEmpty) ...[
+                    const SizedBox(height: 14),
+                    FilledButton.tonalIcon(
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() {
+                          _selectedDate = DateTime.now();
+                          _searchQuery = '';
+                        });
+                      },
+                      icon: const Icon(Icons.today, size: 18),
+                      label: const Text('Go to Today'),
+                    ),
+                  ] else if (_searchQuery.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                      icon: const Icon(Icons.clear, size: 16),
+                      label: const Text('Clear Search Filter'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          )
+        : ListView.separated(
+            primary: false,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
+            itemCount: filtered.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final doc = filtered[index];
+              final deliveryId = doc.id;
+              final delivery = doc.data();
+              final pickedCount = delivery.items.where((i) => i.isPicked).length;
+              final totalLines = delivery.items.length;
+              final isComplete = totalLines > 0 && pickedCount == totalLines;
+              final shortages = _getDeliveryShortages(delivery);
+
+              final store = _storesByName[delivery.storeName.trim().toLowerCase()];
+              final isTodayPjp = store?.pjpSchedule?.trim().toLowerCase() == targetPjpDay.toLowerCase();
+              final isSelected = isTabletLandscape && deliveryId == _selectedDeliveryId;
+
+              return Card(
+                elevation: 0,
+                margin: EdgeInsets.zero,
+                color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.25) : colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: isSelected
+                        ? colorScheme.primary
+                        : (shortages.isNotEmpty
+                            ? Colors.red.shade300
+                            : (isTodayPjp ? colorScheme.primary.withValues(alpha: 0.25) : colorScheme.outlineVariant.withValues(alpha: 0.55))),
+                    width: isSelected ? 2.0 : 1.0,
+                  ),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    if (isTabletLandscape) {
+                      setState(() {
+                        _selectedDeliveryId = deliveryId;
+                        _selectedDelivery = delivery;
+                      });
+                    } else {
+                      _onPicklistTileTapped(deliveryId, delivery);
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? colorScheme.primary.withValues(alpha: 0.15)
+                                : (isTodayPjp
+                                    ? colorScheme.primaryContainer.withValues(alpha: 0.5)
+                                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6)),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '#${index + 1}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: isTodayPjp || isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                delivery.storeName,
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, height: 1.25),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: isTodayPjp ? Colors.green.withValues(alpha: 0.12) : Colors.amber.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      isTodayPjp
+                                          ? 'PJP Stop #${store?.pjpSequence != null ? (store!.pjpSequence! + 1) : (index + 1)}'
+                                          : (store?.pjpSchedule != null && store!.pjpSchedule!.isNotEmpty
+                                                ? 'PJP: ${store.pjpSchedule}'
+                                                : 'Not in $targetPjpDay PJP'),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: isTodayPjp ? Colors.green.shade800 : Colors.amber.shade900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: isComplete
+                                    ? Colors.green.withValues(alpha: 0.12)
+                                    : colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '$pickedCount/$totalLines checked',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: isComplete ? Colors.green.shade700 : colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                            if (shortages.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade50,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: Colors.red.shade200),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.warning_amber_rounded, size: 11, color: Colors.red.shade700),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      '${shortages.length} shortage${shortages.length > 1 ? 's' : ''}',
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red.shade800),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+
+    final Widget listColumn = Column(
       children: [
         Padding(padding: const EdgeInsets.fromLTRB(16, 10, 16, 4), child: _buildDateNavigator(Theme.of(context))),
         _buildReturnedAlertBanner(),
-        // Clean neutral summary bar
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -661,210 +1195,25 @@ class _PicklistListPageState extends State<PicklistListPage> {
             ),
           ),
         ),
-        Expanded(
-          child: filtered.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5), shape: BoxShape.circle),
-                          child: Icon(Icons.fact_check_outlined, size: 48, color: colorScheme.onSurfaceVariant),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text('No Booked Orders', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        Text(
-                          _searchQuery.isNotEmpty
-                              ? 'No orders matching "$_searchQuery"'
-                              : 'All booked orders for ${_dateLabel()} have been picked and moved to Delivery.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 13.5, height: 1.35, color: colorScheme.onSurfaceVariant),
-                        ),
-                        if (!isToday && _searchQuery.isEmpty) ...[
-                          const SizedBox(height: 14),
-                          FilledButton.tonalIcon(
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _selectedDate = DateTime.now();
-                                _searchQuery = '';
-                              });
-                            },
-                            icon: const Icon(Icons.today, size: 18),
-                            label: const Text('Go to Today'),
-                          ),
-                        ] else if (_searchQuery.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                            icon: const Icon(Icons.clear, size: 16),
-                            label: const Text('Clear Search Filter'),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 90),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final doc = filtered[index];
-                    final deliveryId = doc.id;
-                    final delivery = doc.data();
-                    final pickedCount = delivery.items.where((i) => i.isPicked).length;
-                    final totalLines = delivery.items.length;
-                    final isComplete = totalLines > 0 && pickedCount == totalLines;
-                    final shortages = _getDeliveryShortages(delivery);
-
-                    final store = _storesByName[delivery.storeName.trim().toLowerCase()];
-                    final isTodayPjp = store?.pjpSchedule?.trim().toLowerCase() == targetPjpDay.toLowerCase();
-
-                    return Card(
-                      elevation: 0,
-                      margin: EdgeInsets.zero,
-                      color: colorScheme.surface,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: shortages.isNotEmpty
-                              ? Colors.red.shade300
-                              : (isTodayPjp ? colorScheme.primary.withValues(alpha: 0.25) : colorScheme.outlineVariant.withValues(alpha: 0.55)),
-                        ),
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _onPicklistTileTapped(deliveryId, delivery),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: isTodayPjp
-                                      ? colorScheme.primaryContainer.withValues(alpha: 0.5)
-                                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  '#${index + 1}',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: isTodayPjp ? colorScheme.primary : colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      delivery.storeName,
-                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, height: 1.25),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: isTodayPjp ? Colors.green.withValues(alpha: 0.12) : Colors.amber.withValues(alpha: 0.15),
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            isTodayPjp
-                                                ? 'PJP Stop #${store?.pjpSequence != null ? (store!.pjpSequence! + 1) : (index + 1)}'
-                                                : (store?.pjpSchedule != null && store!.pjpSchedule!.isNotEmpty
-                                                      ? 'PJP: ${store.pjpSchedule}'
-                                                      : 'Not in $targetPjpDay PJP'),
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                              color: isTodayPjp ? Colors.green.shade800 : Colors.amber.shade900,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: isComplete
-                                          ? Colors.green.withValues(alpha: 0.12)
-                                          : colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      '$pickedCount/$totalLines checked',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: isComplete ? Colors.green.shade700 : colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                                  if (shortages.isNotEmpty) ...[
-                                    const SizedBox(height: 4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.shade50,
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: Colors.red.shade200),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.warning_amber_rounded, size: 11, color: Colors.red.shade700),
-                                          const SizedBox(width: 3),
-                                          Text(
-                                            '${shortages.length} shortage${shortages.length > 1 ? 's' : ''}',
-                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red.shade800),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
+        Expanded(child: listContent),
       ],
     );
+
+    if (isTabletLandscape) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 5, child: listColumn),
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 5,
+            child: _buildTabletPicklistDetailPreview(colorScheme, targetPjpDay, _selectedDelivery, _selectedDeliveryId),
+          ),
+        ],
+      );
+    }
+
+    return listColumn;
   }
 
   Widget _buildEditingList() {

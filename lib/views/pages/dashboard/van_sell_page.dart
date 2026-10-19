@@ -1860,8 +1860,8 @@ class _VanSellPageState extends State<VanSellPage> {
 
   Widget _buildNoActiveLoadState(ThemeData theme) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

@@ -280,6 +280,137 @@ void main() {
       await tester.tap(find.text('Restock'));
       expect(selectedTab, 1);
     });
+
+    testWidgets('DashboardSidebar renders collapse button when onCollapse is provided and handles tap', (tester) async {
+      bool collapsed = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DashboardSidebar(
+              currentUser: null,
+              isDealer: true,
+              isSyncing: false,
+              dashboardDTO: DashboardDTO.empty(),
+              merchBlitzCountStream: const Stream<int>.empty(),
+              tasksCountStream: const Stream<int>.empty(),
+              onSync: () {},
+              onLogout: () {},
+              onNavigate: (_) async {},
+              onCollapse: () => collapsed = true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final collapseBtn = find.byTooltip('Collapse sidebar (Focus Mode)');
+      expect(collapseBtn, findsOneWidget);
+
+      await tester.tap(collapseBtn);
+      await tester.pumpAndSettle();
+      expect(collapsed, isTrue);
+    });
+
+    testWidgets('Tablet landscape nested navigation keeps sidebar visible when navigating to secondary page', (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final navKey = GlobalKey<NavigatorState>();
+      final isSecondaryOpenNotifier = ValueNotifier<bool>(false);
+      int currentTab = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              return Scaffold(
+                body: Row(
+                  children: [
+                    DashboardSidebar(
+                      currentUser: null,
+                      isDealer: true,
+                      isSyncing: false,
+                      dashboardDTO: DashboardDTO.empty(),
+                      merchBlitzCountStream: const Stream<int>.empty(),
+                      tasksCountStream: const Stream<int>.empty(),
+                      currentTabIndex: isSecondaryOpenNotifier.value ? -1 : currentTab,
+                      onTabSelected: (index) {
+                        navKey.currentState?.popUntil((r) => r.isFirst);
+                        setState(() {
+                          currentTab = index;
+                          isSecondaryOpenNotifier.value = false;
+                        });
+                      },
+                      onSync: () {},
+                      onLogout: () {},
+                      onNavigate: (page) async {
+                        navKey.currentState?.popUntil((r) => r.isFirst);
+                        setState(() => isSecondaryOpenNotifier.value = true);
+                        await navKey.currentState?.push(
+                          MaterialPageRoute(
+                            builder: (context) => Scaffold(
+                              appBar: AppBar(title: const Text('Secondary Page Content')),
+                              body: const Center(child: Text('Secondary Page Body')),
+                            ),
+                          ),
+                        );
+                        setState(() => isSecondaryOpenNotifier.value = false);
+                      },
+                    ),
+                    const VerticalDivider(width: 1),
+                    Expanded(
+                      child: Navigator(
+                        key: navKey,
+                        onGenerateRoute: (settings) => MaterialPageRoute(
+                          builder: (context) => IndexedStack(
+                            index: currentTab,
+                            children: const [
+                              Center(child: Text('Home Dashboard Content')),
+                              Center(child: Text('Restock Content')),
+                              Center(child: Text('Inventory Content')),
+                              Center(child: Text('Picklist Content')),
+                              Center(child: Text('Delivery Content')),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initially on Home tab, sidebar and Home content are visible
+      expect(find.byType(DashboardSidebar), findsOneWidget);
+      expect(find.text('Home Dashboard Content'), findsOneWidget);
+
+      // Tap "Credit List" in the sidebar
+      await tester.tap(find.text('Credit List'));
+      await tester.pumpAndSettle();
+
+      // Sidebar is STILL visible alongside Secondary Page!
+      expect(find.byType(DashboardSidebar), findsOneWidget);
+      expect(find.text('Secondary Page Content'), findsOneWidget);
+      expect(find.text('Secondary Page Body'), findsOneWidget);
+      expect(find.text('Home Dashboard Content'), findsNothing);
+
+      // Tap "Restock" tab in the sidebar
+      await tester.tap(find.text('Restock'));
+      await tester.pumpAndSettle();
+
+      // Navigates to Restock tab, popping secondary route, sidebar still visible
+      expect(find.byType(DashboardSidebar), findsOneWidget);
+      expect(find.text('Restock Content'), findsOneWidget);
+    });
   });
 }
 

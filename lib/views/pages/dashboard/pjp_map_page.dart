@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
@@ -213,7 +214,7 @@ class _PjpMapPageState extends State<PjpMapPage> {
     }
   }
 
-  void _fitAllStoreMarkers() {
+  void _fitAllStoreMarkers({EdgeInsets? customPadding}) {
     if (_mappedStores.isEmpty) {
       if (_currentPosition != null) {
         _mapController.move(LatLng(_currentPosition!.latitude, _currentPosition!.longitude), 14);
@@ -244,7 +245,7 @@ class _PjpMapPageState extends State<PjpMapPage> {
     _mapController.fitCamera(
       CameraFit.bounds(
         bounds: bounds,
-        padding: const EdgeInsets.only(top: 80, bottom: 220, left: 40, right: 40),
+        padding: customPadding ?? const EdgeInsets.only(top: 80, bottom: 220, left: 40, right: 40),
       ),
     );
   }
@@ -314,6 +315,7 @@ class _PjpMapPageState extends State<PjpMapPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isTabletLandscape = ScreenSize.isTabletLandscape(context);
     final colorScheme = Theme.of(context).colorScheme;
 
     return PopScope(
@@ -324,290 +326,661 @@ class _PjpMapPageState extends State<PjpMapPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(
-        title: 'PJP Route Map',
-        subtitle: '$_selectedDay • ${_allStores.length} stores scheduled',
+          title: 'PJP Route Map',
+          subtitle: '$_selectedDay • ${_allStores.length} stores scheduled',
+        ),
+        body: isTabletLandscape
+            ? _buildTabletLandscapeLayout(colorScheme)
+            : _buildPortraitLayout(colorScheme),
       ),
-      body: Stack(
-        children: [
-          // ── FlutterMap ──────────────────────────────────────────────────
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _mappedStores.isNotEmpty
-                  ? LatLng(_mappedStores.first.store.latitude!, _mappedStores.first.store.longitude!)
-                  : (_currentPosition != null
-                      ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                      : _defaultCenter),
-              initialZoom: 13,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
-              ),
+    );
+  }
+
+  Widget _buildTabletLandscapeLayout(ColorScheme colorScheme) {
+    return Row(
+      children: [
+        // Left Pane: Route Map View (~60%)
+        Expanded(
+          flex: 6,
+          child: _buildMapPane(colorScheme, isTabletLandscape: true),
+        ),
+
+        // Vertical Divider
+        VerticalDivider(
+          width: 1,
+          thickness: 1,
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+
+        // Right Pane: Interactive Store Stop List (~40%)
+        Expanded(
+          flex: 4,
+          child: _buildInteractiveStoreList(colorScheme),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPortraitLayout(ColorScheme colorScheme) {
+    return _buildMapPane(colorScheme, isTabletLandscape: false);
+  }
+
+  Widget _buildMapPane(ColorScheme colorScheme, {bool isTabletLandscape = false}) {
+    return Stack(
+      children: [
+        // ── FlutterMap ──────────────────────────────────────────────────
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _mappedStores.isNotEmpty
+                ? LatLng(_mappedStores.first.store.latitude!, _mappedStores.first.store.longitude!)
+                : (_currentPosition != null
+                    ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+                    : _defaultCenter),
+            initialZoom: 13,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.all,
             ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'selecta_ops',
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'selecta_ops',
+            ),
+
+            // Road-Snapped Driving Polyline
+            if (_roadPolylinePoints.length >= 2)
+              PolylineLayer(
+                polylines: [
+                  // Outer subtle glow
+                  Polyline(
+                    points: _roadPolylinePoints,
+                    strokeWidth: 6.0,
+                    color: colorScheme.primary.withValues(alpha: 0.3),
+                  ),
+                  // Core driving path
+                  Polyline(
+                    points: _roadPolylinePoints,
+                    strokeWidth: 3.5,
+                    color: colorScheme.primary,
+                  ),
+                ],
               ),
 
-              // Road-Snapped Driving Polyline
-              if (_roadPolylinePoints.length >= 2)
-                PolylineLayer(
-                  polylines: [
-                    // Outer subtle glow
-                    Polyline(
-                      points: _roadPolylinePoints,
-                      strokeWidth: 6.0,
-                      color: colorScheme.primary.withValues(alpha: 0.3),
-                    ),
-                    // Core driving path
-                    Polyline(
-                      points: _roadPolylinePoints,
-                      strokeWidth: 3.5,
-                      color: colorScheme.primary,
-                    ),
-                  ],
-                ),
-
-              // Store Markers
-              MarkerLayer(
-                markers: [
-                  // User GPS Position
-                  if (_currentPosition != null)
-                    Marker(
-                      point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                      width: 44,
-                      height: 44,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2.5),
-                              boxShadow: const [
-                                BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
-                              ],
-                            ),
-                          ),
-                        ),
+            // Store Markers
+            MarkerLayer(
+              markers: [
+                // User GPS Position
+                if (_currentPosition != null)
+                  Marker(
+                    point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                    width: 44,
+                    height: 44,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
                       ),
-                    ),
-
-                  // Store Pins
-                  ..._mappedStores.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final item = entry.value;
-                    final store = item.store;
-                    final isVisited = _isVisitedToday(store);
-                    final isSelected = _selectedStore?.docId == item.docId;
-                    final sequenceNumber = store.pjpSequence ?? (index + 1);
-
-                    final pinColor = isVisited
-                        ? const Color(0xFF15803D)
-                        : (isSelected ? colorScheme.primary : Colors.orange.shade700);
-
-                    return Marker(
-                      point: LatLng(store.latitude!, store.longitude!),
-                      width: isSelected ? 52 : 44,
-                      height: isSelected ? 52 : 44,
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() => _selectedStore = item);
-                          _mapController.move(LatLng(store.latitude!, store.longitude!), 15);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                      child: Center(
+                        child: Container(
+                          width: 18,
+                          height: 18,
                           decoration: BoxDecoration(
-                            color: pinColor,
+                            color: Colors.blue,
                             shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white,
-                              width: isSelected ? 3 : 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: pinColor.withValues(alpha: 0.4),
-                                blurRadius: isSelected ? 8 : 4,
-                                offset: const Offset(0, 3),
-                              ),
+                            border: Border.all(color: Colors.white, width: 2.5),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
                             ],
                           ),
-                          child: Center(
-                            child: isVisited
-                                ? const Icon(Icons.check_rounded, color: Colors.white, size: 20)
-                                : Text(
-                                    '$sequenceNumber',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: isSelected ? 15 : 13,
-                                    ),
-                                  ),
-                          ),
                         ),
                       ),
-                    );
-                  }),
+                    ),
+                  ),
+
+                // Store Pins
+                ..._mappedStores.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final item = entry.value;
+                  final store = item.store;
+                  final isVisited = _isVisitedToday(store);
+                  final isSelected = _selectedStore?.docId == item.docId;
+                  final sequenceNumber = store.pjpSequence ?? (index + 1);
+
+                  final pinColor = isVisited
+                      ? const Color(0xFF15803D)
+                      : (isSelected ? colorScheme.primary : Colors.orange.shade700);
+
+                  return Marker(
+                    point: LatLng(store.latitude!, store.longitude!),
+                    width: isSelected ? 52 : 44,
+                    height: isSelected ? 52 : 44,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedStore = item);
+                        _mapController.move(LatLng(store.latitude!, store.longitude!), 15);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        decoration: BoxDecoration(
+                          color: pinColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: isSelected ? 3 : 2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: pinColor.withValues(alpha: 0.4),
+                              blurRadius: isSelected ? 8 : 4,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: isVisited
+                              ? const Icon(Icons.check_rounded, color: Colors.white, size: 20)
+                              : Text(
+                                  '$sequenceNumber',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: isSelected ? 15 : 13,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ],
+        ),
+
+        // ── Day Selector Chips at Top ──────────────────────────────────
+        Positioned(
+          top: 12,
+          left: 12,
+          right: 12,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: PjpScheduleDays.all.map((day) {
+                final isSelected = _selectedDay == day;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    selected: isSelected,
+                    label: Text(day.substring(0, 3)),
+                    labelStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+                    ),
+                    selectedColor: colorScheme.primary,
+                    backgroundColor: colorScheme.surface.withValues(alpha: 0.95),
+                    elevation: 2,
+                    checkmarkColor: colorScheme.onPrimary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedDay = day;
+                        _loadStoresForDay();
+                      });
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+
+        // ── Driving Distance & Duration Pill (Top-Center) ───────────────
+        if (_totalRouteDistanceKm > 0)
+          Positioned(
+            top: 56,
+            left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: colorScheme.surface.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.directions_car_outlined, size: 14, color: colorScheme.primary),
+                  const SizedBox(width: 5),
+                  Text(
+                    '${_totalRouteDistanceKm.toStringAsFixed(1)} km',
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
+                  ),
+                  if (_estimatedDrivingMinutes > 0) ...[
+                    const SizedBox(width: 4),
+                    Text(
+                      '• ~$_estimatedDrivingMinutes min driving',
+                      style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                    ),
+                  ],
                 ],
+              ),
+            ),
+          ),
+
+        // ── Map Floating Control Buttons (Right side) ──────────────────
+        Positioned(
+          right: 16,
+          bottom: isTabletLandscape ? 24 : (_selectedStore != null ? 225 : 30),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FloatingActionButton.small(
+                heroTag: 'fab_fit_bounds',
+                onPressed: () => _fitAllStoreMarkers(
+                  customPadding: isTabletLandscape ? const EdgeInsets.all(50) : null,
+                ),
+                backgroundColor: colorScheme.surface,
+                foregroundColor: colorScheme.onSurface,
+                tooltip: 'Fit All Stores',
+                child: const Icon(Icons.crop_free_rounded),
+              ),
+              const SizedBox(height: 10),
+              FloatingActionButton.small(
+                heroTag: 'fab_my_location',
+                onPressed: () async {
+                  await _determinePosition();
+                  if (_currentPosition != null) {
+                    _mapController.move(
+                      LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                      15,
+                    );
+                  }
+                },
+                backgroundColor: colorScheme.surface,
+                foregroundColor: colorScheme.primary,
+                tooltip: 'My Location',
+                child: _isLocating
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.my_location_rounded),
               ),
             ],
           ),
+        ),
 
-          // ── Day Selector Chips at Top ──────────────────────────────────
+        // ── Bottom Store Preview Sheet (Mobile only) ──────────────────
+        if (!isTabletLandscape && _selectedStore != null)
           Positioned(
-            top: 12,
-            left: 12,
-            right: 12,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
+            left: 16,
+            right: 16,
+            bottom: 16,
+            child: _buildStorePreviewCard(_selectedStore!, colorScheme),
+          ),
+
+        // ── Loading Overlay ────────────────────────────────────────────
+        if (_isLoading || _isLoadingRouteGeometry)
+          Positioned(
+            top: 56,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: colorScheme.surface.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+              ),
               child: Row(
-                children: PjpScheduleDays.all.map((day) {
-                  final isSelected = _selectedDay == day;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: FilterChip(
-                      selected: isSelected,
-                      label: Text(day.substring(0, 3)),
-                      labelStyle: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
-                      ),
-                      selectedColor: colorScheme.primary,
-                      backgroundColor: colorScheme.surface.withValues(alpha: 0.95),
-                      elevation: 2,
-                      checkmarkColor: colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      onSelected: (_) {
-                        setState(() {
-                          _selectedDay = day;
-                          _loadStoresForDay();
-                        });
-                      },
-                    ),
-                  );
-                }).toList(),
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 6),
+                  Text(
+                    _isLoading ? 'Loading stores...' : 'Snapping route to roads...',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ],
               ),
             ),
           ),
+      ],
+    );
+  }
 
-          // ── Driving Distance & Duration Pill (Top-Center) ───────────────
-          if (_totalRouteDistanceKm > 0)
-            Positioned(
-              top: 56,
-              left: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: colorScheme.surface.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.directions_car_outlined, size: 14, color: colorScheme.primary),
-                    const SizedBox(width: 5),
-                    Text(
-                      '${_totalRouteDistanceKm.toStringAsFixed(1)} km',
-                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold),
-                    ),
-                    if (_estimatedDrivingMinutes > 0) ...[
-                      const SizedBox(width: 4),
-                      Text(
-                        '• ~$_estimatedDrivingMinutes min driving',
-                        style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ],
+  Widget _buildInteractiveStoreList(ColorScheme colorScheme) {
+    final int visitedCount = _allStores.where((item) => _isVisitedToday(item.store)).length;
+    final int totalStores = _allStores.length;
+    final double progress = totalStores == 0 ? 0.0 : visitedCount / totalStores;
+
+    return Container(
+      color: colorScheme.surface,
+      child: Column(
+        children: [
+          // ── Header Summary Bar ──
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border(
+                bottom: BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.5),
                 ),
               ),
             ),
-
-          // ── Map Floating Control Buttons (Right side) ──────────────────
-          Positioned(
-            right: 16,
-            bottom: _selectedStore != null ? 225 : 30,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                FloatingActionButton.small(
-                  heroTag: 'fab_fit_bounds',
-                  onPressed: _fitAllStoreMarkers,
-                  backgroundColor: colorScheme.surface,
-                  foregroundColor: colorScheme.onSurface,
-                  tooltip: 'Fit All Stores',
-                  child: const Icon(Icons.crop_free_rounded),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.format_list_numbered_rounded, size: 18, color: colorScheme.primary),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '$_selectedDay Stops',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: visitedCount == totalStores && totalStores > 0
+                            ? Colors.green.withValues(alpha: 0.15)
+                            : colorScheme.primaryContainer.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$visitedCount of $totalStores Visited',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                          color: visitedCount == totalStores && totalStores > 0
+                              ? Colors.green.shade800
+                              : colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
-                FloatingActionButton.small(
-                  heroTag: 'fab_my_location',
-                  onPressed: () async {
-                    await _determinePosition();
-                    if (_currentPosition != null) {
-                      _mapController.move(
-                        LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                        15,
-                      );
-                    }
-                  },
-                  backgroundColor: colorScheme.surface,
-                  foregroundColor: colorScheme.primary,
-                  tooltip: 'My Location',
-                  child: _isLocating
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.my_location_rounded),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      visitedCount == totalStores && totalStores > 0
+                          ? Colors.green
+                          : colorScheme.primary,
+                    ),
+                  ),
                 ),
+                if (_totalRouteDistanceKm > 0) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.directions_car_outlined, size: 14, color: colorScheme.primary),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_totalRouteDistanceKm.toStringAsFixed(1)} km total',
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                      ),
+                      if (_estimatedDrivingMinutes > 0) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          '• ~$_estimatedDrivingMinutes min drive',
+                          style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
 
-          // ── Bottom Store Preview Sheet with Navigation Button ──────────
-          if (_selectedStore != null)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16,
-              child: _buildStorePreviewCard(_selectedStore!, colorScheme),
-            ),
-
-          // ── Loading Overlay ────────────────────────────────────────────
-          if (_isLoading || _isLoadingRouteGeometry)
-            Positioned(
-              top: 56,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: colorScheme.surface.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2)),
-                    const SizedBox(width: 6),
-                    Text(
-                      _isLoading ? 'Loading stores...' : 'Snapping route to roads...',
-                      style: const TextStyle(fontSize: 11),
+          // ── Scrollable Stop Sequence Cards ──
+          Expanded(
+            child: _allStores.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.route_outlined, size: 48, color: colorScheme.outline),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No stores scheduled for $_selectedDay',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Switch day using chips above or assign stores in PJP configuration.',
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  )
+                : ListView.separated(
+                    primary: false,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    itemCount: _allStores.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = _allStores[index];
+                      final store = item.store;
+                      final isSelected = _selectedStore?.docId == item.docId;
+                      final isVisited = _isVisitedToday(store);
+                      final sequenceNumber = store.pjpSequence ?? (index + 1);
+                      final distanceText = _formatDistanceToStore(store);
+                      final bool hasCoordinates = store.latitude != null && store.longitude != null;
+
+                      final pinColor = isVisited
+                          ? const Color(0xFF15803D)
+                          : (isSelected ? colorScheme.primary : Colors.orange.shade700);
+
+                      return Card(
+                        elevation: isSelected ? 3 : 0,
+                        color: isSelected
+                            ? colorScheme.primaryContainer.withValues(alpha: 0.18)
+                            : colorScheme.surface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          side: BorderSide(
+                            color: isSelected
+                                ? colorScheme.primary
+                                : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                            width: isSelected ? 1.8 : 1.0,
+                          ),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            setState(() => _selectedStore = item);
+                            if (hasCoordinates) {
+                              _mapController.move(LatLng(store.latitude!, store.longitude!), 16);
+                            }
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    // Sequence badge
+                                    Container(
+                                      width: 28,
+                                      height: 28,
+                                      decoration: BoxDecoration(
+                                        color: pinColor,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: isVisited
+                                            ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
+                                            : Text(
+                                                '$sequenceNumber',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            store.storeName,
+                                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (store.storeAddress.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              store.storeAddress,
+                                              style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    if (isVisited)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text(
+                                          'Visited',
+                                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green),
+                                        ),
+                                      )
+                                    else if (!hasCoordinates)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.amber.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text(
+                                          'No GPS',
+                                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.orange),
+                                        ),
+                                      )
+                                    else if (distanceText.isNotEmpty)
+                                      Text(
+                                        distanceText,
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colorScheme.primary),
+                                      ),
+                                  ],
+                                ),
+
+                                // Expanded action buttons when store is active/selected
+                                if (isSelected) ...[
+                                  const Divider(height: 18),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: FilledButton.icon(
+                                          onPressed: hasCoordinates ? () => _launchTurnByTurnNavigation(store) : null,
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: const Color(0xFF15803D),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                                            visualDensity: VisualDensity.compact,
+                                          ),
+                                          icon: const Icon(Icons.navigation_rounded, size: 16),
+                                          label: const Text('Navigate', style: TextStyle(fontSize: 12), maxLines: 1, softWrap: false),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: FilledButton.tonalIcon(
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => PjpPage(
+                                                  hapiStoreID: item.docId,
+                                                  initialHapistore: store,
+                                                  selectedDay: _selectedDay,
+                                                ),
+                                              ),
+                                            ).then((_) => _loadStoresForDay());
+                                          },
+                                          style: FilledButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                                            visualDensity: VisualDensity.compact,
+                                          ),
+                                          icon: const Icon(Icons.storefront_rounded, size: 16),
+                                          label: const Text('Details', style: TextStyle(fontSize: 12), maxLines: 1, softWrap: false),
+                                        ),
+                                      ),
+                                      if (store.storeContact.isNotEmpty) ...[
+                                        const SizedBox(width: 6),
+                                        IconButton.filledTonal(
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () => _callStore(store.storeContact),
+                                          icon: const Icon(Icons.phone_outlined, size: 16),
+                                          tooltip: 'Call Store',
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
         ],
       ),
-    ),
-  );
-}
+    );
+  }
+
+  Future<void> _callStore(String contact) async {
+    final telUri = Uri.parse('tel:${contact.replaceAll(' ', '')}');
+    if (await canLaunchUrl(telUri)) {
+      await launchUrl(telUri);
+    } else {
+      Clipboard.setData(ClipboardData(text: contact));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Contact $contact copied to clipboard'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
 
   Widget _buildStorePreviewCard(MappedStoreItem item, ColorScheme colorScheme) {
     final store = item.store;
@@ -758,22 +1131,7 @@ class _PjpMapPageState extends State<PjpMapPage> {
                 if (store.storeContact.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   IconButton.filledTonal(
-                    onPressed: () async {
-                      final telUri = Uri.parse('tel:${store.storeContact.replaceAll(' ', '')}');
-                      if (await canLaunchUrl(telUri)) {
-                        await launchUrl(telUri);
-                      } else {
-                        Clipboard.setData(ClipboardData(text: store.storeContact));
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Contact ${store.storeContact} copied to clipboard'),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      }
-                    },
+                    onPressed: () => _callStore(store.storeContact),
                     icon: const Icon(Icons.phone_outlined, size: 18),
                     tooltip: 'Call Store',
                   ),

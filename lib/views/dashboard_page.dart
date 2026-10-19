@@ -57,6 +57,21 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   String lastSyncDateTime = '';
   DateTime? _lastSyncTime;
   int _currentTabIndex = 0;
+  bool _isSidebarOpen = true;
+  final GlobalKey<NavigatorState> _rightPaneNavKey = GlobalKey<NavigatorState>();
+  final ValueNotifier<int> _dashboardVersionNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<bool> _isSecondaryPageOpenNotifier = ValueNotifier<bool>(false);
+  late final _RightPaneNavigatorObserver _rightPaneObserver = _RightPaneNavigatorObserver(_isSecondaryPageOpenNotifier);
+
+  void _toggleSidebar() {
+    setState(() => _isSidebarOpen = !_isSidebarOpen);
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _dashboardVersionNotifier.value++;
+  }
 
   @override
   void initState() {
@@ -87,6 +102,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     WidgetsBinding.instance.removeObserver(this);
     dashboardNeedsRefreshNotifier.removeListener(_refreshDashboardIfNeeded);
     _configSubscription?.cancel();
+    _dashboardVersionNotifier.dispose();
+    _isSecondaryPageOpenNotifier.dispose();
     super.dispose();
   }
 
@@ -218,22 +235,48 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   }
 
   Future<void> _navigateToPage(Widget page) async {
+    final isDesktop = ScreenSize.isDesktop(context);
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
+    final isWide = isDesktop || isTabletLandscape;
+
     if (page is PurchaseorderlistPage) {
+      if (isWide) {
+        _rightPaneNavKey.currentState?.popUntil((route) => route.isFirst);
+      }
       setState(() => _currentTabIndex = 1);
       return;
     }
     if (page is InventoryPage) {
+      if (isWide) {
+        _rightPaneNavKey.currentState?.popUntil((route) => route.isFirst);
+      }
       setState(() => _currentTabIndex = 2);
       return;
     }
     if (page is PicklistListPage) {
+      if (isWide) {
+        _rightPaneNavKey.currentState?.popUntil((route) => route.isFirst);
+      }
       setState(() => _currentTabIndex = 3);
       return;
     }
     if (page is DeliveryListPage) {
+      if (isWide) {
+        _rightPaneNavKey.currentState?.popUntil((route) => route.isFirst);
+      }
       setState(() => _currentTabIndex = 4);
       return;
     }
+
+    if (isWide) {
+      _rightPaneNavKey.currentState?.popUntil((route) => route.isFirst);
+      await _rightPaneNavKey.currentState?.push(
+        MaterialPageRoute(builder: (_) => page),
+      );
+      if (mounted) await _refreshDashboardIfNeeded();
+      return;
+    }
+
     await Helperfunctions.navigateThenWait(context, page);
     if (mounted) await _refreshDashboardIfNeeded();
   }
@@ -343,7 +386,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   }
 
   // ── Shared sidebar props helper ─────────────────────────────────────────
-  DashboardSidebar _buildSidebar({bool includeTabs = false}) => DashboardSidebar(
+  DashboardSidebar _buildSidebar({
+    bool includeTabs = false,
+    int? currentTabIndex,
+    VoidCallback? onCollapse,
+  }) => DashboardSidebar(
     currentUser: _currentUser,
     isDealer: isDealer,
     isSyncing: isSyncing,
@@ -352,14 +399,20 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     tasksCountStream: _tasksCountStream,
     activeReturnsCountStream: _activeReturnsCountStream,
     unverifiedBreakdownCountStream: _unverifiedBreakdownsCountStream,
-    currentTabIndex: includeTabs ? _currentTabIndex : null,
-    onTabSelected: includeTabs ? (index) => setState(() => _currentTabIndex = index) : null,
+    currentTabIndex: includeTabs ? (currentTabIndex ?? _currentTabIndex) : null,
+    onTabSelected: includeTabs
+        ? (index) {
+            _rightPaneNavKey.currentState?.popUntil((route) => route.isFirst);
+            setState(() => _currentTabIndex = index);
+          }
+        : null,
     purchaseOrdersAwaitingCountStream: includeTabs ? _purchaseOrdersAwaitingCountStream : null,
     pendingPicklistsCountStream: includeTabs ? _pendingPicklistsCountStream : null,
     pendingDeliveriesCountStream: includeTabs ? _pendingDeliveriesCountStream : null,
     onSync: () => syncDashboard(force: true),
     onLogout: onLogout,
     onNavigate: _navigateToPage,
+    onCollapse: onCollapse,
   );
 
   /// The scrollable dashboard body — shared across all screen sizes.
@@ -390,7 +443,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                   ),
 
                   // 2. Quick Access Section
-                  _buildSectionHeader('Quick Access', 'Pending deliveries, purchase orders, and credits'),
+                  _buildSectionHeader('Quick Access', 'Orders, credits, van operations, and scouting'),
                   DashboardQuickAccessGrid(
                     dashboardDTO: dashboardDTO,
                     pendingPicklistsCountStream: _pendingPicklistsCountStream,
@@ -542,6 +595,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       _homeScaffoldKey.currentState?.closeDrawer();
       return true;
     }
+    if (_rightPaneNavKey.currentState?.canPop() == true) {
+      _rightPaneNavKey.currentState?.pop();
+      return true;
+    }
     if (_currentTabIndex != 0) {
       setState(() => _currentTabIndex = 0);
       return true;
@@ -594,6 +651,29 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     );
   }
 
+  List<Widget> _buildAppBarActions(BuildContext context) => [
+    IconButton(
+      icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+      onPressed: () => _navigateToPage(const NotificationsPage()),
+      tooltip: 'Notifications',
+    ),
+    IconButton(
+      icon: isSyncing
+          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          : const Icon(Icons.sync_rounded, color: Colors.white),
+      onPressed: isSyncing ? null : () => syncDashboard(force: true),
+      tooltip: 'Sync Dashboard',
+    ),
+  ];
+
+  List<Widget> _buildTabPages(BuildContext context, {required bool isWideLandscape}) => [
+    _buildHomeDashboard(_buildAppBarActions(context), Theme.of(context).colorScheme, isWideLandscape: isWideLandscape),
+    const PurchaseorderlistPage(),
+    const InventoryPage(),
+    const PicklistListPage(),
+    const DeliveryListPage(),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final isDesktop = ScreenSize.isDesktop(context);
@@ -602,46 +682,97 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     final isWide = isDesktop || isTabletLandscape;
     final colorScheme = Theme.of(context).colorScheme;
 
-    // ── AppBar actions (shared) ────────────────────────────────────────────
-    final appBarActions = [
-      IconButton(
-        icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage())),
-        tooltip: 'Notifications',
-      ),
-      IconButton(
-        icon: isSyncing
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-            : const Icon(Icons.sync_rounded, color: Colors.white),
-        onPressed: isSyncing ? null : () => syncDashboard(force: true),
-        tooltip: 'Sync Dashboard',
-      ),
-    ];
-
-    final tabPages = [
-      _buildHomeDashboard(appBarActions, colorScheme, isWideLandscape: isWide),
-      const PurchaseorderlistPage(),
-      const InventoryPage(),
-      const PicklistListPage(),
-      const DeliveryListPage(),
-    ];
-
     final Widget content;
 
     // ── DESKTOP / TABLET LANDSCAPE: Unified single sidebar + tab content ──
     if (isWide) {
       content = Scaffold(
-        body: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        body: Stack(
           children: [
-            _buildSidebar(includeTabs: true),
-            const VerticalDivider(width: 1, thickness: 1),
-            Expanded(
-              child: IndexedStack(
-                index: _currentTabIndex,
-                children: tabPages,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 240),
+                  curve: Curves.easeInOutCubic,
+                  width: _isSidebarOpen ? DashboardSidebar.kWidth : 0,
+                  child: ClipRect(
+                    child: OverflowBox(
+                      minWidth: DashboardSidebar.kWidth,
+                      maxWidth: DashboardSidebar.kWidth,
+                      alignment: Alignment.topLeft,
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _isSecondaryPageOpenNotifier,
+                        builder: (ctx, isSecondaryOpen, _) {
+                          return _buildSidebar(
+                            includeTabs: true,
+                            currentTabIndex: isSecondaryOpen ? -1 : _currentTabIndex,
+                            onCollapse: _toggleSidebar,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                if (_isSidebarOpen) const VerticalDivider(width: 1, thickness: 1),
+                Expanded(
+                  child: Navigator(
+                    key: _rightPaneNavKey,
+                    observers: [_rightPaneObserver],
+                    onGenerateRoute: (settings) {
+                      return MaterialPageRoute(
+                        builder: (navContext) => ValueListenableBuilder<int>(
+                          valueListenable: _dashboardVersionNotifier,
+                          builder: (context, version, child) {
+                            return IndexedStack(
+                              index: _currentTabIndex,
+                              children: _buildTabPages(context, isWideLandscape: true),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
+            if (!_isSidebarOpen)
+              ValueListenableBuilder<bool>(
+                valueListenable: _isSecondaryPageOpenNotifier,
+                builder: (ctx, isSecondaryOpen, _) {
+                  return Positioned(
+                    top: MediaQuery.paddingOf(context).top + 16,
+                    left: isSecondaryOpen ? 62 : 14,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: colorScheme.brightness == Brightness.dark
+                            ? const Color(0xFF28303F)
+                            : Colors.white.withValues(alpha: 0.22),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.menu_rounded, size: 20, color: Colors.white),
+                        onPressed: _toggleSidebar,
+                        tooltip: 'Show Sidebar',
+                        splashRadius: 20,
+                        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                        padding: EdgeInsets.zero,
+                      ),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       );
@@ -667,7 +798,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
             Expanded(
               child: IndexedStack(
                 index: _currentTabIndex,
-                children: tabPages,
+                children: _buildTabPages(context, isWideLandscape: false),
               ),
             ),
           ],
@@ -678,7 +809,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       content = Scaffold(
         body: IndexedStack(
           index: _currentTabIndex,
-          children: tabPages,
+          children: _buildTabPages(context, isWideLandscape: false),
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentTabIndex,
@@ -696,5 +827,41 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       onBackIntercept: _handleBackPress,
       child: content,
     );
+  }
+}
+
+/// Navigator observer that notifies whether the right pane Navigator has any pushed routes.
+class _RightPaneNavigatorObserver extends NavigatorObserver {
+  final ValueNotifier<bool> secondaryPageNotifier;
+  _RightPaneNavigatorObserver(this.secondaryPageNotifier);
+
+  void _update() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      secondaryPageNotifier.value = navigator?.canPop() ?? false;
+    });
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    _update();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    _update();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didRemove(route, previousRoute);
+    _update();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    _update();
   }
 }

@@ -9,6 +9,7 @@ import 'package:selecta_ops/controllers/badorder_controller.dart';
 import 'package:selecta_ops/controllers/selecta_product_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -962,6 +963,41 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
             final totalSkus = _totalSkus;
             final totalAmount = _computeTotalAmount(allProducts);
 
+            if (ScreenSize.isTabletLandscape(context)) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        border: Border(
+                          right: BorderSide(
+                            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                      child: _buildTabletIncidentSummaryPanel(
+                        colorScheme,
+                        allProducts,
+                        totalSkus,
+                        totalUnits,
+                        totalAmount,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 5,
+                    child: _buildTabletCatalogPanel(
+                      colorScheme,
+                      filteredProducts,
+                    ),
+                  ),
+                ],
+              );
+            }
+
             return Column(
               children: [
                 Expanded(
@@ -1137,6 +1173,305 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildTabletIncidentSummaryPanel(
+    ColorScheme colorScheme,
+    List<SelectaProduct> allProducts,
+    int totalSkus,
+    int totalUnits,
+    double totalAmount,
+  ) {
+    final selectedProducts = allProducts.where((p) => (_quantities[p.id] ?? 0) > 0).toList();
+
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            primary: false,
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildCollapsibleIncidentCard(colorScheme),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.inventory_2_outlined, size: 18, color: colorScheme.primary),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Claim Items ($totalSkus SKU${totalSkus == 1 ? '' : 's'})',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              const Spacer(),
+                              if (selectedProducts.isNotEmpty)
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() => _quantities.clear());
+                                  },
+                                  style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: const Text('Clear All', style: TextStyle(color: Colors.red, fontSize: 12)),
+                                ),
+                            ],
+                          ),
+                          const Divider(height: 16),
+                          if (selectedProducts.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 20),
+                              child: Center(
+                                child: Text(
+                                  'No items added to claim yet.\nSelect products from the catalog.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            ...selectedProducts.map((p) {
+                              final qty = _quantities[p.id] ?? 0;
+                              final subtotal = qty * p.boPricePerPiece;
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            p.productName,
+                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          Text(
+                                            '${Helperfunctions.formatDoubleAmountForDisplay(p.boPricePerPiece)} × $qty = ${Helperfunctions.formatDoubleAmountForDisplay(subtotal)}',
+                                            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(color: colorScheme.outlineVariant),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.remove, size: 14),
+                                            padding: const EdgeInsets.all(4),
+                                            constraints: const BoxConstraints(),
+                                            onPressed: () {
+                                              HapticFeedback.lightImpact();
+                                              _updateQuantity(p.id, qty - 1);
+                                            },
+                                          ),
+                                          InkWell(
+                                            onTap: () => _showQuantityDialog(p),
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              child: Text(
+                                                '$qty',
+                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                              ),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.add, size: 14),
+                                            padding: const EdgeInsets.all(4),
+                                            constraints: const BoxConstraints(),
+                                            onPressed: () {
+                                              HapticFeedback.lightImpact();
+                                              _updateQuantity(p.id, qty + 1);
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Bottom Action Panel
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
+          ),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '$totalSkus SKU${totalSkus == 1 ? '' : 's'} • $totalUnits pcs',
+                    style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                  ),
+                  Text(
+                    Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _isSubmitting ? null : () => _submit(allProducts),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.orange.shade800,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: _isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.check, size: 18),
+                  label: Text(
+                    _isSubmitting
+                        ? 'Saving...'
+                        : (_isEditMode ? 'Update Bad Order' : 'Save Bad Order'),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabletCatalogPanel(
+    ColorScheme colorScheme,
+    List<SelectaProduct> filteredProducts,
+  ) {
+    return Column(
+      children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+          child: SizedBox(
+            height: 40,
+            child: TextField(
+              controller: _searchController,
+              onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+              decoration: InputDecoration(
+                hintText: 'Search products...',
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 16),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ),
+        // Filter chips
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: [
+              ChoiceChip(
+                label: const Text('All', style: TextStyle(fontSize: 12)),
+                selected: _categoryFilter == 'All',
+                onSelected: (_) => setState(() => _categoryFilter = 'All'),
+                visualDensity: VisualDensity.compact,
+                showCheckmark: false,
+              ),
+              const SizedBox(width: 6),
+              ChoiceChip(
+                label: const Text('By Piece', style: TextStyle(fontSize: 12)),
+                selected: _categoryFilter == 'By Piece',
+                onSelected: (_) => setState(() => _categoryFilter = 'By Piece'),
+                visualDensity: VisualDensity.compact,
+                showCheckmark: false,
+              ),
+              const SizedBox(width: 6),
+              ChoiceChip(
+                label: const Text('By Case', style: TextStyle(fontSize: 12)),
+                selected: _categoryFilter == 'By Case',
+                onSelected: (_) => setState(() => _categoryFilter = 'By Case'),
+                visualDensity: VisualDensity.compact,
+                showCheckmark: false,
+              ),
+              const Spacer(),
+              Text(
+                '${filteredProducts.length} items',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        // Product list
+        Expanded(
+          child: filteredProducts.isEmpty
+              ? const Center(child: Text('No active Selecta products match filter.'))
+              : ListView.builder(
+                  primary: false,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filteredProducts.length,
+                  itemBuilder: (context, index) {
+                    final product = filteredProducts[index];
+                    return _buildProductCard(product, colorScheme);
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

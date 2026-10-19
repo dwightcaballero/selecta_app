@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/tasks_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/tasks.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasks_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
@@ -31,6 +32,9 @@ class _TasklistPageState extends State<TasklistPage> {
   final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
   TaskFilter _selectedFilter = TaskFilter.all;
+
+  String? _selectedTaskId;
+  Tasks? _selectedTask;
 
   @override
   void initState() {
@@ -232,7 +236,12 @@ class _TasklistPageState extends State<TasklistPage> {
   }
 
   /// Builds an individual task card
-  Widget _buildTaskCard({required String taskID, required Tasks task}) {
+  Widget _buildTaskCard({
+    required String taskID,
+    required Tasks task,
+    bool isSelected = false,
+    VoidCallback? onTap,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -245,7 +254,9 @@ class _TasklistPageState extends State<TasklistPage> {
     final deadlineFormatted = DateFormat('MMM d, yyyy  h:mm a').format(deadlineDate);
 
     Color cardBorderColor;
-    if (isDone) {
+    if (isSelected) {
+      cardBorderColor = colorScheme.primary;
+    } else if (isDone) {
       cardBorderColor = colorScheme.outlineVariant.withValues(alpha: 0.3);
     } else if (isOverdue) {
       cardBorderColor = isDark ? Colors.red.shade700 : Colors.red.shade300;
@@ -255,17 +266,21 @@ class _TasklistPageState extends State<TasklistPage> {
       cardBorderColor = colorScheme.outlineVariant.withValues(alpha: 0.6);
     }
 
+    final cardBgColor = isSelected
+        ? colorScheme.primaryContainer.withValues(alpha: 0.15)
+        : (isDone ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.2) : colorScheme.surface);
+
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      color: isDone ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.2) : colorScheme.surface,
+      color: cardBgColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: cardBorderColor, width: isOverdue ? 1.2 : 1.0),
+        side: BorderSide(color: cardBorderColor, width: isSelected ? 1.5 : (isOverdue ? 1.2 : 1.0)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _navigateToEditTask(taskID, task),
+        onTap: onTap ?? () => _navigateToEditTask(taskID, task),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
           child: Row(
@@ -368,6 +383,229 @@ class _TasklistPageState extends State<TasklistPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTabletTaskPreview(Tasks? task, String? taskID) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (task == null || taskID == null) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(0, 12, 16, 24),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.assignment_outlined, size: 56, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+              const SizedBox(height: 12),
+              Text(
+                'Select a task',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'View full description, store details, and status actions',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final now = DateTime.now();
+    final deadlineDate = task.taskDeadline.toDate();
+    final isDone = task.isTaskDone;
+    final isOverdue = !isDone && deadlineDate.isBefore(now);
+    final isDueToday = !isDone && !isOverdue && deadlineDate.year == now.year && deadlineDate.month == now.month && deadlineDate.day == now.day;
+    final deadlineFormatted = DateFormat('MMM d, yyyy  h:mm a').format(deadlineDate);
+
+    Color statusBadgeColor;
+    String statusText;
+    if (isDone) {
+      statusBadgeColor = Colors.green;
+      statusText = 'Completed';
+    } else if (isOverdue) {
+      statusBadgeColor = isDark ? Colors.red.shade400 : Colors.red.shade700;
+      statusText = 'Overdue';
+    } else if (isDueToday) {
+      statusBadgeColor = colorScheme.primary;
+      statusText = 'Due Today';
+    } else {
+      statusBadgeColor = Colors.blue.shade700;
+      statusText = 'Pending';
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 12, 16, 24),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.05),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+              border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        task.taskTitle,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          decoration: isDone ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusBadgeColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: statusBadgeColor),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      isOverdue ? Icons.warning_amber_rounded : (isDueToday ? Icons.access_time_rounded : Icons.calendar_today_outlined),
+                      size: 14,
+                      color: isOverdue ? statusBadgeColor : colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Deadline: $deadlineFormatted',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: (isOverdue || isDueToday) ? FontWeight.w600 : FontWeight.normal,
+                        color: isOverdue ? statusBadgeColor : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                if (task.storeName.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.storefront_outlined, size: 14, color: colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Store: ${task.storeName}',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Description', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      task.taskDescription.isNotEmpty ? task.taskDescription : 'No description provided.',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        height: 1.4,
+                        color: task.taskDescription.isNotEmpty ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (task.createdDate.seconds > 0)
+                    Text(
+                      'Created: ${DateFormat("MMM d, yyyy h:mm a").format(task.createdDate.toDate())}',
+                      style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          // Actions
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: (isDone && !_isDealer) ? null : () => _toggleTaskStatus(taskID, task),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: Icon(isDone ? Icons.undo_rounded : Icons.check_circle_outline, size: 18),
+                    label: Text(
+                      isDone ? 'Mark Pending' : 'Mark Completed',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _navigateToEditTask(taskID, task),
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit Task', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -540,7 +778,30 @@ class _TasklistPageState extends State<TasklistPage> {
           final displayItems = groupResult.displayItems;
           final headerCounts = groupResult.headerCounts;
 
-          return Column(
+          if (ScreenSize.isTabletLandscape(context) && displayItems.isNotEmpty) {
+            final taskDocs = displayItems.whereType<QueryDocumentSnapshot>().toList();
+            if (taskDocs.isNotEmpty) {
+              final firstTask = taskDocs.first.data() as Tasks;
+              final firstTaskId = firstTask.taskID.isNotEmpty ? firstTask.taskID : taskDocs.first.id;
+              final hasMatch = taskDocs.any((d) {
+                final t = d.data() as Tasks;
+                final id = t.taskID.isNotEmpty ? t.taskID : d.id;
+                return id == _selectedTaskId;
+              });
+              if (_selectedTaskId == null || !hasMatch) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    setState(() {
+                      _selectedTaskId = firstTaskId;
+                      _selectedTask = firstTask;
+                    });
+                  }
+                });
+              }
+            }
+          }
+
+          final listWidget = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 1. Search Field
@@ -574,15 +835,41 @@ class _TasklistPageState extends State<TasklistPage> {
                           final doc = item as QueryDocumentSnapshot;
                           final task = doc.data() as Tasks;
                           final taskID = task.taskID.isNotEmpty ? task.taskID : doc.id;
+                          final isSelected = ScreenSize.isTabletLandscape(context) && taskID == _selectedTaskId;
 
                           // Add spacing between items (not after headers)
                           final isLastItem = index == displayItems.length - 1;
                           return Padding(
                             padding: EdgeInsets.only(bottom: isLastItem ? 0 : 8),
-                            child: _buildTaskCard(taskID: taskID, task: task),
+                            child: _buildTaskCard(
+                              taskID: taskID,
+                              task: task,
+                              isSelected: isSelected,
+                              onTap: ScreenSize.isTabletLandscape(context)
+                                  ? () => setState(() {
+                                        _selectedTaskId = taskID;
+                                        _selectedTask = task;
+                                      })
+                                  : null,
+                            ),
                           );
                         },
                       ),
+              ),
+            ],
+          );
+
+          if (!ScreenSize.isTabletLandscape(context)) {
+            return listWidget;
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 5, child: listWidget),
+              Expanded(
+                flex: 5,
+                child: _buildTabletTaskPreview(_selectedTask, _selectedTaskId),
               ),
             ],
           );

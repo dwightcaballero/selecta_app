@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/services/inventory_service.dart';
@@ -1252,14 +1254,14 @@ class _PicklistPageState extends State<PicklistPage> {
     );
   }
 
-  Widget _buildProgressHeader(ColorScheme colorScheme) {
+  Widget _buildProgressHeader(ColorScheme colorScheme, {bool isCompact = false}) {
     final totalLines = _items.length;
     final pickedLines = _pickedLinesCount;
     final progress = totalLines == 0 ? 0.0 : pickedLines / totalLines;
     final isComplete = _allItemsPicked;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      margin: isCompact ? const EdgeInsets.only(bottom: 12) : const EdgeInsets.fromLTRB(16, 12, 16, 6),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -1924,12 +1926,11 @@ class _PicklistPageState extends State<PicklistPage> {
     );
   }
 
-  Widget _buildStickyBottomBar(ColorScheme colorScheme) {
+  Widget _buildStickyBottomBar(ColorScheme colorScheme, {bool isEmbedded = false}) {
     final hasProof = _hasProofOfDelivery;
     final canComplete = !_isSaving && _allItemsPicked && hasProof;
 
-    return SafeArea(
-      child: Container(
+    final content = Container(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -2052,7 +2053,460 @@ class _PicklistPageState extends State<PicklistPage> {
             ),
           ],
         ),
+      );
+    if (isEmbedded) return content;
+    return SafeArea(child: content);
+  }
+
+  Widget _buildOrderStoreSummaryCard(ColorScheme colorScheme, DateTime deliveryDate) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
       ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.storefront_rounded, size: 22, color: colorScheme.primary),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _currentDelivery.storeName,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        'Delivery: ${Helperfunctions.formatDateForDisplay(deliveryDate)}',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _currentDelivery.transactionStatus == DeliveryStatus.delivered
+                        ? Colors.green.shade50
+                        : Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: _currentDelivery.transactionStatus == DeliveryStatus.delivered
+                          ? Colors.green.shade300
+                          : Colors.blue.shade300,
+                    ),
+                  ),
+                  child: Text(
+                    _currentDelivery.transactionStatus,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: _currentDelivery.transactionStatus == DeliveryStatus.delivered
+                          ? Colors.green.shade800
+                          : Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Order Amount:', style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant)),
+                Text(
+                  Helperfunctions.formatDoubleAmountForDisplay(_currentDelivery.orderAmount),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            if (_currentDelivery.remarks.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Remarks: ', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                  Expanded(
+                    child: Text(
+                      _currentDelivery.remarks,
+                      style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryBreakdownCard(
+    ColorScheme colorScheme, {
+    required int caseCount,
+    required int caseUnits,
+    required int pieceCount,
+    required int pieceUnits,
+    required int otherCount,
+    required int otherUnits,
+  }) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.inventory_2_outlined, size: 18, color: colorScheme.primary),
+                const SizedBox(width: 8),
+                const Text('Fulfillment Breakdown', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildBreakdownBadge(
+                    label: 'By Case',
+                    count: caseCount,
+                    units: caseUnits,
+                    color: Colors.deepOrange.shade700,
+                    bgColor: Colors.deepOrange.shade50,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildBreakdownBadge(
+                    label: 'By Piece',
+                    count: pieceCount,
+                    units: pieceUnits,
+                    color: colorScheme.primary,
+                    bgColor: colorScheme.primary.withValues(alpha: 0.08),
+                  ),
+                ),
+                if (otherCount > 0) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildBreakdownBadge(
+                      label: 'Other',
+                      count: otherCount,
+                      units: otherUnits,
+                      color: Colors.purple.shade700,
+                      bgColor: Colors.purple.shade50,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBreakdownBadge({
+    required String label,
+    required int count,
+    required int units,
+    required Color color,
+    required Color bgColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+          const SizedBox(height: 2),
+          Text(
+            '$count SKUs • $units units',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabletLandscapeView(
+    ColorScheme colorScheme,
+    DateTime deliveryDate,
+    List<int> visibleSelectaCase,
+    List<int> visibleSelectaPiece,
+    List<int> visibleOther,
+    int Function(List<int>) calcUnits,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Left Pane: Store Info, Picklist Progress, Breakdown & Actions (flex: 4)
+        Expanded(
+          flex: 4,
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  primary: false,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildOrderStoreSummaryCard(colorScheme, deliveryDate),
+                      _buildProgressHeader(colorScheme, isCompact: true),
+                      _buildCategoryBreakdownCard(
+                        colorScheme,
+                        caseCount: _selectaCaseIndices.length,
+                        caseUnits: calcUnits(_selectaCaseIndices),
+                        pieceCount: _selectaPieceIndices.length,
+                        pieceUnits: calcUnits(_selectaPieceIndices),
+                        otherCount: _otherIndices.length,
+                        otherUnits: calcUnits(_otherIndices),
+                      ),
+                      _buildProofOfDeliveryCard(colorScheme),
+                    ],
+                  ),
+                ),
+              ),
+              _buildStickyBottomBar(colorScheme, isEmbedded: true),
+            ],
+          ),
+        ),
+        VerticalDivider(
+          width: 1,
+          thickness: 1,
+          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+        ),
+        // Right Pane: Filter Chips & Item Verification List (flex: 6)
+        Expanded(
+          flex: 6,
+          child: Column(
+            children: [
+              if (_items.isNotEmpty) _buildFilterChips(colorScheme),
+              Expanded(
+                child: _items.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.shopping_basket_outlined, size: 44, color: colorScheme.onSurfaceVariant),
+                              const SizedBox(height: 10),
+                              Text(
+                                'No products in this order yet.',
+                                style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13.5, fontWeight: FontWeight.w700),
+                              ),
+                              if (_isDealer) ...[
+                                const SizedBox(height: 10),
+                                OutlinedButton.icon(
+                                  onPressed: _openEditOrderProducts,
+                                  icon: const Icon(Icons.edit_note_rounded, size: 20),
+                                  label: const Text('Edit Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      )
+                    : (visibleSelectaCase.isEmpty && visibleSelectaPiece.isEmpty && visibleOther.isEmpty)
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _itemFilter == 'Pending' ? Icons.task_alt_rounded : Icons.checklist_rtl_rounded,
+                                    size: 44,
+                                    color: _itemFilter == 'Pending' ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    _itemFilter == 'Pending' ? 'All items in this order have been checked!' : 'No products match this filter.',
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton(onPressed: () => setState(() => _itemFilter = 'All'), child: const Text('Show All Items')),
+                                ],
+                              ),
+                            ),
+                          )
+                        : ListView(
+                            primary: false,
+                            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: const EdgeInsets.fromLTRB(12, 4, 16, 24),
+                            children: [
+                              if (visibleSelectaCase.isNotEmpty) ...[
+                                _buildGroupHeader(
+                                  title: 'By Case',
+                                  icon: Icons.all_inbox_rounded,
+                                  color: Colors.deepOrange.shade700,
+                                  totalUnits: calcUnits(visibleSelectaCase),
+                                  categoryIndices: visibleSelectaCase,
+                                ),
+                                ...visibleSelectaCase.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                              ],
+                              if (visibleSelectaPiece.isNotEmpty) ...[
+                                _buildGroupHeader(
+                                  title: 'By Piece',
+                                  icon: Icons.icecream_outlined,
+                                  color: colorScheme.primary,
+                                  totalUnits: calcUnits(visibleSelectaPiece),
+                                  categoryIndices: visibleSelectaPiece,
+                                ),
+                                ...visibleSelectaPiece.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                              ],
+                              if (visibleOther.isNotEmpty) ...[
+                                _buildGroupHeader(
+                                  title: 'Other Products',
+                                  icon: Icons.inventory_2_outlined,
+                                  color: colorScheme.onSurfaceVariant,
+                                  totalUnits: calcUnits(visibleOther),
+                                  categoryIndices: visibleOther,
+                                ),
+                                ...visibleOther.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                              ],
+                            ],
+                          ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPortraitLayout(
+    ColorScheme colorScheme,
+    List<int> visibleSelectaCase,
+    List<int> visibleSelectaPiece,
+    List<int> visibleOther,
+    int Function(List<int>) calcUnits,
+  ) {
+    return Column(
+      children: [
+        _buildProgressHeader(colorScheme),
+        if (_items.isNotEmpty) _buildFilterChips(colorScheme),
+        Expanded(
+          child: _items.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.shopping_basket_outlined, size: 44, color: colorScheme.onSurfaceVariant),
+                        const SizedBox(height: 10),
+                        Text(
+                          'No products in this order yet.',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13.5, fontWeight: FontWeight.w700),
+                        ),
+                        if (_isDealer) ...[
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: _openEditOrderProducts,
+                            icon: const Icon(Icons.edit_note_rounded, size: 20),
+                            label: const Text('Edit Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                )
+              : (visibleSelectaCase.isEmpty && visibleSelectaPiece.isEmpty && visibleOther.isEmpty)
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _itemFilter == 'Pending' ? Icons.task_alt_rounded : Icons.checklist_rtl_rounded,
+                              size: 44,
+                              color: _itemFilter == 'Pending' ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              _itemFilter == 'Pending' ? 'All items in this order have been checked!' : 'No products match this filter.',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton(onPressed: () => setState(() => _itemFilter = 'All'), child: const Text('Show All Items')),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView(
+                      primary: false,
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                      children: [
+                        if (visibleSelectaCase.isNotEmpty) ...[
+                          _buildGroupHeader(
+                            title: 'By Case',
+                            icon: Icons.all_inbox_rounded,
+                            color: Colors.deepOrange.shade700,
+                            totalUnits: calcUnits(visibleSelectaCase),
+                            categoryIndices: visibleSelectaCase,
+                          ),
+                          ...visibleSelectaCase.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                        ],
+                        if (visibleSelectaPiece.isNotEmpty) ...[
+                          _buildGroupHeader(
+                            title: 'By Piece',
+                            icon: Icons.icecream_outlined,
+                            color: colorScheme.primary,
+                            totalUnits: calcUnits(visibleSelectaPiece),
+                            categoryIndices: visibleSelectaPiece,
+                          ),
+                          ...visibleSelectaPiece.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                        ],
+                        if (visibleOther.isNotEmpty) ...[
+                          _buildGroupHeader(
+                            title: 'Other Products',
+                            icon: Icons.inventory_2_outlined,
+                            color: colorScheme.onSurfaceVariant,
+                            totalUnits: calcUnits(visibleOther),
+                            categoryIndices: visibleOther,
+                          ),
+                          ...visibleOther.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
+                        ],
+                        _buildProofOfDeliveryCard(colorScheme),
+                      ],
+                    ),
+        ),
+      ],
     );
   }
 
@@ -2060,6 +2514,7 @@ class _PicklistPageState extends State<PicklistPage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final deliveryDate = _currentDelivery.deliveryDate?.toDate() ?? DateTime.now();
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
 
     List<int> filterIndices(List<int> indices) {
       if (_itemFilter == 'All') return indices;
@@ -2118,100 +2573,23 @@ class _PicklistPageState extends State<PicklistPage> {
               ],
             ],
           ),
-          bottomNavigationBar: _buildStickyBottomBar(colorScheme),
-          body: Column(
-            children: [
-              _buildProgressHeader(colorScheme),
-              if (_items.isNotEmpty) _buildFilterChips(colorScheme),
-              Expanded(
-                child: _items.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.shopping_basket_outlined, size: 44, color: colorScheme.onSurfaceVariant),
-                              const SizedBox(height: 10),
-                              Text(
-                                'No products in this order yet.',
-                                style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13.5, fontWeight: FontWeight.w700),
-                              ),
-                              if (_isDealer) ...[
-                                const SizedBox(height: 10),
-                                OutlinedButton.icon(
-                                  onPressed: _openEditOrderProducts,
-                                  icon: const Icon(Icons.edit_note_rounded, size: 20),
-                                  label: const Text('Edit Order', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      )
-                    : (visibleSelectaCase.isEmpty && visibleSelectaPiece.isEmpty && visibleOther.isEmpty)
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _itemFilter == 'Pending' ? Icons.task_alt_rounded : Icons.checklist_rtl_rounded,
-                                size: 44,
-                                color: _itemFilter == 'Pending' ? Colors.green.shade600 : colorScheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                _itemFilter == 'Pending' ? 'All items in this order have been checked!' : 'No products match this filter.',
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 8),
-                              OutlinedButton(onPressed: () => setState(() => _itemFilter = 'All'), child: const Text('Show All Items')),
-                            ],
-                          ),
-                        ),
-                      )
-                    : ListView(
-                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                        children: [
-                          if (visibleSelectaCase.isNotEmpty) ...[
-                            _buildGroupHeader(
-                              title: 'By Case',
-                              icon: Icons.all_inbox_rounded,
-                              color: Colors.deepOrange.shade700,
-                              totalUnits: calcUnits(visibleSelectaCase),
-                              categoryIndices: visibleSelectaCase,
-                            ),
-                            ...visibleSelectaCase.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                          ],
-                          if (visibleSelectaPiece.isNotEmpty) ...[
-                            _buildGroupHeader(
-                              title: 'By Piece',
-                              icon: Icons.icecream_outlined,
-                              color: colorScheme.primary,
-                              totalUnits: calcUnits(visibleSelectaPiece),
-                              categoryIndices: visibleSelectaPiece,
-                            ),
-                            ...visibleSelectaPiece.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                          ],
-                          if (visibleOther.isNotEmpty) ...[
-                            _buildGroupHeader(
-                              title: 'Other Products',
-                              icon: Icons.inventory_2_outlined,
-                              color: colorScheme.onSurfaceVariant,
-                              totalUnits: calcUnits(visibleOther),
-                              categoryIndices: visibleOther,
-                            ),
-                            ...visibleOther.map((idx) => _buildPicklistItemTile(idx, colorScheme)),
-                          ],
-                          _buildProofOfDeliveryCard(colorScheme),
-                        ],
-                      ),
-              ),
-            ],
-          ),
+          bottomNavigationBar: isTabletLandscape ? null : _buildStickyBottomBar(colorScheme),
+          body: isTabletLandscape
+              ? _buildTabletLandscapeView(
+                  colorScheme,
+                  deliveryDate,
+                  visibleSelectaCase,
+                  visibleSelectaPiece,
+                  visibleOther,
+                  calcUnits,
+                )
+              : _buildPortraitLayout(
+                  colorScheme,
+                  visibleSelectaCase,
+                  visibleSelectaPiece,
+                  visibleOther,
+                  calcUnits,
+                ),
         ),
       ),
     );

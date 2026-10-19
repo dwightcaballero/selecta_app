@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/configuration.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/purchaseorder.dart';
@@ -184,22 +185,47 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 if (_isLoading) ...[
                   const ShimmerBox(height: 90, borderRadius: 14),
                   const SizedBox(height: 14),
-                  const ShimmerBox(height: 260, borderRadius: 14),
-                  const SizedBox(height: 14),
-                  const ShimmerBox(height: 220, borderRadius: 14),
+                  if (ScreenSize.isTabletLandscape(context))
+                    const Row(
+                      children: [
+                        Expanded(child: ShimmerBox(height: 300, borderRadius: 14)),
+                        SizedBox(width: 16),
+                        Expanded(child: ShimmerBox(height: 300, borderRadius: 14)),
+                      ],
+                    )
+                  else ...[
+                    const ShimmerBox(height: 260, borderRadius: 14),
+                    const SizedBox(height: 14),
+                    const ShimmerBox(height: 220, borderRadius: 14),
+                  ],
                 ] else ...[
                   // ── KPI Summary Cards ──────────────────────────────────────
                   _buildSummaryGrid(colorScheme),
 
                   const SizedBox(height: 20),
 
-                  // ── Sales Trend Line Chart ─────────────────────────────────
-                  _buildSalesTrendCard(colorScheme),
+                  if (ScreenSize.isTabletLandscape(context))
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _buildSalesTrendCard(colorScheme),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildDeliveryVolumeCard(colorScheme),
+                        ),
+                      ],
+                    )
+                  else ...[
+                    // ── Sales Trend Line Chart ─────────────────────────────────
+                    _buildSalesTrendCard(colorScheme),
 
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                  // ── Delivery Volume Bar Chart ──────────────────────────────
-                  _buildDeliveryVolumeCard(colorScheme),
+                    // ── Delivery Volume Bar Chart ──────────────────────────────
+                    _buildDeliveryVolumeCard(colorScheme),
+                  ],
                 ],
               ],
             ),

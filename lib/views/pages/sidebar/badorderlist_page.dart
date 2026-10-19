@@ -5,6 +5,7 @@ import 'package:selecta_ops/controllers/badorder_controller.dart';
 import 'package:selecta_ops/controllers/selecta_product_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/badorder_batch.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
@@ -36,6 +37,11 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
   String _selectedStatus = 'All'; // 'All', 'Store Pullout', 'Warehouse Pullout', 'Settled'
   String _selectedRefund = 'All'; // 'All', 'Store Refunded', 'Store Not Refunded'
   bool _isDealer = false;
+
+  String? _selectedBadOrderId;
+  BadOrder? _selectedBadOrder;
+  String? _selectedBatchId;
+  BadOrderBatch? _selectedBatch;
 
   List<QueryDocumentSnapshot<BadOrder>> _cachedAllBadOrders = [];
   int _cachedBatchesCount = 0;
@@ -565,21 +571,29 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
     );
   }
 
-  Widget _buildBadOrderCard({required String badorderID, required BadOrder badorder}) {
+  Widget _buildBadOrderCard({
+    required String badorderID,
+    required BadOrder badorder,
+    bool isSelected = false,
+    VoidCallback? onTap,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final statusColor = _getStatusColor(badorder.status);
 
     return Card(
       elevation: 0,
       margin: EdgeInsets.zero,
-      color: colorScheme.surface,
+      color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.15) : colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(
+          color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: isSelected ? 1.5 : 1.0,
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: badorderID, badorder: badorder)),
+        onTap: onTap ?? () => Helperfunctions.navigateTo(context, BadOrderPage(recID: badorderID, badorder: badorder)),
         child: Stack(
           children: [
             // Status left accent stripe
@@ -878,7 +892,20 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
         final settledCount = batches.where((b) => b.data().isSettled).length;
         final pendingCount = batches.length - settledCount;
 
-        return ListView(
+        if (ScreenSize.isTabletLandscape(context) && batches.isNotEmpty) {
+          if (_selectedBatchId == null || !batches.any((b) => b.id == _selectedBatchId)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _selectedBatchId = batches.first.id;
+                  _selectedBatch = batches.first.data();
+                });
+              }
+            });
+          }
+        }
+
+        final listContent = ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
           children: [
             Container(
@@ -928,139 +955,658 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
             const SizedBox(height: 12),
             ...batches.map((doc) {
               final batch = doc.data();
-              final isSettled = batch.isSettled;
-              final statusColor = isSettled ? Colors.green.shade700 : Colors.blue.shade700;
+              final isSelected = ScreenSize.isTabletLandscape(context) && doc.id == _selectedBatchId;
+              return _buildBatchCard(
+                batchId: doc.id,
+                batch: batch,
+                isSelected: isSelected,
+                onTap: ScreenSize.isTabletLandscape(context)
+                    ? () => setState(() {
+                          _selectedBatchId = doc.id;
+                          _selectedBatch = batch;
+                        })
+                    : null,
+              );
+            }),
+          ],
+        );
 
-              return Card(
-                elevation: 0,
-                margin: const EdgeInsets.only(bottom: 10),
-                color: Theme.of(context).colorScheme.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        if (!ScreenSize.isTabletLandscape(context)) {
+          return listContent;
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(flex: 5, child: listContent),
+            Expanded(
+              flex: 5,
+              child: _buildTabletBatchPreview(_selectedBatch, _selectedBatchId),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBatchCard({
+    required String batchId,
+    required BadOrderBatch batch,
+    bool isSelected = false,
+    VoidCallback? onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isSettled = batch.isSettled;
+    final statusColor = isSettled ? Colors.green.shade700 : Colors.blue.shade700;
+
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 10),
+      color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.15) : colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
+          width: isSelected ? 1.5 : 1.0,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap ??
+            () {
+              Helperfunctions.navigateTo(
+                context,
+                BadOrderBatchDetailPage(batchId: batchId, batch: batch),
+              );
+            },
+        child: Padding(
+          padding: const EdgeInsets.all(14.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 18, color: statusColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        batch.batchNumber,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      batch.status,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Text(
+                    'Pullout: ${Helperfunctions.formatDateForDisplay(batch.pulloutDate.toDate())}',
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                  ),
+                  if (batch.supplierRefNo.isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    Text('• Slip: ${batch.supplierRefNo}',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${batch.badOrderIds.length} store pullouts (${batch.totalItemsCount} items)',
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
+                  ),
+                  Text(
+                    Helperfunctions.formatDoubleAmountForDisplay(batch.totalBatchAmount),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                  ),
+                ],
+              ),
+              if (isSettled) ...[
+                const Divider(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200, width: 0.8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, size: 14, color: Colors.green.shade700),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'CM: ${batch.supplierCreditMemoNo} • Credited: ${Helperfunctions.formatDoubleAmountForDisplay(batch.supplierRefundAmount ?? batch.totalBatchAmount)}'
+                          '${batch.varianceAmount.abs() > 0.01 ? " (${batch.varianceAmount >= 0 ? '+' : ''}${Helperfunctions.formatDoubleAmountForDisplay(batch.varianceAmount)})" : ""}',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () {
-                    Helperfunctions.navigateTo(
-                      context,
-                      BadOrderBatchDetailPage(batchId: doc.id, batch: batch),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(14.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              ] else ...[
+                const Divider(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.shade300, width: 0.8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.schedule, size: 14, color: Colors.amber.shade900),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Awaiting Supplier Credit Memo / Refund${_isDealer ? ' (Tap to settle)' : ''}',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabletBadOrderPreview(BadOrder? bo, String? boId) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (bo == null || boId == null) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(0, 8, 16, 16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.assignment_late_outlined, size: 56, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+              const SizedBox(height: 12),
+              Text(
+                'Select a bad order record',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'View pullout details and damaged SKU breakdown',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final statusColor = _getStatusColor(bo.status);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 8, 16, 16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.05),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+              border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        bo.hapistore,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      Helperfunctions.formatDoubleAmountForDisplay(bo.totalAmount),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.inventory_2_outlined, size: 18, color: statusColor),
-                                const SizedBox(width: 6),
-                                Text(
-                                  batch.batchNumber,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: statusColor.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                batch.status,
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor),
-                              ),
-                            ),
-                          ],
+                        Icon(Icons.calendar_today_outlined, size: 13, color: colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Pulled out: ${Helperfunctions.formatTimestampForDisplay(bo.badorderDate)}',
+                          style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Text(
-                              'Pullout: ${Helperfunctions.formatDateForDisplay(batch.pulloutDate.toDate())}',
-                              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                            ),
-                            if (batch.supplierRefNo.isNotEmpty) ...[
-                              const SizedBox(width: 6),
-                              Text('• Slip: ${batch.supplierRefNo}',
-                                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                            ],
-                          ],
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        bo.status,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: bo.isStoreRefunded
+                            ? Colors.green.withValues(alpha: 0.12)
+                            : Colors.amber.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        bo.isStoreRefunded ? 'Refunded' : 'Unrefunded',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: bo.isStoreRefunded ? Colors.green.shade800 : Colors.amber.shade900,
                         ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '${batch.badOrderIds.length} store pullouts (${batch.totalItemsCount} items)',
-                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500),
-                            ),
-                            Text(
-                              Helperfunctions.formatDoubleAmountForDisplay(batch.totalBatchAmount),
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
-                            ),
-                          ],
-                        ),
-                        if (isSettled) ...[
-                          const Divider(height: 16),
+                      ),
+                    ),
+                  ],
+                ),
+                if (bo.notes.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Note: ${bo.notes}',
+                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Items List
+          Expanded(
+            child: bo.items.isEmpty
+                ? Center(
+                    child: Text('No damaged items recorded', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                  )
+                : ListView.separated(
+                    primary: false,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: bo.items.length,
+                    separatorBuilder: (_, index) => const Divider(height: 12),
+                    itemBuilder: (context, index) {
+                      final item = bo.items[index];
+                      return Row(
+                        children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.green.shade50,
+                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.green.shade200, width: 0.8),
                             ),
-                            child: Row(
+                            child: Icon(Icons.ac_unit, size: 18, color: colorScheme.primary),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.check_circle, size: 14, color: Colors.green.shade700),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'CM: ${batch.supplierCreditMemoNo} • Credited: ${Helperfunctions.formatDoubleAmountForDisplay(batch.supplierRefundAmount ?? batch.totalBatchAmount)}'
-                                    '${batch.varianceAmount.abs() > 0.01 ? " (${batch.varianceAmount >= 0 ? '+' : ''}${Helperfunctions.formatDoubleAmountForDisplay(batch.varianceAmount)})" : ""}',
-                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.green.shade900),
-                                  ),
+                                Text(
+                                  item.productName,
+                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${item.category} • ${Helperfunctions.formatDoubleAmountForDisplay(item.pricePerPiece)} each',
+                                  style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
                                 ),
                               ],
                             ),
                           ),
-                        ] else ...[
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${item.quantity} pcs',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                Helperfunctions.formatDoubleAmountForDisplay(item.subtotal),
+                                style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+
+          // Action button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: FilledButton.icon(
+              onPressed: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: boId, badorder: bo)),
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('Open Bad Order Details & Actions', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabletBatchPreview(BadOrderBatch? batch, String? batchId) {
+    final colorScheme = Theme.of(context).colorScheme;
+    if (batch == null || batchId == null) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(0, 12, 16, 16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.inventory_2_outlined, size: 56, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+              const SizedBox(height: 12),
+              Text(
+                'Select a warehouse batch',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'View supplier pullout slip and refund memo details',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final isSettled = batch.isSettled;
+    final statusColor = isSettled ? Colors.green.shade700 : Colors.blue.shade700;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 12, 16, 16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.05),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+              border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.3))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.inventory_2_outlined, size: 20, color: statusColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          batch.batchNumber,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        batch.status,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Pullout Date: ${Helperfunctions.formatDateForDisplay(batch.pulloutDate.toDate())}${batch.supplierRefNo.isNotEmpty ? " • Slip: ${batch.supplierRefNo}" : ""}',
+                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+
+          // Content
+          Expanded(
+            child: SingleChildScrollView(
+              primary: false,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Financial Breakdown
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Submitted Batch Amount', style: TextStyle(fontSize: 13)),
+                            Text(
+                              Helperfunctions.formatDoubleAmountForDisplay(batch.totalBatchAmount),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Supplier Credited Amount', style: TextStyle(fontSize: 13)),
+                            Text(
+                              batch.supplierRefundAmount != null
+                                  ? Helperfunctions.formatDoubleAmountForDisplay(batch.supplierRefundAmount!)
+                                  : 'Pending',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: batch.supplierRefundAmount != null ? Colors.green.shade800 : Colors.amber.shade900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (batch.supplierRefundAmount != null) ...[
                           const Divider(height: 16),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.amber.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.amber.shade300, width: 0.8),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.schedule, size: 14, color: Colors.amber.shade900),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    'Awaiting Supplier Credit Memo / Refund${_isDealer ? ' (Tap to settle)' : ''}',
-                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
-                                  ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Variance', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                              Text(
+                                '${batch.varianceAmount >= 0 ? '+' : ''}${Helperfunctions.formatDoubleAmountForDisplay(batch.varianceAmount)}',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: batch.varianceAmount.abs() < 0.01
+                                      ? Colors.green.shade800
+                                      : (batch.varianceAmount < 0 ? Colors.red.shade700 : Colors.blue.shade700),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ],
                       ],
                     ),
                   ),
-                ),
-              );
-            }),
-          ],
-        );
-      },
+
+                  const SizedBox(height: 16),
+
+                  // Batch Stats
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Store Pullouts', style: TextStyle(fontSize: 11, color: Colors.blue.shade800)),
+                              const SizedBox(height: 2),
+                              Text('${batch.badOrderIds.length}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Total Items', style: TextStyle(fontSize: 11, color: Colors.purple.shade800)),
+                              const SizedBox(height: 2),
+                              Text('${batch.totalItemsCount}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.purple.shade900)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (isSettled && batch.supplierCreditMemoNo.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.green.shade300, width: 0.8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.receipt_long, size: 20, color: Colors.green.shade700),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Credit Memo Number', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                Text(batch.supplierCreditMemoNo, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.green.shade900)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // Action button
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: FilledButton.icon(
+              onPressed: () => Helperfunctions.navigateTo(
+                context,
+                BadOrderBatchDetailPage(batchId: batchId, batch: batch),
+              ),
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: Text(
+                isSettled ? 'View Batch & Items' : 'Manage Batch & Settle Memo',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1203,6 +1749,19 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
                   return _buildEmptyState();
                 }
 
+                if (ScreenSize.isTabletLandscape(context) && filteredDocs.isNotEmpty) {
+                  if (_selectedBadOrderId == null || !filteredDocs.any((d) => d.id == _selectedBadOrderId)) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        setState(() {
+                          _selectedBadOrderId = filteredDocs.first.id;
+                          _selectedBadOrder = filteredDocs.first.data();
+                        });
+                      }
+                    });
+                  }
+                }
+
                 // Build grouped list items with section headers
                 final List<_BadOrderListItem> listItems = [];
                 String? lastGroup;
@@ -1215,7 +1774,7 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
                   listItems.add(_BadOrderListItem.doc(doc));
                 }
 
-                return Column(
+                final listWidget = Column(
                   children: [
                     _buildCompactSummary(
                       totalAmount: periodTotalAmount,
@@ -1245,15 +1804,38 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
                                   return _buildSectionHeader(item.header!);
                                 }
                                 final doc = item.doc!;
+                                final isSelected = ScreenSize.isTabletLandscape(context) && doc.id == _selectedBadOrderId;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 8.0),
                                   child: _buildBadOrderCard(
                                     badorderID: doc.id,
                                     badorder: doc.data(),
+                                    isSelected: isSelected,
+                                    onTap: ScreenSize.isTabletLandscape(context)
+                                        ? () => setState(() {
+                                              _selectedBadOrderId = doc.id;
+                                              _selectedBadOrder = doc.data();
+                                            })
+                                        : null,
                                   ),
                                 );
                               },
                             ),
+                    ),
+                  ],
+                );
+
+                if (!ScreenSize.isTabletLandscape(context)) {
+                  return listWidget;
+                }
+
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(flex: 5, child: listWidget),
+                    Expanded(
+                      flex: 5,
+                      child: _buildTabletBadOrderPreview(_selectedBadOrder, _selectedBadOrderId),
                     ),
                   ],
                 );

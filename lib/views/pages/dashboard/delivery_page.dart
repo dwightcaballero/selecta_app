@@ -10,6 +10,7 @@ import 'package:selecta_ops/controllers/selecta_product_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/placement_pair.dart';
@@ -1423,10 +1424,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
     );
   }
 
-  Widget _buildStickyBottomBar() {
+  Widget _buildStickyBottomBar({bool isEmbedded = false}) {
     final colorScheme = Theme.of(context).colorScheme;
-    return SafeArea(
-      child: Container(
+    final content = Container(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -1500,8 +1500,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   ),
                 ],
               ),
-      ),
     );
+    if (isEmbedded) return content;
+    return SafeArea(child: content);
   }
 
   Widget _buildPlacementCard() {
@@ -1727,8 +1728,390 @@ class _DeliveryPageState extends State<DeliveryPage> {
     }
   }
 
+  List<Widget> _buildStatusBanners() {
+    return [
+      if (isLocked)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: _currentDelivery.isReturnApprovedByDealer
+                ? Colors.green.shade50
+                : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade50 : Colors.amber.shade50),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _currentDelivery.isReturnApprovedByDealer
+                  ? Colors.green.shade300
+                  : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade300 : Colors.amber.shade300),
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _currentDelivery.isReturnApprovedByDealer ? Icons.check_circle_outline : Icons.lock_outline,
+                color: _currentDelivery.isReturnApprovedByDealer
+                    ? Colors.green.shade900
+                    : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _currentDelivery.isReturnApprovedByDealer
+                      ? 'Locked: This return order has been approved by the dealer. Returned items have been moved into Current Stock and this record cannot be modified or deleted.'
+                      : (_currentDelivery.isInventorySettled
+                          ? 'Locked: This delivery order has already been verified and settled into inventory.'
+                          : (isDayVerified
+                              ? 'Locked: The dealer has verified the daily cash breakdown and delivery records for this day are locked for salesmen.'
+                              : 'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.')),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _currentDelivery.isReturnApprovedByDealer
+                        ? Colors.green.shade900
+                        : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        )
+      else if (isDealerLateReconciliation)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.amber.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.amber.shade400,
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.amber.shade900,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Late Delivery: This date\'s cash breakdown has already been verified. As a dealer, you can update or reschedule this transaction; saving as Delivered or Returned will automatically reconcile inventory.',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: Colors.amber.shade900,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        )
+      else if (_currentDelivery.isReturnIncoming || _currentDelivery.hasReturnedItems || _currentDelivery.returnAmount > 0)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0284C7).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFF0284C7).withValues(alpha: 0.3),
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.assignment_return_outlined,
+                color: Color(0xFF0284C7),
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pending Dealer Return Approval',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0284C7),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Returned items (${Helperfunctions.formatDoubleAmountForDisplay(_currentDelivery.returnAmount > 0 ? _currentDelivery.returnAmount : _currentDelivery.orderAmount)}) are tracked as Incoming Stock until approved into Current Stock by the dealer.',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF0C4A6E)),
+                    ),
+                  ],
+                ),
+              ),
+              if (isDealer) ...[
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => Helperfunctions.navigateTo(
+                    context,
+                    ReturnPage(recID: widget.deliveryID, delivery: _currentDelivery),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF0284C7),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  child: const Text('Review', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ],
+          ),
+        ),
+      if (_currentDelivery.items.any((i) => i.pickedQuantity < i.orderedQuantity))
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.orange.shade300,
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                color: Colors.orange.shade900,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Order Adjustments / Out of Stock Items',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_currentDelivery.items.where((i) => i.pickedQuantity < i.orderedQuantity).length} product(s) could not be fully fulfilled due to warehouse stock shortage. They are printed on the delivery receipt and the store is not charged.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      if (_currentDelivery.transactionStatus == DeliveryStatus.pendingPicklist && widget.deliveryID.isNotEmpty)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.fact_check_outlined, color: Color(0xFF7C3AED), size: 24),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text('This order is Booked (Awaiting Picklist).', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              ),
+              FilledButton.tonal(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PicklistPage(deliveryID: widget.deliveryID, delivery: _currentDelivery),
+                    ),
+                  );
+                },
+                child: const Text('Open Picklist', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  Widget _buildNonDeliveredStatusInfoCard() {
+    final status = dropdownStatus.text.isNotEmpty ? dropdownStatus.text : DeliveryStatus.pending;
+    final colorScheme = Theme.of(context).colorScheme;
+    return _buildSectionCard(
+      title: 'Settlement Status',
+      icon: Icons.info_outline,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Row(
+          children: [
+            Icon(Icons.info_rounded, color: colorScheme.primary, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Status: $status. Payment breakdown is only applicable when the order is marked Delivered.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLandscapeLayout(bool isDelivered, bool showRemarks) {
+    return Form(
+      key: _formkey,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Left Pane: Store & Order info, Returns, Bad orders, Placement checklist (flex: 5)
+          Expanded(
+            flex: 5,
+            child: SingleChildScrollView(
+              primary: false,
+              padding: const EdgeInsets.fromLTRB(20, 16, 16, 24),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 16,
+                children: [
+                  ..._buildStatusBanners(),
+                  _buildOrderAndStoreCard(),
+                  if (widget.deliveryID.isNotEmpty && isDelivered && _currentDelivery.items.isNotEmpty)
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      child: _buildWithReturnsSection(),
+                    ),
+                  if (widget.deliveryID.isNotEmpty && dropdownHapiStore.text.isNotEmpty)
+                    _buildBadOrdersSection(),
+                  if (widget.deliveryID.isEmpty && dropdownHapiStore.text.isNotEmpty)
+                    _buildPlacementCard(),
+                ],
+              ),
+            ),
+          ),
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
+          // Right Pane: Payment breakdown, Proof of delivery, Remarks, SMS & Action bar (flex: 4)
+          Expanded(
+            flex: 4,
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    primary: false,
+                    padding: const EdgeInsets.fromLTRB(16, 16, 20, 16),
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 16,
+                      children: [
+                        if (widget.deliveryID.isNotEmpty) _buildProofOfDeliveryCard(),
+                        if (widget.deliveryID.isNotEmpty)
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: isDelivered
+                                ? _buildPaymentBreakdownCard()
+                                : _buildNonDeliveredStatusInfoCard(),
+                          ),
+                        if (widget.deliveryID.isNotEmpty && showRemarks)
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            child: _buildRemarksCard(),
+                          ),
+                        if (widget.deliveryID.isEmpty) _buildSmsCard(),
+                      ],
+                    ),
+                  ),
+                ),
+                _buildStickyBottomBar(isEmbedded: true),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPortraitLayout(bool isDelivered, bool showRemarks) {
+    return SingleChildScrollView(
+      primary: false,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      child: Form(
+        key: _formkey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 16,
+          children: [
+            ..._buildStatusBanners(),
+            // 1. Order & Store Info Card
+            _buildOrderAndStoreCard(),
+
+            // 2. Proof of Delivery Card for reviewing uploaded photo (accessible to all users)
+            if (widget.deliveryID.isNotEmpty) _buildProofOfDeliveryCard(),
+
+            // 3. Itemized Returns Section (when Delivered and delivery has items)
+            if (widget.deliveryID.isNotEmpty && isDelivered && _currentDelivery.items.isNotEmpty)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: _buildWithReturnsSection(),
+              ),
+
+            // 3.1 Bad Orders from Store Section
+            if (widget.deliveryID.isNotEmpty && dropdownHapiStore.text.isNotEmpty)
+              _buildBadOrdersSection(),
+
+            // 4. Payment Breakdown Card (Animated for Delivered status)
+            if (widget.deliveryID.isNotEmpty)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: isDelivered ? _buildPaymentBreakdownCard() : const SizedBox.shrink(),
+              ),
+
+            // 5. Remarks Card (Animated for Returned or Delivered with return amount)
+            if (widget.deliveryID.isNotEmpty)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                child: showRemarks ? _buildRemarksCard() : const SizedBox.shrink(),
+              ),
+
+            // 6. Placement Card
+            if (widget.deliveryID.isEmpty && dropdownHapiStore.text.isNotEmpty) _buildPlacementCard(),
+
+            // 7. SMS Notification Card (when creating new delivery)
+            if (widget.deliveryID.isEmpty) _buildSmsCard(),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isLandscape = ScreenSize.isTabletLandscape(context);
     bool isDelivered = dropdownStatus.text == DeliveryStatus.delivered;
     bool isReturned = dropdownStatus.text == DeliveryStatus.returned;
     bool showRemarks = isReturned || (isDelivered && (_withReturns && _selectedReturnProductIds.isNotEmpty));
@@ -1756,292 +2139,31 @@ class _DeliveryPageState extends State<DeliveryPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(
-        title: 'Delivery',
-        subtitle: widget.deliveryID.isEmpty ? 'New Record' : _currentDelivery.storeName,
-        actions: [
-          if (_currentDelivery.items.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
-              tooltip: 'Digital Receipt & Thermal Print',
-              onPressed: () => DigitalReceiptDialog.show(context, delivery: _currentDelivery, deliveryId: widget.deliveryID, proceedLabel: 'Close'),
-            ),
-          if (isAdmin && widget.deliveryID.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.delete_forever_rounded, color: Colors.white),
-              tooltip: 'Delete Record (Admin)',
-              onPressed: _onAdminDeleteDelivery,
-            ),
-        ],
-      ),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          child: Form(
-            key: _formkey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 16,
-              children: [
-                if (isLocked)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _currentDelivery.isReturnApprovedByDealer
-                          ? Colors.green.shade50
-                          : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade50 : Colors.amber.shade50),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _currentDelivery.isReturnApprovedByDealer
-                            ? Colors.green.shade300
-                            : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade300 : Colors.amber.shade300),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _currentDelivery.isReturnApprovedByDealer ? Icons.check_circle_outline : Icons.lock_outline,
-                          color: _currentDelivery.isReturnApprovedByDealer
-                              ? Colors.green.shade900
-                              : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _currentDelivery.isReturnApprovedByDealer
-                                ? 'Locked: This return order has been approved by the dealer. Returned items have been moved into Current Stock and this record cannot be modified or deleted.'
-                                : (_currentDelivery.isInventorySettled
-                                    ? 'Locked: This delivery order has already been verified and settled into inventory.'
-                                    : (isDayVerified
-                                        ? 'Locked: The dealer has verified the daily cash breakdown and delivery records for this day are locked for salesmen.'
-                                        : 'View-Only: A cash breakdown for this date has already been recorded. Salesmen cannot edit delivery records for this day.')),
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: _currentDelivery.isReturnApprovedByDealer
-                                  ? Colors.green.shade900
-                                  : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (isDealerLateReconciliation)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.amber.shade400,
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          color: Colors.amber.shade900,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Late Delivery: This date\'s cash breakdown has already been verified. As a dealer, you can update or reschedule this transaction; saving as Delivered or Returned will automatically reconcile inventory.',
-                            style: TextStyle(
-                              fontSize: 13.5,
-                              color: Colors.amber.shade900,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (_currentDelivery.isReturnIncoming || _currentDelivery.hasReturnedItems || _currentDelivery.returnAmount > 0)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7).withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xFF0284C7).withValues(alpha: 0.3),
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.assignment_return_outlined,
-                          color: Color(0xFF0284C7),
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Pending Dealer Return Approval',
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF0284C7),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Returned items (${Helperfunctions.formatDoubleAmountForDisplay(_currentDelivery.returnAmount > 0 ? _currentDelivery.returnAmount : _currentDelivery.orderAmount)}) are tracked as Incoming Stock until approved into Current Stock by the dealer.',
-                                style: const TextStyle(fontSize: 12, color: Color(0xFF0C4A6E)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (isDealer) ...[
-                          const SizedBox(width: 8),
-                          TextButton(
-                            onPressed: () => Helperfunctions.navigateTo(
-                              context,
-                              ReturnPage(recID: widget.deliveryID, delivery: _currentDelivery),
-                            ),
-                            style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF0284C7),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            ),
-                            child: const Text('Review', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                if (_currentDelivery.items.any((i) => i.pickedQuantity < i.orderedQuantity))
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.orange.shade300,
-                        width: 1.2,
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline_rounded,
-                          color: Colors.orange.shade900,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Order Adjustments / Out of Stock Items',
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orange.shade900,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                '${_currentDelivery.items.where((i) => i.pickedQuantity < i.orderedQuantity).length} product(s) could not be fully fulfilled due to warehouse stock shortage. They are printed on the delivery receipt and the store is not charged.',
-                                style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                if (_currentDelivery.transactionStatus == DeliveryStatus.pendingPicklist && widget.deliveryID.isNotEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.4)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.fact_check_outlined, color: Color(0xFF7C3AED), size: 24),
-                        const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text('This order is Booked (Awaiting Picklist).', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                        ),
-                        FilledButton.tonal(
-                          onPressed: () {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PicklistPage(deliveryID: widget.deliveryID, delivery: _currentDelivery),
-                              ),
-                            );
-                          },
-                          child: const Text('Open Picklist', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // 1. Order & Store Info Card
-                _buildOrderAndStoreCard(),
-
-                // 2. Proof of Delivery Card for reviewing uploaded photo (accessible to all users)
-                if (widget.deliveryID.isNotEmpty) _buildProofOfDeliveryCard(),
-
-                // 3. Itemized Returns Section (when Delivered and delivery has items)
-                if (widget.deliveryID.isNotEmpty && isDelivered && _currentDelivery.items.isNotEmpty)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                    child: _buildWithReturnsSection(),
-                  ),
-
-                // 3.1 Bad Orders from Store Section
-                if (widget.deliveryID.isNotEmpty && dropdownHapiStore.text.isNotEmpty)
-                  _buildBadOrdersSection(),
-
-                // 4. Payment Breakdown Card (Animated for Delivered status)
-                if (widget.deliveryID.isNotEmpty)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                    child: isDelivered ? _buildPaymentBreakdownCard() : const SizedBox.shrink(),
-                  ),
-
-                // 5. Remarks Card (Animated for Returned or Delivered with return amount)
-                if (widget.deliveryID.isNotEmpty)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeInOut,
-                    child: showRemarks ? _buildRemarksCard() : const SizedBox.shrink(),
-                  ),
-
-                // 6. Placement Card
-                if (widget.deliveryID.isEmpty && dropdownHapiStore.text.isNotEmpty) _buildPlacementCard(),
-
-                // 7. SMS Notification Card (when creating new delivery)
-                if (widget.deliveryID.isEmpty) _buildSmsCard(),
-              ],
-            ),
-          ),
+          title: 'Delivery',
+          subtitle: widget.deliveryID.isEmpty ? 'New Record' : _currentDelivery.storeName,
+          actions: [
+            if (_currentDelivery.items.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
+                tooltip: 'Digital Receipt & Thermal Print',
+                onPressed: () => DigitalReceiptDialog.show(context, delivery: _currentDelivery, deliveryId: widget.deliveryID, proceedLabel: 'Close'),
+              ),
+            if (isAdmin && widget.deliveryID.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.delete_forever_rounded, color: Colors.white),
+                tooltip: 'Delete Record (Admin)',
+                onPressed: _onAdminDeleteDelivery,
+              ),
+          ],
         ),
+        bottomNavigationBar: isLandscape ? null : _buildStickyBottomBar(),
+        body: isLandscape
+            ? _buildLandscapeLayout(isDelivered, showRemarks)
+            : Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: _buildPortraitLayout(isDelivered, showRemarks),
+              ),
       ),
-    ),
     );
   }
 }

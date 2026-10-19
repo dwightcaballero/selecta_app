@@ -9,7 +9,10 @@ import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
@@ -49,6 +52,7 @@ class DashboardSidebar extends StatefulWidget {
   final VoidCallback onSync;
   final VoidCallback onLogout;
   final Future<void> Function(Widget page) onNavigate;
+  final VoidCallback? onCollapse;
 
   static const double kWidth = 260.0;
 
@@ -70,6 +74,7 @@ class DashboardSidebar extends StatefulWidget {
     required this.onSync,
     required this.onLogout,
     required this.onNavigate,
+    this.onCollapse,
   });
 
   @override
@@ -103,235 +108,240 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
     return Container(
       width: DashboardSidebar.kWidth,
       decoration: BoxDecoration(
-        border: Border(
-          right: BorderSide(color: borderColor, width: 1),
-        ),
+        border: Border(right: BorderSide(color: borderColor, width: 1)),
       ),
       child: Material(
         color: sidebarBg,
         child: Column(
-        children: [
-          // ── User Header ─────────────────────────────────────────────────
-          _buildHeader(context, isDark, colorScheme),
+          children: [
+            // ── User Header ─────────────────────────────────────────────────
+            _buildHeader(context, isDark, colorScheme),
 
-          // ── Navigation Items ────────────────────────────────────────────
-          Expanded(
-            child: Scrollbar(
-              controller: _scrollController,
-              thumbVisibility: true,
-              child: ListView(
+            // ── Navigation Items ────────────────────────────────────────────
+            Expanded(
+              child: Scrollbar(
                 controller: _scrollController,
-                primary: false,
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                children: [
-                  // ── Main Navigation Tabs (Unified) ───────────────────────────
-                  if (widget.currentTabIndex != null && widget.onTabSelected != null) ...[
-                    _buildSection(context, 'Main Navigation'),
-                    _buildNavTabItem(
+                thumbVisibility: true,
+                child: ListView(
+                  controller: _scrollController,
+                  primary: false,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  children: [
+                    // ── Main Navigation Tabs (Unified) ───────────────────────────
+                    if (widget.currentTabIndex != null && widget.onTabSelected != null) ...[
+                      _buildSection(context, 'Main Navigation'),
+                      _buildNavTabItem(context, icon: Icons.dashboard_outlined, selectedIcon: Icons.dashboard_rounded, title: 'Home', tabIndex: 0),
+                      StreamBuilder<int>(
+                        stream: widget.purchaseOrdersAwaitingCountStream,
+                        initialData: 0,
+                        builder: (ctx, snap) => _buildNavTabItem(
+                          ctx,
+                          icon: Icons.inventory_2_outlined,
+                          selectedIcon: Icons.inventory_2_rounded,
+                          title: 'Restock',
+                          tabIndex: 1,
+                          badge: snap.data ?? 0,
+                        ),
+                      ),
+                      _buildNavTabItem(
+                        context,
+                        icon: Icons.warehouse_outlined,
+                        selectedIcon: Icons.warehouse_rounded,
+                        title: 'Inventory',
+                        tabIndex: 2,
+                      ),
+                      StreamBuilder<int>(
+                        stream: widget.pendingPicklistsCountStream,
+                        initialData: widget.dashboardDTO.pendingPicklistCount,
+                        builder: (ctx, snap) => _buildNavTabItem(
+                          ctx,
+                          icon: Icons.fact_check_outlined,
+                          selectedIcon: Icons.fact_check_rounded,
+                          title: 'PickLists',
+                          tabIndex: 3,
+                          badge: snap.data ?? widget.dashboardDTO.pendingPicklistCount,
+                        ),
+                      ),
+                      StreamBuilder<int>(
+                        stream: widget.pendingDeliveriesCountStream,
+                        initialData: widget.dashboardDTO.pendingDeliveryCount,
+                        builder: (ctx, snap) => _buildNavTabItem(
+                          ctx,
+                          icon: Icons.local_shipping_outlined,
+                          selectedIcon: Icons.local_shipping_rounded,
+                          title: 'Deliveries',
+                          tabIndex: 4,
+                          badge: snap.data ?? widget.dashboardDTO.pendingDeliveryCount,
+                        ),
+                      ),
+                      const _SidebarDivider(),
+                    ],
+
+                    _buildSection(context, 'Operations'),
+                    StreamBuilder<int>(
+                      stream: widget.merchBlitzCountStream,
+                      builder: (ctx, snap) =>
+                          _buildItem(ctx, Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzListPage(), badge: snap.data ?? 0),
+                    ),
+                    StreamBuilder<int>(
+                      stream: widget.tasksCountStream,
+                      builder: (ctx, snap) => _buildItem(ctx, Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badge: snap.data ?? 0),
+                    ),
+                    StreamBuilder<int>(
+                      stream: widget.activeReturnsCountStream,
+                      initialData: widget.dashboardDTO.returnedDeliveryCount,
+                      builder: (ctx, snap) => _buildItem(
+                        ctx,
+                        Icons.assignment_return_outlined,
+                        'Returns',
+                        const ReturnlistPage(),
+                        badge: snap.data ?? widget.dashboardDTO.returnedDeliveryCount,
+                      ),
+                    ),
+                    _buildItem(
                       context,
-                      icon: Icons.dashboard_outlined,
-                      selectedIcon: Icons.dashboard_rounded,
-                      title: 'Home',
-                      tabIndex: 0,
+                      Icons.account_balance_wallet_outlined,
+                      'Credit List',
+                      const CreditlistPage(),
+                      badge: widget.dashboardDTO.unpaidCreditCount,
                     ),
+                    _buildItem(context, Icons.local_shipping_outlined, 'Van Load', const VanLoadPage()),
+                    _buildItem(context, Icons.directions_car_filled_outlined, 'Van Sell', const VanSellPage()),
+                    _buildItem(context, Icons.explore_outlined, 'Prospect Scouting', const ProspectScoutPage()),
+                    _buildItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
+                    _buildItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
                     StreamBuilder<int>(
-                      stream: widget.purchaseOrdersAwaitingCountStream,
-                      initialData: 0,
-                      builder: (ctx, snap) => _buildNavTabItem(
+                      stream: widget.unverifiedBreakdownCountStream,
+                      initialData: widget.dashboardDTO.unverifiedBreakdownCount,
+                      builder: (ctx, snap) => _buildItem(
                         ctx,
-                        icon: Icons.inventory_2_outlined,
-                        selectedIcon: Icons.inventory_2_rounded,
-                        title: 'Restock',
-                        tabIndex: 1,
-                        badge: snap.data ?? 0,
+                        Icons.today_outlined,
+                        'End of Day',
+                        const EndofdayPage(),
+                        badge: snap.data ?? widget.dashboardDTO.unverifiedBreakdownCount,
                       ),
                     ),
-                    _buildNavTabItem(
+                    _buildItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
+                    _buildItem(
                       context,
-                      icon: Icons.warehouse_outlined,
-                      selectedIcon: Icons.warehouse_rounded,
-                      title: 'Inventory',
-                      tabIndex: 2,
+                      Icons.inventory_2_outlined,
+                      'Products',
+                      ProductsPage(userRole: widget.currentUser?.role ?? (widget.isDealer ? 'Dealer' : 'Salesman')),
                     ),
-                    StreamBuilder<int>(
-                      stream: widget.pendingPicklistsCountStream,
-                      initialData: widget.dashboardDTO.pendingPicklistCount,
-                      builder: (ctx, snap) => _buildNavTabItem(
-                        ctx,
-                        icon: Icons.fact_check_outlined,
-                        selectedIcon: Icons.fact_check_rounded,
-                        title: 'PickLists',
-                        tabIndex: 3,
-                        badge: snap.data ?? widget.dashboardDTO.pendingPicklistCount,
-                      ),
-                    ),
-                    StreamBuilder<int>(
-                      stream: widget.pendingDeliveriesCountStream,
-                      initialData: widget.dashboardDTO.pendingDeliveryCount,
-                      builder: (ctx, snap) => _buildNavTabItem(
-                        ctx,
-                        icon: Icons.local_shipping_outlined,
-                        selectedIcon: Icons.local_shipping_rounded,
-                        title: 'Deliveries',
-                        tabIndex: 4,
-                        badge: snap.data ?? widget.dashboardDTO.pendingDeliveryCount,
-                      ),
-                    ),
+                    _buildItem(context, Icons.file_download_outlined, 'Export Reports', const ExportReportsPage()),
+
                     const _SidebarDivider(),
-                  ],
 
-                  _buildSection(context, 'Operations'),
-                  StreamBuilder<int>(
-                    stream: widget.merchBlitzCountStream,
-                    builder: (ctx, snap) => _buildItem(ctx, Icons.campaign_outlined, 'Merch Blitz', const MerchBlitzListPage(), badge: snap.data ?? 0),
-                  ),
-                  StreamBuilder<int>(
-                    stream: widget.tasksCountStream,
-                    builder: (ctx, snap) => _buildItem(ctx, Icons.task_alt_outlined, 'Tasks', const TaskListPage(), badge: snap.data ?? 0),
-                  ),
-                  StreamBuilder<int>(
-                    stream: widget.activeReturnsCountStream,
-                    initialData: widget.dashboardDTO.returnedDeliveryCount,
-                    builder: (ctx, snap) => _buildItem(
-                      ctx,
-                      Icons.assignment_return_outlined,
-                      'Returns',
-                      const ReturnlistPage(),
-                      badge: snap.data ?? widget.dashboardDTO.returnedDeliveryCount,
+                    _buildSection(context, 'KPI & Analytics'),
+                    _buildItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: widget.dashboardDTO)),
+                    if (widget.isDealer) _buildItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
+
+                    const _SidebarDivider(),
+
+                    _buildSection(context, 'Settings'),
+                    ValueListenableBuilder<int>(
+                      valueListenable: OfflineSyncService.instance.pendingCountNotifier,
+                      builder: (ctx, count, _) => _buildItem(
+                        ctx,
+                        Icons.sync_rounded,
+                        'Sync Data',
+                        null,
+                        badge: count,
+                        badgeColor: Colors.amber.shade800,
+                        onTap: () {
+                          if (!widget.isSyncing) widget.onSync();
+                        },
+                      ),
                     ),
-                  ),
-                  _buildItem(context, Icons.account_balance_wallet_outlined, 'Credit List', const CreditlistPage(), badge: widget.dashboardDTO.unpaidCreditCount),
-                  _buildItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
-                  _buildItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
-                  StreamBuilder<int>(
-                    stream: widget.unverifiedBreakdownCountStream,
-                    initialData: widget.dashboardDTO.unverifiedBreakdownCount,
-                    builder: (ctx, snap) => _buildItem(
-                      ctx,
-                      Icons.today_outlined,
-                      'End of Day',
-                      const EndofdayPage(),
-                      badge: snap.data ?? widget.dashboardDTO.unverifiedBreakdownCount,
+                    _buildItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
+                    if (widget.isDealer) _buildItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
+                    if (widget.isDealer) _buildItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
+                    _buildItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badge: widget.dashboardDTO.pendingPjpCount),
+                    _buildItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
+                    // Settings hosts Check for Updates & Upload Error Logs; surface update status here.
+                    ValueListenableBuilder<UpdateDownloadState>(
+                      valueListenable: AppUpdateService.downloadStateNotifier,
+                      builder: (ctx, downloadState, _) {
+                        Widget? trailing;
+                        if (downloadState.isReadyToInstall) {
+                          trailing = Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: Colors.green.shade600, borderRadius: BorderRadius.circular(8)),
+                            child: const Text(
+                              'Update Ready',
+                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          );
+                        } else if (downloadState.isDownloading) {
+                          trailing = Text(
+                            '${(downloadState.progress * 100).toInt()}%',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                          );
+                        }
+                        return _buildItem(ctx, Icons.tune_rounded, 'Settings', const SettingsPage(), trailing: trailing);
+                      },
                     ),
-                  ),
-                  _buildItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-                  _buildItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: widget.currentUser?.role ?? (widget.isDealer ? 'Dealer' : 'Salesman'))),
-                  _buildItem(context, Icons.file_download_outlined, 'Export Reports', const ExportReportsPage()),
+                    _buildItem(context, Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
 
-                  const _SidebarDivider(),
+                    const _SidebarDivider(),
 
-                  _buildSection(context, 'KPI & Analytics'),
-                  _buildItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: widget.dashboardDTO)),
-                  if (widget.isDealer) _buildItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
-
-                  const _SidebarDivider(),
-
-                  _buildSection(context, 'Settings'),
-                  ValueListenableBuilder<int>(
-                    valueListenable: OfflineSyncService.instance.pendingCountNotifier,
-                    builder: (ctx, count, _) => _buildItem(
-                      ctx,
-                      Icons.sync_rounded,
-                      'Sync Data',
-                      null,
-                      badge: count,
-                      badgeColor: Colors.amber.shade800,
-                      onTap: () { if (!widget.isSyncing) widget.onSync(); },
-                    ),
-                  ),
-                  _buildItem(context, Icons.storefront_outlined, 'Hapi Stores', const HapiStoreListPage()),
-                  if (widget.isDealer) _buildItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
-                  if (widget.isDealer) _buildItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
-                  _buildItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badge: widget.dashboardDTO.pendingPjpCount),
-                  _buildItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
-                  // Settings hosts Check for Updates & Upload Error Logs; surface update status here.
-                  ValueListenableBuilder<UpdateDownloadState>(
-                    valueListenable: AppUpdateService.downloadStateNotifier,
-                    builder: (ctx, downloadState, _) {
-                      Widget? trailing;
-                      if (downloadState.isReadyToInstall) {
-                        trailing = Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade600,
-                            borderRadius: BorderRadius.circular(8),
+                    // Dark mode toggle
+                    ValueListenableBuilder<bool>(
+                      valueListenable: isDarkModeNotifier,
+                      builder: (ctx, isDark, _) {
+                        return ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                          leading: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded, size: 20),
+                          title: const Text('Dark Mode', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                          trailing: Switch.adaptive(
+                            value: isDark,
+                            onChanged: (val) async {
+                              isDarkModeNotifier.value = val;
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setBool(KConstants.themeModeKey, val);
+                            },
                           ),
-                          child: const Text(
-                            'Update Ready',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                        );
+                      },
+                    ),
+
+                    // Logout
+                    ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      leading: const Icon(Icons.logout_rounded, size: 20, color: Colors.red),
+                      title: const Text(
+                        'Logout',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.red),
+                      ),
+                      onTap: widget.onLogout,
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // Version
+                    FutureBuilder(
+                      future: AppUpdateService.getCurrentPackageInfo(),
+                      builder: (ctx, snap) {
+                        final ver = snap.hasData ? 'v${snap.data!.version}+${snap.data!.buildNumber}' : '';
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Center(
+                            child: Text(
+                              'Selecta Ops $ver'.trim(),
+                              style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
                             ),
                           ),
                         );
-                      } else if (downloadState.isDownloading) {
-                        trailing = Text(
-                          '${(downloadState.progress * 100).toInt()}%',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                        );
-                      }
-                      return _buildItem(ctx, Icons.tune_rounded, 'Settings', const SettingsPage(), trailing: trailing);
-                    },
-                  ),
-                  _buildItem(context, Icons.settings_outlined, 'Configurations', const ConfigurationPage()),
-
-                  const _SidebarDivider(),
-
-                  // Dark mode toggle
-                  ValueListenableBuilder<bool>(
-                    valueListenable: isDarkModeNotifier,
-                    builder: (ctx, isDark, _) {
-                      return ListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                        leading: Icon(isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded, size: 20),
-                        title: const Text('Dark Mode', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                        trailing: Switch.adaptive(
-                          value: isDark,
-                          onChanged: (val) async {
-                            isDarkModeNotifier.value = val;
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setBool(KConstants.themeModeKey, val);
-                          },
-                        ),
-                      );
-                    },
-                  ),
-
-                  // Logout
-                  ListTile(
-                    dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    leading: const Icon(Icons.logout_rounded, size: 20, color: Colors.red),
-                    title: const Text('Logout', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.red)),
-                    onTap: widget.onLogout,
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Version
-                  FutureBuilder(
-                    future: AppUpdateService.getCurrentPackageInfo(),
-                    builder: (ctx, snap) {
-                      final ver = snap.hasData ? 'v${snap.data!.version}+${snap.data!.buildNumber}' : '';
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Center(
-                          child: Text(
-                            'Selecta Ops $ver'.trim(),
-                            style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -342,21 +352,15 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
     const toolbarHeight = 72.0;
     final totalHeight = topPadding + toolbarHeight;
 
-    final appbarBg = isDark
-        ? const Color(0xFF1E2430)
-        : colorScheme.primary;
-    final bottomBorderColor = isDark
-        ? const Color(0xFF2E3644)
-        : colorScheme.primary.withAlpha(220);
+    final appbarBg = isDark ? const Color(0xFF1E2430) : colorScheme.primary;
+    final bottomBorderColor = isDark ? const Color(0xFF2E3644) : colorScheme.primary.withAlpha(220);
 
     return Container(
       height: totalHeight,
       padding: EdgeInsets.fromLTRB(16, topPadding, 16, 0),
       decoration: BoxDecoration(
         color: appbarBg,
-        border: Border(
-          bottom: BorderSide(color: bottomBorderColor, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: bottomBorderColor, width: 1)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -383,31 +387,28 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(40),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
+                      decoration: BoxDecoration(color: Colors.white.withAlpha(40), borderRadius: BorderRadius.circular(6)),
                       child: Text(
                         widget.currentUser?.role ?? (widget.isDealer ? 'Dealer' : 'Salesman'),
                         style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
                       ),
                     ),
-                    if (widget.currentUser?.email != null && widget.currentUser!.email.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          widget.currentUser!.email,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.white.withAlpha(180), fontSize: 11),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ],
             ),
           ),
+          if (widget.onCollapse != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              icon: const Icon(Icons.menu_open_rounded, color: Colors.white, size: 22),
+              tooltip: 'Collapse sidebar (Focus Mode)',
+              splashRadius: 18,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              onPressed: widget.onCollapse,
+            ),
+          ],
         ],
       ),
     );
@@ -418,12 +419,7 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
       child: Text(
         title.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          letterSpacing: 0.8,
-        ),
+        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurfaceVariant, letterSpacing: 0.8),
       ),
     );
   }
@@ -441,15 +437,9 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
     final colorScheme = theme.colorScheme;
     final isSelected = widget.currentTabIndex == tabIndex;
 
-    final selectedBg = isSelected
-        ? colorScheme.primary.withValues(alpha: 0.12)
-        : Colors.transparent;
-    final itemColor = isSelected
-        ? colorScheme.primary
-        : colorScheme.onSurface;
-    final iconColor = isSelected
-        ? colorScheme.primary
-        : colorScheme.onSurfaceVariant;
+    final selectedBg = isSelected ? colorScheme.primary.withValues(alpha: 0.12) : Colors.transparent;
+    final itemColor = isSelected ? colorScheme.primary : colorScheme.onSurface;
+    final iconColor = isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
@@ -468,20 +458,13 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
                 Expanded(
                   child: Text(
                     title,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                      color: itemColor,
-                    ),
+                    style: TextStyle(fontSize: 13.5, fontWeight: isSelected ? FontWeight.bold : FontWeight.w500, color: itemColor),
                   ),
                 ),
                 if (badge > 0)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: badgeColor ?? Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
                     child: Text(
                       '$badge',
                       style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
@@ -511,14 +494,12 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       leading: Icon(icon, size: 20, color: colorScheme.onSurfaceVariant),
       title: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-      trailing: trailing ??
+      trailing:
+          trailing ??
           (badge > 0
               ? Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: badgeColor ?? Colors.red,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
                   child: Text(
                     '$badge',
                     style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
@@ -541,12 +522,6 @@ class _SidebarDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Divider(
-      indent: 16,
-      endIndent: 16,
-      height: 16,
-      thickness: 0.5,
-      color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
-    );
+    return Divider(indent: 16, endIndent: 16, height: 16, thickness: 0.5, color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5));
   }
 }

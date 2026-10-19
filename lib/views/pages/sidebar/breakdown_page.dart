@@ -4,16 +4,24 @@ import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/endofday_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
+import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 
 class BreakdownPage extends StatefulWidget {
-  const BreakdownPage({super.key, required this.breakdownID, required this.breakdown});
+  const BreakdownPage({
+    super.key,
+    required this.breakdownID,
+    required this.breakdown,
+    this.endOfDayData,
+  });
 
   final Breakdown breakdown;
   final String breakdownID;
+  final EndOfDayDTO? endOfDayData;
 
   @override
   State<BreakdownPage> createState() => _BreakdownPageState();
@@ -25,6 +33,8 @@ class _BreakdownPageState extends State<BreakdownPage> {
   BreakdownTotal breakdownTotal = BreakdownTotal();
   bool isDealer = false;
   bool _isVerifying = false;
+  EndOfDayDTO? _endOfDayData;
+  bool _isLoadingEndOfDay = false;
   final TextEditingController txt1 = TextEditingController();
   final TextEditingController txt10 = TextEditingController();
   final TextEditingController txt100 = TextEditingController();
@@ -103,7 +113,11 @@ class _BreakdownPageState extends State<BreakdownPage> {
   @override
   void initState() {
     super.initState();
+    _endOfDayData = widget.endOfDayData;
     _checkDealer();
+    if (_endOfDayData == null) {
+      _loadEndOfDayData();
+    }
 
     if (widget.breakdownID.isNotEmpty) {
       txt1000.text = widget.breakdown.b1000 != 0 ? widget.breakdown.b1000.toString() : '';
@@ -125,6 +139,23 @@ class _BreakdownPageState extends State<BreakdownPage> {
 
       recompute();
 
+    }
+  }
+
+  void _loadEndOfDayData() async {
+    setState(() => _isLoadingEndOfDay = true);
+    try {
+      final snapshot = await _controller.fetchEndOfDayData(widget.breakdown.breakdownDate.toDate());
+      if (mounted) {
+        setState(() {
+          _endOfDayData = snapshot.endOfDayData;
+          _isLoadingEndOfDay = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingEndOfDay = false);
+      }
     }
   }
 
@@ -674,11 +705,101 @@ class _BreakdownPageState extends State<BreakdownPage> {
     );
   }
 
-
-
-  Widget _buildStickyBottomBar() {
+  Widget _buildStickyBottomBar({bool isEmbedded = false}) {
     final colorScheme = Theme.of(context).colorScheme;
     bool isUpdating = widget.breakdownID.isNotEmpty;
+
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      spacing: 8,
+      children: [
+        if (isDealer && isUpdating)
+          OutlinedButton.icon(
+            onPressed: (widget.breakdown.isVerifiedByDealer || _isVerifying) ? null : onVerify,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48.0),
+              foregroundColor: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
+              side: BorderSide(
+                color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade400 : colorScheme.primary,
+                width: 1.5,
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: _isVerifying
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary),
+                  )
+                : Icon(
+                    widget.breakdown.isVerifiedByDealer ? Icons.check_circle : Icons.verified_outlined,
+                    size: 20,
+                    color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
+                  ),
+            label: Text(
+              _isVerifying
+                  ? 'Verifying Breakdown...'
+                  : (widget.breakdown.isVerifiedByDealer ? 'Verified by Dealer' : 'Verify Cash Breakdown'),
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
+              ),
+            ),
+          ),
+        FilledButton.icon(
+          onPressed: widget.breakdown.isVerifiedByDealer
+              ? null
+              : () async {
+                  final bool isBalanced = widget.breakdown.discrepancy.abs() < 0.005;
+                  final double disc = widget.breakdown.discrepancy.abs();
+                  final String baseMsg = isUpdating ? ConfirmMessage.update : ConfirmMessage.save;
+                  final String message = isBalanced
+                      ? baseMsg
+                      : '$baseMsg\n\n⚠️ Note: Discrepancy is ${Helperfunctions.formatDoubleAmountForDisplay(disc)} (${widget.breakdown.discrepancy >= 0.005 ? "Overpaid" : "Shortage"}).';
+
+                  final confirmed = await ShowMessage.confirm(
+                    context,
+                    title: isUpdating ? ConfirmTitle.update : ConfirmTitle.save,
+                    message: message,
+                    icon: isUpdating ? Icons.check_circle_outline : Icons.save_outlined,
+                    confirmText: isUpdating ? 'Update' : 'Save',
+                  );
+                  if (confirmed) {
+                    isUpdating ? onUpdate() : onSave();
+                  }
+                },
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(double.infinity, 50.0),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          icon: Icon(
+            widget.breakdown.isVerifiedByDealer
+                ? Icons.lock_outline
+                : (isUpdating ? Icons.check_circle_outline : Icons.save_outlined),
+            size: 20,
+          ),
+          label: Text(
+            widget.breakdown.isVerifiedByDealer
+                ? 'Locked (Breakdown Verified)'
+                : (isUpdating ? 'Update Breakdown Record' : 'Save Breakdown Record'),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+      ],
+    );
+
+    if (isEmbedded) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+        ),
+        child: content,
+      );
+    }
 
     return SafeArea(
       child: Container(
@@ -688,81 +809,210 @@ class _BreakdownPageState extends State<BreakdownPage> {
           border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          spacing: 8,
-          children: [
-            if (isDealer && isUpdating)
-              OutlinedButton.icon(
-                onPressed: (widget.breakdown.isVerifiedByDealer || _isVerifying) ? null : onVerify,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48.0),
-                  foregroundColor: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
-                  side: BorderSide(
-                    color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade400 : colorScheme.primary,
-                    width: 1.5,
-                  ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                icon: _isVerifying
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary),
-                      )
-                    : Icon(
-                        widget.breakdown.isVerifiedByDealer ? Icons.check_circle : Icons.verified_outlined,
-                        size: 20,
-                        color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
-                      ),
-                label: Text(
-                  _isVerifying
-                      ? 'Verifying Breakdown...'
-                      : (widget.breakdown.isVerifiedByDealer ? 'Verified by Dealer' : 'Verify Cash Breakdown'),
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
-                  ),
-                ),
-              ),
-            FilledButton.icon(
-              onPressed: widget.breakdown.isVerifiedByDealer
-                  ? null
-                  : () async {
-                      final bool isBalanced = widget.breakdown.discrepancy.abs() < 0.005;
-                      final double disc = widget.breakdown.discrepancy.abs();
-                      final String baseMsg = isUpdating ? ConfirmMessage.update : ConfirmMessage.save;
-                      final String message = isBalanced
-                          ? baseMsg
-                          : '$baseMsg\n\n⚠️ Note: Discrepancy is ${Helperfunctions.formatDoubleAmountForDisplay(disc)} (${widget.breakdown.discrepancy >= 0.005 ? "Overpaid" : "Shortage"}).';
+        child: content,
+      ),
+    );
+  }
 
-                      final confirmed = await ShowMessage.confirm(
-                        context,
-                        title: isUpdating ? ConfirmTitle.update : ConfirmTitle.save,
-                        message: message,
-                        icon: isUpdating ? Icons.check_circle_outline : Icons.save_outlined,
-                        confirmText: isUpdating ? 'Update' : 'Save',
-                      );
-                      if (confirmed) {
-                        isUpdating ? onUpdate() : onSave();
-                      }
-                    },
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50.0),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+  Widget _buildVerifiedBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.shade300, width: 1.2),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle_outline, color: Colors.green.shade900, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Verified: Daily cash breakdown has been verified by the dealer. All delivery records for this date are locked to protect inventory accuracy.',
+              style: TextStyle(fontSize: 13.5, color: Colors.green.shade900, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpectedCollectionsCard(ColorScheme colorScheme) {
+    final eod = _endOfDayData;
+    final double expected = widget.breakdown.expectedAmount;
+    final double deliveredSales = eod?.totaldeliveredamount ?? expected;
+    final double cashCollected = eod?.cashamount ?? expected;
+    final double onlineCollected = eod?.onlineamount ?? 0.0;
+    final double creditCollected = eod?.creditamount ?? 0.0;
+    final double expenses = eod?.expenseAmount ?? 0.0;
+    final int totalDeliveries = eod?.totaldelivery ?? 0;
+    final int deliveredCount = eod?.deliveredstatus ?? 0;
+    final int returnedCount = eod?.returnedstatus ?? 0;
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.receipt_long_outlined, size: 18, color: Colors.teal),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Expected Delivery Collections',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                if (_isLoadingEndOfDay)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else if (totalDeliveries > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$totalDeliveries Orders',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const Divider(height: 22),
+
+            // Order fulfillment counts pill row if available
+            if (totalDeliveries > 0) ...[
+              Row(
+                children: [
+                  _buildMiniStatChip(
+                    label: 'Delivered',
+                    count: deliveredCount,
+                    color: Colors.green,
+                    icon: Icons.check_circle_outline,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildMiniStatChip(
+                    label: 'Returned',
+                    count: returnedCount,
+                    color: Colors.red,
+                    icon: Icons.assignment_return_outlined,
+                  ),
+                  if (eod?.pendingstatus != null && eod!.pendingstatus > 0) ...[
+                    const SizedBox(width: 8),
+                    _buildMiniStatChip(
+                      label: 'Pending',
+                      count: eod.pendingstatus,
+                      color: Colors.orange,
+                      icon: Icons.pending_actions,
+                    ),
+                  ],
+                ],
               ),
-              icon: Icon(
-                widget.breakdown.isVerifiedByDealer
-                    ? Icons.lock_outline
-                    : (isUpdating ? Icons.check_circle_outline : Icons.save_outlined),
-                size: 20,
+              const SizedBox(height: 14),
+            ],
+
+            // Tender Breakdown
+            _buildCollectionRow(
+              'Total Delivered Sales',
+              Helperfunctions.formatDoubleAmountForDisplay(deliveredSales),
+              isHeader: true,
+            ),
+            const SizedBox(height: 8),
+            _buildCollectionRow(
+              'Cash Tender Collected',
+              Helperfunctions.formatDoubleAmountForDisplay(cashCollected),
+              valueColor: Colors.green.shade700,
+              icon: Icons.payments_outlined,
+            ),
+            if (eod != null && (eod.preSellCashAmount > 0 || eod.vanSellCashAmount > 0))
+              Padding(
+                padding: const EdgeInsets.only(left: 24, top: 2, bottom: 4),
+                child: Text(
+                  'Pre-Sell: ${Helperfunctions.formatDoubleAmountForDisplay(eod.preSellCashAmount)}  •  Van Sell: ${Helperfunctions.formatDoubleAmountForDisplay(eod.vanSellCashAmount)}',
+                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                ),
               ),
-              label: Text(
-                widget.breakdown.isVerifiedByDealer
-                    ? 'Locked (Breakdown Verified)'
-                    : (isUpdating ? 'Update Breakdown Record' : 'Save Breakdown Record'),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            const SizedBox(height: 6),
+            _buildCollectionRow(
+              'Online / Bank Transfers',
+              Helperfunctions.formatDoubleAmountForDisplay(onlineCollected),
+              valueColor: Colors.blue.shade700,
+              icon: Icons.account_balance_outlined,
+            ),
+            const SizedBox(height: 6),
+            _buildCollectionRow(
+              'Credit / Receivables',
+              Helperfunctions.formatDoubleAmountForDisplay(creditCollected),
+              valueColor: Colors.purple.shade700,
+              icon: Icons.credit_card_outlined,
+            ),
+            if (expenses > 0) ...[
+              const SizedBox(height: 6),
+              _buildCollectionRow(
+                'Cash Expenses Deducted',
+                '- ${Helperfunctions.formatDoubleAmountForDisplay(expenses)}',
+                valueColor: Colors.red.shade700,
+                icon: Icons.money_off_csred_outlined,
+              ),
+            ],
+            const Divider(height: 20),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_outlined, size: 18, color: Colors.green.shade800),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Expected Cash on Hand',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    Helperfunctions.formatDoubleAmountForDisplay(expected),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green.shade900,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -771,8 +1021,189 @@ class _BreakdownPageState extends State<BreakdownPage> {
     );
   }
 
+  Widget _buildMiniStatChip({
+    required String label,
+    required int count,
+    required MaterialColor color,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color.shade700),
+          const SizedBox(width: 4),
+          Text(
+            '$count $label',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color.shade800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCollectionRow(
+    String label,
+    String value, {
+    Color? valueColor,
+    IconData? icon,
+    bool isHeader = false,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        if (icon != null) ...[
+          Icon(icon, size: 16, color: valueColor ?? colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+        ],
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: isHeader ? 13 : 12.5,
+              fontWeight: isHeader ? FontWeight.bold : FontWeight.w500,
+              color: isHeader ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: isHeader ? 14 : 13,
+            fontWeight: FontWeight.bold,
+            color: valueColor ?? colorScheme.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabletLandscapeLayout(ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── LEFT PANE: Expected Collections, Reconciliation & Remittance Action ──
+          Expanded(
+            flex: 5,
+            child: SingleChildScrollView(
+              primary: false,
+              padding: const EdgeInsets.only(right: 12.0, bottom: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 14,
+                children: [
+                  if (widget.breakdown.isVerifiedByDealer)
+                    _buildVerifiedBanner(),
+                  _buildExpectedCollectionsCard(colorScheme),
+                  _buildReconciliationSummary(),
+                  _buildStickyBottomBar(isEmbedded: true),
+                  if (widget.breakdownID.isNotEmpty)
+                    AuditHistoryWidget(
+                      createdBy: widget.breakdown.createdBy,
+                      createdDate: widget.breakdown.createdDate,
+                      createdPage: widget.breakdown.createdPage,
+                      lastUpdatedBy: widget.breakdown.lastUpdatedBy,
+                      lastUpdatedDate: widget.breakdown.lastupdatedDate,
+                      lastUpdatedPage: widget.breakdown.lastUpdatedPage,
+                      additionalRows: [
+                        AuditHistoryRow(
+                          label: 'Verified by Dealer',
+                          value: widget.breakdown.isVerifiedByDealer ? 'Yes' : 'No',
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          // Vertical divider between panes
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+
+          // ── RIGHT PANE: Denomination Counter & Bank Deposit ──
+          Expanded(
+            flex: 5,
+            child: SingleChildScrollView(
+              primary: false,
+              padding: const EdgeInsets.only(left: 12.0, bottom: 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 14,
+                children: [
+                  _buildDenominationsCard(),
+                  _buildBankDepositCard(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPortraitLayout() {
+    return SingleChildScrollView(
+      primary: false,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 16,
+        children: [
+          if (widget.breakdown.isVerifiedByDealer)
+            _buildVerifiedBanner(),
+
+          // 1. Reconciliation Summary Banner
+          _buildReconciliationSummary(),
+
+          // 2. Denominations Table Card
+          _buildDenominationsCard(),
+
+          // 3. Bank Deposit Card
+          _buildBankDepositCard(),
+
+          // 4. Audit & History Card (when viewing existing breakdown)
+          if (widget.breakdownID.isNotEmpty)
+            AuditHistoryWidget(
+              createdBy: widget.breakdown.createdBy,
+              createdDate: widget.breakdown.createdDate,
+              createdPage: widget.breakdown.createdPage,
+              lastUpdatedBy: widget.breakdown.lastUpdatedBy,
+              lastUpdatedDate: widget.breakdown.lastupdatedDate,
+              lastUpdatedPage: widget.breakdown.lastUpdatedPage,
+              additionalRows: [
+                AuditHistoryRow(
+                  label: 'Verified by Dealer',
+                  value: widget.breakdown.isVerifiedByDealer ? 'Yes' : 'No',
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool isTabletLandscape = ScreenSize.isTabletLandscape(context);
+    final colorScheme = Theme.of(context).colorScheme;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -795,67 +1226,15 @@ class _BreakdownPageState extends State<BreakdownPage> {
         }
       },
       child: Scaffold(
-      appBar: CustomAppbar(title: 'Cash Breakdown', subtitle: Helperfunctions.formatTimestampForDisplay(widget.breakdown.breakdownDate)),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: 16,
-          children: [
-            if (widget.breakdown.isVerifiedByDealer)
-              Container(
-                margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade300, width: 1.2),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle_outline, color: Colors.green.shade900, size: 24),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Verified: Daily cash breakdown has been verified by the dealer. All delivery records for this date are locked to protect inventory accuracy.',
-                        style: TextStyle(fontSize: 13.5, color: Colors.green.shade900, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            // 1. Reconciliation Summary Banner
-            _buildReconciliationSummary(),
-
-            // 2. Denominations Table Card
-            _buildDenominationsCard(),
-
-            // 3. Bank Deposit Card
-            _buildBankDepositCard(),
-
-            // 4. Audit & History Card (when viewing existing breakdown)
-            if (widget.breakdownID.isNotEmpty)
-              AuditHistoryWidget(
-                createdBy: widget.breakdown.createdBy,
-                createdDate: widget.breakdown.createdDate,
-                createdPage: widget.breakdown.createdPage,
-                lastUpdatedBy: widget.breakdown.lastUpdatedBy,
-                lastUpdatedDate: widget.breakdown.lastupdatedDate,
-                lastUpdatedPage: widget.breakdown.lastUpdatedPage,
-                additionalRows: [
-                  AuditHistoryRow(
-                    label: 'Verified by Dealer',
-                    value: widget.breakdown.isVerifiedByDealer ? 'Yes' : 'No',
-                  ),
-                ],
-              ),
-          ],
+        appBar: CustomAppbar(
+          title: 'Cash Breakdown',
+          subtitle: Helperfunctions.formatTimestampForDisplay(widget.breakdown.breakdownDate),
         ),
+        bottomNavigationBar: isTabletLandscape ? null : _buildStickyBottomBar(),
+        body: isTabletLandscape
+            ? _buildTabletLandscapeLayout(colorScheme)
+            : _buildPortraitLayout(),
       ),
-    ),
     );
   }
 }

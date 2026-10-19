@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:selecta_ops/controllers/prospect_scout_controller.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/map_tile_style.dart';
 import 'package:selecta_ops/models/prospect_scout.dart';
@@ -1219,18 +1220,22 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
       child: Scaffold(
         appBar: CustomAppbar(
           title: 'Prospect Scouting',
-        subtitle: 'Map & scout new store opportunities',
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          tabs: [
-            Tab(icon: const Icon(Icons.map_rounded, size: 20), text: 'Territory Map (${_filteredProspects.length})'),
-            Tab(icon: const Icon(Icons.list_alt_rounded, size: 20), text: 'Prospect Directory (${_allProspects.length})'),
-          ],
-        ),
+          subtitle: ScreenSize.isTabletLandscape(context)
+              ? 'Territory Map & Prospect Directory (${_allProspects.length} Stores)'
+              : 'Map & scout new store opportunities',
+          bottom: ScreenSize.isTabletLandscape(context)
+              ? null
+              : TabBar(
+                  controller: _tabController,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white70,
+                  indicatorColor: Colors.white,
+                  indicatorWeight: 3,
+                  tabs: [
+                    Tab(icon: const Icon(Icons.map_rounded, size: 20), text: 'Territory Map (${_filteredProspects.length})'),
+                    Tab(icon: const Icon(Icons.list_alt_rounded, size: 20), text: 'Prospect Directory (${_allProspects.length})'),
+                  ],
+                ),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
@@ -1298,16 +1303,39 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
           ),
         ],
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // ── Tab 1: Territory Map ──────────────────────────────────────────
-          _buildMapTab(colorScheme),
+      body: ScreenSize.isTabletLandscape(context)
+          ? Row(
+              children: [
+                Expanded(
+                  flex: 6,
+                  child: _buildMapTab(colorScheme),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: theme.scaffoldBackgroundColor,
+                      border: Border(
+                        left: BorderSide(
+                          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                    child: _buildListTab(colorScheme),
+                  ),
+                ),
+              ],
+            )
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                // ── Tab 1: Territory Map ──────────────────────────────────────────
+                _buildMapTab(colorScheme),
 
-          // ── Tab 2: Prospect Directory List ────────────────────────────────
-          _buildListTab(colorScheme),
-        ],
-      ),
+                // ── Tab 2: Prospect Directory List ────────────────────────────────
+                _buildListTab(colorScheme),
+              ],
+            ),
       floatingActionButton: (_selectedProspect != null || _selectedHapiStore != null)
           ? null
           : FloatingActionButton.extended(
@@ -2072,6 +2100,7 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
         setState(() {});
       },
       child: ListView(
+        primary: false,
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
         children: [
           // 1. KPI Metric Summary Row

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/inventory_controller.dart';
 import 'package:selecta_ops/controllers/purchaseorder_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/purchaseorder.dart';
@@ -2675,25 +2676,68 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             subtitle: 'Invoiced — $poRef$invRef',
             onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
           ),
-          bottomNavigationBar: _buildStickyBottomBar([]),
-          body: SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildConfirmedStatusCard(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  child: AuditHistoryWidget(
-                    createdBy: widget.purchaseorder.createdBy,
-                    createdDate: widget.purchaseorder.createdDate,
-                    createdPage: widget.purchaseorder.createdPage,
-                    lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
-                    lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
-                    lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+          bottomNavigationBar: ScreenSize.isTabletLandscape(context) ? null : _buildStickyBottomBar([]),
+          body: ScreenSize.isTabletLandscape(context)
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 6,
+                      child: SingleChildScrollView(
+                        primary: false,
+                        child: _buildConfirmedStatusCard(),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 4,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          border: Border(
+                            left: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                primary: false,
+                                padding: const EdgeInsets.all(16),
+                                child: AuditHistoryWidget(
+                                  createdBy: widget.purchaseorder.createdBy,
+                                  createdDate: widget.purchaseorder.createdDate,
+                                  createdPage: widget.purchaseorder.createdPage,
+                                  lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
+                                  lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
+                                  lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+                                ),
+                              ),
+                            ),
+                            _buildStickyBottomBar([]),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _buildConfirmedStatusCard(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        child: AuditHistoryWidget(
+                          createdBy: widget.purchaseorder.createdBy,
+                          createdDate: widget.purchaseorder.createdDate,
+                          createdPage: widget.purchaseorder.createdPage,
+                          lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
+                          lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
+                          lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
         ),
       );
     }
@@ -2750,8 +2794,69 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               subtitle: isNewRecord ? 'New Purchase Order' : '🟡 Pending Delivery',
               onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
             ),
-            bottomNavigationBar: _buildStickyBottomBar(allInventory),
-            body: CustomScrollView(
+            bottomNavigationBar: ScreenSize.isTabletLandscape(context) ? null : _buildStickyBottomBar(allInventory),
+            body: ScreenSize.isTabletLandscape(context)
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Left Pane: Document Reconciliation, Delivery Details, and Controls
+                      Expanded(
+                        flex: 5,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.surface,
+                            border: Border(
+                              right: BorderSide(
+                                color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  primary: false,
+                                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      _buildDocumentReconciliationHeader(allInventory),
+                                      if (_isEditing && _isPending) _buildPhase2DeliverySection(allInventory),
+                                      _buildPreOrderRecommendationsBanner(allInventory, colorScheme),
+                                      if (_unsettledOverpayments.isNotEmpty && isNewRecord)
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                          child: _buildOverpaymentCard(),
+                                        ),
+                                      if (!isNewRecord)
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                                          child: AuditHistoryWidget(
+                                            createdBy: widget.purchaseorder.createdBy,
+                                            createdDate: widget.purchaseorder.createdDate,
+                                            createdPage: widget.purchaseorder.createdPage,
+                                            lastUpdatedBy: widget.purchaseorder.lastUpdatedBy,
+                                            lastUpdatedDate: widget.purchaseorder.lastupdatedDate,
+                                            lastUpdatedPage: widget.purchaseorder.lastUpdatedPage,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              _buildStickyBottomBar(allInventory),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // Right Pane: Order Lines & Fast Actions
+                      Expanded(
+                        flex: 5,
+                        child: _buildTabletPoLinesPanel(colorScheme, allInventory),
+                      ),
+                    ],
+                  )
+                : CustomScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               slivers: [
                 // Document Reconciliation Header
@@ -2904,53 +3009,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          side: BorderSide(color: Colors.orange.shade300),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.savings_outlined, color: Colors.orange, size: 20),
-                                  const SizedBox(width: 8),
-                                  const Text('Apply Existing Overpayment Credit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-                                ],
-                              ),
-                              const Divider(height: 12),
-                              ..._unsettledOverpayments.map((doc) {
-                                final order = doc.data();
-                                final isChecked = _selectedOverpaymentIds.contains(doc.id);
-                                final label = order.invoiceNumber.isNotEmpty
-                                    ? order.invoiceNumber
-                                    : 'Date: ${Helperfunctions.formatTimestampForDisplay(order.orderDate)}';
-                                return CheckboxListTile(
-                                  dense: true,
-                                  contentPadding: EdgeInsets.zero,
-                                  value: isChecked,
-                                  title: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                                  subtitle: Text(
-                                    'Credit: ${_currencyFormat.format(order.overpayment)}',
-                                    style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.bold),
-                                  ),
-                                  onChanged: (v) => setState(() {
-                                    if (v == true) {
-                                      _selectedOverpaymentIds.add(doc.id);
-                                    } else {
-                                      _selectedOverpaymentIds.remove(doc.id);
-                                    }
-                                  }),
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
-                      ),
+                      child: _buildOverpaymentCard(),
                     ),
                   ),
 
@@ -2973,6 +3032,164 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildOverpaymentCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.orange.shade300),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.savings_outlined, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
+                const Text('Apply Existing Overpayment Credit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+              ],
+            ),
+            const Divider(height: 12),
+            ..._unsettledOverpayments.map((doc) {
+              final order = doc.data();
+              final isChecked = _selectedOverpaymentIds.contains(doc.id);
+              final label = order.invoiceNumber.isNotEmpty
+                  ? order.invoiceNumber
+                  : 'Date: ${Helperfunctions.formatTimestampForDisplay(order.orderDate)}';
+              return CheckboxListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: isChecked,
+                title: Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  'Credit: ${_currencyFormat.format(order.overpayment)}',
+                  style: TextStyle(color: Colors.orange.shade900, fontWeight: FontWeight.bold),
+                ),
+                onChanged: (v) => setState(() {
+                  if (v == true) {
+                    _selectedOverpaymentIds.add(doc.id);
+                  } else {
+                    _selectedOverpaymentIds.remove(doc.id);
+                  }
+                }),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabletPoLinesPanel(ColorScheme colorScheme, List<InventoryItem> allInventory) {
+    if (_documentLines.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
+                child: Icon(Icons.inventory_2_outlined, size: 44, color: colorScheme.primary),
+              ),
+              const SizedBox(height: 16),
+              const Text('Start Your Purchase Order', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(
+                'Select products from your catalog or generate restock suggestions based on inventory levels.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                runSpacing: 10,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _openManualPoPicker(allInventory),
+                    icon: const Icon(Icons.add_shopping_cart_rounded),
+                    label: const Text('Browse Catalog', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _openAutomatedPoSuggestions(allInventory),
+                    icon: const Icon(Icons.auto_awesome_rounded),
+                    label: const Text('Auto-Suggest P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // Top Action Header
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Order Items (${_documentLines.length} SKUs, $_currentListUnits pcs)',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    Text(
+                      'Total Cost: ${_currencyFormat.format(_currentListTotalCost)}',
+                      style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: () => _openAutomatedPoSuggestions(allInventory),
+                icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                label: const Text('Auto-Suggest', style: TextStyle(fontSize: 12)),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: () => _openManualPoPicker(allInventory),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add Items', style: TextStyle(fontSize: 12)),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Scrollable Line Items
+        Expanded(
+          child: ListView.builder(
+            primary: false,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            itemCount: _documentLines.length,
+            itemBuilder: (context, index) {
+              return _buildDocumentLineCard(index, _documentLines[index], colorScheme, allInventory);
+            },
+          ),
+        ),
+      ],
     );
   }
 }

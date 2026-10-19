@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/profit_loss_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/dto/profit_loss_dto.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 
@@ -131,14 +132,40 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
                   // KPI Summary Cards Row
                   _buildSummaryCards(colorScheme, isDark),
 
-                  // Trend Chart
-                  _buildTrendChart(colorScheme, isDark),
+                  if (ScreenSize.isTabletLandscape(context))
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Left Column: Trend & Operations Volume
+                        Expanded(
+                          flex: 5,
+                          child: Column(
+                            spacing: 20,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTrendChart(colorScheme, isDark),
+                              _buildVolumeStatsCard(colorScheme, isDark),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 20),
+                        // Right Column: Detailed P&L Income Statement Breakdown
+                        Expanded(
+                          flex: 5,
+                          child: _buildBreakdownCard(colorScheme, isDark),
+                        ),
+                      ],
+                    )
+                  else ...[
+                    // Trend Chart
+                    _buildTrendChart(colorScheme, isDark),
 
-                  // Detailed P&L Income Statement Card
-                  _buildBreakdownCard(colorScheme, isDark),
+                    // Detailed P&L Income Statement Card
+                    _buildBreakdownCard(colorScheme, isDark),
 
-                  // Operations & Volume Stats Card
-                  _buildVolumeStatsCard(colorScheme, isDark),
+                    // Operations & Volume Stats Card
+                    _buildVolumeStatsCard(colorScheme, isDark),
+                  ],
                 ],
               ],
             ),

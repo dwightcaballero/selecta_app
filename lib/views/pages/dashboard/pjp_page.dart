@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:selecta_ops/controllers/pjp_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/models/hapistore.dart';
@@ -1334,9 +1335,867 @@ class _PjpPageState extends State<PjpPage> {
     );
   }
 
+  Widget _buildStoreInfoCard(ColorScheme colorScheme) {
+    return Card(
+      elevation: 0,
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+                  child: Icon(Icons.store_rounded, color: colorScheme.primary, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_currentHapistore.storeName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                      if (_currentHapistore.storeAddress.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Icon(Icons.location_on_outlined, size: 12, color: colorScheme.onSurfaceVariant),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                _currentHapistore.storeAddress,
+                                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_currentHapistore.storeContact.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(4),
+                          onTap: () => _copyToClipboard(_currentHapistore.storeContact, 'contact number'),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.phone_outlined, size: 12, color: colorScheme.primary),
+                              const SizedBox(width: 4),
+                              Text(
+                                _currentHapistore.storeContact,
+                                style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.copy_rounded, size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (_isCompletedThisWeek && _currentHapistore.lastPjpVisit != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.verified_rounded, color: Colors.green, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _isAlreadyCompletedToday
+                            ? 'Visit completed today at ${DateFormat('h:mm a').format(_currentHapistore.lastPjpVisit!.toDate())}'
+                            : 'Visit completed on ${DateFormat('EEEE, MMM d • h:mm a').format(_currentHapistore.lastPjpVisit!.toDate())}',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green.shade800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+
+            // Driver Assistance Actions: Directions, Call, Message
+            Row(
+              children: [
+                // Directions / Navigation Button
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _openDirections,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                      foregroundColor: const Color(0xFF15803D), // Forest green
+                      side: const BorderSide(color: Color(0xFF15803D), width: 1.2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.navigation_rounded, size: 16),
+                    label: const Text(
+                      'Directions',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Call Button
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _currentHapistore.storeContact.trim().isNotEmpty ? _makePhoneCall : null,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                      foregroundColor: colorScheme.primary,
+                      side: BorderSide(
+                        color: _currentHapistore.storeContact.trim().isNotEmpty ? colorScheme.primary : colorScheme.outlineVariant,
+                        width: 1.2,
+                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.call_rounded, size: 16),
+                    label: const Text(
+                      'Call',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Message Button
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _currentHapistore.storeContact.trim().isNotEmpty ? _sendSms : null,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                      foregroundColor: Colors.indigo.shade700,
+                      side: BorderSide(
+                        color: _currentHapistore.storeContact.trim().isNotEmpty ? Colors.indigo.shade600 : colorScheme.outlineVariant,
+                        width: 1.2,
+                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.sms_rounded, size: 16),
+                    label: const Text(
+                      'Message',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationStep(ColorScheme colorScheme) {
+    return _buildChecklistCard(
+      stepNumber: 1,
+      title: 'Store Location',
+      icon: Icons.location_on_outlined,
+      isLoading: _isLoadingLocation || _isUpdatingLocation,
+      isPassed: _locationPassed,
+      statusMessage: _isUpdatingLocation
+          ? 'Acquiring GPS and updating store location...'
+          : (_isLocationOutOfRange
+                ? 'Out of range: ~${_formatDistance(_locationDistanceMeters)} from registered pin (200m geofence).'
+                : (_locationPassed && _locationDistanceMeters != null
+                      ? 'In range: ~${_formatDistance(_locationDistanceMeters)} from store${_locationAccuracyMeters != null && _locationAccuracyMeters! > 0 ? " (±${_locationAccuracyMeters!.round()}m accuracy)" : ""}.'
+                      : _locationStatus)),
+      actionLabel: _isUpdatingLocation ? 'Updating...' : (_currentHapistore.latitude == null ? 'Get Location' : 'Update Location'),
+      actionIcon: Icons.my_location_rounded,
+      loadingLabel: _isUpdatingLocation ? 'Updating...' : null,
+      showActionWhenPassed: true,
+      actionLabelWhenPassed: 'Update Location',
+      onAction: _onLocationAction,
+      onRetry: _locationError != null || _isLocationOutOfRange || !_locationPassed ? _checkLocation : null,
+    );
+  }
+
+  Widget _buildScanningStep(ColorScheme colorScheme) {
+    return _buildChecklistCard(
+      stepNumber: 2,
+      title: 'Barcode Scanning',
+      icon: Icons.qr_code_scanner_rounded,
+      isLoading: _isLoadingScanning,
+      isPassed: _scanningPassed,
+      statusMessage: _scanningStatus,
+      actionLabel: _storeScannings.isEmpty ? 'Assign & Scan Barcode' : 'Scan Barcode',
+      actionLabelWhenPassed:
+          _storeScannings.length > 1 ? 'View Freezers (${_storeScannings.length})' : 'View Barcode',
+      showActionWhenPassed: true,
+      onAction: _scanningPassed ? _onViewBarcodeAction : _onScanningAction,
+      extraContent: (_storeScannings.length > 1)
+          ? Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.kitchen_outlined, size: 14, color: colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Registered Freezers (${_storeScannings.length}):',
+                        style: TextStyle(
+                            fontSize: 11.5, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _storeScannings.asMap().entries.map((entry) {
+                      final idx = entry.key + 1;
+                      final s = entry.value;
+                      final isScanned = s.status == ScanningStatus.scanned;
+                      final isPending = s.status == ScanningStatus.pending;
+                      final isDone = isScanned || isPending;
+
+                      return InkWell(
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ScanningPage(
+                                initialBarcode: s.barcode,
+                                initialStoreName: _currentHapistore.storeName,
+                                isEditing: true,
+                              ),
+                            ),
+                          );
+                          if (mounted) await _checkScanning();
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isDone
+                                ? (isPending
+                                    ? Colors.amber.withValues(alpha: 0.12)
+                                    : Colors.green.withValues(alpha: 0.12))
+                                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isDone
+                                  ? (isPending ? Colors.amber.shade700 : Colors.green.shade600)
+                                  : colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isScanned
+                                    ? Icons.check_circle_rounded
+                                    : (isPending ? Icons.hourglass_top_rounded : Icons.radio_button_unchecked),
+                                size: 13,
+                                color: isScanned
+                                    ? Colors.green.shade700
+                                    : (isPending ? Colors.amber.shade900 : colorScheme.onSurfaceVariant),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                '#$idx ${s.barcode}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: isScanned
+                                      ? Colors.green.shade800
+                                      : (isPending ? Colors.amber.shade900 : colorScheme.onSurface),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isScanned ? '• Scanned' : (isPending ? '• Pending' : '• Not Scanned'),
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: isScanned
+                                      ? Colors.green.shade700
+                                      : (isPending ? Colors.amber.shade800 : colorScheme.onSurfaceVariant),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildBookOrderStep(ColorScheme colorScheme) {
+    return _buildChecklistCard(
+      stepNumber: 3,
+      title: _hasDeliveryToday
+          ? 'Pre-Sold Delivery'
+          : (_isVanSellToday ? 'Van Sell Transaction' : 'Delivery / Van Sell'),
+      icon: _hasDeliveryToday
+          ? Icons.local_shipping_outlined
+          : (_isVanSellToday ? Icons.storefront_outlined : Icons.shopping_bag_outlined),
+      isLoading: _isLoadingBookOrder,
+      isPassed: _bookOrderPassed,
+      statusMessage: _bookOrderStatus,
+      actionLabel: _hasDeliveryToday
+          ? (_deliveryToday?.transactionStatus == DeliveryStatus.delivered ? 'View Receipt' : 'Fulfill Delivery')
+          : (_isVanSellToday ? 'View Receipt' : 'Order Options'),
+      actionIcon: _hasDeliveryToday
+          ? Icons.local_shipping_rounded
+          : (_isVanSellToday ? Icons.receipt_long_rounded : Icons.touch_app_outlined),
+      showActionWhenNotPassed: true,
+      actionLabelWhenPassed: _hasDeliveryToday
+          ? 'View Delivery'
+          : (_isVanSellToday ? 'View Receipt' : (_hasBookedOrder ? 'Add / View Order' : 'Change Decision')),
+      showActionWhenPassed: true,
+      onAction: () {
+        if (_hasDeliveryToday && _deliveryToday != null) {
+          _onFulfillDeliveryAction();
+        } else if (_isVanSellToday && _deliveryToday != null) {
+          _onFulfillDeliveryAction();
+        } else if (_hasBookedOrder) {
+          _onBookOrderYes();
+        } else {
+          _onBookOrderDecisionPrompt();
+        }
+      },
+      extraContent: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _bookOrderPassed ? Colors.green.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _bookOrderPassed ? Colors.green.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_hasDeliveryToday && _deliveryToday != null) ...[
+                Row(
+                  children: [
+                    Icon(
+                      _deliveryToday!.transactionStatus == DeliveryStatus.delivered
+                          ? Icons.check_circle_rounded
+                          : Icons.schedule_rounded,
+                      size: 16,
+                      color: _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? Colors.green : Colors.orange.shade800,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _deliveryToday!.transactionStatus == DeliveryStatus.delivered
+                            ? 'Pre-sold order delivered (₱${_deliveryToday!.orderAmount.toStringAsFixed(2)})'
+                            : 'Pre-sold order scheduled for delivery today (${_deliveryToday!.transactionStatus})',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.bold,
+                          color: _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? Colors.green.shade800 : colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _isLoadingBookOrder ? null : _onFulfillDeliveryAction,
+                        icon: Icon(
+                          _deliveryToday!.transactionStatus == DeliveryStatus.delivered
+                              ? Icons.receipt_long_rounded
+                              : Icons.local_shipping_rounded,
+                          size: 15,
+                        ),
+                        label: Text(
+                          _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? 'View Receipt' : 'Fulfill Delivery Now',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
+                      icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
+                      label: const Text('Add Van Sell', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else if (_isVanSellToday && _deliveryToday != null) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.check_circle_rounded, size: 16, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Van Sell recorded (₱${_deliveryToday!.orderAmount.toStringAsFixed(2)})',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        onPressed: _isLoadingBookOrder ? null : _onFulfillDeliveryAction,
+                        icon: const Icon(Icons.receipt_long_rounded, size: 15),
+                        label: const Text('View Receipt', style: TextStyle(fontSize: 12)),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
+                        icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
+                        label: const Text('New Van Sell', style: TextStyle(fontSize: 12)),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                Text(
+                  _bookOrderPassed
+                      ? (_hasBookedOrder
+                          ? 'An advance order has been booked for this store.'
+                          : 'Decision: No order booked (Reason: $_noOrderReason)')
+                      : 'No delivery order scheduled for this store today.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: _bookOrderPassed ? Colors.green.shade800 : colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
+                        icon: const Icon(Icons.local_shipping_rounded, size: 15),
+                        label: const Text('Van Sell Now', style: TextStyle(fontSize: 12)),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          backgroundColor: Colors.teal.shade700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoadingBookOrder ? null : _onBookOrderYes,
+                        icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
+                        label: const Text('Advance Order', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.outlined(
+                      onPressed: _isLoadingBookOrder ? null : _onBookOrderNo,
+                      tooltip: _noOrderReason != null ? 'Edit Reason' : 'Will Not Order',
+                      icon: Icon(_noOrderReason != null ? Icons.edit_note_rounded : Icons.do_not_disturb_on_outlined, size: 18),
+                      style: IconButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.all(6),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _openStoreRecommendations,
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 14, color: Colors.amber),
+                  label: Text(
+                    _recommendationsButtonLabel,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                    backgroundColor: colorScheme.surface,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProofOfVisitStep(ColorScheme colorScheme) {
+    return _buildChecklistCard(
+      stepNumber: 4,
+      title: 'Proof of Visit',
+      icon: Icons.camera_alt_outlined,
+      isLoading: _isLoadingProofOfVisit || _isUploadingProofOfVisit,
+      isPassed: _proofOfVisitPassed,
+      statusMessage: _isUploadingProofOfVisit ? 'Uploading proof of visit photo...' : _proofOfVisitStatus,
+      actionLabel: _isUploadingProofOfVisit ? 'Uploading...' : 'Take Picture',
+      actionLabelWhenPassed: 'Retake Photo',
+      showActionWhenPassed: true,
+      actionIcon: Icons.photo_camera_rounded,
+      loadingLabel: _isUploadingProofOfVisit ? 'Uploading...' : null,
+      onAction: _onProofOfVisitAction,
+      extraContent: (_proofOfVisit != null && _proofOfVisit!.imageUrl.isNotEmpty)
+          ? Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => ImageViewerPage(image: null, networkImagePath: _proofOfVisit!.imageUrl)),
+                        );
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Stack(
+                          alignment: Alignment.bottomRight,
+                          children: [
+                            Image.network(
+                              _proofOfVisit!.imageUrl,
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                width: 60,
+                                height: 60,
+                                color: Colors.grey.shade300,
+                                child: const Icon(Icons.broken_image, size: 24),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.only(topLeft: Radius.circular(4)),
+                              ),
+                              child: const Icon(Icons.fullscreen, color: Colors.white, size: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _currentHapistore.storeName,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Date: ${DateFormat('EEE, MMM d, yyyy • h:mm a').format(_proofOfVisit!.visitDate.toDate())}',
+                            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 3),
+                          const Text(
+                            'Tap photo thumbnail to view full image',
+                            style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.teal),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildTasksStep(ColorScheme colorScheme) {
+    return _buildChecklistCard(
+      stepNumber: 5,
+      title: 'Store Tasks',
+      icon: Icons.task_alt_outlined,
+      isLoading: _isLoadingTasks,
+      isPassed: _tasksPassed,
+      statusMessage: _tasksStatus,
+      extraContent: (!_isLoadingTasks && !_tasksPassed && _pendingTasks.isNotEmpty)
+          ? Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, size: 14, color: Colors.orange.shade800),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Pending Task(s):',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ..._pendingTasks
+                        .take(3)
+                        .map(
+                          (task) => Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '• ',
+                                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade800),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    task.taskTitle,
+                                    style: TextStyle(fontSize: 12, color: colorScheme.onSurface, fontWeight: FontWeight.w500),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    if (_pendingTasks.length > 3)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '+${_pendingTasks.length - 3} more task(s)',
+                          style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            )
+          : null,
+      actionLabel: 'View Store Tasks',
+      actionLabelWhenPassed: 'View Store Tasks',
+      showActionWhenPassed: true,
+      onAction: _onTasksAction,
+    );
+  }
+
+  Widget _buildMerchBlitzStep(ColorScheme colorScheme) {
+    return _buildChecklistCard(
+      stepNumber: 6,
+      title: 'Merch Blitz (Optional)',
+      icon: Icons.campaign_outlined,
+      isLoading: _isLoadingMerchBlitz,
+      isPassed: _merchBlitzPassed,
+      isOptional: true,
+      statusMessage: _merchBlitzStatus.isNotEmpty ? _merchBlitzStatus : 'Optional: Store has not yet been surveyed for Merch Blitz.',
+      actionLabel: 'Go to Merch Blitz',
+      actionLabelWhenPassed: 'View Merch Blitz',
+      showActionWhenPassed: true,
+      onAction: _onMerchBlitzAction,
+    );
+  }
+
+  Widget _buildCompleteVisitButton(ColorScheme colorScheme, {bool isEmbedded = false}) {
+    final button = FilledButton(
+      onPressed: _canCompleteVisit && !_isCompleting ? _completeVisit : null,
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(double.infinity, 50),
+        backgroundColor: _canCompleteVisit ? Colors.green.shade600 : null,
+        disabledBackgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: _isCompleting
+          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  _canCompleteVisit ? Icons.check_circle_outline_rounded : Icons.lock_outline_rounded,
+                  size: 20,
+                  color: _canCompleteVisit ? Colors.white : colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    _canCompleteVisit ? (_isCompletedThisWeek ? 'Re-complete Store Visit' : 'Complete Store Visit') : 'Complete Store Visit',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: _canCompleteVisit ? Colors.white : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+
+    if (isEmbedded) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 20),
+        child: button,
+      );
+    }
+
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
+        ),
+        child: button,
+      ),
+    );
+  }
+
+  Widget _buildPortraitLayout(ColorScheme colorScheme) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        _buildStoreInfoCard(colorScheme),
+        const SizedBox(height: 12),
+        _buildVerificationProgress(),
+        const SizedBox(height: 10),
+        _buildLocationStep(colorScheme),
+        _buildScanningStep(colorScheme),
+        _buildBookOrderStep(colorScheme),
+        _buildProofOfVisitStep(colorScheme),
+        _buildTasksStep(colorScheme),
+        _buildMerchBlitzStep(colorScheme),
+      ],
+    );
+  }
+
+  Widget _buildTabletLandscapeLayout(ColorScheme colorScheme) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 5,
+          child: ListView(
+            primary: false,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            children: [
+              _buildStoreInfoCard(colorScheme),
+              const SizedBox(height: 12),
+              _buildVerificationProgress(),
+              const SizedBox(height: 10),
+              _buildLocationStep(colorScheme),
+              _buildScanningStep(colorScheme),
+            ],
+          ),
+        ),
+        VerticalDivider(
+          width: 1,
+          thickness: 1,
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+        Expanded(
+          flex: 5,
+          child: ListView(
+            primary: false,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            children: [
+              _buildBookOrderStep(colorScheme),
+              _buildProofOfVisitStep(colorScheme),
+              _buildTasksStep(colorScheme),
+              _buildMerchBlitzStep(colorScheme),
+              const SizedBox(height: 4),
+              _buildCompleteVisitButton(colorScheme, isEmbedded: true),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
 
     return PopScope(
       canPop: false,
@@ -1346,797 +2205,13 @@ class _PjpPageState extends State<PjpPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(
-        title: _currentHapistore.storeName,
-        subtitle: 'PJP • ${widget.selectedDay}',
-        actions: [IconButton(icon: const Icon(Icons.refresh_rounded), color: Colors.white, tooltip: 'Refresh checks', onPressed: _runAllChecks)],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-        children: [
-          // Store Info Card
-          Card(
-            elevation: 0,
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-                        child: Icon(Icons.store_rounded, color: colorScheme.primary, size: 24),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_currentHapistore.storeName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                            if (_currentHapistore.storeAddress.isNotEmpty) ...[
-                              const SizedBox(height: 3),
-                              Row(
-                                children: [
-                                  Icon(Icons.location_on_outlined, size: 12, color: colorScheme.onSurfaceVariant),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      _currentHapistore.storeAddress,
-                                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            if (_currentHapistore.storeContact.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              InkWell(
-                                borderRadius: BorderRadius.circular(4),
-                                onTap: () => _copyToClipboard(_currentHapistore.storeContact, 'contact number'),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.phone_outlined, size: 12, color: colorScheme.primary),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      _currentHapistore.storeContact,
-                                      style: TextStyle(fontSize: 12, color: colorScheme.primary, fontWeight: FontWeight.w600),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Icon(Icons.copy_rounded, size: 11, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_isCompletedThisWeek && _currentHapistore.lastPjpVisit != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.verified_rounded, color: Colors.green, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _isAlreadyCompletedToday
-                                  ? 'Visit completed today at ${DateFormat('h:mm a').format(_currentHapistore.lastPjpVisit!.toDate())}'
-                                  : 'Visit completed on ${DateFormat('EEEE, MMM d • h:mm a').format(_currentHapistore.lastPjpVisit!.toDate())}',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green.shade800),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 12),
-                  const Divider(height: 1),
-                  const SizedBox(height: 12),
-
-                  // Driver Assistance Actions: Directions, Call, Message
-                  Row(
-                    children: [
-                      // Directions / Navigation Button
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _openDirections,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
-                            foregroundColor: const Color(0xFF15803D), // Forest green
-                            side: const BorderSide(color: Color(0xFF15803D), width: 1.2),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          icon: const Icon(Icons.navigation_rounded, size: 16),
-                          label: const Text(
-                            'Directions',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-
-                      // Call Button
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _currentHapistore.storeContact.trim().isNotEmpty ? _makePhoneCall : null,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
-                            foregroundColor: colorScheme.primary,
-                            side: BorderSide(
-                              color: _currentHapistore.storeContact.trim().isNotEmpty ? colorScheme.primary : colorScheme.outlineVariant,
-                              width: 1.2,
-                            ),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          icon: const Icon(Icons.call_rounded, size: 16),
-                          label: const Text(
-                            'Call',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-
-                      // Message Button
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _currentHapistore.storeContact.trim().isNotEmpty ? _sendSms : null,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
-                            foregroundColor: Colors.indigo.shade700,
-                            side: BorderSide(
-                              color: _currentHapistore.storeContact.trim().isNotEmpty ? Colors.indigo.shade600 : colorScheme.outlineVariant,
-                              width: 1.2,
-                            ),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                          icon: const Icon(Icons.sms_rounded, size: 16),
-                          label: const Text(
-                            'Message',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Verification Progress Indicator
-          _buildVerificationProgress(),
-
-          const SizedBox(height: 10),
-          // Step 1: Location
-          _buildChecklistCard(
-            stepNumber: 1,
-            title: 'Store Location',
-            icon: Icons.location_on_outlined,
-            isLoading: _isLoadingLocation || _isUpdatingLocation,
-            isPassed: _locationPassed,
-            statusMessage: _isUpdatingLocation
-                ? 'Acquiring GPS and updating store location...'
-                : (_isLocationOutOfRange
-                      ? 'Out of range: ~${_formatDistance(_locationDistanceMeters)} from registered pin (200m geofence).'
-                      : (_locationPassed && _locationDistanceMeters != null
-                            ? 'In range: ~${_formatDistance(_locationDistanceMeters)} from store${_locationAccuracyMeters != null && _locationAccuracyMeters! > 0 ? " (±${_locationAccuracyMeters!.round()}m accuracy)" : ""}.'
-                            : _locationStatus)),
-            actionLabel: _isUpdatingLocation ? 'Updating...' : (_currentHapistore.latitude == null ? 'Get Location' : 'Update Location'),
-            actionIcon: Icons.my_location_rounded,
-            loadingLabel: _isUpdatingLocation ? 'Updating...' : null,
-            showActionWhenPassed: true,
-            actionLabelWhenPassed: 'Update Location',
-            onAction: _onLocationAction,
-            onRetry: _locationError != null || _isLocationOutOfRange || !_locationPassed ? _checkLocation : null,
-          ),
-
-          // Step 2: Scanning
-          _buildChecklistCard(
-            stepNumber: 2,
-            title: 'Barcode Scanning',
-            icon: Icons.qr_code_scanner_rounded,
-            isLoading: _isLoadingScanning,
-            isPassed: _scanningPassed,
-            statusMessage: _scanningStatus,
-            actionLabel: _storeScannings.isEmpty ? 'Assign & Scan Barcode' : 'Scan Barcode',
-            actionLabelWhenPassed:
-                _storeScannings.length > 1 ? 'View Freezers (${_storeScannings.length})' : 'View Barcode',
-            showActionWhenPassed: true,
-            onAction: _scanningPassed ? _onViewBarcodeAction : _onScanningAction,
-            extraContent: (_storeScannings.length > 1)
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.kitchen_outlined, size: 14, color: colorScheme.onSurfaceVariant),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Registered Freezers (${_storeScannings.length}):',
-                              style: TextStyle(
-                                  fontSize: 11.5, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: _storeScannings.asMap().entries.map((entry) {
-                            final idx = entry.key + 1;
-                            final s = entry.value;
-                            final isScanned = s.status == ScanningStatus.scanned;
-                            final isPending = s.status == ScanningStatus.pending;
-                            final isDone = isScanned || isPending;
-
-                            return InkWell(
-                              onTap: () async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ScanningPage(
-                                      initialBarcode: s.barcode,
-                                      initialStoreName: _currentHapistore.storeName,
-                                      isEditing: true,
-                                    ),
-                                  ),
-                                );
-                                if (mounted) await _checkScanning();
-                              },
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: isDone
-                                      ? (isPending
-                                          ? Colors.amber.withValues(alpha: 0.12)
-                                          : Colors.green.withValues(alpha: 0.12))
-                                      : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isDone
-                                        ? (isPending ? Colors.amber.shade700 : Colors.green.shade600)
-                                        : colorScheme.outlineVariant,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      isScanned
-                                          ? Icons.check_circle_rounded
-                                          : (isPending ? Icons.hourglass_top_rounded : Icons.radio_button_unchecked),
-                                      size: 13,
-                                      color: isScanned
-                                          ? Colors.green.shade700
-                                          : (isPending ? Colors.amber.shade900 : colorScheme.onSurfaceVariant),
-                                    ),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      '#$idx ${s.barcode}',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: isScanned
-                                            ? Colors.green.shade800
-                                            : (isPending ? Colors.amber.shade900 : colorScheme.onSurface),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      isScanned ? '• Scanned' : (isPending ? '• Pending' : '• Not Scanned'),
-                                      style: TextStyle(
-                                        fontSize: 10.5,
-                                        color: isScanned
-                                            ? Colors.green.shade700
-                                            : (isPending ? Colors.amber.shade800 : colorScheme.onSurfaceVariant),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                    ),
-                  )
-                : null,
-          ),
-
-          // Step 3: Book Order / Delivery / Van Sell
-          _buildChecklistCard(
-            stepNumber: 3,
-            title: _hasDeliveryToday
-                ? 'Pre-Sold Delivery'
-                : (_isVanSellToday ? 'Van Sell Transaction' : 'Delivery / Van Sell'),
-            icon: _hasDeliveryToday
-                ? Icons.local_shipping_outlined
-                : (_isVanSellToday ? Icons.storefront_outlined : Icons.shopping_bag_outlined),
-            isLoading: _isLoadingBookOrder,
-            isPassed: _bookOrderPassed,
-            statusMessage: _bookOrderStatus,
-            actionLabel: _hasDeliveryToday
-                ? (_deliveryToday?.transactionStatus == DeliveryStatus.delivered ? 'View Receipt' : 'Fulfill Delivery')
-                : (_isVanSellToday ? 'View Receipt' : 'Order Options'),
-            actionIcon: _hasDeliveryToday
-                ? Icons.local_shipping_rounded
-                : (_isVanSellToday ? Icons.receipt_long_rounded : Icons.touch_app_outlined),
-            showActionWhenNotPassed: true,
-            actionLabelWhenPassed: _hasDeliveryToday
-                ? 'View Delivery'
-                : (_isVanSellToday ? 'View Receipt' : (_hasBookedOrder ? 'Add / View Order' : 'Change Decision')),
-            showActionWhenPassed: true,
-            onAction: () {
-              if (_hasDeliveryToday && _deliveryToday != null) {
-                _onFulfillDeliveryAction();
-              } else if (_isVanSellToday && _deliveryToday != null) {
-                _onFulfillDeliveryAction();
-              } else if (_hasBookedOrder) {
-                _onBookOrderYes();
-              } else {
-                _onBookOrderDecisionPrompt();
-              }
-            },
-            extraContent: Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _bookOrderPassed ? Colors.green.withValues(alpha: 0.08) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: _bookOrderPassed ? Colors.green.withValues(alpha: 0.3) : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_hasDeliveryToday && _deliveryToday != null) ...[
-                      Row(
-                        children: [
-                          Icon(
-                            _deliveryToday!.transactionStatus == DeliveryStatus.delivered
-                                ? Icons.check_circle_rounded
-                                : Icons.schedule_rounded,
-                            size: 16,
-                            color: _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? Colors.green : Colors.orange.shade800,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              _deliveryToday!.transactionStatus == DeliveryStatus.delivered
-                                  ? 'Pre-sold order delivered (₱${_deliveryToday!.orderAmount.toStringAsFixed(2)})'
-                                  : 'Pre-sold order scheduled for delivery today (${_deliveryToday!.transactionStatus})',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.bold,
-                                color: _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? Colors.green.shade800 : colorScheme.onSurface,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: _isLoadingBookOrder ? null : _onFulfillDeliveryAction,
-                              icon: Icon(
-                                _deliveryToday!.transactionStatus == DeliveryStatus.delivered
-                                    ? Icons.receipt_long_rounded
-                                    : Icons.local_shipping_rounded,
-                                size: 15,
-                              ),
-                              label: Text(
-                                _deliveryToday!.transactionStatus == DeliveryStatus.delivered ? 'View Receipt' : 'Fulfill Delivery Now',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              style: FilledButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton.icon(
-                            onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
-                            icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
-                            label: const Text('Add Van Sell', style: TextStyle(fontSize: 12)),
-                            style: OutlinedButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ] else if (_isVanSellToday && _deliveryToday != null) ...[
-                      Row(
-                        children: [
-                          const Icon(Icons.check_circle_rounded, size: 16, color: Colors.green),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              'Van Sell recorded (₱${_deliveryToday!.orderAmount.toStringAsFixed(2)})',
-                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.green.shade800),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.tonalIcon(
-                              onPressed: _isLoadingBookOrder ? null : _onFulfillDeliveryAction,
-                              icon: const Icon(Icons.receipt_long_rounded, size: 15),
-                              label: const Text('View Receipt', style: TextStyle(fontSize: 12)),
-                              style: FilledButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
-                              icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
-                              label: const Text('New Van Sell', style: TextStyle(fontSize: 12)),
-                              style: FilledButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ] else ...[
-                      Text(
-                        _bookOrderPassed
-                            ? (_hasBookedOrder
-                                ? 'An advance order has been booked for this store.'
-                                : 'Decision: No order booked (Reason: $_noOrderReason)')
-                            : 'No delivery order scheduled for this store today.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: _bookOrderPassed ? Colors.green.shade800 : colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: _isLoadingBookOrder ? null : _onVanSellAction,
-                              icon: const Icon(Icons.local_shipping_rounded, size: 15),
-                              label: const Text('Van Sell Now', style: TextStyle(fontSize: 12)),
-                              style: FilledButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                backgroundColor: Colors.teal.shade700,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _isLoadingBookOrder ? null : _onBookOrderYes,
-                              icon: const Icon(Icons.add_shopping_cart_rounded, size: 15),
-                              label: const Text('Advance Order', style: TextStyle(fontSize: 12)),
-                              style: OutlinedButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton.outlined(
-                            onPressed: _isLoadingBookOrder ? null : _onBookOrderNo,
-                            tooltip: _noOrderReason != null ? 'Edit Reason' : 'Will Not Order',
-                            icon: Icon(_noOrderReason != null ? Icons.edit_note_rounded : Icons.do_not_disturb_on_outlined, size: 18),
-                            style: IconButton.styleFrom(
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.all(6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _openStoreRecommendations,
-                        icon: const Icon(Icons.auto_awesome_rounded, size: 14, color: Colors.amber),
-                        label: Text(
-                          _recommendationsButtonLabel,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-                          backgroundColor: colorScheme.surface,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // Step 4: Proof of Visit
-          _buildChecklistCard(
-            stepNumber: 4,
-            title: 'Proof of Visit',
-            icon: Icons.camera_alt_outlined,
-            isLoading: _isLoadingProofOfVisit || _isUploadingProofOfVisit,
-            isPassed: _proofOfVisitPassed,
-            statusMessage: _isUploadingProofOfVisit ? 'Uploading proof of visit photo...' : _proofOfVisitStatus,
-            actionLabel: _isUploadingProofOfVisit ? 'Uploading...' : 'Take Picture',
-            actionLabelWhenPassed: 'Retake Photo',
-            showActionWhenPassed: true,
-            actionIcon: Icons.photo_camera_rounded,
-            loadingLabel: _isUploadingProofOfVisit ? 'Uploading...' : null,
-            onAction: _onProofOfVisitAction,
-            extraContent: (_proofOfVisit != null && _proofOfVisit!.imageUrl.isNotEmpty)
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                      ),
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (context) => ImageViewerPage(image: null, networkImagePath: _proofOfVisit!.imageUrl)),
-                              );
-                            },
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Stack(
-                                alignment: Alignment.bottomRight,
-                                children: [
-                                  Image.network(
-                                    _proofOfVisit!.imageUrl,
-                                    width: 60,
-                                    height: 60,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) => Container(
-                                      width: 60,
-                                      height: 60,
-                                      color: Colors.grey.shade300,
-                                      child: const Icon(Icons.broken_image, size: 24),
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.black54,
-                                      borderRadius: BorderRadius.only(topLeft: Radius.circular(4)),
-                                    ),
-                                    child: const Icon(Icons.fullscreen, color: Colors.white, size: 12),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _currentHapistore.storeName,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Date: ${DateFormat('EEE, MMM d, yyyy • h:mm a').format(_proofOfVisit!.visitDate.toDate())}',
-                                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                                ),
-                                const SizedBox(height: 3),
-                                const Text(
-                                  'Tap photo thumbnail to view full image',
-                                  style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.teal),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : null,
-          ),
-
-          // Step 5: Store Tasks (formerly Step 4)
-          _buildChecklistCard(
-            stepNumber: 5,
-            title: 'Store Tasks',
-            icon: Icons.task_alt_outlined,
-            isLoading: _isLoadingTasks,
-            isPassed: _tasksPassed,
-            statusMessage: _tasksStatus,
-            extraContent: (!_isLoadingTasks && !_tasksPassed && _pendingTasks.isNotEmpty)
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.withValues(alpha: 0.25)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.warning_amber_rounded, size: 14, color: Colors.orange.shade800),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Pending Task(s):',
-                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          ..._pendingTasks
-                              .take(3)
-                              .map(
-                                (task) => Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '• ',
-                                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade800),
-                                      ),
-                                      Expanded(
-                                        child: Text(
-                                          task.taskTitle,
-                                          style: TextStyle(fontSize: 12, color: colorScheme.onSurface, fontWeight: FontWeight.w500),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          if (_pendingTasks.length > 3)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                '+${_pendingTasks.length - 3} more task(s)',
-                                style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: colorScheme.onSurfaceVariant),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  )
-                : null,
-            actionLabel: 'View Store Tasks',
-            actionLabelWhenPassed: 'View Store Tasks',
-            showActionWhenPassed: true,
-            onAction: _onTasksAction,
-          ),
-
-          // Step 6: Merch Blitz (formerly Step 5, now Optional)
-          _buildChecklistCard(
-            stepNumber: 6,
-            title: 'Merch Blitz (Optional)',
-            icon: Icons.campaign_outlined,
-            isLoading: _isLoadingMerchBlitz,
-            isPassed: _merchBlitzPassed,
-            isOptional: true,
-            statusMessage: _merchBlitzStatus.isNotEmpty ? _merchBlitzStatus : 'Optional: Store has not yet been surveyed for Merch Blitz.',
-            actionLabel: 'Go to Merch Blitz',
-            actionLabelWhenPassed: 'View Merch Blitz',
-            showActionWhenPassed: true,
-            onAction: _onMerchBlitzAction,
-          ),
-        ],
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5))),
-          ),
-          child: FilledButton(
-            onPressed: _canCompleteVisit && !_isCompleting ? _completeVisit : null,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(double.infinity, 50),
-              backgroundColor: _canCompleteVisit ? Colors.green.shade600 : null,
-              disabledBackgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: _isCompleting
-                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _canCompleteVisit ? Icons.check_circle_outline_rounded : Icons.lock_outline_rounded,
-                        size: 20,
-                        color: _canCompleteVisit ? Colors.white : colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          _canCompleteVisit ? (_isCompletedThisWeek ? 'Re-complete Store Visit' : 'Complete Store Visit') : 'Complete Store Visit',
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: _canCompleteVisit ? Colors.white : colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
+          title: _currentHapistore.storeName,
+          subtitle: 'PJP • ${widget.selectedDay}',
+          actions: [IconButton(icon: const Icon(Icons.refresh_rounded), color: Colors.white, tooltip: 'Refresh checks', onPressed: _runAllChecks)],
         ),
+        body: isTabletLandscape ? _buildTabletLandscapeLayout(colorScheme) : _buildPortraitLayout(colorScheme),
+        bottomNavigationBar: isTabletLandscape ? null : _buildCompleteVisitButton(colorScheme, isEmbedded: false),
       ),
-    ),
-  );
-}
+    );
+  }
 }

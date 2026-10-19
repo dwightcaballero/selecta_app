@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/expenses_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/expenses.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -849,69 +850,222 @@ class _ExpensesPageState extends State<ExpensesPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(
-        title: 'Expense Details',
-        subtitle: widget.recID.isEmpty
-            ? 'New ${_selectedExpenseType == ExpenseType.salesman ? "Salesman" : "Dealer"} Record'
-            : widget.expense.description,
-      ),
-      bottomNavigationBar: _buildStickyBottomBar(),
-      body: Form(
+          title: 'Expense Details',
+          subtitle: widget.recID.isEmpty
+              ? 'New ${_selectedExpenseType == ExpenseType.salesman ? "Salesman" : "Dealer"} Record'
+              : widget.expense.description,
+        ),
+        bottomNavigationBar: ScreenSize.isTabletLandscape(context) ? null : _buildStickyBottomBar(),
+        body: Form(
         key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 16,
-            children: [
-              if (isReadOnly)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amber.shade300, width: 1.2),
+        child: ScreenSize.isTabletLandscape(context)
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left Pane: Classification, Timing & Audit
+                  Expanded(
+                    flex: 5,
+                    child: SingleChildScrollView(
+                      primary: false,
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 16,
+                        children: [
+                          if (isReadOnly)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.amber.shade300, width: 1.2),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      widget.recID.isNotEmpty
+                                          ? 'View-Only: Only dealers are authorized to edit or delete existing expense records.'
+                                          : 'View-Only: Salesmen are only permitted to log Salesman Expenses.',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.amber.shade900,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          _buildSectionCard(
+                            title: 'Classification & Date',
+                            icon: Icons.category_outlined,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              spacing: 16,
+                              children: [
+                                _buildExpenseTypeSelector(),
+                                _buildPaymentMethodSelector(),
+                                _buildDatePickerField(label: 'Expense Date', selectedDate: _selectedDate, onTap: onChangeDate),
+                              ],
+                            ),
+                          ),
+                          if (widget.recID.isNotEmpty)
+                            AuditHistoryWidget(
+                              createdBy: widget.expense.createdBy,
+                              createdDate: widget.expense.createdDate,
+                              createdPage: widget.expense.createdPage,
+                              lastUpdatedBy: widget.expense.lastUpdatedBy,
+                              lastUpdatedDate: widget.expense.lastupdatedDate,
+                              lastUpdatedPage: widget.expense.lastUpdatedPage,
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          widget.recID.isNotEmpty
-                              ? 'View-Only: Only dealers are authorized to edit or delete existing expense records.'
-                              : 'View-Only: Salesmen are only permitted to log Salesman Expenses.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.amber.shade900,
-                            fontWeight: FontWeight.w600,
+                  // Right Pane: Description, Amount, Presets & Action
+                  Expanded(
+                    flex: 5,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        border: Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
                           ),
                         ),
                       ),
-                    ],
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              primary: false,
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                spacing: 16,
+                                children: [
+                                  _buildSectionCard(
+                                    title: 'Expense Amount & Item',
+                                    icon: Icons.receipt_long_outlined,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      spacing: 16,
+                                      children: [
+                                        _buildMoneyField(label: 'Expense Amount', controller: txtAmount, prefixIcon: Icons.payments_outlined),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            TextFormField(
+                                              controller: txtDescription,
+                                              readOnly: isReadOnly,
+                                              onChanged: (_) => setState(() {}),
+                                              decoration: InputDecoration(
+                                                labelText: 'Expense Description',
+                                                hintText: isReadOnly
+                                                    ? ''
+                                                    : (_selectedExpenseType == ExpenseType.salesman
+                                                        ? 'e.g. Snacks, Cash Advance, Meals...'
+                                                        : 'e.g. Fuel, Toll, Vehicle maintenance, Utilities...'),
+                                                prefixIcon: Icon(Icons.edit_note_outlined, size: 20, color: Theme.of(context).colorScheme.primary),
+                                                suffixIcon: txtDescription.text.isNotEmpty && !isReadOnly
+                                                    ? IconButton(
+                                                        icon: const Icon(Icons.clear, size: 18),
+                                                        tooltip: 'Clear description',
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            txtDescription.clear();
+                                                          });
+                                                        },
+                                                      )
+                                                    : null,
+                                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                              ),
+                                              autovalidateMode: AutovalidateMode.onUnfocus,
+                                              validator: (value) {
+                                                if (value == null || value.trim().isEmpty) return 'Description should not be blank';
+                                                return null;
+                                              },
+                                            ),
+                                            if (!isReadOnly) ...[
+                                              const SizedBox(height: 10),
+                                              _buildPresetChips(),
+                                            ],
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          _buildStickyBottomBar(),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ],
+              )
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 16,
+                  children: [
+                    if (isReadOnly)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.amber.shade300, width: 1.2),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                widget.recID.isNotEmpty
+                                    ? 'View-Only: Only dealers are authorized to edit or delete existing expense records.'
+                                    : 'View-Only: Salesmen are only permitted to log Salesman Expenses.',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.amber.shade900,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
 
-              // 1. Expense Details Card
-              _buildExpenseDetailsCard(),
+                    // 1. Expense Details Card
+                    _buildExpenseDetailsCard(),
 
-              // 2. Audit & History Card (if editing)
-              if (widget.recID.isNotEmpty)
-                AuditHistoryWidget(
-                  createdBy: widget.expense.createdBy,
-                  createdDate: widget.expense.createdDate,
-                  createdPage: widget.expense.createdPage,
-                  lastUpdatedBy: widget.expense.lastUpdatedBy,
-                  lastUpdatedDate: widget.expense.lastupdatedDate,
-                  lastUpdatedPage: widget.expense.lastUpdatedPage,
+                    // 2. Audit & History Card (if editing)
+                    if (widget.recID.isNotEmpty)
+                      AuditHistoryWidget(
+                        createdBy: widget.expense.createdBy,
+                        createdDate: widget.expense.createdDate,
+                        createdPage: widget.expense.createdPage,
+                        lastUpdatedBy: widget.expense.lastUpdatedBy,
+                        lastUpdatedDate: widget.expense.lastupdatedDate,
+                        lastUpdatedPage: widget.expense.lastUpdatedPage,
+                      ),
+                  ],
                 ),
-            ],
-          ),
-        ),
+              ),
       ),
     ),
-    );
-  }
+  );
+}
 }
 
 class _ExpensePreset {

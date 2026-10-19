@@ -5,7 +5,7 @@ import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 
 /// Operational quick action cards grid for core workflow entry points:
-/// Store Order, Credit, End of Day Report, Van Load, and Van Sell.
+/// Store Order, Credit, End of Day Report, Van Load, Van Sell, and Prospect Scouting.
 class DashboardQuickAccessGrid extends StatelessWidget {
   final DashboardDTO dashboardDTO;
   final Stream<int>? pendingPicklistsCountStream;

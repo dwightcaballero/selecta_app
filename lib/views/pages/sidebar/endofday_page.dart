@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/endofday_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/views/pages/sidebar/breakdown_page.dart';
@@ -78,7 +79,11 @@ class _EndofdayPageState extends State<EndofdayPage> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => BreakdownPage(breakdown: breakdown!, breakdownID: breakdownID),
+        builder: (context) => BreakdownPage(
+          breakdown: breakdown!,
+          breakdownID: breakdownID,
+          endOfDayData: endOfDayData,
+        ),
       ),
     );
     getData();
@@ -716,12 +721,43 @@ class _EndofdayPageState extends State<EndofdayPage> {
     );
   }
 
-  Widget _buildStickyBottomBar() {
+  Widget _buildStickyBottomBar({bool isEmbedded = false}) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool hasPending = endOfDayData.pendingstatus > 0;
     final bool hasBreakdown = breakdownID.isNotEmpty;
     final bool hasNoDeliveries = endOfDayData.totaldelivery == 0;
     final bool isRecordDisabled = !hasBreakdown && hasNoDeliveries;
+
+    final actionButton = FilledButton.icon(
+      onPressed: isRecordDisabled ? null : validateBeforeBreakdown,
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(double.infinity, 50.0),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        backgroundColor: hasPending ? colorScheme.surfaceContainerHighest : null,
+        foregroundColor: hasPending ? colorScheme.onSurfaceVariant : null,
+      ),
+      icon: Icon(
+        isRecordDisabled
+            ? Icons.event_busy_outlined
+            : (hasPending ? Icons.lock_outline : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined)),
+        size: 20,
+      ),
+      label: Text(
+        isRecordDisabled
+            ? 'No Deliveries Recorded'
+            : (hasPending
+                  ? 'Settle ${endOfDayData.pendingstatus} ${endOfDayData.pendingstatus == 1 ? "Pending" : "Pendings"} to Continue'
+                  : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown')),
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+      ),
+    );
+
+    if (isEmbedded) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+        child: actionButton,
+      );
+    }
 
     return SafeArea(
       child: Container(
@@ -731,29 +767,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
           border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
         ),
-        child: FilledButton.icon(
-          onPressed: isRecordDisabled ? null : validateBeforeBreakdown,
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(double.infinity, 50.0),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            backgroundColor: hasPending ? colorScheme.surfaceContainerHighest : null,
-            foregroundColor: hasPending ? colorScheme.onSurfaceVariant : null,
-          ),
-          icon: Icon(
-            isRecordDisabled
-                ? Icons.event_busy_outlined
-                : (hasPending ? Icons.lock_outline : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined)),
-            size: 20,
-          ),
-          label: Text(
-            isRecordDisabled
-                ? 'No Deliveries Recorded'
-                : (hasPending
-                      ? 'Settle ${endOfDayData.pendingstatus} ${endOfDayData.pendingstatus == 1 ? "Pending" : "Pendings"} to Continue'
-                      : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown')),
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-          ),
-        ),
+        child: actionButton,
       ),
     );
   }
@@ -765,9 +779,126 @@ class _EndofdayPageState extends State<EndofdayPage> {
     getData();
   }
 
+  Widget _buildEmptyStateNotice(ColorScheme colorScheme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 20, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'No delivery transactions recorded for this date.',
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPortraitLayout(ColorScheme colorScheme) {
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 16,
+        children: [
+          // 1. Date Navigation Header
+          _buildDateNavigator(),
+
+          // 2. Pending Status Warning (if any)
+          if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
+
+          // 2a. Empty state notice if no activity recorded
+          if (endOfDayData.totaldelivery == 0) _buildEmptyStateNotice(colorScheme),
+
+          // 3. Delivery Volume & Status Grid
+          _buildDeliveryStatusGrid(),
+
+          // 4. Revenue by Channel (Pre-Sell Deliveries vs Van Sell)
+          _buildRevenueBreakdownCard(),
+
+          // 5. Payment Collections & Tender Breakdown
+          _buildCollectionsCard(),
+
+          // 6. Van Stock Reconciliation (if van load or van sales exist)
+          if (endOfDayData.vanLoad != null || endOfDayData.vanSellCount > 0) _buildVanStockCard(),
+
+          // 7. Deductions & Returns Card
+          _buildDeductionsCard(),
+
+          // 8. Cash Reconciliation Summary Card
+          _buildCashReconciliationCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabletLandscapeLayout(ColorScheme colorScheme) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left Pane: Delivery volume, channel breakdown & van stock
+        Expanded(
+          flex: 5,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            primary: false,
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 16,
+              children: [
+                _buildDateNavigator(),
+                if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
+                if (endOfDayData.totaldelivery == 0) _buildEmptyStateNotice(colorScheme),
+                _buildDeliveryStatusGrid(),
+                _buildRevenueBreakdownCard(),
+                if (endOfDayData.vanLoad != null || endOfDayData.vanSellCount > 0) _buildVanStockCard(),
+              ],
+            ),
+          ),
+        ),
+        VerticalDivider(
+          width: 1,
+          thickness: 1,
+          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+        ),
+        // Right Pane: Payment collections, deductions, cash reconciliation & action button
+        Expanded(
+          flex: 5,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            primary: false,
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 16,
+              children: [
+                _buildCollectionsCard(),
+                _buildDeductionsCard(),
+                _buildCashReconciliationCard(),
+                _buildStickyBottomBar(isEmbedded: true),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
 
     return PopScope(
       canPop: false,
@@ -777,66 +908,10 @@ class _EndofdayPageState extends State<EndofdayPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(title: 'End of Day Report', subtitle: DateFormat('EEEE, d MMM yyyy').format(_selectedDate)),
-        bottomNavigationBar: _buildStickyBottomBar(),
+        bottomNavigationBar: isTabletLandscape ? null : _buildStickyBottomBar(),
         body: RefreshIndicator(
           onRefresh: getData,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              spacing: 16,
-              children: [
-                // 1. Date Navigation Header
-                _buildDateNavigator(),
-
-                // 2. Pending Status Warning (if any)
-                if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
-
-                // 2a. Empty state notice if no activity recorded
-                if (endOfDayData.totaldelivery == 0)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, size: 20, color: colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'No delivery transactions recorded for this date.',
-                            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // 3. Delivery Volume & Status Grid
-                _buildDeliveryStatusGrid(),
-
-                // 4. Revenue by Channel (Pre-Sell Deliveries vs Van Sell)
-                _buildRevenueBreakdownCard(),
-
-                // 5. Payment Collections & Tender Breakdown
-                _buildCollectionsCard(),
-
-                // 6. Van Stock Reconciliation (if van load or van sales exist)
-                if (endOfDayData.vanLoad != null || endOfDayData.vanSellCount > 0) _buildVanStockCard(),
-
-                // 7. Deductions & Returns Card
-                _buildDeductionsCard(),
-
-                // 8. Cash Reconciliation Summary Card
-                _buildCashReconciliationCard(),
-              ],
-            ),
-          ),
+          child: isTabletLandscape ? _buildTabletLandscapeLayout(colorScheme) : _buildPortraitLayout(colorScheme),
         ),
       ),
     );

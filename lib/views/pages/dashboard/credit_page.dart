@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/credit_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -721,45 +722,110 @@ class _CreditPageState extends State<CreditPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(title: 'Credit Settlement', subtitle: widget.delivery.storeName),
-        bottomNavigationBar: _buildStickyBottomBar(),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            spacing: 16,
-            children: [
-              // 1. Credit Overview Card
-              _buildCreditOverviewCard(),
+        bottomNavigationBar: ScreenSize.isTabletLandscape(context) ? null : _buildStickyBottomBar(),
+        body: ScreenSize.isTabletLandscape(context)
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left Pane: Credit Overview, Financial Breakdown & Proof
+                  Expanded(
+                    flex: 5,
+                    child: SingleChildScrollView(
+                      primary: false,
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 16,
+                        children: [
+                          _buildCreditOverviewCard(),
+                          _buildPaymentBreakdownCard(),
+                          _buildAttachmentCard(),
+                          AuditHistoryWidget(
+                            createdBy: widget.delivery.createdBy,
+                            createdDate: widget.delivery.createdDate,
+                            createdPage: widget.delivery.createdPage,
+                            lastUpdatedBy: widget.delivery.lastUpdatedBy,
+                            lastUpdatedDate: widget.delivery.lastupdatedDate,
+                            lastUpdatedPage: widget.delivery.lastUpdatedPage,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Right Pane: Collection Status, Communication & Settlement Action
+                  Expanded(
+                    flex: 5,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        border: Border(
+                          left: BorderSide(
+                            color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              primary: false,
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                spacing: 16,
+                                children: [
+                                  _buildStatusCard(),
+                                  _buildCommunicationCard(),
+                                  _buildRemarksCard(),
+                                ],
+                              ),
+                            ),
+                          ),
+                          _buildStickyBottomBar(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  spacing: 16,
+                  children: [
+                    // 1. Credit Overview Card
+                    _buildCreditOverviewCard(),
 
-              // 2. Customer Contact & Collections Follow-up Card
-              _buildCommunicationCard(),
+                    // 2. Customer Contact & Collections Follow-up Card
+                    _buildCommunicationCard(),
 
-              // 3. Status Selector Card
-              _buildStatusCard(),
+                    // 3. Status Selector Card
+                    _buildStatusCard(),
 
-              // 3. Payment & Order Breakdown Card
-              _buildPaymentBreakdownCard(),
+                    // 3. Payment & Order Breakdown Card
+                    _buildPaymentBreakdownCard(),
 
-              // 4. Remarks Note Card
-              _buildRemarksCard(),
+                    // 4. Remarks Note Card
+                    _buildRemarksCard(),
 
-              // 5. Proof of Delivery Receipt Card
-              _buildAttachmentCard(),
+                    // 5. Proof of Delivery Receipt Card
+                    _buildAttachmentCard(),
 
-              // 6. Audit History Card
-              AuditHistoryWidget(
-                createdBy: widget.delivery.createdBy,
-                createdDate: widget.delivery.createdDate,
-                createdPage: widget.delivery.createdPage,
-                lastUpdatedBy: widget.delivery.lastUpdatedBy,
-                lastUpdatedDate: widget.delivery.lastupdatedDate,
-                lastUpdatedPage: widget.delivery.lastUpdatedPage,
+                    // 6. Audit History Card
+                    AuditHistoryWidget(
+                      createdBy: widget.delivery.createdBy,
+                      createdDate: widget.delivery.createdDate,
+                      createdPage: widget.delivery.createdPage,
+                      lastUpdatedBy: widget.delivery.lastUpdatedBy,
+                      lastUpdatedDate: widget.delivery.lastupdatedDate,
+                      lastUpdatedPage: widget.delivery.lastUpdatedPage,
+                    ),
+
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
-
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
       ),
     );
   }

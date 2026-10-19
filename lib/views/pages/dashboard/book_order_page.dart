@@ -2631,8 +2631,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
   Widget _buildSelectStorePrompt(ColorScheme colorScheme, List<InventoryItem> allInventory) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

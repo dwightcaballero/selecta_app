@@ -7,6 +7,7 @@ import 'package:selecta_ops/controllers/inventory_controller.dart';
 import 'package:selecta_ops/controllers/van_load_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/van_load.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -596,6 +597,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
 
     return PopScope(
       canPop: false,
@@ -625,145 +627,187 @@ class _VanLoadPageState extends State<VanLoadPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(
-        title: 'Van Load',
-        subtitle: _isCreatingNew
-            ? 'New Van Manifest'
-            : (_currentVanLoad != null ? 'Manifest • ${DateFormat('d MMM yyyy').format(_currentVanLoad!.date.toDate())}' : 'Manifests & Loading'),
-        showBackButton: true,
-        actions: [
-          if (!_isCreatingNew && _currentVanLoad != null && _currentVanLoad!.status == VanLoadStatus.draft)
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.white),
-              tooltip: 'Delete Draft',
-              onPressed: () async {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Delete Draft Load?'),
-                    content: const Text('This will discard this draft manifest.'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                      FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                        onPressed: () => Navigator.pop(ctx, true),
-                        child: const Text('Delete'),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true && _currentVanLoad?.id != null) {
-                  await _vanLoadController.deleteDraftVanLoad(_currentVanLoad!.id!, _currentVanLoad!);
-                  setState(() => _currentVanLoad = null);
-                }
-              },
-            ),
-        ],
+          title: 'Van Load',
+          subtitle: _isCreatingNew
+              ? 'New Van Manifest'
+              : (_currentVanLoad != null ? 'Manifest • ${DateFormat('d MMM yyyy').format(_currentVanLoad!.date.toDate())}' : 'Manifests & Loading'),
+          showBackButton: true,
+          actions: [
+            if (!_isCreatingNew && _currentVanLoad != null && _currentVanLoad!.status == VanLoadStatus.draft)
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.white),
+                tooltip: 'Delete Draft',
+                onPressed: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Delete Draft Load?'),
+                      content: const Text('This will discard this draft manifest.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                        FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (ok == true && _currentVanLoad?.id != null) {
+                    await _vanLoadController.deleteDraftVanLoad(_currentVanLoad!.id!, _currentVanLoad!);
+                    setState(() => _currentVanLoad = null);
+                  }
+                },
+              ),
+          ],
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _isCreatingNew || (_currentVanLoad != null && _currentVanLoad!.status == VanLoadStatus.draft)
+                ? _buildManifestEditor(theme)
+                : _buildDashboardView(theme),
+        bottomNavigationBar: isTabletLandscape
+            ? null
+            : ((_isCreatingNew || (_currentVanLoad != null && _currentVanLoad!.status == VanLoadStatus.draft))
+                ? _buildBottomActionBar(theme)
+                : null),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _isCreatingNew || (_currentVanLoad != null && _currentVanLoad!.status == VanLoadStatus.draft)
-              ? _buildManifestEditor(theme)
-              : _buildDashboardView(theme),
-      bottomNavigationBar: (_isCreatingNew || (_currentVanLoad != null && _currentVanLoad!.status == VanLoadStatus.draft))
-          ? _buildBottomActionBar(theme)
-          : null,
-    ),
     );
   }
 
   Widget _buildDashboardView(ThemeData theme) {
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
+
+    final activeLoadSection = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_currentVanLoad != null) ...[
+          _buildActiveLoadCard(theme, _currentVanLoad!),
+        ] else ...[
+          _buildNoActiveLoadCard(theme),
+        ],
+      ],
+    );
+
+    final historySection = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Recent Van Loads', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        StreamBuilder<List<VanLoad>>(
+          stream: _vanLoadController.streamVanLoads(limit: 20),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+              return const Center(child: Padding(padding: EdgeInsets.all(24.0), child: CircularProgressIndicator()));
+            }
+
+            final loads = snapshot.data ?? [];
+            if (loads.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Text('No past van loads recorded yet.', style: TextStyle(color: Colors.grey.shade600)),
+                ),
+              );
+            }
+
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: loads.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final load = loads[index];
+                final isCurrent = _currentVanLoad?.id == load.id;
+
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: isCurrent ? Colors.teal : Colors.grey.shade200,
+                      width: isCurrent ? 1.5 : 1,
+                    ),
+                  ),
+                  child: ListTile(
+                    onTap: () {
+                      setState(() {
+                        _currentVanLoad = load;
+                        _syncLoadedQuantitiesFromVanLoad(load);
+                      });
+                    },
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isCurrent ? Colors.teal.shade50 : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.local_shipping_rounded, color: isCurrent ? Colors.teal : Colors.grey.shade700),
+                    ),
+                    title: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Van Load',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _statusChip(load.status),
+                      ],
+                    ),
+                    subtitle: Text(
+                      '${DateFormat('d MMM yyyy, h:mm a').format(load.date.toDate())} • ${load.totalLoadedUnits} units (${Helperfunctions.formatDoubleAmountForDisplay(load.totalLoadedAmount)})',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                    trailing: const Icon(Icons.chevron_right, size: 20),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+
+    if (isTabletLandscape) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 5,
+            child: SingleChildScrollView(
+              primary: false,
+              padding: const EdgeInsets.all(16),
+              child: activeLoadSection,
+            ),
+          ),
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
+          Expanded(
+            flex: 5,
+            child: SingleChildScrollView(
+              primary: false,
+              padding: const EdgeInsets.all(16),
+              child: historySection,
+            ),
+          ),
+        ],
+      );
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Active load card
-          if (_currentVanLoad != null) ...[
-            _buildActiveLoadCard(theme, _currentVanLoad!),
-            const SizedBox(height: 20),
-          ] else ...[
-            _buildNoActiveLoadCard(theme),
-            const SizedBox(height: 20),
-          ],
-
-          // History list header
-          const Text('Recent Van Loads', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-
-          StreamBuilder<List<VanLoad>>(
-            stream: _vanLoadController.streamVanLoads(limit: 20),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                return const Center(child: Padding(padding: EdgeInsets.all(24.0), child: CircularProgressIndicator()));
-              }
-
-              final loads = snapshot.data ?? [];
-              if (loads.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Text('No past van loads recorded yet.', style: TextStyle(color: Colors.grey.shade600)),
-                  ),
-                );
-              }
-
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: loads.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final load = loads[index];
-                  final isCurrent = _currentVanLoad?.id == load.id;
-
-                  return Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(
-                        color: isCurrent ? Colors.teal : Colors.grey.shade200,
-                        width: isCurrent ? 1.5 : 1,
-                      ),
-                    ),
-                    child: ListTile(
-                      onTap: () {
-                        setState(() {
-                          _currentVanLoad = load;
-                          _syncLoadedQuantitiesFromVanLoad(load);
-                        });
-                      },
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: isCurrent ? Colors.teal.shade50 : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(Icons.local_shipping_rounded, color: isCurrent ? Colors.teal : Colors.grey.shade700),
-                      ),
-                      title: Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Van Load',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          _statusChip(load.status),
-                        ],
-                      ),
-                      subtitle: Text(
-                        '${DateFormat('d MMM yyyy, h:mm a').format(load.date.toDate())} • ${load.totalLoadedUnits} units (${Helperfunctions.formatDoubleAmountForDisplay(load.totalLoadedAmount)})',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                      ),
-                      trailing: const Icon(Icons.chevron_right, size: 20),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
+          activeLoadSection,
+          const SizedBox(height: 20),
+          historySection,
         ],
       ),
     );
@@ -1478,6 +1522,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
 
   Widget _buildManifestEditor(ThemeData theme) {
     final isDraft = _currentVanLoad == null || _currentVanLoad!.status == VanLoadStatus.draft;
+    final isTabletLandscape = ScreenSize.isTabletLandscape(context);
 
     int compareProducts(InventoryItem a, InventoryItem b) {
       return Helperfunctions.compareBySrpAndName(
@@ -1575,7 +1620,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
       }
     }
 
-    return Column(
+    final catalogView = Column(
       children: [
         // Top info card
         Container(
@@ -1646,7 +1691,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  primary: false,
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, isTabletLandscape ? 16 : 80),
                   itemCount: entries.length,
                   itemBuilder: (context, i) {
                     final entry = entries[i];
@@ -1689,6 +1735,290 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 ),
         ),
       ],
+    );
+
+    if (isTabletLandscape) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 6,
+            child: catalogView,
+          ),
+          VerticalDivider(
+            width: 1,
+            thickness: 1,
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+          ),
+          Expanded(
+            flex: 4,
+            child: _buildTabletManifestSummaryPanel(theme),
+          ),
+        ],
+      );
+    }
+
+    return catalogView;
+  }
+
+  Widget _buildTabletManifestSummaryPanel(ThemeData theme) {
+    final isDraft = _currentVanLoad == null || _currentVanLoad!.status == VanLoadStatus.draft;
+    final loadedItems = _allInventoryItems.where((i) => (_loadedQuantities[i.id] ?? 0) > 0).toList();
+    loadedItems.sort((a, b) => Helperfunctions.compareBySrpAndName(
+          nameA: a.productName,
+          priceA: a.sellingPrice,
+          nameB: b.productName,
+          priceB: b.sellingPrice,
+        ));
+
+    final skuCount = loadedItems.length;
+    final totalUnits = _totalLoadedUnits;
+    final totalAmount = _totalLoadedAmount;
+
+    return Container(
+      color: theme.colorScheme.surface,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: Colors.teal.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.teal.shade200),
+                ),
+                child: const Icon(Icons.receipt_long_rounded, color: Colors.teal, size: 20),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Loaded Manifest', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    Text(
+                      '$skuCount SKU${skuCount == 1 ? '' : 's'} • $totalUnits total units',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+              if (isDraft && loadedItems.isNotEmpty)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.delete_sweep_outlined, size: 20, color: Colors.red.shade700),
+                  tooltip: 'Clear All',
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (dCtx) => AlertDialog(
+                        title: const Text('Clear Loaded Items'),
+                        content: const Text('Are you sure you want to remove all loaded quantities from this manifest?'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                            onPressed: () => Navigator.pop(dCtx, true),
+                            child: const Text('Clear All'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      setState(() {
+                        _loadedQuantities.clear();
+                        for (final ctrl in _qtyControllers.values) {
+                          ctrl.text = '';
+                        }
+                      });
+                    }
+                  },
+                ),
+            ],
+          ),
+          const Divider(height: 16),
+          Expanded(
+            child: loadedItems.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.inventory_2_outlined, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 10),
+                        const Text('No Products Loaded Yet', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Select quantities from the catalog on the left.',
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    primary: false,
+                    itemCount: loadedItems.length,
+                    separatorBuilder: (_, _) => const Divider(height: 14),
+                    itemBuilder: (context, index) {
+                      final item = loadedItems[index];
+                      final currentQty = _loadedQuantities[item.id] ?? 0;
+                      final availableWarehouseStock = item.availableQuantity;
+                      final lineTotal = item.sellingPrice * currentQty;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CachedProductImage(imageUrl: item.imageUrl, size: 40, borderRadius: 8),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.productName,
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, height: 1.2),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${item.isSelecta ? 'Selecta' : 'Other'} • ${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)}',
+                                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (isDraft)
+                                IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400, size: 18),
+                                  tooltip: 'Remove',
+                                  onPressed: () => _updateQuantity(item.id, 0, availableWarehouseStock),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(left: 50),
+                                child: Text(
+                                  Helperfunctions.formatDoubleAmountForDisplay(lineTotal),
+                                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Colors.teal.shade800),
+                                ),
+                              ),
+                              if (isDraft)
+                                Container(
+                                  height: 30,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(color: Colors.grey.shade300),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      InkWell(
+                                        borderRadius: const BorderRadius.horizontal(left: Radius.circular(15)),
+                                        onTap: () => _updateQuantity(item.id, currentQty - 1, availableWarehouseStock),
+                                        child: SizedBox(
+                                          width: 28,
+                                          height: 30,
+                                          child: Icon(
+                                            currentQty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
+                                            size: 15,
+                                            color: currentQty == 1 ? Colors.red : Colors.teal.shade800,
+                                          ),
+                                        ),
+                                      ),
+                                      InkWell(
+                                        onTap: () => _showQuantityDialog(item, currentQty, availableWarehouseStock),
+                                        child: Container(
+                                          constraints: const BoxConstraints(minWidth: 32),
+                                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            '$currentQty',
+                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                                          ),
+                                        ),
+                                      ),
+                                      InkWell(
+                                        borderRadius: const BorderRadius.horizontal(right: Radius.circular(15)),
+                                        onTap: currentQty < availableWarehouseStock
+                                            ? () => _updateQuantity(item.id, currentQty + 1, availableWarehouseStock)
+                                            : null,
+                                        child: SizedBox(
+                                          width: 28,
+                                          height: 30,
+                                          child: Icon(
+                                            Icons.add_rounded,
+                                            size: 15,
+                                            color: currentQty < availableWarehouseStock ? Colors.teal.shade800 : Colors.grey.shade400,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(6)),
+                                  child: Text('$currentQty loaded', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.teal.shade900)),
+                                ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+          const Divider(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Total Load Amount', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
+                  Text(
+                    Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                  ),
+                ],
+              ),
+              if (isDraft && _isDealer)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.local_shipping, size: 18),
+                  label: const Text('Confirm Load', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  onPressed: _confirmAndDeductWarehouseStock,
+                )
+              else
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () => setState(() => _isCreatingNew = false),
+                  child: const Text('Close View'),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
