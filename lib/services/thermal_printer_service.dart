@@ -374,7 +374,9 @@ class ThermalPrinterService {
     buffer.writeln(divider);
 
     void writeProductRow(OrderItem item) {
-      final nameLines = wrapText(item.productName.toUpperCase(), nameWidth);
+      final isFree = item.isFreeReward || (item.sellingPrice <= 0 && item.promoId != null);
+      final displayName = isFree ? '${item.productName.toUpperCase()} (FREE PROMO)' : item.productName.toUpperCase();
+      final nameLines = wrapText(displayName, nameWidth);
       final qtyStr = item.pickedQuantity.toString().padLeft(qtyWidth);
       final priceStr = formatAmount(item.sellingPrice, priceWidth);
       final totalStr = formatAmount(item.sellingPrice * item.pickedQuantity, totalWidth);
@@ -430,14 +432,36 @@ class ThermalPrinterService {
     final emptyPrice = ' ' * priceWidth;
     final grandTotalStr = formatAmount(grandTotalAmount, totalWidth);
 
+    final hasPromos = delivery.discountAmount > 0 || delivery.appliedPromos.isNotEmpty;
+
+    if (hasPromos) {
+      final grossLabel = 'GROSS TOTAL'.padRight(nameWidth);
+      buffer.writeln(divider);
+      buffer.writeln('$grossLabel $grandQtyStr $emptyPrice $grandTotalStr');
+
+      for (final promo in delivery.appliedPromos) {
+        if (promo.discountAmount > 0) {
+          final promoTitle = 'PROMO: ${promo.name}';
+          final titleLines = wrapText(promoTitle, nameWidth);
+          final promoDiscountStr = '-${formatAmount(promo.discountAmount, totalWidth - 1).trim()}';
+          buffer.writeln('${titleLines[0].padRight(nameWidth)} ${' ' * qtyWidth} $emptyPrice ${promoDiscountStr.padLeft(totalWidth)}');
+          for (int i = 1; i < titleLines.length; i++) {
+            buffer.writeln(titleLines[i]);
+          }
+        }
+      }
+    }
+
     if (delivery.hasReturnedItems || delivery.returnAmount > 0) {
       final retAmount = delivery.hasReturnedItems ? delivery.totalReturnedItemsAmount : delivery.returnAmount;
       final retQty = delivery.items.fold<int>(0, (sum, i) => sum + i.returnedQuantity);
       final netDeliveredAmount = delivery.orderAmount;
       final netDeliveredQty = (grandTotalQty - retQty).clamp(0, grandTotalQty);
 
-      buffer.writeln(divider);
-      buffer.writeln('$grandLabel $grandQtyStr $emptyPrice $grandTotalStr');
+      if (!hasPromos) {
+        buffer.writeln(divider);
+        buffer.writeln('$grandLabel $grandQtyStr $emptyPrice $grandTotalStr');
+      }
 
       final returnLabel = 'RETURN DEDUCT'.padRight(nameWidth);
       final returnQtyStr = retQty > 0 ? retQty.toString().padLeft(qtyWidth) : ' ' * qtyWidth;
@@ -451,9 +475,11 @@ class ThermalPrinterService {
       buffer.writeln('$netLabel $netQtyStr $emptyPrice $netTotalStr');
       buffer.writeln(doubleDivider);
     } else {
-      final stdLabel = 'GRAND TOTAL'.padRight(nameWidth);
+      final stdLabel = hasPromos ? 'NET TOTAL'.padRight(nameWidth) : 'GRAND TOTAL'.padRight(nameWidth);
+      final finalTotalAmount = hasPromos ? delivery.orderAmount : grandTotalAmount;
+      final finalTotalStr = formatAmount(finalTotalAmount, totalWidth);
       buffer.writeln(doubleDivider);
-      buffer.writeln('$stdLabel $grandQtyStr $emptyPrice $grandTotalStr');
+      buffer.writeln('$stdLabel $grandQtyStr $emptyPrice $finalTotalStr');
       buffer.writeln(doubleDivider);
     }
 

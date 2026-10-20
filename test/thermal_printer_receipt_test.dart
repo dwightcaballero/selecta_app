@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/promo.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -196,6 +197,79 @@ void main() {
       expect(receipt, contains('ITEM                    QTY     PRICE      TOTAL'));
       expect(receipt, contains('GRAND TOTAL'));
       expect(receipt, contains('1,770.00'));
+    });
+
+    test('generateTextReceipt formats promo discount lines, free item tag, and net total', () {
+      final service = ThermalPrinterService();
+      final promoDelivery = Delivery(
+        storeName: 'Sari-Sari Store Alpha',
+        remarks: '',
+        transactionStatus: 'Pending',
+        imagePath: '',
+        orderAmount: 90.0, // net total
+        grossAmount: 110.0, // gross
+        discountAmount: 20.0,
+        appliedPromos: const [
+          AppliedPromo(
+            promoId: 'promo_1',
+            name: 'Duo Saver',
+            timesApplied: 1,
+            discountAmount: 20.0,
+            reward: PromoReward(type: 'fixed', amount: 20.0),
+          ),
+        ],
+        cashAmount: 0.0,
+        onlineAmount: 0.0,
+        creditAmount: 0.0,
+        returnAmount: 0.0,
+        creditStatus: 'Unpaid',
+        deliveryDate: Timestamp.now(),
+        items: const [
+          OrderItem(
+            productId: 'p1',
+            productName: 'Cornetto Choc',
+            sellingPrice: 35.0,
+            orderedQuantity: 2,
+            pickedQuantity: 2,
+            isPicked: true,
+          ),
+          OrderItem(
+            productId: 'p2',
+            productName: 'Cornetto Van',
+            sellingPrice: 40.0,
+            orderedQuantity: 1,
+            pickedQuantity: 1,
+            isPicked: true,
+          ),
+          OrderItem(
+            productId: 'p_free',
+            productName: 'Magnum Mini',
+            sellingPrice: 0.0,
+            orderedQuantity: 1,
+            pickedQuantity: 1,
+            isFreeReward: true,
+            isPicked: true,
+          ),
+        ],
+        createdBy: 'Salesman',
+        lastUpdatedBy: 'Salesman',
+        createdDate: Timestamp.now(),
+        lastupdatedDate: Timestamp.now(),
+      );
+
+      final receipt = service.generateTextReceipt(
+        delivery: promoDelivery,
+        dealerName: 'Metro Ice Cream Trading',
+        paperSize: ThermalPaperSize.mm58,
+      );
+
+      expect(receipt, contains('MAGNUM MINI'));
+      expect(receipt, contains('(FREE'));
+      expect(receipt, contains('GROSS TOTAL'));
+      expect(receipt, contains('PROMO: Duo'));
+      expect(receipt, contains('-20.00'));
+      expect(receipt, contains('NET TOTAL'));
+      expect(receipt, contains('90.00'));
     });
 
     test('generateEscPosBytes outputs line feeds for empty lines in receipt', () async {

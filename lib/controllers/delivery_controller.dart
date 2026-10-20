@@ -20,6 +20,8 @@ import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/controllers/placement_controller.dart';
+import 'package:selecta_ops/models/promo.dart';
+import 'package:selecta_ops/services/promo_service.dart';
 import 'package:intl/intl.dart';
 
 /// Aggregated counts by delivery status for summary widgets.
@@ -109,16 +111,21 @@ class DeliveryController {
   final PlacementService _placementService;
   final BreakdownService _breakdownService;
   final InventoryService _inventoryService;
+  final PromoService _promoService;
 
   DeliveryController({
     DeliveryService? deliveryService,
     PlacementService? placementService,
     BreakdownService? breakdownService,
     InventoryService? inventoryService,
+    PromoService? promoService,
   }) : _deliveryService = deliveryService ?? DeliveryService(),
        _placementService = placementService ?? PlacementService(),
        _breakdownService = breakdownService ?? BreakdownService(),
-       _inventoryService = inventoryService ?? InventoryService();
+       _inventoryService = inventoryService ?? InventoryService(),
+       _promoService = promoService ?? PromoService();
+
+  PromoService get promoService => _promoService;
 
   // ==========================================
   // Shared / Role & Breakdown Queries
@@ -546,6 +553,9 @@ class DeliveryController {
     required DateTime selectedDate,
     required List<OrderItem> items,
     String remarks = '',
+    double? grossAmount,
+    double discountAmount = 0.0,
+    List<AppliedPromo> appliedPromos = const [],
   }) async {
     final status = await checkBreakdownAndVerificationStatus(selectedDate);
     if (status.isVerified) {
@@ -553,7 +563,8 @@ class DeliveryController {
     }
 
     final cleanItems = items.where((i) => i.pickedQuantity > 0).toList();
-    final double orderAmount = computeItemsOrderAmount(cleanItems);
+    final double calculatedGross = grossAmount ?? computeItemsOrderAmount(cleanItems.where((i) => !i.isFreeReward).toList());
+    final double orderAmount = (calculatedGross - discountAmount).clamp(0.0, double.infinity);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
     final newRecord = Delivery(
@@ -561,6 +572,9 @@ class DeliveryController {
       remarks: remarks.trim(),
       transactionStatus: DeliveryStatus.pendingPicklist,
       imagePath: '',
+      grossAmount: calculatedGross,
+      discountAmount: discountAmount,
+      appliedPromos: appliedPromos,
       orderAmount: orderAmount,
       returnAmount: 0,
       creditAmount: 0,
@@ -600,9 +614,14 @@ class DeliveryController {
     required DateTime selectedDate,
     required List<OrderItem> items,
     String? remarks,
+    double? grossAmount,
+    double? discountAmount,
+    List<AppliedPromo>? appliedPromos,
   }) async {
     final cleanItems = items.where((i) => i.pickedQuantity > 0).toList();
-    final double orderAmount = computeItemsOrderAmount(cleanItems);
+    final double calculatedGross = grossAmount ?? currentDelivery.grossAmount ?? computeItemsOrderAmount(cleanItems.where((i) => !i.isFreeReward).toList());
+    final double calculatedDiscount = discountAmount ?? currentDelivery.discountAmount;
+    final double orderAmount = (calculatedGross - calculatedDiscount).clamp(0.0, double.infinity);
     final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
     // Adjust reserved floating inventory for order update regardless of delivery date
@@ -620,6 +639,9 @@ class DeliveryController {
       storeName: storeName,
       remarks: remarks ?? currentDelivery.remarks,
       deliveryDate: Timestamp.fromDate(selectedDate),
+      grossAmount: calculatedGross,
+      discountAmount: calculatedDiscount,
+      appliedPromos: appliedPromos ?? currentDelivery.appliedPromos,
       orderAmount: orderAmount,
       items: cleanItems,
       isInventoryReserved: !currentDelivery.isInventoryDeducted,
@@ -714,7 +736,7 @@ class DeliveryController {
 
     try {
       final cleanItems = pickedItems.where((i) => i.pickedQuantity > 0).toList();
-      final double orderAmount = computeItemsOrderAmount(cleanItems);
+      final double calculatedGross = computeItemsOrderAmount(cleanItems.where((i) => !i.isFreeReward).toList());
       final currentUserName = authService.value.currentUser?.displayName ?? 'Admin';
 
       final deliveryDate = currentDelivery.deliveryDate?.toDate() ?? DateTime.now();
@@ -722,6 +744,34 @@ class DeliveryController {
       if (status.isVerified) {
         throw Exception('Cannot process for delivery: The daily cash breakdown for this date has already been verified and closed by the dealer.');
       }
+
+      double finalDiscount = 0.0;
+      List<AppliedPromo> finalPromos = [];
+
+      if (currentDelivery.appliedPromos.isNotEmpty) {
+        // Evaluate with clean picked items to verify bundle requirements
+        final evalResult = _promoService.evaluate(
+          items: cleanItems,
+          storeName: storeName,
+          date: deliveryDate,
+          activePromos: currentDelivery.appliedPromos.map((ap) => Promo(
+            id: ap.promoId,
+            name: ap.name,
+            rules: ap.rules,
+            reward: ap.reward,
+            fundedBy: ap.fundedBy,
+            supplierName: ap.supplierName,
+            supplierRefundable: ap.supplierRefundable,
+            createdDate: Timestamp.now(),
+            lastUpdatedDate: Timestamp.now(),
+          )).toList(),
+        );
+
+        finalDiscount = evalResult.discountAmount;
+        finalPromos = evalResult.appliedPromos;
+      }
+
+      final double orderAmount = (calculatedGross - finalDiscount).clamp(0.0, double.infinity);
 
       // 1. Upload/update receipt image FIRST (outside DB transaction with timeout protection)
       String imageFilePath = currentDelivery.imagePath;
@@ -741,6 +791,9 @@ class DeliveryController {
         remarks: remarks ?? currentDelivery.remarks,
         transactionStatus: DeliveryStatus.pending,
         imagePath: imageFilePath,
+        grossAmount: calculatedGross,
+        discountAmount: finalDiscount,
+        appliedPromos: finalPromos,
         orderAmount: orderAmount,
         items: pickedItems.map((i) => i.copyWith(isPicked: true)).toList(),
         isInventoryReserved: false,
@@ -1084,6 +1137,8 @@ class DeliveryController {
     double finalOrderAmount = currentDelivery.orderAmount;
     double? finalOriginalOrderAmount = currentDelivery.originalOrderAmount;
     List<OrderItem> finalItems = currentDelivery.items;
+    double finalDiscountAmount = currentDelivery.discountAmount;
+    List<AppliedPromo> finalAppliedPromos = currentDelivery.appliedPromos;
 
     switch (status) {
       case DeliveryStatus.pendingPicklist:
@@ -1101,16 +1156,23 @@ class DeliveryController {
         cashAmount = Helperfunctions.formatStringAmountToDouble(cashAmountText);
 
         if (itemsWithReturns != null) {
-          finalItems = itemsWithReturns;
-          final double totalDelivered = itemsWithReturns.fold<double>(0.0, (acc, i) => acc + i.deliveredLineTotal);
-          final double totalReturned = itemsWithReturns.fold<double>(0.0, (acc, i) => acc + i.returnedLineTotal);
           final bool hasReturns = itemsWithReturns.any((i) => i.returnedQuantity > 0);
 
           if (hasReturns) {
+            // Option B: If customer returns even 1 item in a promo bundle,
+            // the whole promo line together with the discount is returned back to warehouse.
+            final promoReturnResult = promoService.recalculateReturnsWithPromos(
+              delivery: currentDelivery,
+              itemsWithReturns: itemsWithReturns,
+            );
+            finalItems = promoReturnResult.items;
             finalOriginalOrderAmount = currentDelivery.originalOrderAmount ?? currentDelivery.orderAmount;
-            finalOrderAmount = totalDelivered;
-            returnAmount = totalReturned;
+            finalOrderAmount = promoReturnResult.deliveredNetAmount;
+            returnAmount = promoReturnResult.returnAmount;
+            finalDiscountAmount = promoReturnResult.deliveredDiscountAmount;
+            finalAppliedPromos = promoReturnResult.retainedPromos;
           } else {
+            finalItems = itemsWithReturns;
             finalOrderAmount = currentDelivery.originalOrderAmount ?? Helperfunctions.formatStringAmountToDouble(orderAmountText);
             returnAmount = 0;
             finalOriginalOrderAmount = null;
@@ -1126,6 +1188,8 @@ class DeliveryController {
         finalOrderAmount = finalOriginalOrderAmount;
         returnAmount = finalOrderAmount;
         finalItems = currentDelivery.items.map((i) => i.copyWith(returnedQuantity: i.pickedQuantity)).toList();
+        finalDiscountAmount = 0.0;
+        finalAppliedPromos = const [];
         break;
       default:
     }
@@ -1159,6 +1223,8 @@ class DeliveryController {
       orderAmount: finalOrderAmount,
       originalOrderAmount: finalOriginalOrderAmount,
       returnAmount: returnAmount,
+      discountAmount: finalDiscountAmount,
+      appliedPromos: finalAppliedPromos,
       creditAmount: creditAmount,
       cashAmount: cashAmount,
       onlineAmount: onlineAmount,

@@ -21,6 +21,9 @@ import 'package:selecta_ops/views/widgets/book_order/sticky_order_summary_bar.da
 import 'package:selecta_ops/views/widgets/book_order/store_date_modal.dart';
 import 'package:selecta_ops/views/widgets/book_order/store_recommendations_modal.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/models/promo.dart';
+import 'package:selecta_ops/services/promo_service.dart';
+import 'package:selecta_ops/views/widgets/book_order/promo_cards_section.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/data/responsive.dart';
 
@@ -97,6 +100,14 @@ class _BookOrderPageState extends State<BookOrderPage> {
   /// Latest inventory list retrieved from active stream
   List<InventoryItem> _latestInventory = const [];
 
+  /// Active promotions from Firestore
+  List<Promo> _activePromos = const [];
+
+  /// Number of times promotions have been availed by the selected store
+  Map<String, int> _storePromoUsage = const {};
+
+  StreamSubscription<List<Promo>>? _promosSub;
+
   bool get _isEditing => widget.deliveryID.isNotEmpty && widget.existingDelivery != null;
 
   bool get _isFutureDeliveryDate {
@@ -126,6 +137,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
   void initState() {
     super.initState();
     _selectedDate = widget.initialDate ?? DateTime.now();
+
+    _promosSub = _deliveryController.promoService.streamActivePromos().listen((promos) {
+      if (mounted) {
+        setState(() => _activePromos = promos);
+      }
+    });
 
     if (_isEditing) {
       final d = widget.existingDelivery!;
@@ -165,6 +182,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
   }
 
   Future<void> _loadPlacedProductsForStore(String storeName, DateTime date) async {
+    _loadStorePromoUsage(storeName);
     if (storeName.trim().isEmpty) {
       if (mounted && _placedProductNames.isNotEmpty) {
         setState(() {
@@ -238,6 +256,81 @@ class _BookOrderPageState extends State<BookOrderPage> {
     } catch (_) {}
   }
 
+  Future<void> _loadStorePromoUsage(String storeName) async {
+    if (storeName.trim().isEmpty) {
+      if (mounted && _storePromoUsage.isNotEmpty) {
+        setState(() => _storePromoUsage = const {});
+      }
+      return;
+    }
+    try {
+      final usage = await _deliveryController.promoService.getStorePromoUsage(
+        storeName.trim(),
+        excludeDeliveryId: widget.deliveryID.isNotEmpty ? widget.deliveryID : null,
+      );
+      if (mounted) {
+        setState(() => _storePromoUsage = usage);
+      }
+    } catch (_) {}
+  }
+
+  /// Single point of evaluation for promotional rules, discounts, and free item injection.
+  PromoEvaluationResult _evaluatePromos(List<OrderItem> rawItems, List<InventoryItem> allInventory) {
+    final storeName = _storeController.text.trim();
+    if (storeName.isEmpty || rawItems.isEmpty || _activePromos.isEmpty) {
+      final gross = rawItems.fold<double>(0.0, (acc, i) => acc + i.lineTotal);
+      return PromoEvaluationResult(
+        appliedPromos: const [],
+        grossAmount: gross,
+        discountAmount: 0.0,
+        netAmount: gross,
+      );
+    }
+    return _deliveryController.promoService.evaluate(
+      items: rawItems,
+      storeName: storeName,
+      date: _selectedDate,
+      activePromos: _activePromos,
+      usedCounts: _storePromoUsage,
+      availableStock: {for (final i in allInventory) i.id: _getMaxOrderableQty(i)},
+      productBuyingPrices: {for (final i in allInventory) i.id: i.buyingPrice},
+    );
+  }
+
+  /// Adds all required items for a promotional bundle directly to the cart.
+  void _addPromoBundleToCart(Promo promo, List<InventoryItem> allInventory) {
+    final Map<String, InventoryItem> invMap = {for (final item in allInventory) item.id: item};
+
+    // Pre-check stock
+    for (final rule in promo.rules) {
+      final inv = invMap[rule.productId];
+      if (inv == null) {
+        ShowMessage.error(context, 'Promo item "${rule.productName}" is not available in inventory.');
+        return;
+      }
+      final current = _getSelectedQty(inv);
+      final maxAllowed = _getMaxOrderableQty(inv);
+      if (current + rule.requiredQty > maxAllowed) {
+        ShowMessage.error(context, 'Cannot add "${promo.name}": Insufficient stock for "${rule.productName}".');
+        return;
+      }
+    }
+
+    // Apply bundle quantities
+    setState(() {
+      for (final rule in promo.rules) {
+        final inv = invMap[rule.productId];
+        if (inv != null) {
+          final current = _getSelectedQty(inv);
+          _setSelectedQty(inv, current + rule.requiredQty);
+        }
+      }
+    });
+
+    HapticFeedback.mediumImpact();
+    ShowMessage.success(context, 'Added "${promo.name}" bundle to cart!');
+  }
+
   Future<void> _initDefaultDeliveryDateByRole() async {
     final isDealer = await KVariables.getIsDealer();
     if (!mounted || _hasUserManuallyPickedDate || _isEditing) return;
@@ -250,6 +343,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
   @override
   void dispose() {
+    _promosSub?.cancel();
     _searchFocusNode.dispose();
     _storeController.dispose();
     _searchController.dispose();
@@ -743,16 +837,20 @@ class _BookOrderPageState extends State<BookOrderPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (sheetCtx, setSheetState) {
-            final items = _buildOrderItemsList(allInventory);
-            if (items.isEmpty) {
+            final rawItems = _buildOrderItemsList(allInventory);
+            if (rawItems.isEmpty) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (Navigator.canPop(sheetCtx)) Navigator.pop(sheetCtx);
               });
               return const SizedBox.shrink();
             }
 
+            final promoEval = _evaluatePromos(rawItems, allInventory);
+            final items = [...rawItems, ...promoEval.freeItems];
             final colorScheme = Theme.of(sheetCtx).colorScheme;
-            final totalAmount = _deliveryController.computeItemsOrderAmount(items);
+            final grossAmount = promoEval.grossAmount;
+            final discountAmount = promoEval.discountAmount;
+            final totalAmount = promoEval.netAmount;
             final totalUnits = items.fold<int>(0, (acc, i) => acc + i.pickedQuantity);
 
             return DraggableScrollableSheet(
@@ -931,25 +1029,45 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              '${isSelecta ? 'Selecta' : 'Other'} • ${_currencyFormat.format(item.sellingPrice)} each',
+                                              item.isFreeReward
+                                                  ? 'Reward Item • ₱0.00'
+                                                  : '${isSelecta ? 'Selecta' : 'Other'} • ${_currencyFormat.format(item.sellingPrice)} each',
                                               style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
                                             ),
                                             Text(
-                                              _currencyFormat.format(item.lineTotal),
-                                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: colorScheme.primary),
+                                              item.isFreeReward ? 'FREE' : _currencyFormat.format(item.lineTotal),
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w800,
+                                                color: item.isFreeReward ? Colors.green.shade700 : colorScheme.primary,
+                                              ),
                                             ),
                                           ],
                                         ),
                                       ),
-                                      Container(
-                                        height: 32,
-                                        decoration: BoxDecoration(
-                                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                                          borderRadius: BorderRadius.circular(16),
-                                          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
+                                      if (item.isFreeReward)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.shade50,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.green.shade200),
+                                          ),
+                                          child: Text(
+                                            '${item.pickedQuantity} Free Unit${item.pickedQuantity == 1 ? '' : 's'}',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                                          ),
+                                        )
+                                      else
+                                        Container(
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
                                           children: [
                                             InkWell(
                                               borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
@@ -1031,6 +1149,53 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         ),
                       ),
                       const Divider(height: 16),
+                      if (promoEval.hints.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.tips_and_updates_outlined, size: 16, color: Colors.blue.shade800),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  promoEval.hints.first,
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue.shade900),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (discountAmount > 0) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Gross Total', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+                            Text(
+                              _currencyFormat.format(grossAmount),
+                              style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant, decoration: TextDecoration.lineThrough),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        for (final applied in promoEval.appliedPromos)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(applied.name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.green.shade700)),
+                              Text(
+                                '-${_currencyFormat.format(applied.discountAmount)}',
+                                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                              ),
+                            ],
+                          ),
+                        const SizedBox(height: 6),
+                      ],
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -1060,22 +1225,38 @@ class _BookOrderPageState extends State<BookOrderPage> {
       return;
     }
 
-    final orderItems = _buildOrderItemsList(allInventory);
-    if (orderItems.isEmpty) {
+    final rawOrderItems = _buildOrderItemsList(allInventory);
+    if (rawOrderItems.isEmpty) {
       ShowMessage.error(context, 'Please select at least 1 product to book an order.');
       return;
     }
 
+    final promoEval = _evaluatePromos(rawOrderItems, allInventory);
+
+    // Q1 Rule: promo should not be booked and the app should show that an item is out of stock.
+    if (promoEval.isOOSBlocked) {
+      ShowMessage.error(
+        context,
+        'Promo bundle cannot be booked because item(s) or free reward(s) are out of stock: ${promoEval.oosItemNames.join(", ")}',
+      );
+      return;
+    }
+
+    final orderItems = [...rawOrderItems, ...promoEval.freeItems];
     final storeName = _storeController.text.trim();
-    final totalAmount = _deliveryController.computeItemsOrderAmount(orderItems);
+    final grossAmount = promoEval.grossAmount;
+    final discountAmount = promoEval.discountAmount;
+    final totalAmount = promoEval.netAmount;
+    final appliedPromos = promoEval.appliedPromos;
     final totalUnits = orderItems.fold<int>(0, (acc, i) => acc + i.pickedQuantity);
 
+    final promoSuffix = discountAmount > 0 ? ' (Includes ${_currencyFormat.format(discountAmount)} promo savings)' : '';
     final confirmed = await ShowMessage.confirm(
       context,
       title: _isEditing ? 'Update Order' : 'Save Order',
       message: _isEditing
-          ? 'Save changes to $storeName order (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})?'
-          : 'Save order for $storeName (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})?\n\n'
+          ? 'Save changes to $storeName order (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})$promoSuffix?'
+          : 'Save order for $storeName (${orderItems.length} items, $totalUnits units • ${_currencyFormat.format(totalAmount)})$promoSuffix?\n\n'
                 'This will book the order for delivery and hold reserved stock.',
       icon: Icons.check_circle_outline,
       confirmText: 'Save Order',
@@ -1100,6 +1281,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
             selectedDate: _selectedDate,
             items: orderItems,
             remarks: _remarksController.text,
+            grossAmount: grossAmount,
+            discountAmount: discountAmount,
+            appliedPromos: appliedPromos,
           );
         } else {
           await OfflineSyncService.instance.enqueueOrderCreation(
@@ -1107,6 +1291,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
             selectedDate: _selectedDate,
             items: orderItems,
             remarks: _remarksController.text,
+            grossAmount: grossAmount,
+            discountAmount: discountAmount,
+            appliedPromos: appliedPromos,
           );
         }
         if (!mounted) return;
@@ -1125,6 +1312,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
               selectedDate: _selectedDate,
               items: orderItems,
               remarks: _remarksController.text,
+              grossAmount: grossAmount,
+              discountAmount: discountAmount,
+              appliedPromos: appliedPromos,
             )
             .timeout(const Duration(seconds: 30));
         if (!mounted) return;
@@ -1133,7 +1323,15 @@ class _BookOrderPageState extends State<BookOrderPage> {
         Navigator.pop(context, updated);
       } else {
         final createdResult = await _deliveryController
-            .createBookedOrder(storeName: storeName, selectedDate: _selectedDate, items: orderItems, remarks: _remarksController.text)
+            .createBookedOrder(
+              storeName: storeName,
+              selectedDate: _selectedDate,
+              items: orderItems,
+              remarks: _remarksController.text,
+              grossAmount: grossAmount,
+              discountAmount: discountAmount,
+              appliedPromos: appliedPromos,
+            )
             .timeout(const Duration(seconds: 30));
         if (!mounted) return;
         Helperfunctions.showLoading(context: context, showLoading: false);
@@ -1160,6 +1358,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
               selectedDate: _selectedDate,
               items: orderItems,
               remarks: _remarksController.text,
+              grossAmount: grossAmount,
+              discountAmount: discountAmount,
+              appliedPromos: appliedPromos,
             );
           } else {
             await OfflineSyncService.instance.enqueueOrderCreation(
@@ -1167,6 +1368,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
               selectedDate: _selectedDate,
               items: orderItems,
               remarks: _remarksController.text,
+              grossAmount: grossAmount,
+              discountAmount: discountAmount,
+              appliedPromos: appliedPromos,
             );
           }
           if (!mounted) return;
@@ -1748,8 +1952,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
         final allInventory = (snapshot.data ?? []).where((item) => item.isActive).toList();
         _latestInventory = allInventory;
 
-        final orderItems = _buildOrderItemsList(allInventory);
-        final totalAmount = _deliveryController.computeItemsOrderAmount(orderItems);
+        final rawOrderItems = _buildOrderItemsList(allInventory);
+        final promoEval = _evaluatePromos(rawOrderItems, allInventory);
+        final orderItems = [...rawOrderItems, ...promoEval.freeItems];
+        final grossAmount = promoEval.grossAmount;
+        final discountAmount = promoEval.discountAmount;
+        final totalAmount = promoEval.netAmount;
         final totalUnits = orderItems.fold<int>(0, (acc, i) => acc + i.pickedQuantity);
         final unplacedCount = allInventory
             .where(
@@ -1802,6 +2010,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
                     skuCount: orderItems.length,
                     totalUnits: totalUnits,
                     totalAmount: totalAmount,
+                    grossAmount: grossAmount,
+                    discountAmount: discountAmount,
                   )
                 : null,
             body: Stack(
@@ -1814,6 +2024,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
                     allInventory: allInventory,
                     orderItems: orderItems,
                     totalAmount: totalAmount,
+                    grossAmount: grossAmount,
+                    discountAmount: discountAmount,
+                    appliedPromos: promoEval.appliedPromos,
+                    hints: promoEval.hints,
+                    promoEval: promoEval,
                     totalUnits: totalUnits,
                     unplacedCount: unplacedCount,
                     snapshot: snapshot,
@@ -1825,7 +2040,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
                       Expanded(
                         child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
                             ? const Center(child: CircularProgressIndicator())
-                            : _buildUnifiedProductList(allInventory: allInventory, colorScheme: colorScheme),
+                            : _buildUnifiedProductList(
+                                allInventory: allInventory,
+                                colorScheme: colorScheme,
+                                promoEval: promoEval,
+                              ),
                       ),
                     ],
                   ),
@@ -2068,6 +2287,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
     required List<InventoryItem> allInventory,
     required List<OrderItem> orderItems,
     required double totalAmount,
+    required double grossAmount,
+    required double discountAmount,
+    required List<AppliedPromo> appliedPromos,
+    required List<String> hints,
+    required PromoEvaluationResult promoEval,
     required int totalUnits,
     required int unplacedCount,
     required AsyncSnapshot<List<InventoryItem>> snapshot,
@@ -2085,7 +2309,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
               Expanded(
                 child: snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData
                     ? const Center(child: CircularProgressIndicator())
-                    : _buildUnifiedProductList(allInventory: allInventory, colorScheme: colorScheme),
+                    : _buildUnifiedProductList(
+                        allInventory: allInventory,
+                        colorScheme: colorScheme,
+                        promoEval: promoEval,
+                      ),
               ),
             ],
           ),
@@ -2099,6 +2327,10 @@ class _BookOrderPageState extends State<BookOrderPage> {
             allInventory: allInventory,
             orderItems: orderItems,
             totalAmount: totalAmount,
+            grossAmount: grossAmount,
+            discountAmount: discountAmount,
+            appliedPromos: appliedPromos,
+            hints: hints,
             totalUnits: totalUnits,
           ),
         ),
@@ -2111,6 +2343,10 @@ class _BookOrderPageState extends State<BookOrderPage> {
     required List<InventoryItem> allInventory,
     required List<OrderItem> orderItems,
     required double totalAmount,
+    required double grossAmount,
+    required double discountAmount,
+    required List<AppliedPromo> appliedPromos,
+    required List<String> hints,
     required int totalUnits,
   }) {
     final Map<String, InventoryItem> byKey = {for (final item in allInventory) _itemKey(item): item};
@@ -2239,6 +2475,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                     separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final item = orderItems[index];
+                      final isReward = item.isFreeReward;
                       final itemKey = '${item.productSource}:${item.productId}';
                       final invItem = byKey[itemKey];
                       final maxAllowed = invItem != null ? _getMaxOrderableQty(invItem) : 9999;
@@ -2250,9 +2487,13 @@ class _BookOrderPageState extends State<BookOrderPage> {
                       return Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: colorScheme.surface,
+                          color: isReward ? const Color(0xFFF0FDF4) : colorScheme.surface,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                          border: Border.all(
+                            color: isReward
+                                ? const Color(0xFF86EFAC)
+                                : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                          ),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
@@ -2265,7 +2506,20 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                 children: [
                                   Row(
                                     children: [
-                                      if (receiptNum != null)
+                                      if (isReward)
+                                        Container(
+                                          margin: const EdgeInsets.only(right: 6),
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF16A34A),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text(
+                                            'FREE REWARD',
+                                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, color: Colors.white),
+                                          ),
+                                        )
+                                      else if (receiptNum != null)
                                         Container(
                                           margin: const EdgeInsets.only(right: 6),
                                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -2296,69 +2550,93 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     ],
                                   ),
                                   const SizedBox(height: 2),
-                                  Text(
-                                    '${_currencyFormat.format(item.sellingPrice)} each',
-                                    style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
-                                  ),
+                                  if (isReward)
+                                    const Text(
+                                      'Auto-applied reward item',
+                                      style: TextStyle(fontSize: 11, color: Color(0xFF15803D), fontWeight: FontWeight.w600),
+                                    )
+                                  else
+                                    Text(
+                                      '${_currencyFormat.format(item.sellingPrice)} each',
+                                      style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                    ),
                                 ],
                               ),
                             ),
                             const SizedBox(width: 8),
-                            // Stepper
-                            Container(
-                              height: 32,
-                              decoration: BoxDecoration(
-                                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.remove, size: 14),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 30),
-                                    onPressed: () {
-                                      HapticFeedback.lightImpact();
-                                      if (invItem != null) {
-                                        _setSelectedQty(invItem, item.pickedQuantity - 1);
-                                      }
-                                    },
-                                  ),
-                                  InkWell(
-                                    onTap: invItem != null ? () => _promptQuantityDialog(invItem, allInventory: allInventory) : null,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                                      child: Text(
-                                        '${item.pickedQuantity}',
-                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                            // Stepper or Reward Tag
+                            if (isReward)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDCFCE7),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFF86EFAC)),
+                                ),
+                                child: Text(
+                                  'Qty: ${item.pickedQuantity}',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF166534)),
+                                ),
+                              )
+                            else
+                              Container(
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove, size: 14),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(minWidth: 28, minHeight: 30),
+                                      onPressed: () {
+                                        HapticFeedback.lightImpact();
+                                        if (invItem != null) {
+                                          _setSelectedQty(invItem, item.pickedQuantity - 1);
+                                        }
+                                      },
+                                    ),
+                                    InkWell(
+                                      onTap: invItem != null ? () => _promptQuantityDialog(invItem, allInventory: allInventory) : null,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                                        child: Text(
+                                          '${item.pickedQuantity}',
+                                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.add, size: 14),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 30),
-                                    onPressed: item.pickedQuantity < maxAllowed
-                                        ? () {
-                                            HapticFeedback.lightImpact();
-                                            if (invItem != null) {
-                                              _setSelectedQty(invItem, item.pickedQuantity + 1);
+                                    IconButton(
+                                      icon: const Icon(Icons.add, size: 14),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(minWidth: 28, minHeight: 30),
+                                      onPressed: item.pickedQuantity < maxAllowed
+                                          ? () {
+                                              HapticFeedback.lightImpact();
+                                              if (invItem != null) {
+                                                _setSelectedQty(invItem, item.pickedQuantity + 1);
+                                              }
                                             }
-                                          }
-                                        : null,
-                                  ),
-                                ],
+                                          : null,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
                             const SizedBox(width: 10),
                             SizedBox(
                               width: 65,
                               child: Text(
-                                _currencyFormat.format(itemTotal),
+                                isReward ? 'FREE' : _currencyFormat.format(itemTotal),
                                 textAlign: TextAlign.right,
-                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: isReward ? const Color(0xFF16A34A) : colorScheme.primary,
+                                ),
                               ),
                             ),
                           ],
@@ -2381,6 +2659,59 @@ class _BookOrderPageState extends State<BookOrderPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (hints.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.shade300),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline, size: 16, color: Colors.amber.shade900),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            hints.first,
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (appliedPromos.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: appliedPromos.map((p) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF86EFAC)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.check_circle, size: 12, color: Color(0xFF16A34A)),
+                              const SizedBox(width: 4),
+                              Text(
+                                p.promoTitle,
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF166534)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -2388,6 +2719,37 @@ class _BookOrderPageState extends State<BookOrderPage> {
                     Text('$totalUnits', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   ],
                 ),
+                if (discountAmount > 0) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Gross Total:', style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant)),
+                      Text(
+                        _currencyFormat.format(grossAmount),
+                        style: TextStyle(
+                          fontSize: 13,
+                          decoration: TextDecoration.lineThrough,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Promo Savings:',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                      ),
+                      Text(
+                        '-${_currencyFormat.format(discountAmount)}',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF16A34A)),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 6),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2722,7 +3084,11 @@ class _BookOrderPageState extends State<BookOrderPage> {
     return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
   }
 
-  Widget _buildUnifiedProductList({required List<InventoryItem> allInventory, required ColorScheme colorScheme}) {
+  Widget _buildUnifiedProductList({
+    required List<InventoryItem> allInventory,
+    required ColorScheme colorScheme,
+    required PromoEvaluationResult promoEval,
+  }) {
     if (allInventory.isEmpty) {
       return Center(
         child: Padding(
@@ -2843,6 +3209,16 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
     final entries = <_BookOrderListEntry>[];
 
+    // Show pinned promos at the top of the general catalog
+    if (_selectedCategoryFilter == 'all' && _searchQuery.isEmpty && _activePromos.isNotEmpty) {
+      entries.add(
+        _BookOrderPromoSectionEntry(
+          promos: _activePromos,
+          promoEval: promoEval,
+        ),
+      );
+    }
+
     if (_selectedCategoryFilter == 'unplaced') {
       final sortedUnplaced = filtered.toList()..sort(_compareProducts);
       if (sortedUnplaced.isNotEmpty) {
@@ -2957,7 +3333,18 @@ class _BookOrderPageState extends State<BookOrderPage> {
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
-        if (entry is _BookOrderHeaderEntry) {
+        if (entry is _BookOrderPromoSectionEntry) {
+          return PromoCardsSection(
+            promos: entry.promos,
+            usedCounts: _storePromoUsage,
+            appliedPromos: entry.promoEval.appliedPromos,
+            cartQuantities: {
+              for (final e in _selectedQuantities.entries) e.key.split(':').last: e.value,
+            },
+            currencyFormat: _currencyFormat,
+            onAddBundle: (promo) => _addPromoBundleToCart(promo, allInventory),
+          );
+        } else if (entry is _BookOrderHeaderEntry) {
           return _buildCategorySectionHeader(
             title: entry.title,
             count: entry.count,
@@ -3010,11 +3397,15 @@ class _BookOrderPageState extends State<BookOrderPage> {
     required int skuCount,
     required int totalUnits,
     required double totalAmount,
+    required double grossAmount,
+    required double discountAmount,
   }) {
     return StickyOrderSummaryBar(
       skuCount: skuCount,
       totalUnits: totalUnits,
       totalAmount: totalAmount,
+      grossAmount: grossAmount,
+      discountAmount: discountAmount,
       currencyFormat: _currencyFormat,
       isSaving: _isSaving || _isScanning,
       onTapCartSummary: () => _showCartSummarySheet(allInventory),
@@ -3024,6 +3415,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
 }
 
 sealed class _BookOrderListEntry {}
+
+class _BookOrderPromoSectionEntry extends _BookOrderListEntry {
+  final List<Promo> promos;
+  final PromoEvaluationResult promoEval;
+  _BookOrderPromoSectionEntry({required this.promos, required this.promoEval});
+}
 
 class _BookOrderHeaderEntry extends _BookOrderListEntry {
   final String title;

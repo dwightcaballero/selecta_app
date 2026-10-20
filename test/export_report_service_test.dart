@@ -40,9 +40,10 @@ void main() {
     });
 
     test('ExportReportType covers all required operational reports', () {
-      expect(ExportReportType.values.length, 5);
+      expect(ExportReportType.values.length, 6);
       expect(ExportReportType.sales.title, contains('Sales'));
       expect(ExportReportType.deliveries.title, contains('Delivery'));
+      expect(ExportReportType.outOfStockDemand.title, contains('Out of Stock'));
       expect(ExportReportType.creditAging.title, contains('Credit'));
       expect(ExportReportType.inventory.title, contains('Inventory'));
       expect(ExportReportType.storeVisits.title, contains('Visits'));

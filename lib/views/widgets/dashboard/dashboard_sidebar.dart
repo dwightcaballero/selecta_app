@@ -27,6 +27,8 @@ import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/profit_loss_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/admin_promos_page.dart';
+import 'package:selecta_ops/views/pages/reports/promo_claims_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Permanent left sidebar used on desktop/wide screens.
@@ -222,6 +224,7 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
                       ),
                     ),
                     _buildItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
+                    _buildItem(context, Icons.local_offer_outlined, 'Promotions & Bundles', const AdminPromosPage()),
                     _buildItem(
                       context,
                       Icons.inventory_2_outlined,
@@ -234,7 +237,10 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
 
                     _buildSection(context, 'KPI & Analytics'),
                     _buildItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: widget.dashboardDTO)),
-                    if (widget.isDealer) _buildItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
+                    if (widget.isDealer) ...[
+                      _buildItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
+                      _buildItem(context, Icons.request_quote_outlined, 'Supplier Promo Claims', const PromoClaimsPage()),
+                    ],
 
                     const _SidebarDivider(),
 

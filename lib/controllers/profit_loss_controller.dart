@@ -126,7 +126,16 @@ class ProfitLossController {
         returnDeductions += dReturnDed;
         grossCOGS += dGrossCOGS;
         returnCOGSDeductions += dReturnCOGS;
-        netRevenue += (dGrossRev - dReturnDed);
+
+        // Dealer-funded promo discounts are absorbed by dealer; supplier-funded discounts are reimbursed.
+        double dealerDiscountLoss = 0.0;
+        for (final promo in d.appliedPromos) {
+          if (promo.fundedBy.toLowerCase() != 'supplier') {
+            dealerDiscountLoss += promo.discountAmount;
+          }
+        }
+
+        netRevenue += (dGrossRev - dReturnDed - dealerDiscountLoss);
         netCOGS += (dGrossCOGS - dReturnCOGS);
       } else {
         final collected = d.cashAmount + d.onlineAmount + d.creditAmount;

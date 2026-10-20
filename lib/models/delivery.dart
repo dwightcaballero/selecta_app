@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/placement.dart';
+import 'package:selecta_ops/models/promo.dart';
 
 int? _parseInt(dynamic val) {
   if (val == null) return null;
@@ -62,6 +63,8 @@ class OrderItem {
   final int pickedQuantity;
   final int returnedQuantity;
   final bool isPicked;
+  final String? promoId; // ID of the promo if part of or rewarded by a promo
+  final bool isFreeReward; // True if this line item is a free reward item
 
   const OrderItem({
     required this.productId,
@@ -77,6 +80,8 @@ class OrderItem {
     int? pickedQuantity,
     this.returnedQuantity = 0,
     this.isPicked = false,
+    this.promoId,
+    this.isFreeReward = false,
   }) : pickedQuantity = pickedQuantity ?? orderedQuantity;
 
   /// Effective quantity used for order totals (pickedQuantity when > 0, or orderedQuantity).
@@ -111,6 +116,8 @@ class OrderItem {
     int? pickedQuantity,
     int? returnedQuantity,
     bool? isPicked,
+    String? promoId,
+    bool? isFreeReward,
   }) {
     return OrderItem(
       productId: productId ?? this.productId,
@@ -126,6 +133,8 @@ class OrderItem {
       pickedQuantity: pickedQuantity ?? this.pickedQuantity,
       returnedQuantity: returnedQuantity ?? this.returnedQuantity,
       isPicked: isPicked ?? this.isPicked,
+      promoId: promoId ?? this.promoId,
+      isFreeReward: isFreeReward ?? this.isFreeReward,
     );
   }
 
@@ -147,6 +156,8 @@ class OrderItem {
       pickedQuantity: pickedQty,
       returnedQuantity: returnedQty,
       isPicked: _parseBool(json['isPicked']),
+      promoId: json['promoId']?.toString(),
+      isFreeReward: _parseBool(json['isFreeReward'], false),
     );
   }
 
@@ -165,6 +176,8 @@ class OrderItem {
       'pickedQuantity': pickedQuantity,
       'returnedQuantity': returnedQuantity,
       'isPicked': isPicked,
+      'promoId': promoId,
+      'isFreeReward': isFreeReward,
     };
   }
 }
@@ -177,6 +190,9 @@ class Delivery {
 
   double orderAmount;
   double? originalOrderAmount;
+  double? grossAmount;
+  double discountAmount;
+  List<AppliedPromo> appliedPromos;
   double cashAmount;
   double onlineAmount;
   double creditAmount;
@@ -226,6 +242,9 @@ class Delivery {
     required this.imagePath,
     required this.orderAmount,
     this.originalOrderAmount,
+    this.grossAmount,
+    this.discountAmount = 0.0,
+    this.appliedPromos = const [],
     required this.returnAmount,
     required this.creditAmount,
     required this.cashAmount,
@@ -293,6 +312,9 @@ class Delivery {
     imagePath: '',
     orderAmount: 0,
     originalOrderAmount: null,
+    grossAmount: null,
+    discountAmount: 0.0,
+    appliedPromos: const [],
     returnAmount: 0,
     creditAmount: 0,
     cashAmount: 0,
@@ -353,6 +375,12 @@ class Delivery {
         imagePath: json['imagePath'] as String? ?? '',
         orderAmount: _parseDouble(json['orderAmount']),
         originalOrderAmount: _parseDoubleNullable(json['originalOrderAmount']),
+        grossAmount: _parseDoubleNullable(json['grossAmount']),
+        discountAmount: _parseDouble(json['discountAmount']),
+        appliedPromos: (json['appliedPromos'] as List<dynamic>?)
+                ?.map((e) => AppliedPromo.fromJson(Map<String, dynamic>.from(e as Map)))
+                .toList() ??
+            const [],
         returnAmount: _parseDouble(json['returnAmount']),
         creditAmount: _parseDouble(json['creditAmount']),
         cashAmount: _parseDouble(json['cashAmount']),
@@ -407,6 +435,9 @@ class Delivery {
     String? imagePath,
     double? orderAmount,
     double? originalOrderAmount,
+    double? grossAmount,
+    double? discountAmount,
+    List<AppliedPromo>? appliedPromos,
     double? deliveryAmount,
     double? returnAmount,
     double? creditAmount,
@@ -455,6 +486,9 @@ class Delivery {
       imagePath: imagePath ?? this.imagePath,
       orderAmount: orderAmount ?? this.orderAmount,
       originalOrderAmount: originalOrderAmount ?? this.originalOrderAmount,
+      grossAmount: grossAmount ?? this.grossAmount,
+      discountAmount: discountAmount ?? this.discountAmount,
+      appliedPromos: appliedPromos ?? this.appliedPromos,
       returnAmount: returnAmount ?? this.returnAmount,
       creditAmount: creditAmount ?? this.creditAmount,
       cashAmount: cashAmount ?? this.cashAmount,
@@ -503,6 +537,9 @@ class Delivery {
       'imagePath': imagePath,
       'orderAmount': orderAmount,
       'originalOrderAmount': originalOrderAmount,
+      'grossAmount': grossAmount,
+      'discountAmount': discountAmount,
+      'appliedPromos': appliedPromos.map((e) => e.toJson()).toList(),
       'returnAmount': returnAmount,
       'creditAmount': creditAmount,
       'cashAmount': cashAmount,
@@ -553,6 +590,9 @@ class DeliveryModelString {
   static String imagePath = 'imagePath';
   static String orderAmount = 'orderAmount';
   static String originalOrderAmount = 'originalOrderAmount';
+  static String grossAmount = 'grossAmount';
+  static String discountAmount = 'discountAmount';
+  static String appliedPromos = 'appliedPromos';
   static String returnAmount = 'returnAmount';
   static String creditAmount = 'creditAmount';
   static String cashAmount = 'cashAmount';

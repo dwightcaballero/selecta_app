@@ -7,6 +7,8 @@ class StickyOrderSummaryBar extends StatelessWidget {
   final int skuCount;
   final int totalUnits;
   final double totalAmount;
+  final double discountAmount;
+  final double? grossAmount;
   final NumberFormat currencyFormat;
   final bool isSaving;
   final VoidCallback? onTapCartSummary;
@@ -17,6 +19,8 @@ class StickyOrderSummaryBar extends StatelessWidget {
     required this.skuCount,
     required this.totalUnits,
     required this.totalAmount,
+    this.discountAmount = 0.0,
+    this.grossAmount,
     required this.currencyFormat,
     this.isSaving = false,
     this.onTapCartSummary,
@@ -73,13 +77,38 @@ class StickyOrderSummaryBar extends StatelessWidget {
                               ],
                             ],
                           ),
-                          Text(
-                            currencyFormat.format(totalAmount),
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                              color: colorScheme.primary,
-                            ),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(
+                                currencyFormat.format(totalAmount),
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                              if (discountAmount > 0) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade50,
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: Colors.green.shade300),
+                                  ),
+                                  child: Text(
+                                    'Save ${currencyFormat.format(discountAmount)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green.shade800,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),

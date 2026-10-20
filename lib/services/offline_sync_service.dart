@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/promo.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
@@ -134,6 +135,9 @@ class OfflineSyncService {
     required DateTime selectedDate,
     required List<OrderItem> items,
     String remarks = '',
+    double? grossAmount,
+    double discountAmount = 0.0,
+    List<AppliedPromo> appliedPromos = const [],
   }) async {
     final itemId = 'order_create_${DateTime.now().millisecondsSinceEpoch}';
     final newItem = OfflineSyncItem(
@@ -144,6 +148,9 @@ class OfflineSyncService {
         'selectedDate': selectedDate.toIso8601String(),
         'remarks': remarks,
         'items': items.map((i) => i.toJson()).toList(),
+        'grossAmount': grossAmount,
+        'discountAmount': discountAmount,
+        'appliedPromos': appliedPromos.map((p) => p.toJson()).toList(),
       },
       createdAt: DateTime.now(),
     );
@@ -162,6 +169,9 @@ class OfflineSyncService {
     required DateTime selectedDate,
     required List<OrderItem> items,
     String remarks = '',
+    double? grossAmount,
+    double? discountAmount,
+    List<AppliedPromo>? appliedPromos,
   }) async {
     final itemId = 'order_update_${DateTime.now().millisecondsSinceEpoch}';
     final newItem = OfflineSyncItem(
@@ -173,6 +183,9 @@ class OfflineSyncService {
         'selectedDate': selectedDate.toIso8601String(),
         'remarks': remarks,
         'items': items.map((i) => i.toJson()).toList(),
+        'grossAmount': grossAmount,
+        'discountAmount': discountAmount,
+        'appliedPromos': appliedPromos?.map((p) => p.toJson()).toList(),
       },
       createdAt: DateTime.now(),
     );
@@ -212,9 +225,35 @@ class OfflineSyncService {
           if (item.action == 'create_booked_order') {
             final storeName = item.payload['storeName'] as String;
             final selectedDate = DateTime.parse(item.payload['selectedDate'] as String);
-            final remarks = item.payload['remarks'] as String? ?? '';
+            String remarks = item.payload['remarks'] as String? ?? '';
             final rawItems = item.payload['items'] as List<dynamic>? ?? [];
             final items = rawItems.map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+            final grossAmount = (item.payload['grossAmount'] as num?)?.toDouble();
+            double discountAmount = (item.payload['discountAmount'] as num?)?.toDouble() ?? 0.0;
+            final rawPromos = item.payload['appliedPromos'] as List<dynamic>? ?? [];
+            List<AppliedPromo> appliedPromos = rawPromos
+                .map((p) => AppliedPromo.fromJson(Map<String, dynamic>.from(p as Map)))
+                .toList();
+
+            // Check if store already availed any of these promos while offline
+            if (appliedPromos.isNotEmpty) {
+              final usage = await deliveryController.promoService.getStorePromoUsage(storeName);
+              bool hasConflict = false;
+              for (final promo in appliedPromos) {
+                // If limit was once per store and store already availed it online
+                if ((usage[promo.promoId] ?? 0) > 0) {
+                  hasConflict = true;
+                  break;
+                }
+              }
+              if (hasConflict) {
+                remarks = remarks.isEmpty
+                    ? 'PROMO CONFLICT: Store limit reached prior to offline sync'
+                    : '$remarks (PROMO CONFLICT: Limit reached prior to sync)';
+                discountAmount = 0.0;
+                appliedPromos = const [];
+              }
+            }
 
             // Deduplication check: verify if a matching pending picklist order already exists in Firestore
             final existingPendingDeliveries = await FirebaseFirestore.instance
@@ -255,6 +294,9 @@ class OfflineSyncService {
                 selectedDate: selectedDate,
                 items: items,
                 remarks: remarks,
+                grossAmount: grossAmount,
+                discountAmount: discountAmount,
+                appliedPromos: appliedPromos,
               );
             }
             succeeded++;
@@ -265,6 +307,12 @@ class OfflineSyncService {
             final remarks = item.payload['remarks'] as String? ?? '';
             final rawItems = item.payload['items'] as List<dynamic>? ?? [];
             final items = rawItems.map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+            final grossAmount = (item.payload['grossAmount'] as num?)?.toDouble();
+            final discountAmount = (item.payload['discountAmount'] as num?)?.toDouble();
+            final rawPromos = item.payload['appliedPromos'] as List<dynamic>?;
+            final appliedPromos = rawPromos
+                ?.map((p) => AppliedPromo.fromJson(Map<String, dynamic>.from(p as Map)))
+                .toList();
 
             final deliveryService = DeliveryService();
             final existing = await deliveryService.getDeliveryById(deliveryId);
@@ -276,6 +324,9 @@ class OfflineSyncService {
                 selectedDate: selectedDate,
                 items: items,
                 remarks: remarks,
+                grossAmount: grossAmount,
+                discountAmount: discountAmount,
+                appliedPromos: appliedPromos,
               );
             }
             succeeded++;
