@@ -9,6 +9,7 @@ import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorder_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 
 class BadOrderBatchDetailPage extends StatefulWidget {
@@ -227,23 +228,31 @@ class _BadOrderBatchDetailPageState extends State<BadOrderBatchDetailPage> {
     final cmNo = cmController.text.trim();
     final reason = reasonController.text.trim();
 
-    setState(() => _isLoading = true);
     try {
-      await _controller.settleWarehouseBatch(
-        batchId: widget.batchId,
-        existingBatch: _batch,
-        supplierRefundAmount: parsedAmount,
-        supplierCreditMemoNo: cmNo,
-        supplierRefundDate: refundDate,
-        adjustmentReason: reason,
+      final success = await ShowMessage.runWithLoading<bool>(
+        context,
+        message: 'Settling Warehouse Batch...',
+        task: () async {
+          await _controller.settleWarehouseBatch(
+            batchId: widget.batchId,
+            existingBatch: _batch,
+            supplierRefundAmount: parsedAmount,
+            supplierCreditMemoNo: cmNo,
+            supplierRefundDate: refundDate,
+            adjustmentReason: reason,
+          );
+          return true;
+        },
       );
 
-      final snap = await FirebaseFirestore.instance.collection('badorder_batch').doc(widget.batchId).get();
-      if (snap.exists && mounted) {
-        setState(() {
-          _batch = BadOrderBatch.fromJson(snap.data()!, snap.id);
-        });
-        ShowMessage.success(context, 'Batch [${_batch.batchNumber}] has been settled successfully!');
+      if (success == true) {
+        final snap = await FirebaseFirestore.instance.collection('badorder_batch').doc(widget.batchId).get();
+        if (snap.exists && mounted) {
+          setState(() {
+            _batch = BadOrderBatch.fromJson(snap.data()!, snap.id);
+          });
+          ShowMessage.success(context, 'Batch [${_batch.batchNumber}] has been settled successfully!');
+        }
       }
     } catch (e, s) {
       ErrorLogService.logError(
@@ -254,8 +263,6 @@ class _BadOrderBatchDetailPageState extends State<BadOrderBatchDetailPage> {
         extraData: {'batchId': widget.batchId},
       );
       if (mounted) ShowMessage.error(context, 'Failed to settle batch: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -590,8 +597,8 @@ class _BadOrderBatchDetailPageState extends State<BadOrderBatchDetailPage> {
                 const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _isLoading ? null : _openSettleModal,
+                  child: AsyncFilledButton.icon(
+                    onPressed: _openSettleModal,
                     style: FilledButton.styleFrom(
                       backgroundColor: Colors.green.shade700,
                       padding: const EdgeInsets.symmetric(vertical: 12),

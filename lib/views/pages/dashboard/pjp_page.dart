@@ -21,6 +21,7 @@ import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/views/pages/dashboard/delivery_page.dart';
@@ -1085,7 +1086,11 @@ class _PjpPageState extends State<PjpPage> {
 
     setState(() => _isCompleting = true);
     try {
-      await _controller.completeVisit(hapiStoreID: widget.hapiStoreID, store: _currentHapistore, selectedDay: widget.selectedDay);
+      await ShowMessage.runWithLoading(
+        context,
+        message: 'Completing store visit...',
+        task: () => _controller.completeVisit(hapiStoreID: widget.hapiStoreID, store: _currentHapistore, selectedDay: widget.selectedDay),
+      );
 
       if (!mounted) return;
       ShowMessage.success(context, 'Successfully completed PJP visit for ${_currentHapistore.storeName}!');
@@ -2207,7 +2212,7 @@ class _PjpPageState extends State<PjpPage> {
         appBar: CustomAppbar(
           title: _currentHapistore.storeName,
           subtitle: 'PJP • ${widget.selectedDay}',
-          actions: [IconButton(icon: const Icon(Icons.refresh_rounded), color: Colors.white, tooltip: 'Refresh checks', onPressed: _runAllChecks)],
+          actions: [AsyncIconButton(icon: const Icon(Icons.refresh_rounded), color: Colors.white, tooltip: 'Refresh checks', onPressed: _runAllChecks)],
         ),
         body: isTabletLandscape ? _buildTabletLandscapeLayout(colorScheme) : _buildPortraitLayout(colorScheme),
         bottomNavigationBar: isTabletLandscape ? null : _buildCompleteVisitButton(colorScheme, isEmbedded: false),

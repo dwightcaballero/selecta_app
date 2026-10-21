@@ -8,6 +8,7 @@ import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/credit/credit_sms_dialog.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
@@ -645,44 +646,38 @@ class _CreditPageState extends State<CreditPage> {
           border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
         ),
-        child: FilledButton.icon(
-          onPressed: _isUpdating
-              ? null
-              : () async {
-                  if (isUnchanged) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Credit status is already set to this value'),
-                        duration: Duration(seconds: 2),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                    return;
-                  }
+        child: AsyncFilledButton.icon(
+          onPressed: () async {
+            if (isUnchanged) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Credit status is already set to this value'),
+                  duration: Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+              return;
+            }
 
-                  final confirmed = await ShowMessage.confirm(
-                    context,
-                    title: ConfirmTitle.update,
-                    message: 'Update the credit status of [${widget.delivery.storeName}] to "$_selectedStatus"?',
-                    icon: Icons.check_circle_outline,
-                    confirmText: 'Update',
-                  );
+            final confirmed = await ShowMessage.confirm(
+              context,
+              title: ConfirmTitle.update,
+              message: 'Update the credit status of [${widget.delivery.storeName}] to "$_selectedStatus"?',
+              icon: Icons.check_circle_outline,
+              confirmText: 'Update',
+            );
 
-                  if (confirmed) {
-                    _onUpdate();
-                  }
-                },
+            if (confirmed) {
+              await _onUpdate();
+            }
+          },
           style: FilledButton.styleFrom(
             minimumSize: const Size(double.infinity, 50.0),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
-          icon: _isUpdating
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.check_circle_outline, size: 20),
+          icon: const Icon(Icons.check_circle_outline, size: 20),
           label: Text(
-            _isUpdating
-                ? 'Updating...'
-                : isUnchanged
+            isUnchanged
                 ? 'Current: $_selectedStatus'
                 : 'Update Credit Record',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),

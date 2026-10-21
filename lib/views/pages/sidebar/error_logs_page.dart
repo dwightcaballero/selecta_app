@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:intl/intl.dart';
 
 /// Developer-facing Error Logs Viewer allowing inspection, search,
@@ -43,11 +44,15 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
   Future<void> _handleUploadPendingLogs() async {
     setState(() => _isUploadingPending = true);
     try {
-      final count = await ErrorLogService.uploadPendingLogs();
+      final count = await ShowMessage.runWithLoading<int>(
+        context,
+        message: 'Uploading offline error logs...',
+        task: () => ErrorLogService.uploadPendingLogs(),
+      );
       await _refreshPendingLocalCount();
       if (!mounted) return;
 
-      if (count > 0) {
+      if (count != null && count > 0) {
         ShowMessage.success(context, 'Successfully uploaded $count pending log${count == 1 ? "" : "s"} to Firestore');
       } else {
         ShowMessage.alert(context, title: 'Error Logs', message: 'All local error logs are already synchronized.');
@@ -87,9 +92,14 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
     );
 
     if (!confirmed) return;
+    if (!mounted) return;
 
     try {
-      final count = await ErrorLogService.clearAllFirestoreLogs();
+      final count = await ShowMessage.runWithLoading<int>(
+        context,
+        message: 'Clearing cloud error logs...',
+        task: () => ErrorLogService.clearAllFirestoreLogs(),
+      );
       if (mounted) {
         ShowMessage.success(context, 'Cleared $count error log records from Firestore.');
       }
@@ -111,9 +121,16 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
     );
 
     if (!confirmed) return;
+    if (!mounted) return;
 
-    await ErrorLogService.clearLocalLogs();
-    await _refreshPendingLocalCount();
+    await ShowMessage.runWithLoading(
+      context,
+      message: 'Clearing local queue...',
+      task: () async {
+        await ErrorLogService.clearLocalLogs();
+        await _refreshPendingLocalCount();
+      },
+    );
     if (mounted) {
       ShowMessage.success(context, 'Local error log queue cleared.');
     }
@@ -130,9 +147,14 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
     );
 
     if (!confirmed) return;
+    if (!mounted) return;
 
     try {
-      await ErrorLogService.deleteFirestoreLog(item.id);
+      await ShowMessage.runWithLoading(
+        context,
+        message: 'Deleting error log...',
+        task: () => ErrorLogService.deleteFirestoreLog(item.id),
+      );
       if (mounted) {
         ShowMessage.success(context, 'Error log removed.');
       }
@@ -678,7 +700,7 @@ class _ErrorLogsPageState extends State<ErrorLogsPage> {
                       style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
                     ),
                     const SizedBox(width: 8),
-                    FilledButton.icon(
+                    AsyncFilledButton.icon(
                       onPressed: () => _handleDeleteSingleLog(log),
                       icon: const Icon(Icons.delete_outline_rounded, size: 16),
                       label: const Text('Delete', style: TextStyle(fontSize: 12)),

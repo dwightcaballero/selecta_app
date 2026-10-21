@@ -376,15 +376,17 @@ class _ProductDisambiguationSheetState extends State<ProductDisambiguationSheet>
   }
 
   Widget _buildProductSelectionCard(InventoryItem product, bool isSelected, ColorScheme colorScheme) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: isSelected ? colorScheme.primaryContainer.withValues(alpha: 0.3) : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: isSelected ? colorScheme.primary : colorScheme.outlineVariant, width: isSelected ? 2 : 1),
-      ),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: isSelected ? colorScheme.primary : colorScheme.outlineVariant, width: isSelected ? 2 : 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: ListTile(
         onTap: () => setState(() => _selectedItem = product),
         leading: CachedProductImage(imageUrl: product.imageUrl, size: 46),
         title: Text(product.productName, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, fontSize: 14)),
@@ -412,6 +414,7 @@ class _ProductDisambiguationSheetState extends State<ProductDisambiguationSheet>
           onChanged: (_) => setState(() => _selectedItem = product),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

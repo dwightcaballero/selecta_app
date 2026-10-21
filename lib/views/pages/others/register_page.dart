@@ -5,6 +5,7 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/views/pages/others/login_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -603,32 +604,24 @@ class _RegisterPageState extends State<RegisterPage> {
                       SizedBox(
                         width: double.infinity,
                         height: 52,
-                        child: FilledButton(
-                          onPressed: _isLoading ? null : _showRegisterConfirmation,
+                        child: AsyncFilledButton(
+                          onPressed: _showRegisterConfirmation,
+                          loadingLabel: 'Creating Account...',
                           style: FilledButton.styleFrom(
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             elevation: 0,
                           ),
-                          child: _isLoading
-                              ? SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    color: colorScheme.onPrimary,
-                                  ),
-                                )
-                              : const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.person_add_rounded, size: 20),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Create Account',
-                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.person_add_rounded, size: 20),
+                              SizedBox(width: 8),
+                              Text(
+                                'Create Account',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(height: 18),

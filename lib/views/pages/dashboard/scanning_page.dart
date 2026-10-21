@@ -8,6 +8,7 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/scanning.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
@@ -222,6 +223,7 @@ class _ScanningPageState extends State<ScanningPage> {
   }
 
   Future<void> _onSave() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) {
       ShowMessage.error(context, 'Please fill up the required fields');
       return;
@@ -314,7 +316,11 @@ class _ScanningPageState extends State<ScanningPage> {
     if (!confirmed || !mounted) return;
 
     try {
-      await _controller.deleteScanningRecord(_scanning);
+      await ShowMessage.runWithLoading(
+        context,
+        message: 'Deleting scanning record...',
+        task: () => _controller.deleteScanningRecord(_scanning),
+      );
       if (!mounted) return;
       ShowMessage.success(context, 'Scanning record deleted.');
       Navigator.pop(context);
@@ -1114,7 +1120,7 @@ class _ScanningPageState extends State<ScanningPage> {
           title: _scanning.id.isEmpty ? 'New Scanning Record' : 'Edit Scanning Record',
           actions: [
             if (_scanning.id.isNotEmpty && _isDealer)
-              IconButton(
+              AsyncIconButton(
                 icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
                 tooltip: 'Delete scanning record',
                 onPressed: _onDelete,
@@ -1136,21 +1142,13 @@ class _ScanningPageState extends State<ScanningPage> {
               const SizedBox(height: 12),
               _buildStatusCard(),
               const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: (_isSaving || !_hasCheckedDatabase) ? null : _onSave,
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
+              AsyncFilledButton.icon(
+                onPressed: !_hasCheckedDatabase ? null : _onSave,
+                icon: const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
                 label: Text(
-                  _isSaving
-                      ? 'Saving Record...'
-                      : (_selectedStatus == ScanningStatus.scanned
-                          ? 'Confirm & Mark Scanned'
-                          : (_selectedStatus == ScanningStatus.pending ? 'Save as Pending' : 'Save Record')),
+                  _selectedStatus == ScanningStatus.scanned
+                      ? 'Confirm & Mark Scanned'
+                      : (_selectedStatus == ScanningStatus.pending ? 'Save as Pending' : 'Save Record'),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 style: FilledButton.styleFrom(

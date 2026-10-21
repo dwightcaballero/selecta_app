@@ -6,6 +6,7 @@ import 'package:selecta_ops/models/payslip.dart';
 import 'package:selecta_ops/services/payslip_pdf_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 class PayslipDetailPage extends StatefulWidget {
   final Payslip payslip;
@@ -206,10 +207,10 @@ class _PayslipDetailPageState extends State<PayslipDetailPage> {
           title: 'Digital Payslip',
         actions: [
           if (widget.isDealer)
-            IconButton(
+            AsyncIconButton(
               tooltip: 'Delete Payslip',
               icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
-              onPressed: _isProcessing ? null : _handleDelete,
+              onPressed: _handleDelete,
             ),
         ],
       ),
@@ -567,7 +568,7 @@ class _PayslipDetailPageState extends State<PayslipDetailPage> {
                   // 4. Export PDF Action
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton.icon(
+                    child: AsyncOutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
@@ -579,7 +580,7 @@ class _PayslipDetailPageState extends State<PayslipDetailPage> {
                         'Export PDF',
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      onPressed: _isProcessing ? null : _handleExportPdf,
+                      onPressed: _handleExportPdf,
                     ),
                   ),
 
@@ -587,7 +588,7 @@ class _PayslipDetailPageState extends State<PayslipDetailPage> {
                   if (!widget.isDealer &&
                       _currentPayslip.status == PayslipStatus.issued) ...[
                     const SizedBox(height: 16),
-                    FilledButton.icon(
+                    AsyncFilledButton.icon(
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.teal,
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -605,7 +606,7 @@ class _PayslipDetailPageState extends State<PayslipDetailPage> {
                   if (widget.isDealer) ...[
                     const SizedBox(height: 16),
                     if (_currentPayslip.status == PayslipStatus.draft)
-                      FilledButton.icon(
+                      AsyncFilledButton.icon(
                         style: FilledButton.styleFrom(
                           backgroundColor: Colors.blue,
                           padding: const EdgeInsets.symmetric(vertical: 14),
@@ -619,7 +620,7 @@ class _PayslipDetailPageState extends State<PayslipDetailPage> {
                         onPressed: _handleIssue,
                       )
                     else if (_currentPayslip.status != PayslipStatus.paid)
-                      FilledButton.icon(
+                      AsyncFilledButton.icon(
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF10B981),
                           padding: const EdgeInsets.symmetric(vertical: 14),

@@ -9,6 +9,7 @@ import 'package:selecta_ops/models/payslip.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 class PayslipGeneratorPage extends StatefulWidget {
   final String dealerName;
@@ -814,18 +815,19 @@ class _PayslipGeneratorPageState extends State<PayslipGeneratorPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton(
+                          child: AsyncOutlinedButton(
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            onPressed: _isSaving ? null : () => _submitPayslip(PayslipStatus.draft),
+                            loadingLabel: 'Saving Draft...',
+                            onPressed: () => _submitPayslip(PayslipStatus.draft),
                             child: const Text('Save as Draft'),
                           ),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
-                          child: FilledButton.icon(
+                          child: AsyncFilledButton.icon(
                             style: FilledButton.styleFrom(
                               backgroundColor: Colors.teal,
                               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -833,7 +835,8 @@ class _PayslipGeneratorPageState extends State<PayslipGeneratorPage> {
                             ),
                             icon: const Icon(Icons.send_rounded),
                             label: const Text('Issue Payslip', style: TextStyle(fontWeight: FontWeight.bold)),
-                            onPressed: _isSaving ? null : () => _submitPayslip(PayslipStatus.issued),
+                            loadingLabel: 'Issuing...',
+                            onPressed: () => _submitPayslip(PayslipStatus.issued),
                           ),
                         ),
                       ],

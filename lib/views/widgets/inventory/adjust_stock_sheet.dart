@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/inventory_controller.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/inventory/inventory_movements_sheet.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/product_supplier_calendar_dialog.dart';
@@ -58,7 +59,6 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
   late final TextEditingController _maxStockController;
   late final TextEditingController _notesController;
   String _selectedReason = 'Restock / PO';
-  bool _isSaving = false;
 
   static const _reasonsByMode = <String, List<String>>{
     'add': ['Restock / PO', 'Return from Store', 'Physical Audit', 'Manual Adjustment'],
@@ -425,54 +425,38 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _isSaving
-                    ? null
-                    : () async {
-                        setState(() => _isSaving = true);
-                        try {
-                          final newThreshold = int.tryParse(
-                                _thresholdController.text.trim(),
-                              ) ??
-                              item.lowStockThreshold;
-                          final newMaxStock = item.source == InventoryProductSource.selecta
-                              ? (int.tryParse(_maxStockController.text.trim()) ?? item.maxStock)
-                              : 0;
-                          await widget.controller.updateStock(
-                            item: item,
-                            newStockQuantity: previewStock,
-                            newLowStockThreshold: newThreshold,
-                            newMaxStock: newMaxStock,
-                            reason: _selectedReason,
-                            notes: _notesController.text,
-                          );
-                          if (context.mounted) Navigator.pop(context);
-                          if (context.mounted) {
-                            ShowMessage.success(
-                              context,
-                              'Updated "${item.productName}" stock to $previewStock.',
-                            );
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ShowMessage.error(context, 'Failed to update stock: $e');
-                          }
-                        } finally {
-                          if (mounted) {
-                            setState(() => _isSaving = false);
-                          }
-                        }
-                      },
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.check_rounded),
+              child: AsyncFilledButton.icon(
+                onPressed: () async {
+                  try {
+                    final newThreshold = int.tryParse(
+                          _thresholdController.text.trim(),
+                        ) ??
+                        item.lowStockThreshold;
+                    final newMaxStock = item.source == InventoryProductSource.selecta
+                        ? (int.tryParse(_maxStockController.text.trim()) ?? item.maxStock)
+                        : 0;
+                    await widget.controller.updateStock(
+                      item: item,
+                      newStockQuantity: previewStock,
+                      newLowStockThreshold: newThreshold,
+                      newMaxStock: newMaxStock,
+                      reason: _selectedReason,
+                      notes: _notesController.text,
+                    );
+                    if (context.mounted) Navigator.pop(context);
+                    if (context.mounted) {
+                      ShowMessage.success(
+                        context,
+                        'Updated "${item.productName}" stock to $previewStock.',
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ShowMessage.error(context, 'Failed to update stock: $e');
+                    }
+                  }
+                },
+                icon: const Icon(Icons.check_rounded),
                 label: const Text('Save Stock Adjustment'),
               ),
             ),

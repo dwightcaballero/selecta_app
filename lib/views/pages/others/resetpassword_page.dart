@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/account_settings_controller.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Presentation page for submitting a password reset request via email.
 class ResetpasswordPage extends StatefulWidget {
@@ -46,7 +47,7 @@ class _ResetpasswordPageState extends State<ResetpasswordPage> {
                 Text('* $errormessage', style: const TextStyle(color: Colors.red)),
               ],
               const Spacer(),
-              FilledButton(
+              AsyncFilledButton(
                 onPressed: resetPassword,
                 style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 40.0)),
                 child: const Text("Reset Password"),
@@ -59,7 +60,7 @@ class _ResetpasswordPageState extends State<ResetpasswordPage> {
   }
 
   /// Initiates password reset request via controller
-  void resetPassword() async {
+  Future<void> resetPassword() async {
     final email = textEditingControllerEmail.text.trim();
     if (email.isEmpty) {
       setState(() {

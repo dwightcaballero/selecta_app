@@ -13,6 +13,7 @@ import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorder_batch_detail_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 
 class BadOrderPage extends StatefulWidget {
@@ -225,10 +226,17 @@ class _BadOrderPageState extends State<BadOrderPage> {
     );
     if (confirmed != true || !mounted) return;
 
-    setState(() => _isLoading = true);
     try {
-      await _controller.deleteBadOrder(recID: widget.recID, existingRecord: _badOrder);
-      if (mounted) {
+      final success = await ShowMessage.runWithLoading<bool>(
+        context,
+        message: 'Deleting Bad Order...',
+        task: () async {
+          await _controller.deleteBadOrder(recID: widget.recID, existingRecord: _badOrder);
+          return true;
+        },
+      );
+
+      if (success == true && mounted) {
         ShowMessage.success(context, 'Successfully deleted bad order record for [${_badOrder.hapistore}]!');
         Navigator.pop(context);
       }
@@ -243,8 +251,6 @@ class _BadOrderPageState extends State<BadOrderPage> {
       if (mounted) {
         ShowMessage.error(context, 'Failed to delete record: $e');
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -567,13 +573,12 @@ class _BadOrderPageState extends State<BadOrderPage> {
           if (_isDealer)
             Material(
               color: isRefunded ? Colors.green.shade50 : Colors.amber.shade50,
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: isRefunded ? Colors.green.shade200 : Colors.amber.shade200),
-                ),
-                child: SwitchListTile(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(color: isRefunded ? Colors.green.shade200 : Colors.amber.shade200),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SwitchListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                   title: Text(
                     'Mark Store as Refunded',
@@ -587,8 +592,7 @@ class _BadOrderPageState extends State<BadOrderPage> {
                   activeThumbColor: Colors.green.shade700,
                   onChanged: _isLoading ? null : (val) => _onToggleStoreRefunded(val),
                 ),
-              ),
-            )
+              )
           else
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -808,8 +812,8 @@ class _BadOrderPageState extends State<BadOrderPage> {
         child: Row(
           children: [
             if (_isDealer && _canEditOrDelete) ...[
-              OutlinedButton.icon(
-                onPressed: _isLoading ? null : _onEdit,
+              AsyncOutlinedButton.icon(
+                onPressed: _onEdit,
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(60, 50.0),
                   foregroundColor: colorScheme.primary,
@@ -854,8 +858,8 @@ class _BadOrderPageState extends State<BadOrderPage> {
                             ),
                           )
                         : (_badOrder.batchId != null && _badOrder.batchId!.isNotEmpty
-                            ? FilledButton.icon(
-                                onPressed: _isLoading ? null : _viewBatch,
+                            ? AsyncFilledButton.icon(
+                                onPressed: _viewBatch,
                                 style: FilledButton.styleFrom(
                                   minimumSize: const Size(double.infinity, 50.0),
                                   padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -937,12 +941,12 @@ class _BadOrderPageState extends State<BadOrderPage> {
           subtitle: _badOrder.hapistore,
           actions: [
             if (_isDealer && _canEditOrDelete)
-              IconButton(
+              AsyncIconButton(
                 tooltip: _isAdmin && _badOrder.status != BadOrderStatus.storePullout
                     ? 'Delete Bad Order (Admin)'
                     : 'Delete Bad Order',
                 icon: const Icon(Icons.delete_outline, color: Colors.white),
-                onPressed: _isLoading ? null : _onDelete,
+                onPressed: _onDelete,
               ),
           ],
         ),

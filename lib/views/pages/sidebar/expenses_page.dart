@@ -8,6 +8,7 @@ import 'package:selecta_ops/models/expenses.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 
 class ExpensesPage extends StatefulWidget {
@@ -738,7 +739,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   if (_isDealer) ...[
                     Expanded(
                       flex: 2,
-                      child: OutlinedButton.icon(
+                      child: AsyncOutlinedButton.icon(
                         onPressed: () async {
                           final confirmed = await ShowMessage.confirm(
                             context,
@@ -748,8 +749,9 @@ class _ExpensesPageState extends State<ExpensesPage> {
                             icon: Icons.delete_outline,
                             confirmText: 'Delete',
                           );
-                          if (confirmed) onDelete();
+                          if (confirmed) await onDelete();
                         },
+                        loadingLabel: 'Deleting...',
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size(0, 50.0),
                           padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -773,7 +775,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   ],
                   Expanded(
                     flex: _isDealer ? 3 : 1,
-                    child: FilledButton.icon(
+                    child: AsyncFilledButton.icon(
                       onPressed: () async {
                         final confirmed = await ShowMessage.confirm(
                           context,
@@ -782,8 +784,9 @@ class _ExpensesPageState extends State<ExpensesPage> {
                           icon: Icons.check_circle_outline,
                           confirmText: 'Update',
                         );
-                        if (confirmed) onUpdate();
+                        if (confirmed) await onUpdate();
                       },
+                      loadingLabel: 'Updating...',
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -803,7 +806,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   ),
                 ],
               )
-            : FilledButton.icon(
+            : AsyncFilledButton.icon(
                 onPressed: () async {
                   final confirmed = await ShowMessage.confirm(
                     context,
@@ -812,8 +815,9 @@ class _ExpensesPageState extends State<ExpensesPage> {
                     icon: Icons.save_outlined,
                     confirmText: 'Save',
                   );
-                  if (confirmed) onSave();
+                  if (confirmed) await onSave();
                 },
+                loadingLabel: 'Saving...',
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50.0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

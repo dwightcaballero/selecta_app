@@ -6,6 +6,7 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/other_product.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:image_picker/image_picker.dart';
@@ -271,22 +272,24 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
       confirmText: 'Delete',
     );
     if (!confirmed || !mounted) return;
-    try {
-      final savedUrl = widget.existingProduct?.imageUrl ?? '';
-      if (savedUrl.isNotEmpty) {
-        await Helperfunctions.deleteImage(context, savedUrl);
-      }
-      if (_image != null) {
-        await _cleanupLocalFile(_image);
-      }
-      await _controller.deleteProduct(widget.productId!);
-      if (mounted) {
-        ShowMessage.success(context, 'Product deleted successfully.');
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) ShowMessage.error(context, 'Failed to delete: $e');
-    }
+    await ShowMessage.runWithLoading(
+      context,
+      message: 'Deleting product...',
+      task: () async {
+        final savedUrl = widget.existingProduct?.imageUrl ?? '';
+        if (savedUrl.isNotEmpty) {
+          await Helperfunctions.deleteImage(context, savedUrl);
+        }
+        if (_image != null) {
+          await _cleanupLocalFile(_image);
+        }
+        await _controller.deleteProduct(widget.productId!);
+        if (mounted) {
+          ShowMessage.success(context, 'Product deleted successfully.');
+          Navigator.pop(context);
+        }
+      },
+    );
   }
 
   @override
@@ -474,17 +477,16 @@ class _OtherProductFormPageState extends State<OtherProductFormPage> {
               const SizedBox(height: 28),
 
               // ── Save Button ────────────────────────────────────────────
-              FilledButton.icon(
-                onPressed: _isSaving ? null : _save,
+              AsyncFilledButton.icon(
+                onPressed: _save,
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 52),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                icon: _isSaving
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Icon(_isEditing ? Icons.save_rounded : Icons.add_rounded, size: 20),
+                loadingLabel: 'Saving...',
+                icon: Icon(_isEditing ? Icons.save_rounded : Icons.add_rounded, size: 20),
                 label: Text(
-                  _isSaving ? 'Saving...' : (_isEditing ? 'Save Changes' : 'Add Product'),
+                  _isEditing ? 'Save Changes' : 'Add Product',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
               ),

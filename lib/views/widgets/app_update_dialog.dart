@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/models/app_version_info.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Modal dialog displaying release notes and update actions.
 class AppUpdateDialog extends StatelessWidget {
@@ -259,7 +260,7 @@ class AppUpdateDialog extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Later'),
                   ),
-                FilledButton.icon(
+                AsyncFilledButton.icon(
                   onPressed: () {
                     Navigator.of(context).pop();
                     AppUpdateService.installApk(localPath, context);
@@ -278,7 +279,7 @@ class AppUpdateDialog extends StatelessWidget {
                   },
                   child: const Text('Cancel Download'),
                 ),
-                FilledButton(
+                AsyncFilledButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Continue Working'),
                 ),
@@ -289,7 +290,7 @@ class AppUpdateDialog extends StatelessWidget {
                     child: const Text('Later'),
                   ),
                 if (!isMandatory)
-                  OutlinedButton.icon(
+                  AsyncOutlinedButton.icon(
                     onPressed: () {
                       Navigator.of(context).pop();
                       AppUpdateService.startBackgroundDownload(
@@ -310,7 +311,7 @@ class AppUpdateDialog extends StatelessWidget {
                     icon: const Icon(Icons.cloud_download_outlined, size: 16),
                     label: const Text('Download in Background'),
                   ),
-                FilledButton.icon(
+                AsyncFilledButton.icon(
                   onPressed: () {
                     Navigator.of(context).pop();
                     _startDownloadAndInstall(context);
@@ -454,7 +455,7 @@ class _AppUpdateDownloadDialogState extends State<AppUpdateDownloadDialog> {
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Close'),
                 ),
-                FilledButton(
+                AsyncFilledButton(
                   onPressed: () {
                     AppUpdateService.startBackgroundDownload(
                       widget.versionInfo,
@@ -472,7 +473,7 @@ class _AppUpdateDownloadDialogState extends State<AppUpdateDownloadDialog> {
                   },
                   child: const Text('Cancel'),
                 ),
-                OutlinedButton.icon(
+                AsyncOutlinedButton.icon(
                   onPressed: () {
                     Navigator.of(context).pop();
                     ScaffoldMessenger.of(context).showSnackBar(

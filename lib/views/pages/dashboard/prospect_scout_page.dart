@@ -420,12 +420,18 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
             onPressed: () async {
               Navigator.pop(dialogCtx);
               try {
-                await _controller.convertToHapiStore(
-                  prospect: prospect,
-                  storeAddress: addressController.text.trim(),
-                  pjpSchedule: pjpController.text.trim().isNotEmpty ? pjpController.text.trim() : null,
+                await ShowMessage.runWithLoading(
+                  context,
+                  message: 'Converting prospect to Hapi Store...',
+                  task: () async {
+                    await _controller.convertToHapiStore(
+                      prospect: prospect,
+                      storeAddress: addressController.text.trim(),
+                      pjpSchedule: pjpController.text.trim().isNotEmpty ? pjpController.text.trim() : null,
+                    );
+                    await _loadHapiStores();
+                  },
                 );
-                await _loadHapiStores();
                 if (mounted) {
                   ShowMessage.success(context, '${prospect.storeName} successfully converted to Selecta Hapi Store!');
                 }

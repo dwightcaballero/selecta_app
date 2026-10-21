@@ -10,6 +10,7 @@ import 'package:selecta_ops/models/supplier_product_mapping.dart';
 import 'package:selecta_ops/services/gemini_ai_service.dart';
 import 'package:selecta_ops/services/supplier_mapping_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/product_disambiguation_sheet.dart';
 
@@ -158,8 +159,8 @@ class ReceiptScanFlow {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          OutlinedButton(onPressed: () => Navigator.pop(ctx, ReceiptMergeMode.add), child: const Text('Add')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ReceiptMergeMode.replace), child: const Text('Replace')),
+          AsyncOutlinedButton(onPressed: () => Navigator.pop(ctx, ReceiptMergeMode.add), child: const Text('Add')),
+          AsyncFilledButton(onPressed: () => Navigator.pop(ctx, ReceiptMergeMode.replace), child: const Text('Replace')),
         ],
       ),
     );
@@ -476,7 +477,7 @@ class ReceiptScanFlow {
                                       ),
                                     ),
                                     if (onCorrectLine != null)
-                                      OutlinedButton.icon(
+                                      AsyncOutlinedButton.icon(
                                         style: OutlinedButton.styleFrom(
                                           visualDensity: VisualDensity.compact,
                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -548,7 +549,7 @@ class ReceiptScanFlow {
                   style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 8),
-                FilledButton.icon(
+                AsyncFilledButton.icon(
                   key: const Key('receipt_scan_review_button'),
                   onPressed: () => Navigator.pop(ctx),
                   icon: const Icon(Icons.fact_check_outlined, size: 20),

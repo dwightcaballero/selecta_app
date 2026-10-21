@@ -11,6 +11,7 @@ import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/export_report_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Supplier Promo Claims Report page.
 ///
@@ -150,12 +151,12 @@ class _PromoClaimsPageState extends State<PromoClaimsPage> {
         title: 'Supplier Promo Claims',
         subtitle: 'Audit & export supplier-funded promo discounts',
         actions: [
-          IconButton(
+          AsyncIconButton(
             icon: const Icon(Icons.file_download_outlined),
             tooltip: 'Export CSV',
             onPressed: _claims.isEmpty ? null : _exportCsv,
           ),
-          IconButton(
+          AsyncIconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Refresh',
             onPressed: _loadClaims,

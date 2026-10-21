@@ -221,14 +221,21 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     );
 
     if (confirmed) {
+      if (!mounted) return;
       try {
-        await _controller.signOut();
+        await ShowMessage.runWithLoading(
+          context,
+          message: 'Signing out...',
+          task: () async {
+            await _controller.signOut();
+          },
+        );
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const AuthPage()), (_) => false);
         }
       } catch (e) {
         if (mounted) {
-          ShowMessage.error(context, 'There was a problem upon signing out');
+          ShowMessage.error(context, 'There was a problem upon signing out: $e');
         }
       }
     }

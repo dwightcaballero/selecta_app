@@ -4,6 +4,7 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/inventory/adjust_stock_sheet.dart';
 import 'package:selecta_ops/views/widgets/inventory/floating_stocks_sheet.dart';
@@ -1252,7 +1253,7 @@ class _InventoryPageState extends State<InventoryPage> {
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
+                  child: AsyncFilledButton.icon(
                     onPressed: () => _showAdjustStockSheet(item),
                     icon: const Icon(Icons.tune_rounded, size: 18),
                     label: const Text('Adjust Stock'),

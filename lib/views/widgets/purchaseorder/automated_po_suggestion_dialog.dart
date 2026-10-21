@@ -14,6 +14,7 @@ import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/product_supplier_calendar_dialog.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 class SuggestedPoItem {
   final InventoryItem item;
@@ -471,7 +472,7 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
                         ),
                       ),
                       const SizedBox(width: 12),
-                      FilledButton.icon(
+                      AsyncFilledButton.icon(
                         onPressed: _applyToPurchaseOrder,
                         icon: const Icon(Icons.check_circle_rounded),
                         label: const Text('Apply to P.O.', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -576,7 +577,7 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
             ),
             const SizedBox(height: 12),
 
-            FilledButton.icon(
+            AsyncFilledButton.icon(
               onPressed: _pickedImages.isEmpty || _isAnalyzing ? null : _runSuggestionAnalysis,
               icon: const Icon(Icons.auto_awesome_rounded),
               label: Text(_hasAnalyzed ? 'Re-Analyze Supplier Sheet' : 'Analyze & Suggest Restock'),

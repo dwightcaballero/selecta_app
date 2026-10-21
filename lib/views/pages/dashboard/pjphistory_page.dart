@@ -7,6 +7,7 @@ import 'package:selecta_ops/services/proof_of_visit_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 
 enum PjpHistoryFilter {
@@ -455,7 +456,7 @@ class _PjpHistoryPageState extends State<PjpHistoryPage> with SingleTickerProvid
               style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 18),
-            FilledButton.icon(
+            AsyncFilledButton.icon(
               onPressed: _subscribeToHistory,
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('Try Again'),

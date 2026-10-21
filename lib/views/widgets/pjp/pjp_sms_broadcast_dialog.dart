@@ -7,6 +7,7 @@ import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Modal dialog allowing Dealers to broadcast / blast pre-order reminder SMS messages
 /// to all stores scheduled on a specific PJP day (defaults to tomorrow).
@@ -489,7 +490,7 @@ class _PjpSmsBroadcastDialogState extends State<PjpSmsBroadcastDialog> {
             ),
             const SizedBox(width: 8),
             Flexible(
-              child: FilledButton.icon(
+              child: AsyncFilledButton.icon(
                 onPressed: _isLoadingStores || recipients.isEmpty ? null : _startBroadcast,
                 icon: const Icon(Icons.campaign_rounded, size: 18),
                 label: Text(

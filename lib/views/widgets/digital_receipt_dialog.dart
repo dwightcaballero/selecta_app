@@ -4,6 +4,7 @@ import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
@@ -402,23 +403,21 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                   Row(
                     children: [
                       Expanded(
-                        child: FilledButton.icon(
-                          onPressed: _isPrinting ? null : _handlePrint,
+                        child: AsyncFilledButton.icon(
+                          onPressed: _handlePrint,
                           style: FilledButton.styleFrom(
                             backgroundColor: colorScheme.primary,
                             minimumSize: const Size(0, 48),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                          icon: _isPrinting
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : const Icon(Icons.print_rounded, size: 20),
-                          label: FittedBox(
+                          icon: const Icon(Icons.print_rounded, size: 20),
+                          label: const FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              _isPrinting ? 'Printing Receipt...' : 'Print Thermal Receipt',
+                              'Print Thermal Receipt',
                               maxLines: 1,
                               softWrap: false,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                             ),
                           ),
                         ),
@@ -459,7 +458,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  FilledButton(
+                  AsyncFilledButton(
                     onPressed: () {
                       Navigator.pop(context);
                       widget.onProceed?.call();
@@ -679,7 +678,7 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 16),
-                    FilledButton.icon(onPressed: _scanDevices, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Check Again')),
+                    AsyncFilledButton.icon(onPressed: _scanDevices, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Check Again')),
                   ],
                 ),
               )
@@ -723,7 +722,7 @@ class _PrinterDevicePickerSheetState extends State<PrinterDevicePickerSheet> {
                           label: const Text('App Settings'),
                         ),
                         const SizedBox(width: 12),
-                        FilledButton.icon(
+                        AsyncFilledButton.icon(
                           onPressed: _scanDevices,
                           icon: const Icon(Icons.refresh_rounded, size: 16),
                           label: const Text('Refresh List'),

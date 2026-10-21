@@ -15,6 +15,7 @@ import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
@@ -1834,20 +1835,19 @@ class _VanSellPageState extends State<VanSellPage> {
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.icon(
+                  child: AsyncFilledButton.icon(
                     style: FilledButton.styleFrom(
                       backgroundColor: Colors.teal,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    icon: _isSaving
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Icon(Icons.check_circle_outline, size: 20),
-                    label: Text(
-                      _isSaving ? 'Processing...' : 'Complete & Print Receipt',
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    icon: const Icon(Icons.check_circle_outline, size: 20),
+                    label: const Text(
+                      'Complete & Print Receipt',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
-                    onPressed: _isSaving ? null : _onCompleteAndPrint,
+                    loadingLabel: 'Processing...',
+                    onPressed: _onCompleteAndPrint,
                   ),
                 ),
               ],
@@ -2071,20 +2071,19 @@ class _VanSellPageState extends State<VanSellPage> {
               ),
             ),
             const SizedBox(width: 8),
-            FilledButton.icon(
+            AsyncFilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.teal,
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              icon: _isSaving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.check_circle_outline, size: 20),
-              label: Text(
-                _isSaving ? 'Processing...' : 'Complete & Print',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              icon: const Icon(Icons.check_circle_outline, size: 20),
+              label: const Text(
+                'Complete & Print',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
-              onPressed: _isSaving ? null : _onCompleteAndPrint,
+              loadingLabel: 'Processing...',
+              onPressed: _onCompleteAndPrint,
             ),
           ],
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Sticky bottom summary bar showing SKU count, total units, formatted total currency,
 /// expandable cart preview icon, and the primary "Save Order" button.
@@ -116,20 +117,15 @@ class StickyOrderSummaryBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: isSaving ? null : onSaveOrder,
+                AsyncFilledButton.icon(
+                  onPressed: isSaving || onSaveOrder == null ? null : () async => onSaveOrder!(),
+                  loadingLabel: 'Saving Order...',
                   style: FilledButton.styleFrom(
                     minimumSize: const Size(148, 48),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  icon: isSaving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.check_circle_outline, size: 22),
+                  icon: const Icon(Icons.check_circle_outline, size: 22),
                   label: const Text(
                     'Save Order',
                     style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),

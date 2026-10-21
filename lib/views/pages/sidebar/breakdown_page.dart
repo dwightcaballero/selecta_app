@@ -9,6 +9,7 @@ import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 
 class BreakdownPage extends StatefulWidget {
@@ -168,7 +169,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
     }
   }
 
-  void onVerify() async {
+  Future<void> onVerify() async {
     if (!isDealer || widget.breakdownID.isEmpty || _isVerifying) return;
     if (widget.breakdown.isVerifiedByDealer) {
       ShowMessage.info(context, 'This breakdown has already been verified by the dealer.');
@@ -233,7 +234,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
     }
   }
 
-  void onSave() async {
+  Future<void> onSave() async {
     recompute();
     final newRecord = Breakdown(
       breakdownDate: widget.breakdown.breakdownDate,
@@ -268,7 +269,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
     }
   }
 
-  void onUpdate() async {
+  Future<void> onUpdate() async {
     recompute();
     final updatedRecord = widget.breakdown.copyWith(
       breakdownDate: widget.breakdown.breakdownDate,
@@ -714,8 +715,8 @@ class _BreakdownPageState extends State<BreakdownPage> {
       spacing: 8,
       children: [
         if (isDealer && isUpdating)
-          OutlinedButton.icon(
-            onPressed: (widget.breakdown.isVerifiedByDealer || _isVerifying) ? null : onVerify,
+          AsyncOutlinedButton.icon(
+            onPressed: widget.breakdown.isVerifiedByDealer ? null : onVerify,
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48.0),
               foregroundColor: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
@@ -725,21 +726,13 @@ class _BreakdownPageState extends State<BreakdownPage> {
               ),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            icon: _isVerifying
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: colorScheme.primary),
-                  )
-                : Icon(
-                    widget.breakdown.isVerifiedByDealer ? Icons.check_circle : Icons.verified_outlined,
-                    size: 20,
-                    color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
-                  ),
+            icon: Icon(
+              widget.breakdown.isVerifiedByDealer ? Icons.check_circle : Icons.verified_outlined,
+              size: 20,
+              color: widget.breakdown.isVerifiedByDealer ? Colors.green.shade700 : colorScheme.primary,
+            ),
             label: Text(
-              _isVerifying
-                  ? 'Verifying Breakdown...'
-                  : (widget.breakdown.isVerifiedByDealer ? 'Verified by Dealer' : 'Verify Cash Breakdown'),
+              widget.breakdown.isVerifiedByDealer ? 'Verified by Dealer' : 'Verify Cash Breakdown',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
@@ -747,7 +740,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
               ),
             ),
           ),
-        FilledButton.icon(
+        AsyncFilledButton.icon(
           onPressed: widget.breakdown.isVerifiedByDealer
               ? null
               : () async {
@@ -765,8 +758,12 @@ class _BreakdownPageState extends State<BreakdownPage> {
                     icon: isUpdating ? Icons.check_circle_outline : Icons.save_outlined,
                     confirmText: isUpdating ? 'Update' : 'Save',
                   );
-                  if (confirmed) {
-                    isUpdating ? onUpdate() : onSave();
+                  if (confirmed == true) {
+                    if (isUpdating) {
+                      await onUpdate();
+                    } else {
+                      await onSave();
+                    }
                   }
                 },
           style: FilledButton.styleFrom(

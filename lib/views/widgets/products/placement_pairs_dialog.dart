@@ -7,6 +7,7 @@ import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 
 /// Admin dialog for configuring paired placement products/SKUs.
@@ -39,7 +40,6 @@ class _PlacementPairsDialogState extends State<PlacementPairsDialog> {
   List<PlacementPair> _pairs = [];
   List<SelectaProduct> _allProducts = [];
   bool _isLoading = true;
-  bool _isSaving = false;
 
   String? _selectedProduct1;
   String? _selectedProduct2;
@@ -108,7 +108,6 @@ class _PlacementPairsDialogState extends State<PlacementPairsDialog> {
 
   Future<void> _savePairs(List<PlacementPair> newPairs) async {
     if (_config == null) return;
-    setState(() => _isSaving = true);
     try {
       final updatedConfig = _config!.copyWith(placementPairs: newPairs);
       await _configService.saveConfiguration(updatedConfig);
@@ -123,7 +122,6 @@ class _PlacementPairsDialogState extends State<PlacementPairsDialog> {
         setState(() {
           _config = updatedConfig;
           _pairs = newPairs;
-          _isSaving = false;
           _selectedProduct1 = null;
           _selectedProduct2 = null;
         });
@@ -131,13 +129,12 @@ class _PlacementPairsDialogState extends State<PlacementPairsDialog> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isSaving = false);
         ShowMessage.error(context, 'Failed to save pairs: $e');
       }
     }
   }
 
-  void _addPair() {
+  Future<void> _addPair() async {
     if (_selectedProduct1 == null || _selectedProduct2 == null) {
       ShowMessage.error(context, 'Please select both products to pair.');
       return;
@@ -181,7 +178,7 @@ class _PlacementPairsDialogState extends State<PlacementPairsDialog> {
     }
 
     final updated = List<PlacementPair>.from(_pairs)..add(newPair);
-    _savePairs(updated);
+    await _savePairs(updated);
   }
 
   void _removePair(int index) {
@@ -455,11 +452,9 @@ class _PlacementPairsDialogState extends State<PlacementPairsDialog> {
                               SizedBox(
                                 width: double.infinity,
                                 height: 44,
-                                child: FilledButton.icon(
-                                  onPressed: _isSaving ? null : _addPair,
-                                  icon: _isSaving
-                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                      : const Icon(Icons.link_rounded, size: 18),
+                                child: AsyncFilledButton.icon(
+                                  onPressed: _addPair,
+                                  icon: const Icon(Icons.link_rounded, size: 18),
                                   label: const Text('Link Products as Pair', style: TextStyle(fontWeight: FontWeight.bold)),
                                   style: FilledButton.styleFrom(
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

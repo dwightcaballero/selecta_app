@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:selecta_ops/models/map_tile_style.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/map_style_switcher_button.dart';
 
 /// Full-screen interactive map location picker (like Grab / Google Maps)
@@ -310,7 +311,7 @@ class _FullScreenLocationPickerDialogState
                     ),
                   ),
                   const SizedBox(height: 14),
-                  FilledButton.icon(
+                  AsyncFilledButton.icon(
                     onPressed: () {
                       Navigator.pop(context, _currentCenter);
                     },

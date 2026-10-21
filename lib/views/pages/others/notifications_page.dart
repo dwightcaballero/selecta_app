@@ -8,6 +8,7 @@ import 'package:selecta_ops/services/push_notification_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -253,7 +254,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         subtitle: unreadCount > 0 ? '$unreadCount unread alert${unreadCount == 1 ? "" : "s"}' : 'All caught up',
         actions: [
           if (_notifications.isNotEmpty && unreadCount > 0)
-            IconButton(
+            AsyncIconButton(
               icon: const Icon(Icons.done_all_rounded, color: Colors.white),
               tooltip: 'Mark All as Read',
               onPressed: _markAllAsRead,

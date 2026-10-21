@@ -27,6 +27,7 @@ import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_welcome_banner.dart';
 import 'package:selecta_ops/views/widgets/exit_guard.dart';
@@ -193,7 +194,11 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
 
     if (confirmed == true && mounted) {
       try {
-        await _controller.signOut();
+        await ShowMessage.runWithLoading(
+          context,
+          message: 'Signing out...',
+          task: () => _controller.signOut(),
+        );
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const AuthPage()), (_) => false);
         }
@@ -557,11 +562,9 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
           ),
         ),
         actions: [
-          IconButton(
-            icon: _isSyncing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.sync_rounded, color: Colors.white),
-            onPressed: _isSyncing ? null : () => _syncDashboard(force: true),
+          AsyncIconButton(
+            icon: const Icon(Icons.sync_rounded, color: Colors.white),
+            onPressed: () => _syncDashboard(force: true),
             tooltip: 'Sync Dashboard',
           ),
         ],

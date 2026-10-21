@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/account_settings_controller.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Presentation page for confirming and executing permanent user account deletion.
 class DeleteAccountPage extends StatefulWidget {
@@ -67,7 +68,7 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
                   Text('* $errormessage', style: const TextStyle(color: Colors.red)),
                 ],
                 const Spacer(),
-                FilledButton(
+                AsyncFilledButton(
                   onPressed: deleteAccount,
                   style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 40.0)),
                   child: const Text("Delete Account"),
@@ -81,7 +82,7 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
   }
 
   /// Validates form and initiates account deletion via controller
-  void deleteAccount() async {
+  Future<void> deleteAccount() async {
     if (_formKey.currentState?.validate() ?? false) {
       try {
         await _controller.deleteAccount(

@@ -19,6 +19,7 @@ import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/return_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
@@ -175,7 +176,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     prefetchData();
   }
 
-  void onSave() async {
+  Future<void> onSave() async {
     if (isSalesmanLocked) {
       ShowMessage.error(context, 'Editing is disabled. A cash breakdown is already recorded for this day.');
       return;
@@ -284,7 +285,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     }
   }
 
-  void onUpdate() async {
+  Future<void> onUpdate() async {
     if (isLocked) {
       final msg = _currentDelivery.isReturnApprovedByDealer
           ? 'Editing is locked. This returned order has already been approved by the dealer and cannot be modified.'
@@ -1434,7 +1435,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
         ),
         child: widget.deliveryID.isEmpty
-            ? FilledButton.icon(
+            ? AsyncFilledButton.icon(
                 onPressed: isSalesmanLocked
                     ? null
                     : () async {
@@ -1445,7 +1446,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                           icon: Icons.save_outlined,
                           confirmText: 'Save',
                         );
-                        if (confirmed) onSave();
+                        if (confirmed) await onSave();
                       },
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50.0),
@@ -1460,7 +1461,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             : Row(
                 children: [
                   Expanded(
-                    child: FilledButton.icon(
+                    child: AsyncFilledButton.icon(
                       onPressed: isLocked
                           ? null
                           : () async {
@@ -1471,7 +1472,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                                 icon: Icons.check_circle_outline,
                                 confirmText: 'Update',
                               );
-                              if (confirmed) onUpdate();
+                              if (confirmed) await onUpdate();
                             },
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -2714,6 +2715,7 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
   }
 
   Future<void> _submit(List<SelectaProduct> allProducts) async {
+    if (_isSubmitting) return;
     final selectedItems = <BadOrderItem>[];
     for (final p in allProducts) {
       final q = _quantities[p.id] ?? 0;
@@ -3211,23 +3213,17 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                                 ],
                               ),
                             ),
-                            FilledButton.icon(
-                              onPressed: _isSubmitting ? null : () => _submit(allProducts),
+                            AsyncFilledButton.icon(
+                              onPressed: () => _submit(allProducts),
                               style: FilledButton.styleFrom(
                                 backgroundColor: Colors.orange.shade800,
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               ),
-                              icon: _isSubmitting
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                    )
-                                  : const Icon(Icons.check, size: 18),
-                              label: Text(
-                                _isSubmitting ? 'Submitting...' : 'Save Bad Order',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              icon: const Icon(Icons.check, size: 18),
+                              label: const Text(
+                                'Save Bad Order',
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],

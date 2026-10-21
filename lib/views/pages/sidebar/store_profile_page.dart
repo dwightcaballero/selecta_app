@@ -16,6 +16,7 @@ import 'package:selecta_ops/views/pages/sidebar/hapistore_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjphistory_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -169,8 +170,8 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
     }
   }
 
-  void _bookOrderForStore() {
-    Navigator.push(
+  Future<void> _bookOrderForStore() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => BookOrderPage(initialStoreName: _store.storeName),
@@ -178,7 +179,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
     );
   }
 
-  void _editStore() async {
+  Future<void> _editStore() async {
     if (_effectiveStoreId.isEmpty) {
       ShowMessage.error(context, 'Store record not loaded yet.');
       return;
@@ -217,7 +218,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
           title: _store.storeName,
           subtitle: _store.storeAddress.isNotEmpty ? _store.storeAddress : 'Store 360° Profile',
           actions: [
-            IconButton(
+            AsyncIconButton(
               icon: const Icon(Icons.edit_outlined),
               tooltip: 'Edit Store',
               onPressed: _editStore,
@@ -1035,7 +1036,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
       ),
       child: SafeArea(
         top: false,
-        child: FilledButton.icon(
+        child: AsyncFilledButton.icon(
           onPressed: _bookOrderForStore,
           style: FilledButton.styleFrom(
             backgroundColor: colorScheme.primary,

@@ -6,6 +6,7 @@ import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:intl/intl.dart';
 
 class MerchBlitzListPage extends StatefulWidget {
@@ -95,8 +96,13 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     );
 
     if (confirmed) {
+      if (!mounted) return;
       try {
-        await _controller.approveFinalSurvey(storeId);
+        await ShowMessage.runWithLoading(
+          context,
+          message: 'Approving final survey...',
+          task: () => _controller.approveFinalSurvey(storeId),
+        );
         if (mounted) {
           ShowMessage.success(context, '"${store.storeName}" marked as surveyed!');
         }
@@ -119,8 +125,13 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     );
 
     if (confirmed) {
+      if (!mounted) return;
       try {
-        await _controller.revertToPending(storeId);
+        await ShowMessage.runWithLoading(
+          context,
+          message: 'Returning store to pending...',
+          task: () => _controller.revertToPending(storeId),
+        );
         if (mounted) {
           ShowMessage.success(context, '"${store.storeName}" returned to Pending Survey.');
         }
@@ -142,8 +153,13 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
     );
 
     if (confirmed) {
+      if (!mounted) return;
       try {
-        await _controller.revertToFinalSurvey(storeId, store.lastMerchBlitzDate);
+        await ShowMessage.runWithLoading(
+          context,
+          message: 'Moving to final survey...',
+          task: () => _controller.revertToFinalSurvey(storeId, store.lastMerchBlitzDate),
+        );
         if (mounted) {
           ShowMessage.success(context, '"${store.storeName}" moved back to For Final Survey.');
         }
@@ -725,7 +741,7 @@ class _MerchBlitzListPageState extends State<MerchBlitzListPage> {
                       ),
                   ] else if (isForFinal) ...[
                     if (_isDealer)
-                      FilledButton.icon(
+                      AsyncFilledButton.icon(
                         onPressed: () => _confirmDealerFinalSurvey(storeId, store),
                         style: FilledButton.styleFrom(
                           backgroundColor: Colors.indigo,

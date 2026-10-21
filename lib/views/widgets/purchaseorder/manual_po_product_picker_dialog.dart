@@ -5,6 +5,7 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/po_extracted_line.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 
 import 'package:selecta_ops/views/pages/sidebar/purchaseorder_catalog_page.dart';
@@ -451,7 +452,7 @@ class _ManualPoProductPickerDialogState extends State<ManualPoProductPickerDialo
                     ],
                   ),
                 ),
-                FilledButton.icon(
+                AsyncFilledButton.icon(
                   onPressed: totalUnits > 0 ? _onApply : null,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

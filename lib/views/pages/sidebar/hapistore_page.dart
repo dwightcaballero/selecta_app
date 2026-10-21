@@ -7,6 +7,7 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -180,7 +181,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
   }
 
   /// Saves a new Hapi Store
-  void onSave() async {
+  Future<void> onSave() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isSaving = true);
       try {
@@ -217,7 +218,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
   }
 
   /// Updates an existing Hapi Store and cascades name change to all past records
-  void onUpdate() async {
+  Future<void> onUpdate() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isSaving = true);
       try {
@@ -267,7 +268,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
   }
 
   /// Deletes the Hapi Store
-  void onDelete() async {
+  Future<void> onDelete() async {
     setState(() => _isSaving = true);
     try {
       await _controller.deleteStore(
@@ -622,20 +623,19 @@ class _HapiStorePageState extends State<HapiStorePage> {
                 children: [
                   Expanded(
                     flex: 1,
-                    child: OutlinedButton.icon(
-                      onPressed: _isSaving
-                          ? null
-                          : () async {
-                              final confirmed = await ShowMessage.confirm(
-                                context,
-                                title: ConfirmTitle.delete,
-                                message: 'Are you sure you want to delete [${widget.hapistore.storeName}]?',
-                                isDestructive: true,
-                                icon: Icons.delete_outline,
-                                confirmText: 'Delete',
-                              );
-                              if (confirmed) onDelete();
-                            },
+                    child: AsyncOutlinedButton.icon(
+                      onPressed: () async {
+                        final confirmed = await ShowMessage.confirm(
+                          context,
+                          title: ConfirmTitle.delete,
+                          message: 'Are you sure you want to delete [${widget.hapistore.storeName}]?',
+                          isDestructive: true,
+                          icon: Icons.delete_outline,
+                          confirmText: 'Delete',
+                        );
+                        if (confirmed) await onDelete();
+                      },
+                      loadingLabel: 'Deleting...',
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
                         foregroundColor: Colors.red.shade700,
@@ -649,67 +649,53 @@ class _HapiStorePageState extends State<HapiStorePage> {
                   const SizedBox(width: 12),
                   Expanded(
                     flex: 2,
-                    child: FilledButton.icon(
-                      onPressed: _isSaving
-                          ? null
-                          : () async {
-                              final newName = txtName.text.trim().toUpperCase();
-                              final oldName = widget.hapistore.storeName.trim();
-                              final isRenaming = oldName.isNotEmpty && oldName.toUpperCase() != newName;
+                    child: AsyncFilledButton.icon(
+                      onPressed: () async {
+                        final newName = txtName.text.trim().toUpperCase();
+                        final oldName = widget.hapistore.storeName.trim();
+                        final isRenaming = oldName.isNotEmpty && oldName.toUpperCase() != newName;
 
-                              final confirmed = await ShowMessage.confirm(
-                                context,
-                                title: isRenaming ? 'Rename Store & Link Records' : ConfirmTitle.update,
-                                message: isRenaming
-                                    ? 'Rename store from "$oldName" to "$newName"?\n\n'
-                                      'All existing records (deliveries, orders, barcode scans, tasks, placements, and visits) will be automatically updated to the new name so no history is lost.'
-                                    : 'Save changes to store [$newName]?',
-                                icon: isRenaming ? Icons.sync : Icons.check_circle_outline,
-                                confirmText: isRenaming ? 'Rename & Update Records' : 'Update Store',
-                              );
-                              if (confirmed) onUpdate();
-                            },
+                        final confirmed = await ShowMessage.confirm(
+                          context,
+                          title: isRenaming ? 'Rename Store & Link Records' : ConfirmTitle.update,
+                          message: isRenaming
+                              ? 'Rename store from "$oldName" to "$newName"?\n\n'
+                                'All existing records (deliveries, orders, barcode scans, tasks, placements, and visits) will be automatically updated to the new name so no history is lost.'
+                              : 'Save changes to store [$newName]?',
+                          icon: isRenaming ? Icons.sync : Icons.check_circle_outline,
+                          confirmText: isRenaming ? 'Rename & Update Records' : 'Update Store',
+                        );
+                        if (confirmed) await onUpdate();
+                      },
+                      loadingLabel: 'Updating...',
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      icon: _isSaving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.check_circle_outline, size: 20),
-                      label: Text(_isSaving ? 'Updating...' : 'Update Store', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      icon: const Icon(Icons.check_circle_outline, size: 20),
+                      label: const Text('Update Store', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],
               )
-            : FilledButton.icon(
-                onPressed: _isSaving
-                    ? null
-                    : () async {
-                        final confirmed = await ShowMessage.confirm(
-                          context,
-                          title: ConfirmTitle.save,
-                          message: 'Save new store [${txtName.text.trim().toUpperCase()}]?',
-                          icon: Icons.save_outlined,
-                          confirmText: 'Save',
-                        );
-                        if (confirmed) onSave();
-                      },
+            : AsyncFilledButton.icon(
+                onPressed: () async {
+                  final confirmed = await ShowMessage.confirm(
+                    context,
+                    title: ConfirmTitle.save,
+                    message: 'Save new store [${txtName.text.trim().toUpperCase()}]?',
+                    icon: Icons.save_outlined,
+                    confirmText: 'Save',
+                  );
+                  if (confirmed) await onSave();
+                },
+                loadingLabel: 'Saving...',
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50.0),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.save_outlined),
-                label: Text(_isSaving ? 'Saving...' : 'Save Store', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Save Store', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),
       ),
     );

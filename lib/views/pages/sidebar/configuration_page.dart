@@ -4,6 +4,7 @@ import 'package:selecta_ops/models/configuration.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 
@@ -154,6 +155,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   /// Saves updated configuration through controller
   Future<void> _saveConfiguration() async {
+    if (_isSaving) return;
     final rawSales = _salesTargetController.text.replaceAll(',', '').trim();
     final salesTarget = double.tryParse(rawSales);
     if (salesTarget == null || salesTarget <= 0) {
@@ -1107,16 +1109,15 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
                     const SizedBox(height: 24),
 
                     // Save Configurations Button
-                    FilledButton.icon(
-                      onPressed: _isSaving ? null : _saveConfiguration,
+                    AsyncFilledButton.icon(
+                      onPressed: _saveConfiguration,
+                      loadingLabel: 'Saving...',
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(double.infinity, 50),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      icon: _isSaving
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.save_rounded, size: 20),
-                      label: Text(_isSaving ? 'Saving...' : 'Save Configurations', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      icon: const Icon(Icons.save_rounded, size: 20),
+                      label: const Text('Save Configurations', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                     ),
                   ],
                 ),

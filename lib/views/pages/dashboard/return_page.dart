@@ -5,6 +5,7 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
@@ -84,18 +85,25 @@ class _ReturnPageState extends State<ReturnPage> {
     );
 
     if (confirmed != true) return;
+    if (!mounted) return;
 
     setState(() => _isProcessing = true);
     try {
-      final updated = await _controller.approveReturnedStock(
-        deliveryId: widget.recID,
-        delivery: _delivery,
+      final updated = await ShowMessage.runWithLoading<Delivery>(
+        context,
+        message: 'Approving returned stock...',
+        task: () => _controller.approveReturnedStock(
+          deliveryId: widget.recID,
+          delivery: _delivery,
+        ),
       );
       if (!mounted) return;
-      setState(() {
-        _delivery = updated;
-      });
-      ShowMessage.success(context, 'Returned stock approved and added to Current Stock!');
+      if (updated != null) {
+        setState(() {
+          _delivery = updated;
+        });
+        ShowMessage.success(context, 'Returned stock approved and added to Current Stock!');
+      }
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to approve return: $e');
     } finally {
@@ -116,18 +124,24 @@ class _ReturnPageState extends State<ReturnPage> {
     setState(() => _isProcessing = true);
 
     try {
-      final updatedDelivery = await _controller.rescheduleDelivery(
-        deliveryId: widget.recID,
-        delivery: _delivery,
-        rescheduleDate: rescheduleDate,
+      final updatedDelivery = await ShowMessage.runWithLoading<Delivery>(
+        context,
+        message: 'Rescheduling delivery...',
+        task: () => _controller.rescheduleDelivery(
+          deliveryId: widget.recID,
+          delivery: _delivery,
+          rescheduleDate: rescheduleDate,
+        ),
       );
 
       if (!mounted) return;
-      setState(() {
-        _delivery = updatedDelivery;
-      });
-      ShowMessage.success(context, 'Successfully rescheduled delivery for [${updatedDelivery.storeName}]!');
-      Navigator.pop(context);
+      if (updatedDelivery != null) {
+        setState(() {
+          _delivery = updatedDelivery;
+        });
+        ShowMessage.success(context, 'Successfully rescheduled delivery for [${updatedDelivery.storeName}]!');
+        Navigator.pop(context);
+      }
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to reschedule delivery: $e');
     } finally {
@@ -164,17 +178,23 @@ class _ReturnPageState extends State<ReturnPage> {
 
     setState(() => _isProcessing = true);
     try {
-      final updatedDelivery = await _controller.finalizeReturn(
-        deliveryId: widget.recID,
-        delivery: _delivery,
+      final updatedDelivery = await ShowMessage.runWithLoading<Delivery>(
+        context,
+        message: 'Finalizing return...',
+        task: () => _controller.finalizeReturn(
+          deliveryId: widget.recID,
+          delivery: _delivery,
+        ),
       );
 
       if (!mounted) return;
-      setState(() {
-        _delivery = updatedDelivery;
-      });
-      ShowMessage.success(context, 'Successfully finalized return for [${updatedDelivery.storeName}]!');
-      Navigator.pop(context);
+      if (updatedDelivery != null) {
+        setState(() {
+          _delivery = updatedDelivery;
+        });
+        ShowMessage.success(context, 'Successfully finalized return for [${updatedDelivery.storeName}]!');
+        Navigator.pop(context);
+      }
     } catch (e) {
       if (mounted) ShowMessage.error(context, 'Failed to finalize return: $e');
     } finally {
@@ -670,7 +690,7 @@ class _ReturnPageState extends State<ReturnPage> {
           children: [
             if (!isApproved) ...[
               Expanded(
-                child: FilledButton.icon(
+                child: AsyncFilledButton.icon(
                   onPressed: _isProcessing ? null : onApproveReturn,
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF15803D),
@@ -678,9 +698,7 @@ class _ReturnPageState extends State<ReturnPage> {
                     minimumSize: const Size(0, 50.0),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  icon: _isProcessing
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check_circle_outline, size: 20),
+                  icon: const Icon(Icons.check_circle_outline, size: 20),
                   label: const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
@@ -743,7 +761,7 @@ class _ReturnPageState extends State<ReturnPage> {
             ] else ...[
               Expanded(
                 flex: 1,
-                child: OutlinedButton.icon(
+                child: AsyncOutlinedButton.icon(
                   onPressed: _isProcessing ? null : onFinalizeReturn,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -765,16 +783,14 @@ class _ReturnPageState extends State<ReturnPage> {
               const SizedBox(width: 10),
               Expanded(
                 flex: 1,
-                child: FilledButton.icon(
+                child: AsyncFilledButton.icon(
                   onPressed: _isProcessing ? null : _showRedeliverDialog,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     minimumSize: const Size(0, 50.0),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  icon: _isProcessing
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.local_shipping_outlined, size: 20),
+                  icon: const Icon(Icons.local_shipping_outlined, size: 20),
                   label: const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
@@ -807,7 +823,7 @@ class _ReturnPageState extends State<ReturnPage> {
           subtitle: _delivery.storeName,
         actions: [
           if (_delivery.items.isNotEmpty)
-            IconButton(
+            AsyncIconButton(
               icon: const Icon(Icons.receipt_long_rounded, color: Colors.white),
               tooltip: 'Digital Receipt & Thermal Print',
               onPressed: () => DigitalReceiptDialog.show(

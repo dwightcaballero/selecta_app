@@ -16,6 +16,7 @@ import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
 /// Presentation view displaying the list of deliveries for a selected date.
@@ -1014,7 +1015,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.icon(
+              child: AsyncFilledButton.icon(
                 style: FilledButton.styleFrom(
                   backgroundColor: isVan ? Colors.teal : theme.colorScheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1253,7 +1254,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                         style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
                                       ),
                                       const SizedBox(height: 16),
-                                      FilledButton.icon(
+                                      AsyncFilledButton.icon(
                                         style: FilledButton.styleFrom(backgroundColor: Colors.teal),
                                         onPressed: () async {
                                           await Navigator.push(context, MaterialPageRoute(builder: (_) => const VanSellPage()));

@@ -15,6 +15,7 @@ import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/book_order/receipt_scan_flow.dart';
 import 'package:selecta_ops/views/widgets/book_order/sticky_order_summary_bar.dart';
@@ -1880,7 +1881,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                             child: const Text('Cancel'),
                           ),
                           const SizedBox(width: 8),
-                          FilledButton(
+                          AsyncFilledButton(
                             style: FilledButton.styleFrom(
                               visualDensity: VisualDensity.compact,
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -2764,19 +2765,17 @@ class _BookOrderPageState extends State<BookOrderPage> {
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.icon(
+                  child: AsyncFilledButton.icon(
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    icon: _isSaving
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Icon(Icons.check_circle_outline, size: 20),
+                    icon: const Icon(Icons.check_circle_outline, size: 20),
                     label: Text(
-                      _isSaving ? 'Saving...' : (_isEditing ? 'Save Changes' : 'Book Order'),
+                      _isEditing ? 'Save Changes' : 'Book Order',
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
-                    onPressed: (_isSaving || _isScanning) ? null : () => _onSaveOrder(allInventory),
+                    onPressed: _isScanning ? null : () => _onSaveOrder(allInventory),
                   ),
                 ),
               ],
@@ -3012,7 +3011,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
               style: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 24),
-            FilledButton.icon(
+            AsyncFilledButton.icon(
               onPressed: _showStoreAndDateModal,
               icon: const Icon(Icons.storefront_outlined, size: 20),
               label: const Text('Choose Store & Date', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
@@ -3022,7 +3021,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
               ),
             ),
             const SizedBox(height: 10),
-            OutlinedButton.icon(
+            AsyncOutlinedButton.icon(
               key: const Key('book_order_scan_receipt_prompt_button'),
               onPressed: _isScanning ? null : () => _onScanReceipt(allInventory),
               icon: const Icon(Icons.document_scanner_outlined, size: 20),

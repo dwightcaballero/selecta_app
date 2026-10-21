@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 class ShowMessage {
@@ -157,5 +158,86 @@ class ShowMessage {
         );
       },
     );
+  }
+
+  /// Runs an asynchronous [task] while presenting a non-dismissible loading overlay
+  /// to communicate ongoing work to the user and prevent duplicate taps or navigation.
+  ///
+  /// If the task completes successfully, returns the result of type [T].
+  /// If the task throws an error, the overlay is dismissed, and if [showError] is true,
+  /// a snackbar error message is automatically displayed to the user.
+  static Future<T?> runWithLoading<T>(
+    BuildContext context, {
+    required Future<T> Function() task,
+    String message = 'Processing, please wait...',
+    bool showError = true,
+    bool rethrowError = false,
+  }) async {
+    HapticFeedback.lightImpact();
+
+    BuildContext? dialogContext;
+    var isDialogClosed = false;
+
+    // Show non-dismissible loading dialog
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (ctx) {
+        dialogContext = ctx;
+        final colorScheme = Theme.of(ctx).colorScheme;
+        return PopScope(
+          canPop: false,
+          child: Dialog(
+            backgroundColor: colorScheme.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(strokeWidth: 2.8),
+                  ),
+                  const SizedBox(width: 18),
+                  Flexible(
+                    child: Text(
+                      message,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      final result = await task();
+      return result;
+    } catch (e) {
+      if (showError && context.mounted) {
+        error(context, e.toString().replaceAll('Exception: ', ''));
+      }
+      if (rethrowError) rethrow;
+      return null;
+    } finally {
+      if (!isDialogClosed) {
+        isDialogClosed = true;
+        if (dialogContext != null && dialogContext!.mounted) {
+          Navigator.of(dialogContext!).pop();
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (dialogContext != null && dialogContext!.mounted) {
+              Navigator.of(dialogContext!).pop();
+            }
+          });
+        }
+      }
+    }
   }
 }

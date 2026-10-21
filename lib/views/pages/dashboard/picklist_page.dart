@@ -13,6 +13,7 @@ import 'package:selecta_ops/services/inventory_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
@@ -2011,8 +2012,8 @@ class _PicklistPageState extends State<PicklistPage> {
                 ],
                 Expanded(
                   flex: 2,
-                  child: OutlinedButton(
-                    onPressed: _isSaving ? null : _onSaveProgress,
+                  child: AsyncOutlinedButton(
+                    onPressed: _onSaveProgress,
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size(0, 48),
                       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -2029,7 +2030,7 @@ class _PicklistPageState extends State<PicklistPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 3,
-                  child: FilledButton.icon(
+                  child: AsyncFilledButton.icon(
                     onPressed: canComplete ? _onCompletePicklist : null,
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(0, 48),
@@ -2038,9 +2039,7 @@ class _PicklistPageState extends State<PicklistPage> {
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                    icon: _isSaving
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.local_shipping_outlined, size: 20),
+                    icon: const Icon(Icons.local_shipping_outlined, size: 20),
                     label: const Text(
                       'For Delivery',
                       maxLines: 1,

@@ -10,6 +10,7 @@ import 'package:selecta_ops/models/map_tile_style.dart';
 import 'package:selecta_ops/models/prospect_scout.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/full_screen_location_picker_dialog.dart';
 import 'package:selecta_ops/views/widgets/map_style_switcher_button.dart';
 
@@ -435,28 +436,28 @@ class _ProspectScoutFormPageState extends State<ProspectScoutFormPage> {
               const SizedBox(height: 24),
 
               // Save Action Button
-              FilledButton.icon(
+              AsyncFilledButton.icon(
                 style: KButtonStyle.save,
-                onPressed: _isSaving ? null : _saveProspect,
-                icon: _isSaving
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.check_circle_outline),
+                onPressed: _saveProspect,
+                icon: const Icon(Icons.check_circle_outline),
+                loadingLabel: 'Saving Record...',
                 label: Text(
-                  _isSaving ? 'Saving Record...' : (_isEditing ? 'Update Prospect Record' : 'Save Prospect Record'),
+                  _isEditing ? 'Update Prospect Record' : 'Save Prospect Record',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
               ),
 
               if (_isEditing) ...[
                 const SizedBox(height: 12),
-                OutlinedButton.icon(
+                AsyncOutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 50.0),
                     foregroundColor: Colors.red,
                     side: const BorderSide(color: Colors.red),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  onPressed: _isSaving ? null : _deleteProspect,
+                  onPressed: _deleteProspect,
+                  loadingLabel: 'Deleting...',
                   icon: const Icon(Icons.delete_forever_outlined),
                   label: const Text('Delete This Prospect', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),

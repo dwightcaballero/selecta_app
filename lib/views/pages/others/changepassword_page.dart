@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/account_settings_controller.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Presentation page allowing an authenticated user to change their password.
 class ChangePasswordPage extends StatefulWidget {
@@ -98,7 +99,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                   Text('* $errormessage', style: const TextStyle(color: Colors.red)),
                 ],
                 const Spacer(),
-                FilledButton(
+                AsyncFilledButton(
                   onPressed: changePassword,
                   style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 40.0)),
                   child: const Text("Change Password"),
@@ -112,7 +113,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   }
 
   /// Validates inputs and triggers password change via controller
-  void changePassword() async {
+  Future<void> changePassword() async {
     final email = textEditingControllerEmail.text.trim();
     final oldPassword = textEditingControllerOldPassword.text;
     final newPassword = textEditingControllerNewPassword.text;

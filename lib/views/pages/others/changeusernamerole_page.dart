@@ -4,6 +4,7 @@ import 'package:selecta_ops/controllers/account_settings_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Presentation page allowing users to update their display username and role.
 class ChangeusernameRolePage extends StatefulWidget {
@@ -95,7 +96,7 @@ class _ChangeusernameRolePageState extends State<ChangeusernameRolePage> {
                   Text('* $errormessage', style: const TextStyle(color: Colors.red)),
                 ],
                 const SizedBox(height: 10),
-                FilledButton(
+                AsyncFilledButton(
                   onPressed: changeUsername,
                   style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 40.0)),
                   child: const Text("Submit"),
@@ -109,7 +110,7 @@ class _ChangeusernameRolePageState extends State<ChangeusernameRolePage> {
   }
 
   /// Triggers username and role update through controller
-  void changeUsername() async {
+  Future<void> changeUsername() async {
     if (_formKey.currentState?.validate() ?? false) {
       try {
         await _controller.updateUsernameAndRole(

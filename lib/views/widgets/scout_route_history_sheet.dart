@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/models/scout_route_track.dart';
 import 'package:selecta_ops/services/scout_tracking_service.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 
 /// Modal sheet displaying recorded route history, recency freshness tiers,
 /// and allowing dealers to mark old routes (>3 months) for re-scouting.
@@ -327,8 +328,16 @@ class _ScoutRouteHistorySheetState extends State<ScoutRouteHistorySheet> {
     );
 
     if (confirmed == true) {
-      await _trackingService.deleteRoute(route.id);
-      if (mounted) {
+      if (!mounted) return;
+      final success = await ShowMessage.runWithLoading<bool>(
+        context,
+        message: 'Deleting route...',
+        task: () async {
+          await _trackingService.deleteRoute(route.id);
+          return true;
+        },
+      );
+      if (success == true && mounted) {
         setState(() {
           widget.routes.removeWhere((r) => r.id == route.id);
         });

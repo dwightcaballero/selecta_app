@@ -6,6 +6,7 @@ import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 class BadOrderBatchCreatePage extends StatefulWidget {
   const BadOrderBatchCreatePage({
@@ -77,6 +78,7 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
   }
 
   Future<void> _onSubmit() async {
+    if (_isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedIds.isEmpty) {
@@ -172,8 +174,9 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
                 ),
               ),
               const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: _isLoading || _selectedIds.isEmpty ? null : _onSubmit,
+              AsyncFilledButton.icon(
+                onPressed: _selectedIds.isEmpty ? null : _onSubmit,
+                loadingLabel: 'Creating Batch...',
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                   backgroundColor: Colors.blue.shade700,

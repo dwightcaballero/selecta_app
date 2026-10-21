@@ -7,6 +7,7 @@ import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/views/pages/sidebar/breakdown_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:intl/intl.dart';
 
 class EndofdayPage extends StatefulWidget {
@@ -68,7 +69,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
     }
   }
 
-  void validateBeforeBreakdown() async {
+  Future<void> validateBeforeBreakdown() async {
     try {
       _controller.validateBeforeBreakdown(endOfDayData: endOfDayData, breakdownId: breakdownID);
     } catch (e) {
@@ -728,7 +729,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
     final bool hasNoDeliveries = endOfDayData.totaldelivery == 0;
     final bool isRecordDisabled = !hasBreakdown && hasNoDeliveries;
 
-    final actionButton = FilledButton.icon(
+    final actionButton = AsyncFilledButton.icon(
       onPressed: isRecordDisabled ? null : validateBeforeBreakdown,
       style: FilledButton.styleFrom(
         minimumSize: const Size(double.infinity, 50.0),

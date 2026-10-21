@@ -14,6 +14,7 @@ import 'package:selecta_ops/views/pages/sidebar/other_product_form_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/selecta_product_form_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/products/placement_pairs_dialog.dart';
 
@@ -228,7 +229,6 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     final urlController = TextEditingController(text: currentUrl);
     final dataController = TextEditingController();
     String selectedFormat = 'Auto-Detect';
-    bool isImporting = false;
     bool isFetchingUrl = false;
 
     const sampleCsv =
@@ -395,39 +395,32 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                 ),
               ),
               actions: [
-                TextButton(onPressed: isImporting ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
-                FilledButton.icon(
-                  onPressed: isImporting
-                      ? null
-                      : () async {
-                          final text = dataController.text.trim();
-                          final url = urlController.text.trim();
-                          if (text.isEmpty && url.isEmpty) {
-                            ShowMessage.alert(ctx, title: 'No Data Provided', message: 'Please paste catalog data or enter a catalog URL.');
-                            return;
-                          }
-                          setDialogState(() => isImporting = true);
-                          try {
-                            if (url.isNotEmpty) {
-                              await _selectaController.setCustomCatalogApiUrl(url);
-                            }
-                            final count = url.isNotEmpty && text.isEmpty
-                                ? await _selectaController.importAdminCatalogFromUrl(url)
-                                : await _selectaController.importAdminCatalog(text);
-                            if (ctx.mounted) Navigator.pop(ctx);
-                            if (mounted) {
-                              ShowMessage.success(context, 'Imported $count products successfully.');
-                            }
-                          } catch (e) {
-                            if (ctx.mounted) ShowMessage.error(ctx, 'Import failed: $e');
-                          } finally {
-                            setDialogState(() => isImporting = false);
-                          }
-                        },
-                  icon: isImporting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.file_download_done_rounded, size: 16),
-                  label: Text(isImporting ? 'Importing...' : 'Import Catalog'),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                AsyncFilledButton.icon(
+                  onPressed: () async {
+                    final text = dataController.text.trim();
+                    final url = urlController.text.trim();
+                    if (text.isEmpty && url.isEmpty) {
+                      ShowMessage.alert(ctx, title: 'No Data Provided', message: 'Please paste catalog data or enter a catalog URL.');
+                      return;
+                    }
+                    try {
+                      if (url.isNotEmpty) {
+                        await _selectaController.setCustomCatalogApiUrl(url);
+                      }
+                      final count = url.isNotEmpty && text.isEmpty
+                          ? await _selectaController.importAdminCatalogFromUrl(url)
+                          : await _selectaController.importAdminCatalog(text);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        ShowMessage.success(context, 'Imported $count products successfully.');
+                      }
+                    } catch (e) {
+                      if (ctx.mounted) ShowMessage.error(ctx, 'Import failed: $e');
+                    }
+                  },
+                  icon: const Icon(Icons.file_download_done_rounded, size: 16),
+                  label: const Text('Import Catalog'),
                 ),
               ],
             );

@@ -4,6 +4,7 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/tasks.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 import 'package:intl/intl.dart';
@@ -589,7 +590,7 @@ class _TasksPageState extends State<TasksPage> {
                               if (_isDealer) ...[
                                 Expanded(
                                   flex: 1,
-                                  child: OutlinedButton.icon(
+                                  child: AsyncOutlinedButton.icon(
                                     onPressed: () async {
                                       final confirmed = await ShowMessage.confirm(
                                         context,
@@ -599,8 +600,9 @@ class _TasksPageState extends State<TasksPage> {
                                         icon: Icons.delete_outline,
                                         confirmText: 'Delete',
                                       );
-                                      if (confirmed) onDelete();
+                                      if (confirmed) await onDelete();
                                     },
+                                    loadingLabel: 'Deleting...',
                                     style: OutlinedButton.styleFrom(
                                       minimumSize: const Size(0, 50.0),
                                       foregroundColor: isDark ? Colors.red.shade400 : Colors.red.shade700,
@@ -615,7 +617,7 @@ class _TasksPageState extends State<TasksPage> {
                               ],
                               Expanded(
                                 flex: _isDealer ? 2 : 1,
-                                child: FilledButton.icon(
+                                child: AsyncFilledButton.icon(
                                   onPressed: () async {
                                     final confirmed = await ShowMessage.confirm(
                                       context,
@@ -624,8 +626,9 @@ class _TasksPageState extends State<TasksPage> {
                                       icon: Icons.check_circle_outline,
                                       confirmText: 'Update',
                                     );
-                                    if (confirmed) onUpdate();
+                                    if (confirmed) await onUpdate();
                                   },
+                                  loadingLabel: 'Updating...',
                                   style: FilledButton.styleFrom(
                                     minimumSize: const Size(0, 50.0),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -637,8 +640,9 @@ class _TasksPageState extends State<TasksPage> {
                             ],
                           ),
                       ] else if (_isDealer)
-                        FilledButton.icon(
+                        AsyncFilledButton.icon(
                           onPressed: onSave,
+                          loadingLabel: 'Creating...',
                           style: FilledButton.styleFrom(
                             minimumSize: const Size(double.infinity, 50.0),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

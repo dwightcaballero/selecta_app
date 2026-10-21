@@ -14,6 +14,7 @@ import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 
@@ -321,6 +322,7 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
   }
 
   Future<void> _submit(List<SelectaProduct> allProducts) async {
+    if (_isSubmitting) return;
     final storeName = _storeController.text.trim();
     if (storeName.isEmpty) {
       ShowMessage.error(context, 'Please select or enter the store name.');
@@ -1143,24 +1145,17 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
                             ],
                           ),
                         ),
-                        FilledButton.icon(
-                          onPressed: _isSubmitting ? null : () => _submit(allProducts),
+                        AsyncFilledButton.icon(
+                          onPressed: () => _submit(allProducts),
+                          loadingLabel: 'Saving...',
                           style: FilledButton.styleFrom(
                             backgroundColor: Colors.orange.shade800,
                             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
-                          icon: _isSubmitting
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.check, size: 18),
+                          icon: const Icon(Icons.check, size: 18),
                           label: Text(
-                            _isSubmitting
-                                ? 'Saving...'
-                                : (_isEditMode ? 'Update Bad Order' : 'Save Bad Order'),
+                            _isEditMode ? 'Update Bad Order' : 'Save Bad Order',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -1354,24 +1349,17 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _isSubmitting ? null : () => _submit(allProducts),
+                child: AsyncFilledButton.icon(
+                  onPressed: () => _submit(allProducts),
+                  loadingLabel: 'Saving...',
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.orange.shade800,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  icon: _isSubmitting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.check, size: 18),
+                  icon: const Icon(Icons.check, size: 18),
                   label: Text(
-                    _isSubmitting
-                        ? 'Saving...'
-                        : (_isEditMode ? 'Update Bad Order' : 'Save Bad Order'),
+                    _isEditMode ? 'Update Bad Order' : 'Save Bad Order',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                   ),
                 ),

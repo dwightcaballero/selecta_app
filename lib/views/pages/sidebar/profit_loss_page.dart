@@ -7,6 +7,7 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/dto/profit_loss_dto.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 class ProfitLossPage extends StatefulWidget {
   const ProfitLossPage({super.key});
@@ -102,7 +103,7 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
           title: 'Business Analytics',
           subtitle: 'Profit & Loss, Cost of Goods, etc.',
           actions: [
-            IconButton(
+            AsyncIconButton(
               icon: const Icon(Icons.date_range_outlined, color: Colors.white),
               tooltip: 'Custom Date Range',
               onPressed: _selectCustomDateRange,
@@ -318,7 +319,7 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
             style: const TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
-          ElevatedButton.icon(onPressed: _loadData, icon: const Icon(Icons.refresh_rounded), label: const Text('Try Again')),
+          AsyncFilledButton.icon(onPressed: _loadData, icon: const Icon(Icons.refresh_rounded), label: const Text('Try Again')),
         ],
       ),
     );

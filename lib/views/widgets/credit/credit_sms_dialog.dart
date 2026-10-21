@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/credit_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Interactive modal dialog allowing salesmen and dealers to review, edit,
 /// and dispatch overdue credit SMS reminders via native SMS app or direct Telephony.
@@ -123,6 +124,7 @@ class _CreditSmsDialogState extends State<CreditSmsDialog> {
   }
 
   Future<void> _handleSendDirectSms() async {
+    if (_isSending) return;
     final phone = _phoneController.text.trim();
     final message = _messageController.text.trim();
 
@@ -302,8 +304,8 @@ class _CreditSmsDialogState extends State<CreditSmsDialog> {
         Row(
           children: [
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _isSending ? null : _handleLaunchSmsApp,
+              child: AsyncOutlinedButton.icon(
+                onPressed: _handleLaunchSmsApp,
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 11),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -314,18 +316,16 @@ class _CreditSmsDialogState extends State<CreditSmsDialog> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: FilledButton.icon(
-                onPressed: _isSending ? null : _handleSendDirectSms,
+              child: AsyncFilledButton.icon(
+                onPressed: _handleSendDirectSms,
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFFF97316),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 11),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
-                icon: _isSending
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.send_rounded, size: 16),
-                label: Text(_isSending ? 'Sending...' : 'Send SMS', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.send_rounded, size: 16),
+                label: const Text('Send SMS', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
               ),
             ),
           ],

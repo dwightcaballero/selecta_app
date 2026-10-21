@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:selecta_ops/models/supplier_oos_log.dart';
 import 'package:selecta_ops/services/supplier_oos_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Modal dialog displaying a monthly calendar of supplier availability for a specific product.
 /// Shows green dots for in-stock days, red dots for out-of-stock days, and supplier concern metrics.
@@ -225,7 +226,7 @@ class _ProductSupplierCalendarDialogState extends State<ProductSupplierCalendarD
 
               const SizedBox(height: 16),
               // Action Button to copy supplier concern
-              FilledButton.icon(
+              AsyncFilledButton.icon(
                 onPressed: _history != null && _history!.outOfStockDays > 0
                     ? _copyConcernMessage
                     : null,

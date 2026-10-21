@@ -12,6 +12,7 @@ import 'package:selecta_ops/views/pages/sidebar/error_logs_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/user_services.dart';
@@ -98,6 +99,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   }
 
   Future<void> _handleRoleSwitch() async {
+    if (_isSwitchingRole) return;
     final selectedRole = await showDialog<String>(
       context: context,
       builder: (ctx) {
@@ -472,6 +474,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   }
 
   Future<void> _handleSetAdminPassword() async {
+    if (_isSettingAdminPassword) return;
     final newPw = _newAdminPasswordController.text.trim();
     final confirmPw = _confirmAdminPasswordController.text.trim();
 
@@ -521,6 +524,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   }
 
   Future<void> _handleUploadPendingLogs() async {
+    if (_isUploadingLogs) return;
     setState(() => _isUploadingLogs = true);
     try {
       final count = await ErrorLogService.uploadPendingLogs();
@@ -544,6 +548,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   }
 
   Future<void> _saveAiSettings() async {
+    if (_isSaving) return;
     setState(() => _isSaving = true);
 
     try {
@@ -659,8 +664,9 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                           Row(
                             children: [
                               Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: _isSwitchingRole ? null : _handleRoleSwitch,
+                                child: AsyncFilledButton.icon(
+                                  onPressed: _handleRoleSwitch,
+                                  loadingLabel: 'Switching...',
                                   style: FilledButton.styleFrom(
                                     minimumSize: const Size(0, 48),
                                     backgroundColor: _currentRole == BusinessRole.admin
@@ -668,13 +674,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                                         : colorScheme.primary,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                   ),
-                                  icon: _isSwitchingRole
-                                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                      : const Icon(Icons.swap_horiz_rounded, size: 20),
-                                  label: Text(
-                                    _isSwitchingRole ? 'Switching...' : 'Switch Role',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
-                                  ),
+                                  icon: const Icon(Icons.swap_horiz_rounded, size: 20),
+                                  label: const Text('Switch Role', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
                                 ),
                               ),
                               const SizedBox(width: 10),
@@ -772,19 +773,18 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             ),
                           ),
                           const SizedBox(height: 14),
-                          FilledButton.icon(
-                            onPressed: _isSettingAdminPassword ? null : _handleSetAdminPassword,
+                          AsyncFilledButton.icon(
+                            onPressed: _handleSetAdminPassword,
+                            loadingLabel: 'Updating...',
                             style: FilledButton.styleFrom(
                               minimumSize: const Size(double.infinity, 48),
                               backgroundColor: Colors.red,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            icon: _isSettingAdminPassword
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Icon(Icons.lock_reset_rounded, size: 20),
+                            icon: const Icon(Icons.lock_reset_rounded, size: 20),
                             label: Text(
-                              _isSettingAdminPassword ? 'Updating...' : (_adminPasswordIsSet ? 'Change Admin Password' : 'Set Admin Password'),
+                              _adminPasswordIsSet ? 'Change Admin Password' : 'Set Admin Password',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                             ),
                           ),
@@ -1117,19 +1117,16 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
 
                           if (_pendingLogsCount > 0) ...[
                             const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: _isUploadingLogs ? null : _handleUploadPendingLogs,
+                            AsyncOutlinedButton.icon(
+                              onPressed: _handleUploadPendingLogs,
+                              loadingLabel: 'Uploading...',
                               style: OutlinedButton.styleFrom(
                                 minimumSize: const Size(double.infinity, 44),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
-                              icon: _isUploadingLogs
-                                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                  : const Icon(Icons.cloud_upload_outlined, size: 18),
+                              icon: const Icon(Icons.cloud_upload_outlined, size: 18),
                               label: Text(
-                                _isUploadingLogs
-                                    ? 'Uploading...'
-                                    : 'Sync $_pendingLogsCount Offline Log${_pendingLogsCount == 1 ? "" : "s"} to Firestore',
+                                'Sync $_pendingLogsCount Offline Log${_pendingLogsCount == 1 ? "" : "s"} to Firestore',
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                               ),
                             ),
@@ -1142,18 +1139,17 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                   const SizedBox(height: 28),
 
                   // Save Configurations Button
-                  FilledButton.icon(
-                    onPressed: _isSaving ? null : _saveAiSettings,
+                  AsyncFilledButton.icon(
+                    onPressed: _saveAiSettings,
+                    loadingLabel: 'Saving...',
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(double.infinity, 50),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    icon: _isSaving
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.save_rounded, size: 20),
-                    label: Text(
-                      _isSaving ? 'Saving...' : 'Save Superadmin Settings',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    icon: const Icon(Icons.save_rounded, size: 20),
+                    label: const Text(
+                      'Save Superadmin Settings',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                     ),
                   ),
                 ],

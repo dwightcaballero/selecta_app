@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:selecta_ops/services/export_report_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 enum ExportDatePreset {
   today('Today', 0),
@@ -87,6 +88,7 @@ class _ExportReportsPageState extends State<ExportReportsPage> {
   }
 
   Future<void> _runExport() async {
+    if (_isExporting) return;
     setState(() => _isExporting = true);
 
     try {
@@ -364,15 +366,14 @@ class _ExportReportsPageState extends State<ExportReportsPage> {
             SizedBox(
               width: double.infinity,
               height: 50,
-              child: FilledButton.icon(
-                icon: _isExporting
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.download_rounded),
-                label: Text(
-                  _isExporting ? 'Generating Report...' : 'Generate & Export to Excel / CSV',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              child: AsyncFilledButton.icon(
+                icon: const Icon(Icons.download_rounded),
+                label: const Text(
+                  'Generate & Export to Excel / CSV',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
-                onPressed: _isExporting ? null : _runExport,
+                loadingLabel: 'Generating Report...',
+                onPressed: _runExport,
               ),
             ),
 
@@ -443,10 +444,11 @@ class _ExportReportsPageState extends State<ExportReportsPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: FilledButton.icon(
+                          child: AsyncFilledButton.icon(
                             icon: const Icon(Icons.open_in_new_rounded, size: 16),
                             label: const Text('Open in Excel / Sheets'),
-                            onPressed: () => _exportService.openExportedFile(_lastExportResult!.filePath),
+                            loadingLabel: 'Opening...',
+                            onPressed: () async => await _exportService.openExportedFile(_lastExportResult!.filePath),
                           ),
                         ),
                         const SizedBox(width: 10),

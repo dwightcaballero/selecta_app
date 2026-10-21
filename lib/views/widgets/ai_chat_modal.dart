@@ -4,6 +4,7 @@ import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/services/gemini_ai_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:intl/intl.dart';
 
@@ -327,6 +328,7 @@ class _AiChatModalState extends State<AiChatModal> {
     final text = predefinedText ?? _textController.text.trim();
     if (text.isEmpty || _isLoading) return;
 
+    HapticFeedback.lightImpact();
     if (predefinedText == null) {
       _textController.clear();
     }
@@ -430,7 +432,7 @@ class _AiChatModalState extends State<AiChatModal> {
               style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13),
             ),
             const SizedBox(height: 20),
-            FilledButton.icon(
+            AsyncFilledButton.icon(
               icon: const Icon(Icons.settings_outlined, size: 18),
               label: const Text('Open Configurations'),
               onPressed: () {
@@ -489,7 +491,7 @@ class _AiChatModalState extends State<AiChatModal> {
                     ],
                   ),
                 ),
-                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(context).pop(), tooltip: 'Close'),
+                AsyncIconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(context).pop(), tooltip: 'Close'),
               ],
             ),
           ),

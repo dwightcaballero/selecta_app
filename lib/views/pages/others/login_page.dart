@@ -7,6 +7,7 @@ import 'package:selecta_ops/views/pages/others/register_page.dart';
 import 'package:selecta_ops/views/pages/others/selecta_catalog_sync_gate_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 /// User login presentation page with form inputs, password visibility toggling,
@@ -37,6 +38,7 @@ class _LoginPageState extends State<LoginPage> {
 
   /// Handles user sign-in submission via controller
   Future<void> _login() async {
+    if (_isLoading) return;
     if (!(_formKey.currentState?.validate() ?? false)) {
       SnackBarWidget.error(context, 'Please enter a valid email and password.');
       return;
@@ -270,19 +272,14 @@ class _LoginPageState extends State<LoginPage> {
                             const SizedBox(height: 6),
                             SizedBox(
                               width: double.infinity,
-                              child: FilledButton(
-                                onPressed: _isLoading ? null : _login,
+                              child: AsyncFilledButton(
+                                onPressed: _login,
+                                loadingLabel: 'Logging In...',
                                 style: FilledButton.styleFrom(
                                   minimumSize: const Size.fromHeight(50),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 ),
-                                child: _isLoading
-                                    ? SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(strokeWidth: 2.5, color: colorScheme.onPrimary),
-                                      )
-                                    : const Text('Log In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                child: const Text('Log In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                               ),
                             ),
                           ],

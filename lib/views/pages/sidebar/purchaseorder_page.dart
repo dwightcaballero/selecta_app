@@ -16,6 +16,7 @@ import 'package:selecta_ops/services/supplier_mapping_service.dart';
 import 'package:selecta_ops/models/supplier_product_mapping.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/audithistory_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/product_disambiguation_sheet.dart';
@@ -2475,21 +2476,19 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _isSaving
-                          ? null
-                          : () async {
-                              if (await ShowMessage.confirm(
-                                context,
-                                title: 'Delete PO',
-                                message: 'Delete this pending PO? No inventory was changed.',
-                                isDestructive: true,
-                                icon: Icons.delete_outline,
-                                confirmText: 'Delete',
-                              )) {
-                                onDelete();
-                              }
-                            },
+                    child: AsyncOutlinedButton.icon(
+                      onPressed: () async {
+                        if (await ShowMessage.confirm(
+                          context,
+                          title: 'Delete PO',
+                          message: 'Delete this pending PO? No inventory was changed.',
+                          isDestructive: true,
+                          icon: Icons.delete_outline,
+                          confirmText: 'Delete',
+                        )) {
+                          await onDelete();
+                        }
+                      },
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(0, 48),
                         foregroundColor: Colors.red.shade700,
@@ -2507,24 +2506,18 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                       builder: (context) {
                         final hasInvoice =
                             _invoiceLines.isNotEmpty || _comparisonResult != null || _officialInvoiceNumberController.text.trim().isNotEmpty;
-                        return FilledButton.icon(
-                          onPressed: _isSaving
-                              ? null
-                              : hasInvoice
+                        return AsyncFilledButton.icon(
+                          onPressed: hasInvoice
                               ? onConfirmOfficialInvoice
-                              : () => _showReceiveDeliveryOptions(allInventory),
+                              : () async => _showReceiveDeliveryOptions(allInventory),
                           style: FilledButton.styleFrom(
                             backgroundColor: Colors.teal,
                             minimumSize: const Size(0, 48),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          icon: _isSaving
-                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : Icon(hasInvoice ? Icons.fact_check_outlined : Icons.local_shipping_outlined),
+                          icon: Icon(hasInvoice ? Icons.fact_check_outlined : Icons.local_shipping_outlined),
                           label: Text(
-                            _isSaving
-                                ? 'Attaching...'
-                                : hasInvoice
+                            hasInvoice
                                 ? 'Attach Invoice & Replenish'
                                 : 'Receive Delivery',
                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
@@ -2538,8 +2531,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _isSaving ? null : onUpdatePending,
+                child: AsyncOutlinedButton.icon(
+                  onPressed: onUpdatePending,
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 40),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -2563,21 +2556,19 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
             color: Theme.of(context).scaffoldBackgroundColor,
             border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
           ),
-          child: OutlinedButton.icon(
-            onPressed: _isSaving
-                ? null
-                : () async {
-                    if (await ShowMessage.confirm(
-                      context,
-                      title: 'Delete Purchase Order',
-                      message: 'Delete this confirmed PO? Replenished stock will be reverted.',
-                      isDestructive: true,
-                      icon: Icons.delete_outline,
-                      confirmText: 'Delete',
-                    )) {
-                      onDelete();
-                    }
-                  },
+          child: AsyncOutlinedButton.icon(
+            onPressed: () async {
+              if (await ShowMessage.confirm(
+                context,
+                title: 'Delete Purchase Order',
+                message: 'Delete this confirmed PO? Replenished stock will be reverted.',
+                isDestructive: true,
+                icon: Icons.delete_outline,
+                confirmText: 'Delete',
+              )) {
+                await onDelete();
+              }
+            },
             style: OutlinedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
               foregroundColor: Colors.red.shade700,
@@ -2630,19 +2621,17 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
               ],
             ),
             const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _isSaving ? null : onSave,
+            AsyncFilledButton.icon(
+              onPressed: onSave,
               style: FilledButton.styleFrom(
                 minimumSize: const Size(double.infinity, 48),
                 backgroundColor: Colors.orange.shade700,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              icon: _isSaving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.save_outlined),
-              label: Text(
-                _isSaving ? 'Saving...' : 'Save Purchase Order (Pending)',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              icon: const Icon(Icons.save_outlined),
+              label: const Text(
+                'Save Purchase Order (Pending)',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
             ),
           ],

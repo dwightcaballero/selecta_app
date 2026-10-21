@@ -13,6 +13,7 @@ import 'package:selecta_ops/models/purchaseorder.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/data/responsive.dart';
 
@@ -259,7 +260,6 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
     );
     DateTime selectedDate = DateTime.now();
     final Set<String> selectedOverpaymentIds = {};
-    bool isSaving = false;
 
     showModalBottomSheet(
       context: context,
@@ -335,7 +335,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.close_rounded),
-                          onPressed: isSaving ? null : () => Navigator.pop(sheetContext),
+                          onPressed: () => Navigator.pop(sheetContext),
                         ),
                       ],
                     ),
@@ -522,14 +522,13 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                             const SizedBox(height: 6),
                             Material(
                               color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                                ),
-                                child: Column(
-                                  children: _unsettledOverpayments.map((doc) {
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: Column(
+                                children: _unsettledOverpayments.map((doc) {
                                     final order = doc.data();
                                     final isChecked = selectedOverpaymentIds.contains(doc.id);
                                     final label = order.invoiceNumber.isNotEmpty ? 'Inv #${order.invoiceNumber}' : 'PO #${order.poNumber}';
@@ -555,7 +554,6 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                                   }).toList(),
                                 ),
                               ),
-                            ),
                             const SizedBox(height: 16),
                           ],
 
@@ -615,7 +613,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                     child: Row(
                       children: [
                         OutlinedButton(
-                          onPressed: isSaving ? null : () => Navigator.pop(sheetContext),
+                          onPressed: () => Navigator.pop(sheetContext),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -624,35 +622,22 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: FilledButton(
-                            onPressed: isSaving
-                                ? null
-                                : () async {
-                                    setModalState(() => isSaving = true);
-                                    await _saveOrderDirectly(
-                                      sheetContext: sheetContext,
-                                      lines: lines,
-                                      poNumber: poNumberController.text,
-                                      orderDate: selectedDate,
-                                      selectedOverpaymentIds: selectedOverpaymentIds,
-                                      onFailure: () {
-                                        if (sheetContext.mounted) {
-                                          setModalState(() => isSaving = false);
-                                        }
-                                      },
-                                    );
-                                  },
+                          child: AsyncFilledButton(
+                            onPressed: () async {
+                              await _saveOrderDirectly(
+                                sheetContext: sheetContext,
+                                lines: lines,
+                                poNumber: poNumberController.text,
+                                orderDate: selectedDate,
+                                selectedOverpaymentIds: selectedOverpaymentIds,
+                                onFailure: () {},
+                              );
+                            },
                             style: FilledButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            child: isSaving
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Text('Confirm & Create Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            child: const Text('Confirm & Create Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                           ),
                         ),
                       ],
@@ -1182,7 +1167,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton.icon(
+                  child: AsyncFilledButton.icon(
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1194,7 +1179,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                           : 'Apply to P.O. ($totalUnits)',
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
-                    onPressed: () => _onSubmit(allInventory),
+                    onPressed: () async => _onSubmit(allInventory),
                   ),
                 ),
               ],
@@ -1644,8 +1629,8 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
               ],
             ),
           ),
-          FilledButton.icon(
-            onPressed: () => _onSubmit(allInventory),
+          AsyncFilledButton.icon(
+            onPressed: () async => _onSubmit(allInventory),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

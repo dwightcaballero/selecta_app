@@ -14,6 +14,7 @@ import 'package:selecta_ops/views/pages/sidebar/badorder_batch_detail_page.dart'
 import 'package:selecta_ops/views/pages/sidebar/badorder_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorder_form_page.dart';
 import 'package:intl/intl.dart';
 
@@ -870,7 +871,7 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
                   ),
                   if (_isDealer) ...[
                     const SizedBox(height: 16),
-                    FilledButton.icon(
+                    AsyncFilledButton.icon(
                       onPressed: _openCreateBatchPage,
                       style: FilledButton.styleFrom(
                         backgroundColor: Colors.blue.shade700,
@@ -1332,8 +1333,10 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
           // Action button
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: FilledButton.icon(
-              onPressed: () => Helperfunctions.navigateTo(context, BadOrderPage(recID: boId, badorder: bo)),
+            child: AsyncFilledButton.icon(
+              onPressed: () {
+                Helperfunctions.navigateTo(context, BadOrderPage(recID: boId, badorder: bo));
+              },
               style: FilledButton.styleFrom(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1589,11 +1592,13 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
           // Action button
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: FilledButton.icon(
-              onPressed: () => Helperfunctions.navigateTo(
-                context,
-                BadOrderBatchDetailPage(batchId: batchId, batch: batch),
-              ),
+            child: AsyncFilledButton.icon(
+              onPressed: () {
+                Helperfunctions.navigateTo(
+                  context,
+                  BadOrderBatchDetailPage(batchId: batchId, batch: batch),
+                );
+              },
               style: FilledButton.styleFrom(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1916,22 +1921,22 @@ class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
-          FilledButton(
+          AsyncFilledButton(
             onPressed: () async {
               final val = double.tryParse(textController.text.trim()) ?? 0.0;
               if (val <= 0) {
                 ShowMessage.error(dialogCtx, 'Please enter a price greater than 0.');
                 return;
               }
-              Navigator.pop(dialogCtx);
               try {
                 await _productController.updateBadOrderPricePerPiece(product.id, val);
+                if (dialogCtx.mounted) Navigator.pop(dialogCtx);
                 if (mounted) {
                   ShowMessage.success(context, 'Updated B.O. price for ${product.productName} to ₱${val.toStringAsFixed(2)}');
                 }
               } catch (e) {
-                if (mounted) {
-                  ShowMessage.error(context, 'Failed to update price: $e');
+                if (dialogCtx.mounted) {
+                  ShowMessage.error(dialogCtx, 'Failed to update price: $e');
                 }
               }
             },

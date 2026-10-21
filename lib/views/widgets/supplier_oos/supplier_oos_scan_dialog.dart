@@ -11,6 +11,7 @@ import 'package:selecta_ops/services/gemini_ai_service.dart';
 import 'package:selecta_ops/services/supplier_mapping_service.dart';
 import 'package:selecta_ops/services/supplier_oos_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/supplier_oos/supplier_oos_product_picker_dialog.dart';
 
@@ -690,16 +691,10 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
           const SizedBox(height: 24),
 
           // Action Button
-          FilledButton.icon(
-            onPressed: _images.isNotEmpty && !_isAnalyzing ? _runAiExtraction : null,
-            icon: _isAnalyzing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.auto_awesome_rounded),
-            label: Text(_isAnalyzing ? 'Analyzing with AI...' : 'Analyze Supplier Inventory'),
+          AsyncFilledButton.icon(
+            onPressed: _images.isNotEmpty ? _runAiExtraction : null,
+            icon: const Icon(Icons.auto_awesome_rounded),
+            label: const Text('Analyze Supplier Inventory'),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -856,11 +851,9 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
                   ],
                 ),
               ),
-              FilledButton.icon(
-                onPressed: !_isSaving ? _saveRecords : null,
-                icon: _isSaving
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.check_rounded),
+              AsyncFilledButton.icon(
+                onPressed: _saveRecords,
+                icon: const Icon(Icons.check_rounded),
                 label: Text('Save ($oosCount OOS)'),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.teal.shade700,

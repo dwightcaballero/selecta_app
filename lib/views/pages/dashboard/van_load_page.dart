@@ -12,6 +12,7 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/van_load.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
@@ -1996,7 +1997,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 ],
               ),
               if (isDraft && _isDealer)
-                FilledButton.icon(
+                AsyncFilledButton.icon(
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.teal,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
@@ -2004,6 +2005,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   ),
                   icon: const Icon(Icons.local_shipping, size: 18),
                   label: const Text('Confirm Load', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  loadingLabel: 'Loading Van...',
                   onPressed: _confirmAndDeductWarehouseStock,
                 )
               else
@@ -2086,7 +2088,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
             ),
             const SizedBox(width: 10),
             if (isDraft && _isDealer)
-              FilledButton.icon(
+              AsyncFilledButton.icon(
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.teal,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
@@ -2094,6 +2096,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 ),
                 icon: const Icon(Icons.local_shipping, size: 18),
                 label: const Text('Confirm Load', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                loadingLabel: 'Loading Van...',
                 onPressed: _confirmAndDeductWarehouseStock,
               )
             else

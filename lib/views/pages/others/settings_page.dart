@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:selecta_ops/data/constants.dart';
-import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/models/app_version_info.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
@@ -53,16 +52,16 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    await Helperfunctions.showLoading(context: context, showLoading: true);
     try {
-      final count = await ErrorLogService.uploadPendingLogs();
-      if (!mounted) return;
-      await Helperfunctions.showLoading(context: context, showLoading: false);
-      if (mounted) {
+      final count = await ShowMessage.runWithLoading<int>(
+        context,
+        message: 'Uploading error logs...',
+        task: () => ErrorLogService.uploadPendingLogs(),
+      );
+      if (mounted && count != null) {
         ShowMessage.success(context, 'Successfully uploaded $count error log${count == 1 ? "" : "s"} to Firebase');
       }
     } catch (e) {
-      if (mounted) await Helperfunctions.showLoading(context: context, showLoading: false);
       if (mounted) {
         ShowMessage.error(context, 'Failed to upload error logs: $e');
       }

@@ -8,6 +8,7 @@ import 'package:selecta_ops/models/promo.dart';
 import 'package:selecta_ops/services/promo_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Admin & Dealer screen to manage promotional campaigns, bundle rules,
 /// reward definitions, per-store limits, and funding sources.
@@ -196,7 +197,7 @@ class _AdminPromosPageState extends State<AdminPromosPage> {
                             style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
                           ),
                           const SizedBox(height: 18),
-                          FilledButton.icon(
+                          AsyncFilledButton.icon(
                             onPressed: () => _openPromoEditor(null),
                             icon: const Icon(Icons.add, size: 18),
                             label: const Text('Create Promo'),
@@ -451,12 +452,14 @@ class _AdminPromosPageState extends State<AdminPromosPage> {
                       isDestructive: true,
                     );
                     if (confirmed && mounted) {
-                      try {
-                        await _promoService.deletePromo(promo.id);
-                        if (mounted) ShowMessage.success(context, 'Promotion deleted');
-                      } catch (e) {
-                        if (mounted) ShowMessage.error(context, 'Failed to delete promo: $e');
-                      }
+                      await ShowMessage.runWithLoading(
+                        context,
+                        message: 'Deleting promotion...',
+                        task: () async {
+                          await _promoService.deletePromo(promo.id);
+                          if (mounted) ShowMessage.success(context, 'Promotion deleted');
+                        },
+                      );
                     }
                   },
                 ),
@@ -526,7 +529,6 @@ class _PromoEditorModalState extends State<_PromoEditorModal> {
   String _rewardType = 'fixed'; // 'fixed' | 'percentage' | 'free_item'
   DateTime? _startDate;
   DateTime? _endDate;
-  bool _isSaving = false;
 
   final List<_RuleDraft> _rules = [];
   final List<_FreeItemDraft> _freeItems = [];
@@ -646,15 +648,14 @@ class _PromoEditorModalState extends State<_PromoEditorModal> {
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: FilledButton(
+            child: AsyncFilledButton(
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              onPressed: _isSaving ? null : _savePromo,
-              child: _isSaving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Save', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              onPressed: _savePromo,
+              loadingLabel: 'Saving...',
+              child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             ),
           ),
         ],
@@ -767,12 +768,14 @@ class _PromoEditorModalState extends State<_PromoEditorModal> {
                 ),
               ),
               const SizedBox(height: 10),
-              Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+              Material(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(12),
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300),
+                  side: BorderSide(color: Colors.grey.shade300),
                 ),
+                clipBehavior: Clip.antiAlias,
                 child: SwitchListTile.adaptive(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                   title: const Text('Supplier Reimbursement Claimable', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
@@ -1001,12 +1004,14 @@ class _PromoEditorModalState extends State<_PromoEditorModal> {
             const SizedBox(height: 16),
 
             // Repeat per set switch
-            Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+            Material(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(12),
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade300),
+                side: BorderSide(color: Colors.grey.shade300),
               ),
+              clipBehavior: Clip.antiAlias,
               child: SwitchListTile.adaptive(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                 title: const Text('Repeat Per Set', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
@@ -1099,8 +1104,6 @@ class _PromoEditorModalState extends State<_PromoEditorModal> {
       return;
     }
 
-    setState(() => _isSaving = true);
-
     try {
       final docId = widget.existingPromo?.id ?? FirebaseFirestore.instance.collection('promos').doc().id;
 
@@ -1162,7 +1165,6 @@ class _PromoEditorModalState extends State<_PromoEditorModal> {
       widget.onSaved();
     } catch (e) {
       if (mounted) {
-        setState(() => _isSaving = false);
         ShowMessage.error(context, 'Failed to save promo: $e');
       }
     }
@@ -1456,7 +1458,7 @@ class _SearchableProductPickerDialogState extends State<_SearchableProductPicker
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: FilledButton(
+                    child: AsyncFilledButton(
                       style: FilledButton.styleFrom(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),

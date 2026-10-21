@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 
 /// Result returned when user confirms the Store & Delivery Date selection modal.
@@ -315,7 +316,7 @@ class _StoreDateModalState extends State<StoreDateModal> {
                 const SizedBox(height: 24),
 
                 // Confirm Button
-                FilledButton(
+                AsyncFilledButton(
                   onPressed: () {
                     final store = _storeController.text.trim();
                     if (store.isEmpty) {
