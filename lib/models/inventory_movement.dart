@@ -431,6 +431,14 @@ class InventoryMovement {
   final ReturnDisposition? disposition;
   final ShortPickReason? shortPickReason;
 
+  // Hardening, offline-safety, server-timing, and cycle count tracking
+  final Timestamp? clientCreatedAt;
+  final bool wasOffline;
+  final int? sequenceNumber;
+  final bool isBlind;
+  final int? countRound;
+  final int? systemQuantityAtStart;
+
   const InventoryMovement({
     required this.id,
     required this.productId,
@@ -471,6 +479,12 @@ class InventoryMovement {
     this.sellingPrice,
     this.disposition,
     this.shortPickReason,
+    this.clientCreatedAt,
+    this.wasOffline = false,
+    this.sequenceNumber,
+    this.isBlind = false,
+    this.countRound,
+    this.systemQuantityAtStart,
   });
 
   factory InventoryMovement.fromJson(String id, Map<String, Object?> json) {
@@ -492,6 +506,17 @@ class InventoryMovement {
     final legacyCreatedBy = json['createdBy'] as String? ?? '';
     final actorName = json['actorName'] as String? ?? (legacyCreatedBy.isNotEmpty ? legacyCreatedBy : null);
 
+    final rawCreated = json['createdAt'];
+    final rawClientCreated = json['clientCreatedAt'];
+    final Timestamp resolvedCreatedAt;
+    if (rawCreated is Timestamp) {
+      resolvedCreatedAt = rawCreated;
+    } else if (rawClientCreated is Timestamp) {
+      resolvedCreatedAt = rawClientCreated;
+    } else {
+      resolvedCreatedAt = Timestamp.now();
+    }
+
     return InventoryMovement(
       id: id,
       productId: json['productId'] as String? ?? '',
@@ -503,7 +528,7 @@ class InventoryMovement {
       reason: rawReason,
       notes: json['notes'] as String? ?? '',
       createdBy: legacyCreatedBy,
-      createdAt: json['createdAt'] as Timestamp? ?? Timestamp.now(),
+      createdAt: resolvedCreatedAt,
       movementType: mType,
       reasonCode: reasonCode,
       referenceType: refType,
@@ -532,6 +557,12 @@ class InventoryMovement {
       sellingPrice: (json['sellingPrice'] as num?)?.toDouble(),
       disposition: disposition,
       shortPickReason: shortPickReason,
+      clientCreatedAt: rawClientCreated is Timestamp ? rawClientCreated : (rawCreated is Timestamp ? rawCreated : null),
+      wasOffline: (json['wasOffline'] as bool?) ?? false,
+      sequenceNumber: (json['sequenceNumber'] as num?)?.toInt(),
+      isBlind: (json['isBlind'] as bool?) ?? false,
+      countRound: (json['countRound'] as num?)?.toInt(),
+      systemQuantityAtStart: (json['systemQuantityAtStart'] as num?)?.toInt(),
     );
   }
 
@@ -594,6 +625,12 @@ class InventoryMovement {
     double? sellingPrice,
     ReturnDisposition? disposition,
     ShortPickReason? shortPickReason,
+    Timestamp? clientCreatedAt,
+    bool? wasOffline,
+    int? sequenceNumber,
+    bool? isBlind,
+    int? countRound,
+    int? systemQuantityAtStart,
   }) {
     return InventoryMovement(
       id: id ?? this.id,
@@ -635,10 +672,16 @@ class InventoryMovement {
       sellingPrice: sellingPrice ?? this.sellingPrice,
       disposition: disposition ?? this.disposition,
       shortPickReason: shortPickReason ?? this.shortPickReason,
+      clientCreatedAt: clientCreatedAt ?? this.clientCreatedAt,
+      wasOffline: wasOffline ?? this.wasOffline,
+      sequenceNumber: sequenceNumber ?? this.sequenceNumber,
+      isBlind: isBlind ?? this.isBlind,
+      countRound: countRound ?? this.countRound,
+      systemQuantityAtStart: systemQuantityAtStart ?? this.systemQuantityAtStart,
     );
   }
 
-  Map<String, Object?> toJson() {
+  Map<String, Object?> toJson({bool forFirestore = true}) {
     return {
       'productId': productId,
       'productName': productName,
@@ -649,7 +692,8 @@ class InventoryMovement {
       'reason': reason,
       'notes': notes,
       'createdBy': createdBy,
-      'createdAt': createdAt,
+      'createdAt': forFirestore ? FieldValue.serverTimestamp() : createdAt,
+      'clientCreatedAt': clientCreatedAt ?? createdAt,
       'movementType': movementType.key,
       if (reasonCode != null) 'reasonCode': reasonCode!.key,
       if (referenceType != null) 'referenceType': referenceType!.key,
@@ -678,6 +722,11 @@ class InventoryMovement {
       if (sellingPrice != null) 'sellingPrice': sellingPrice,
       if (disposition != null) 'disposition': disposition!.key,
       if (shortPickReason != null) 'shortPickReason': shortPickReason!.key,
+      'wasOffline': wasOffline,
+      if (sequenceNumber != null) 'sequenceNumber': sequenceNumber,
+      if (isBlind) 'isBlind': isBlind,
+      if (countRound != null) 'countRound': countRound,
+      if (systemQuantityAtStart != null) 'systemQuantityAtStart': systemQuantityAtStart,
     };
   }
 

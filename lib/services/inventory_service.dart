@@ -22,6 +22,9 @@ import 'package:selecta_ops/services/other_product_service.dart';
 import 'package:selecta_ops/services/placement_service.dart';
 import 'package:selecta_ops/services/purchaseorder_service.dart';
 import 'package:selecta_ops/services/selecta_product_service.dart';
+import 'package:selecta_ops/models/inventory_pending_adjustment.dart';
+import 'package:selecta_ops/models/inventory_snapshot.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:intl/intl.dart';
 
 // ignore: constant_identifier_names
@@ -505,23 +508,70 @@ class InventoryService {
     }
   }
 
+  /// Executes a Firestore transaction with offline error handling and retry limits.
+  Future<T> _runInventoryTransaction<T>(
+    String operationName,
+    Future<T> Function(Transaction transaction) updateFunction,
+  ) async {
+    try {
+      return await _firestore.runTransaction<T>(
+        updateFunction,
+        maxAttempts: 5,
+      );
+    } on FirebaseException catch (e) {
+      if (e.code == 'unavailable' ||
+          e.code == 'deadline-exceeded' ||
+          e.message?.toLowerCase().contains('offline') == true) {
+        throw StateError(
+          'Inventory operation "$operationName" requires an active internet connection. Please verify your connection and try again.',
+        );
+      }
+      rethrow;
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('offline') || msg.contains('failed to get document because the client is offline')) {
+        throw StateError(
+          'Inventory operation "$operationName" requires an active internet connection. Please verify your connection and try again.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<int> _resolveUnitApprovalThreshold() async {
+    try {
+      final config = await ConfigurationService().getConfiguration();
+      return config.unitApprovalThreshold;
+    } catch (_) {
+      return 10;
+    }
+  }
+
   Future<({String uid, String role, String name})> _resolveActor() async {
     try {
       final authUser = FirebaseAuth.instance.currentUser;
       final cachedUser = await KVariables.getUser();
       final uid = authUser?.uid ?? '';
-      final role = cachedUser?.role ?? 'Dealer';
+      final role = cachedUser?.role ?? 'Unknown';
       final name = (authUser?.displayName?.trim().isNotEmpty == true)
           ? authUser!.displayName!.trim()
           : ((cachedUser?.username.trim().isNotEmpty ?? false)
               ? cachedUser!.username.trim()
-              : (authUser?.email ?? 'Dealer'));
+              : (authUser?.email?.trim().isNotEmpty == true ? authUser!.email!.trim() : 'Unknown'));
       return (uid: uid, role: role, name: name);
     } catch (_) {
-      return (uid: '', role: 'Dealer', name: 'Dealer');
+      return (uid: '', role: 'Unknown', name: 'Unknown');
     }
   }
 
+
+  static List<List<T>> _chunk<T>(List<T> items, int chunkSize) {
+    final chunks = <List<T>>[];
+    for (var i = 0; i < items.length; i += chunkSize) {
+      chunks.add(items.sublist(i, (i + chunkSize < items.length) ? i + chunkSize : items.length));
+    }
+    return chunks;
+  }
 
   /// Central logic for computing stock mutations, enforcing non-negative floors,
   /// tracking clamping, and creating rich [InventoryMovement] audit records.
@@ -557,6 +607,9 @@ class InventoryService {
     double? sellingPrice,
     ReturnDisposition? disposition,
     ShortPickReason? shortPickReason,
+    bool isBlind = false,
+    int countRound = 1,
+    int? systemQuantityAtStart,
   }) {
     final data = productSnap.data() ?? {};
     final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
@@ -599,7 +652,9 @@ class InventoryService {
       'updatedAt': now,
     };
 
-    final movementDoc = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+    final resolvedMovementId = (idempotencyKey != null && idempotencyKey.isNotEmpty)
+        ? idempotencyKey.replaceAll('/', '_')
+        : _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc().id;
     final productName = (data['productName'] as String?) ??
         (data['name'] as String?) ??
         'Product';
@@ -610,7 +665,7 @@ class InventoryService {
     final resolvedSellingPrice = sellingPrice ?? (data['sellingPrice'] as num?)?.toDouble();
 
     final movement = InventoryMovement(
-      id: movementDoc.id,
+      id: resolvedMovementId,
       productId: productRef.id,
       productName: productName,
       productSource: productSource,
@@ -649,6 +704,9 @@ class InventoryService {
       sellingPrice: resolvedSellingPrice,
       disposition: disposition,
       shortPickReason: shortPickReason,
+      isBlind: isBlind,
+      countRound: countRound,
+      systemQuantityAtStart: systemQuantityAtStart,
     );
 
     return StockChangeRecord(
@@ -707,67 +765,84 @@ class InventoryService {
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
     final correlationId = 'order_${orderId ?? storeName}_${now.millisecondsSinceEpoch}';
 
-    final snapshots = await Future.wait(validItems.map((item) {
-      final collectionName = _collectionForSource(item.productSource);
-      return _firestore.collection(collectionName).doc(item.productId).get();
-    }));
+    for (final chunk in _chunk(validItems, 100)) {
+      final List<({String productId, String productName, String productSource, int requested, int available})> shortAllocations = [];
 
-    bool hasUpdates = false;
-    for (int i = 0; i < validItems.length; i++) {
-      final snap = snapshots[i];
-      if (!snap.exists) continue;
-      final item = validItems[i];
-      final currentStock = (snap.data()?['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentReserved = (snap.data()?['reservedQuantity'] as num?)?.toInt() ?? 0;
-      final availableAtMoment = currentStock - currentReserved;
+      await _runInventoryTransaction('reserveStockForOrder', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'order_reserve_${orderId ?? storeName}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      // 8.1: Check short allocation
-      final isShort = availableAtMoment < item.pickedQuantity;
-      if (isShort) {
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
+
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue; // Idempotency check
+
+          final item = chunk[i];
+          final currentStock = (snap.data()?['stockQuantity'] as num?)?.toInt() ?? 0;
+          final currentReserved = (snap.data()?['reservedQuantity'] as num?)?.toInt() ?? 0;
+          final availableAtMoment = currentStock - currentReserved;
+
+          final isShort = availableAtMoment < item.pickedQuantity;
+          if (isShort) {
+            shortAllocations.add((
+              productId: snap.id,
+              productName: (snap.data()?['productName'] as String?) ?? item.productName,
+              productSource: item.productSource,
+              requested: item.pickedQuantity,
+              available: availableAtMoment > 0 ? availableAtMoment : 0,
+            ));
+          }
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: 0,
+            reservedDelta: item.pickedQuantity,
+            movementType: MovementType.reserve,
+            referenceType: ReferenceType.order,
+            referenceId: orderId,
+            referenceLabel: storeName,
+            correlationId: correlationId,
+            idempotencyKey: movRefs[i].id,
+            sourceLocation: 'warehouse',
+            targetLocation: 'reserved',
+            reason: 'Order Booked (Reserved Stock)',
+            notes: 'Store: $storeName (Reserved: +${item.pickedQuantity}${isShort ? " [Short Allocation: Avail $availableAtMoment]" : ""})',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
+
+      for (final s in shortAllocations) {
         _recordDiscrepancy(
-          productId: snap.id,
-          productName: (snap.data()?['productName'] as String?) ?? item.productName,
-          productSource: item.productSource,
+          productId: s.productId,
+          productName: s.productName,
+          productSource: s.productSource,
           type: 'short_allocation',
-          expected: item.pickedQuantity,
-          actual: availableAtMoment > 0 ? availableAtMoment : 0,
-          details: 'Order booking short allocation for $storeName: requested ${item.pickedQuantity}, available $availableAtMoment.',
+          expected: s.requested,
+          actual: s.available,
+          details: 'Order booking short allocation for $storeName: requested ${s.requested}, available ${s.available}.',
         );
       }
-
-      final change = _computeStockChange(
-        productRef: snap.reference,
-        productSnap: snap,
-        stockDelta: 0,
-        reservedDelta: item.pickedQuantity,
-        movementType: MovementType.reserve,
-        referenceType: ReferenceType.order,
-        referenceId: orderId,
-        referenceLabel: storeName,
-        correlationId: correlationId,
-        idempotencyKey: 'order_reserve_${orderId ?? storeName}_${snap.id}',
-        sourceLocation: 'warehouse',
-        targetLocation: 'reserved',
-        reason: 'Order Booked (Reserved Stock)',
-        notes: 'Store: $storeName (Reserved: +${item.pickedQuantity}${isShort ? " [Short Allocation: Avail $availableAtMoment]" : ""})',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
-
-      batch.update(snap.reference, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasUpdates = true;
-    }
-
-    if (hasUpdates) {
-      await batch.commit();
     }
   }
 
@@ -780,7 +855,7 @@ class InventoryService {
     required List<OrderItem> newItems,
     String? orderId,
   }) async {
-    final Map<String, ({String source, int delta})> deltas = {};
+    final Map<String, ({String source, String productId, int delta})> deltas = {};
 
     for (final oldItem in oldItems) {
       if (oldItem.productId.isEmpty) continue;
@@ -788,6 +863,7 @@ class InventoryService {
       final prev = deltas[key];
       deltas[key] = (
         source: oldItem.productSource,
+        productId: oldItem.productId,
         delta: (prev?.delta ?? 0) - oldItem.pickedQuantity,
       );
     }
@@ -798,60 +874,66 @@ class InventoryService {
       final prev = deltas[key];
       deltas[key] = (
         source: newItem.productSource,
+        productId: newItem.productId,
         delta: (prev?.delta ?? 0) + newItem.pickedQuantity,
       );
     }
 
-    final activeEntries = deltas.entries.where((e) => e.value.delta != 0).toList();
+    final activeEntries = deltas.values.where((e) => e.delta != 0).toList();
     if (activeEntries.isEmpty) return;
 
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
-    bool hasChanges = false;
 
-    final snapshots = await Future.wait(activeEntries.map((entry) {
-      final parts = entry.key.split(':');
-      final productId = parts.sublist(1).join(':');
-      final collectionName = _collectionForSource(entry.value.source);
-      return _firestore.collection(collectionName).doc(productId).get();
-    }));
+    for (final chunk in _chunk(activeEntries, 100)) {
+      await _runInventoryTransaction('adjustReservedStockForOrderUpdate', (transaction) async {
+        final productRefs = chunk.map((entry) {
+          final collectionName = _collectionForSource(entry.source);
+          return _firestore.collection(collectionName).doc(entry.productId);
+        }).toList();
+        final movRefs = chunk.map((entry) {
+          final idKey = 'order_adj_reserve_${orderId ?? storeName}_${entry.productId}_${now.millisecondsSinceEpoch}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-    for (int i = 0; i < activeEntries.length; i++) {
-      final snap = snapshots[i];
-      if (!snap.exists) continue;
-      final entry = activeEntries[i];
-      final delta = entry.value.delta;
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      final change = _computeStockChange(
-        productRef: snap.reference,
-        productSnap: snap,
-        stockDelta: 0,
-        reservedDelta: delta,
-        movementType: delta > 0 ? MovementType.reserve : MovementType.release,
-        referenceType: ReferenceType.order,
-        referenceId: orderId,
-        referenceLabel: storeName,
-        reason: delta > 0
-            ? 'Order Updated (Reserved Stock Increased)'
-            : 'Order Updated (Reserved Stock Released)',
-        notes: 'Store: $storeName (${delta > 0 ? "+$delta" : "$delta"} reserved)',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
 
-      batch.update(snap.reference, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasChanges = true;
-    }
+          final entry = chunk[i];
+          final delta = entry.delta;
 
-    if (hasChanges) {
-      await batch.commit();
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: 0,
+            reservedDelta: delta,
+            movementType: delta > 0 ? MovementType.reserve : MovementType.release,
+            referenceType: ReferenceType.order,
+            referenceId: orderId,
+            referenceLabel: storeName,
+            idempotencyKey: movRefs[i].id,
+            reason: delta > 0
+                ? 'Order Updated (Reserved Stock Increased)'
+                : 'Order Updated (Reserved Stock Released)',
+            notes: 'Store: $storeName (${delta > 0 ? "+$delta" : "$delta"} reserved)',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
   }
 
@@ -867,45 +949,52 @@ class InventoryService {
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
-    bool hasChanges = false;
 
-    final snapshots = await Future.wait(validItems.map((item) {
-      final collectionName = _collectionForSource(item.productSource);
-      return _firestore.collection(collectionName).doc(item.productId).get();
-    }));
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('releaseReservedStockForOrder', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'order_release_${orderId ?? storeName}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-    for (int i = 0; i < validItems.length; i++) {
-      final snap = snapshots[i];
-      if (!snap.exists) continue;
-      final item = validItems[i];
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      final change = _computeStockChange(
-        productRef: snap.reference,
-        productSnap: snap,
-        stockDelta: 0,
-        reservedDelta: -item.pickedQuantity,
-        movementType: MovementType.release,
-        referenceType: ReferenceType.order,
-        referenceId: orderId,
-        referenceLabel: storeName,
-        reason: 'Order Cancelled (Reservation Released)',
-        notes: 'Store: $storeName (Released: -${item.pickedQuantity})',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
 
-      batch.update(snap.reference, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasChanges = true;
-    }
+          final item = chunk[i];
 
-    if (hasChanges) {
-      await batch.commit();
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: 0,
+            reservedDelta: -item.pickedQuantity,
+            movementType: MovementType.release,
+            referenceType: ReferenceType.order,
+            referenceId: orderId,
+            referenceLabel: storeName,
+            idempotencyKey: movRefs[i].id,
+            reason: 'Order Cancelled (Reservation Released)',
+            notes: 'Store: $storeName (Released: -${item.pickedQuantity})',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
   }
 
@@ -918,55 +1007,65 @@ class InventoryService {
     required bool wasReserved,
     String? orderId,
   }) async {
-    if (items.isEmpty) return;
+    final validItems = items.where((i) => i.productId.isNotEmpty).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
-    bool hasUpdates = false;
 
-    for (final item in items) {
-      if (item.productId.isEmpty) continue;
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('reverseStockForDeletedOrder', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'order_delete_rev_${orderId ?? storeName}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final orderedQty = item.effectiveQuantity;
-      final diff = orderedQty - item.returnedQuantity;
-      final int netDeductedQty = diff < 0 ? 0 : diff;
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      final stockDelta = (wasDeducted && netDeductedQty > 0) ? netDeductedQty : 0;
-      final reservedDelta = (wasReserved && !wasDeducted && orderedQty > 0) ? -orderedQty : 0;
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
 
-      if (stockDelta == 0 && reservedDelta == 0) continue;
+          final item = chunk[i];
+          final orderedQty = item.effectiveQuantity;
+          final diff = orderedQty - item.returnedQuantity;
+          final int netDeductedQty = diff < 0 ? 0 : diff;
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: stockDelta,
-        reservedDelta: reservedDelta,
-        movementType: MovementType.reversal,
-        referenceType: ReferenceType.order,
-        referenceId: orderId,
-        referenceLabel: storeName,
-        reason: 'Admin Delete Order Reversal',
-        notes: 'Restored stock for deleted order [$storeName]',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+          final stockDelta = (wasDeducted && netDeductedQty > 0) ? netDeductedQty : 0;
+          final reservedDelta = (wasReserved && !wasDeducted && orderedQty > 0) ? -orderedQty : 0;
 
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasUpdates = true;
-    }
+          if (stockDelta == 0 && reservedDelta == 0) continue;
 
-    if (hasUpdates) {
-      await batch.commit();
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: stockDelta,
+            reservedDelta: reservedDelta,
+            movementType: MovementType.reversal,
+            referenceType: ReferenceType.order,
+            referenceId: orderId,
+            referenceLabel: storeName,
+            idempotencyKey: movRefs[i].id,
+            reason: 'Admin Delete Order Reversal',
+            notes: 'Restored stock for deleted order [$storeName]',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
   }
 
@@ -983,71 +1082,89 @@ class InventoryService {
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
     final List<StockChangeRecord> clampedRecords = [];
 
-    final Map<String, int> reservedQtyByKey = {};
+    final Map<String, ({String source, String productId, int reservedQty, int pickedQty})> itemMap = {};
     if (wasReserved) {
       for (final r in reservedItems) {
         if (r.productId.isEmpty) continue;
         final key = '${r.productSource}:${r.productId}';
-        reservedQtyByKey[key] = (reservedQtyByKey[key] ?? 0) + r.pickedQuantity;
+        final prev = itemMap[key];
+        itemMap[key] = (
+          source: r.productSource,
+          productId: r.productId,
+          reservedQty: (prev?.reservedQty ?? 0) + r.pickedQuantity,
+          pickedQty: prev?.pickedQty ?? 0,
+        );
       }
     }
 
-    final Map<String, int> pickedQtyByKey = {};
     for (final p in pickedItems) {
       if (p.productId.isEmpty) continue;
       final key = '${p.productSource}:${p.productId}';
-      pickedQtyByKey[key] = (pickedQtyByKey[key] ?? 0) + p.pickedQuantity;
-    }
-
-    final allKeys = {...reservedQtyByKey.keys, ...pickedQtyByKey.keys};
-    final snapshots = await Future.wait(allKeys.map((k) {
-      final parts = k.split(':');
-      final source = parts[0];
-      final productId = parts[1];
-      final collectionName = _collectionForSource(source);
-      return _firestore.collection(collectionName).doc(productId).get();
-    }));
-
-    final snapList = snapshots.toList();
-    for (int i = 0; i < allKeys.length; i++) {
-      final snap = snapList[i];
-      if (!snap.exists) continue;
-      final key = allKeys.elementAt(i);
-      final reservedQty = reservedQtyByKey[key] ?? 0;
-      final pickedQty = pickedQtyByKey[key] ?? 0;
-
-      final change = _computeStockChange(
-        productRef: snap.reference,
-        productSnap: snap,
-        stockDelta: -pickedQty,
-        reservedDelta: -reservedQty,
-        movementType: MovementType.pick,
-        referenceType: ReferenceType.picklist,
-        referenceId: deliveryId,
-        referenceLabel: storeName,
-        reason: 'Picklist Completed (For Delivery)',
-        notes: 'Store: $storeName (Picked: $pickedQty)',
-        allowClamping: true,
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
+      final prev = itemMap[key];
+      itemMap[key] = (
+        source: p.productSource,
+        productId: p.productId,
+        reservedQty: prev?.reservedQty ?? 0,
+        pickedQty: (prev?.pickedQty ?? 0) + p.pickedQuantity,
       );
-
-      batch.update(snap.reference, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-
-      if (change.clamped) {
-        clampedRecords.add(change);
-      }
     }
 
-    await batch.commit();
+    final activeEntries = itemMap.values.where((e) => e.reservedQty > 0 || e.pickedQty > 0).toList();
+    if (activeEntries.isEmpty) return;
+
+    for (final chunk in _chunk(activeEntries, 100)) {
+      await _runInventoryTransaction('confirmPicklistAndDeductStock', (transaction) async {
+        final productRefs = chunk.map((entry) {
+          final collectionName = _collectionForSource(entry.source);
+          return _firestore.collection(collectionName).doc(entry.productId);
+        }).toList();
+        final movRefs = chunk.map((entry) {
+          final idKey = 'picklist_deduct_${deliveryId ?? storeName}_${entry.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
+
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
+
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
+
+          final entry = chunk[i];
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: -entry.pickedQty,
+            reservedDelta: -entry.reservedQty,
+            movementType: MovementType.pick,
+            referenceType: ReferenceType.picklist,
+            referenceId: deliveryId,
+            referenceLabel: storeName,
+            idempotencyKey: movRefs[i].id,
+            reason: 'Picklist Completed (For Delivery)',
+            notes: 'Store: $storeName (Picked: ${entry.pickedQty})',
+            allowClamping: true,
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+
+          if (change.clamped) {
+            clampedRecords.add(change);
+          }
+        }
+      });
+    }
 
     for (final rec in clampedRecords) {
       _recordDiscrepancy(
@@ -1070,47 +1187,63 @@ class InventoryService {
     required List<VanLoadItem> items,
     String? driverName,
   }) async {
+    final validItems = items.where((i) => i.productId.isNotEmpty && i.loadedQuantity > 0).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
     final List<StockChangeRecord> clampedRecords = [];
 
-    for (final item in items) {
-      if (item.productId.isEmpty || item.loadedQuantity <= 0) continue;
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('deductVanLoadInventory', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'van_load_deduct_${vanLoadId}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: -item.loadedQuantity,
-        movementType: MovementType.van_load,
-        referenceType: ReferenceType.van_load,
-        referenceId: vanLoadId,
-        referenceLabel: driverName != null ? 'Van Load: $driverName' : 'Van Load #$vanLoadId',
-        reason: 'Van Load',
-        notes: 'Van Load #$vanLoadId${driverName != null ? ' ($driverName)' : ''}',
-        allowClamping: true,
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
 
-      if (change.clamped) {
-        clampedRecords.add(change);
-      }
+          final item = chunk[i];
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: -item.loadedQuantity,
+            movementType: MovementType.van_load,
+            referenceType: ReferenceType.van_load,
+            referenceId: vanLoadId,
+            referenceLabel: driverName != null ? 'Van Load: $driverName' : 'Van Load #$vanLoadId',
+            idempotencyKey: movRefs[i].id,
+            reason: 'Van Load',
+            notes: 'Van Load #$vanLoadId${driverName != null ? ' ($driverName)' : ''}',
+            allowClamping: true,
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+
+          if (change.clamped) {
+            clampedRecords.add(change);
+          }
+        }
+      });
     }
-
-    await batch.commit();
 
     for (final rec in clampedRecords) {
       _recordDiscrepancy(
@@ -1133,41 +1266,57 @@ class InventoryService {
     required List<VanLoadItem> returnedItems,
     String? driverName,
   }) async {
+    final validItems = returnedItems.where((i) => i.productId.isNotEmpty && i.returnedQuantity > 0).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
 
-    for (final item in returnedItems) {
-      if (item.productId.isEmpty || item.returnedQuantity <= 0) continue;
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('returnVanLoadInventory', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'van_return_${vanLoadId}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: item.returnedQuantity,
-        movementType: MovementType.van_return,
-        referenceType: ReferenceType.van_load,
-        referenceId: vanLoadId,
-        referenceLabel: driverName != null ? 'Van Return: $driverName' : 'Van Return #$vanLoadId',
-        reason: 'Van Return',
-        notes: 'Returned from Van Load #$vanLoadId',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
+
+          final item = chunk[i];
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: item.returnedQuantity,
+            movementType: MovementType.van_return,
+            referenceType: ReferenceType.van_load,
+            referenceId: vanLoadId,
+            referenceLabel: driverName != null ? 'Van Return: $driverName' : 'Van Return #$vanLoadId',
+            idempotencyKey: movRefs[i].id,
+            reason: 'Van Return',
+            notes: 'Returned from Van Load #$vanLoadId',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
-
-    await batch.commit();
   }
 
   /// Atomically completes a picklist inside a Firestore transaction:
@@ -1349,7 +1498,11 @@ class InventoryService {
   /// Updates the stock quantity (and optionally lowStockThreshold and maxStock) of a product
   /// and records an [InventoryMovement] entry in `inventory_movements`.
   /// Manual adjustments that would result in negative stock are rejected with an [ArgumentError].
-  Future<void> updateStock({
+  /// Updates the stock quantity (and optionally lowStockThreshold and maxStock) of a product
+  /// and records an [InventoryMovement] entry in `inventory_movements`.
+  /// Manual adjustments that would result in negative stock are rejected with an [ArgumentError].
+  /// Adjustments above the configured unit approval threshold require dealer approval.
+  Future<InventoryPendingAdjustment?> updateStock({
     required InventoryItem item,
     required int newStockQuantity,
     int? newLowStockThreshold,
@@ -1359,12 +1512,35 @@ class InventoryService {
     ReasonCode? reasonCode,
     ReferenceType? referenceType,
     String? referenceId,
+    bool bypassThreshold = false,
   }) async {
     if (newStockQuantity < 0) {
       throw ArgumentError('Stock cannot be set to a negative value ($newStockQuantity).');
     }
 
-    final threshold = (newLowStockThreshold ?? item.lowStockThreshold) < 0
+    final actor = await _resolveActor();
+    if (actor.role.toLowerCase() != 'dealer' && actor.role.toLowerCase() != 'superadmin') {
+      throw StateError('Unauthorized: Only users with Dealer privileges may perform manual inventory adjustments.');
+    }
+
+    final currentStock = item.stockQuantity;
+    final stockDelta = newStockQuantity - currentStock;
+    final threshold = await _resolveUnitApprovalThreshold();
+
+    if (!bypassThreshold && stockDelta.abs() > threshold) {
+      return await submitPendingAdjustment(
+        item: item,
+        requestedStock: newStockQuantity,
+        previousStock: currentStock,
+        delta: stockDelta,
+        reason: reason,
+        notes: notes,
+        reasonCode: reasonCode,
+        actor: actor,
+      );
+    }
+
+    final thresholdVal = (newLowStockThreshold ?? item.lowStockThreshold) < 0
         ? 0
         : (newLowStockThreshold ?? item.lowStockThreshold);
     final maxStockVal = (newMaxStock ?? item.maxStock) < 0
@@ -1375,11 +1551,10 @@ class InventoryService {
         ? SELECTA_PRODUCTS_COLLECTION_REF
         : OTHER_PRODUCTS_COLLECTION_REF;
 
-    final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
     final now = Timestamp.now();
 
-    await _firestore.runTransaction((transaction) async {
+    await _runInventoryTransaction('updateStock', (transaction) async {
       final productRef = _firestore.collection(collectionName).doc(item.id);
       final snap = await transaction.get(productRef);
       if (!snap.exists) {
@@ -1387,13 +1562,13 @@ class InventoryService {
       }
 
       final data = snap.data() ?? {};
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final stockDelta = newStockQuantity - currentStock;
+      final latestStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final effectiveDelta = newStockQuantity - latestStock;
 
       final change = _computeStockChange(
         productRef: productRef,
         productSnap: snap,
-        stockDelta: stockDelta,
+        stockDelta: effectiveDelta,
         movementType: MovementType.adjustment,
         reasonCode: reasonCode,
         referenceType: referenceType ?? ReferenceType.manual,
@@ -1409,17 +1584,134 @@ class InventoryService {
       );
 
       final payload = Map<String, dynamic>.from(change.productUpdates);
-      payload['lowStockThreshold'] = threshold;
+      payload['lowStockThreshold'] = thresholdVal;
       if (item.source == InventoryProductSource.selecta) {
         payload['maxStock'] = maxStockVal;
       }
 
       transaction.update(productRef, payload);
 
-      if (stockDelta != 0) {
+      if (effectiveDelta != 0) {
         final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
         transaction.set(movRef, change.movement.toJson());
       }
+    });
+
+    return null;
+  }
+
+  /// Submits an adjustment request that exceeds the threshold to `inventory_pending_adjustments`.
+  Future<InventoryPendingAdjustment> submitPendingAdjustment({
+    required InventoryItem item,
+    required int requestedStock,
+    required int previousStock,
+    required int delta,
+    required String reason,
+    String notes = '',
+    ReasonCode? reasonCode,
+    ({String uid, String role, String name})? actor,
+  }) async {
+    final effectiveActor = actor ?? await _resolveActor();
+    final docRef = _firestore.collection('inventory_pending_adjustments').doc();
+    final pending = InventoryPendingAdjustment(
+      id: docRef.id,
+      productId: item.id,
+      productName: item.productName,
+      productSource: item.productSource,
+      previousStock: previousStock,
+      requestedStock: requestedStock,
+      delta: delta,
+      reason: reason,
+      notes: notes,
+      reasonCode: reasonCode,
+      requestedByUid: effectiveActor.uid,
+      requestedByName: effectiveActor.name,
+      requestedAt: DateTime.now(),
+      status: 'pending',
+    );
+    await docRef.set(pending.toJson());
+    return pending;
+  }
+
+  /// Real-time stream of all pending adjustments awaiting dealer authorization.
+  Stream<List<InventoryPendingAdjustment>> getPendingAdjustmentsStream() {
+    return _firestore
+        .collection('inventory_pending_adjustments')
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => InventoryPendingAdjustment.fromJson(d.id, d.data())).toList());
+  }
+
+  /// Approves a pending adjustment, applies the physical stock delta, and logs an audited movement.
+  Future<void> approvePendingAdjustment(String adjustmentId) async {
+    final actor = await _resolveActor();
+    if (actor.role.toLowerCase() != 'dealer' && actor.role.toLowerCase() != 'superadmin') {
+      throw StateError('Unauthorized: Only dealers may approve pending adjustments.');
+    }
+
+    final adjRef = _firestore.collection('inventory_pending_adjustments').doc(adjustmentId);
+    final adjSnap = await adjRef.get();
+    if (!adjSnap.exists) {
+      throw Exception('Pending adjustment #$adjustmentId not found.');
+    }
+    final pending = InventoryPendingAdjustment.fromJson(adjSnap.id, adjSnap.data()!);
+    if (!pending.isPending) {
+      throw Exception('Pending adjustment #$adjustmentId is already ${pending.status}.');
+    }
+
+    final collectionName = pending.productSource == 'other'
+        ? OTHER_PRODUCTS_COLLECTION_REF
+        : SELECTA_PRODUCTS_COLLECTION_REF;
+    final productRef = _firestore.collection(collectionName).doc(pending.productId);
+
+    await _runInventoryTransaction('approvePendingAdjustment', (transaction) async {
+      final pSnap = await transaction.get(productRef);
+      if (!pSnap.exists) throw Exception('Product "${pending.productName}" not found.');
+      final currentStock = (pSnap.data()?['stockQuantity'] as num?)?.toInt() ?? 0;
+      final targetDelta = pending.requestedStock - currentStock;
+
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: pSnap,
+        stockDelta: targetDelta,
+        movementType: MovementType.adjustment,
+        reasonCode: pending.reasonCode,
+        referenceType: ReferenceType.manual,
+        referenceId: pending.id,
+        referenceLabel: 'Approved Pending Adj #${pending.id.substring(0, 8.clamp(0, pending.id.length))}',
+        reason: 'Approved Adjustment: ${pending.reason}',
+        notes: '${pending.notes} (Approved by ${actor.name})',
+        isOverride: true,
+        overrideReason: 'Large adjustment approved by dealer',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+      );
+
+      transaction.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      transaction.set(movRef, change.movement.toJson());
+      transaction.update(adjRef, {
+        'status': 'approved',
+        'reviewedByUid': actor.uid,
+        'reviewedByName': actor.name,
+        'reviewedAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
+
+  /// Rejects a pending adjustment.
+  Future<void> rejectPendingAdjustment(String adjustmentId, {String? reason}) async {
+    final actor = await _resolveActor();
+    if (actor.role.toLowerCase() != 'dealer' && actor.role.toLowerCase() != 'superadmin') {
+      throw StateError('Unauthorized: Only dealers may reject pending adjustments.');
+    }
+    await _firestore.collection('inventory_pending_adjustments').doc(adjustmentId).update({
+      'status': 'rejected',
+      'reviewedByUid': actor.uid,
+      'reviewedByName': actor.name,
+      'reviewedAt': FieldValue.serverTimestamp(),
+      if (reason != null) 'rejectionReason': reason.trim(),
     });
   }
 
@@ -1507,46 +1799,61 @@ class InventoryService {
     required List<OrderItem> items,
     String? poId,
   }) async {
-    if (items.isEmpty) return;
+    final validItems = items.where((i) => i.productId.isNotEmpty && i.effectiveQuantity > 0).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
     final invoiceRef = invoiceNumber.trim().isNotEmpty
         ? invoiceNumber.trim()
         : 'PO-${DateFormat('yyyyMMdd').format(orderDate)}';
 
-    for (final item in items) {
-      final qty = item.effectiveQuantity;
-      if (item.productId.isEmpty || qty <= 0) continue;
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('replenishStockForPurchaseOrder', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'po_replenish_${poId ?? invoiceRef}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: qty,
-        movementType: MovementType.receipt,
-        referenceType: ReferenceType.purchase_order,
-        referenceId: poId ?? invoiceRef,
-        referenceLabel: invoiceRef,
-        reason: 'Purchase Order Replenishment',
-        notes: 'PO Ref: $invoiceRef (Qty: +$qty)',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
+
+          final item = chunk[i];
+          final qty = item.effectiveQuantity;
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: qty,
+            movementType: MovementType.receipt,
+            referenceType: ReferenceType.purchase_order,
+            referenceId: poId ?? invoiceRef,
+            referenceLabel: invoiceRef,
+            idempotencyKey: movRefs[i].id,
+            reason: 'Purchase Order Replenishment',
+            notes: 'PO Ref: $invoiceRef (Qty: +$qty)',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
-
-    await batch.commit();
   }
 
   /// Adjusts stock when an already-replenished Purchase Order is edited.
@@ -1560,7 +1867,6 @@ class InventoryService {
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
     final invoiceRef = invoiceNumber.trim().isNotEmpty
         ? invoiceNumber.trim()
         : 'PO-${DateFormat('yyyyMMdd').format(orderDate)}';
@@ -1573,7 +1879,7 @@ class InventoryService {
     };
 
     final allKeys = {...oldQtyByKey.keys, ...newQtyByKey.keys};
-    bool hasChanges = false;
+    final List<({String source, String productId, int delta})> diffs = [];
 
     for (final key in allKeys) {
       final parts = key.split(':');
@@ -1584,39 +1890,58 @@ class InventoryService {
       final oldQty = oldQtyByKey[key] ?? 0;
       final newQty = newQtyByKey[key] ?? 0;
       final delta = newQty - oldQty;
-      if (delta == 0) continue;
-
-      final collectionName = _collectionForSource(source);
-      final productRef = _firestore.collection(collectionName).doc(productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
-
-
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: delta,
-        movementType: MovementType.receipt,
-        referenceType: ReferenceType.purchase_order,
-        referenceId: poId ?? invoiceRef,
-        referenceLabel: invoiceRef,
-        reason: 'Purchase Order Adjustment',
-        notes: 'PO Ref: $invoiceRef (${delta > 0 ? "+$delta" : "$delta"})',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
-
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasChanges = true;
+      if (delta != 0) {
+        diffs.add((source: source, productId: productId, delta: delta));
+      }
     }
 
-    if (hasChanges) {
-      await batch.commit();
+    if (diffs.isEmpty) return;
+
+    for (final chunk in _chunk(diffs, 100)) {
+      await _runInventoryTransaction('adjustReplenishedStockForPurchaseOrder', (transaction) async {
+        final productRefs = chunk.map((entry) {
+          final collectionName = _collectionForSource(entry.source);
+          return _firestore.collection(collectionName).doc(entry.productId);
+        }).toList();
+        final movRefs = chunk.map((entry) {
+          final idKey = 'po_adj_replenish_${poId ?? invoiceRef}_${entry.productId}_${now.millisecondsSinceEpoch}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
+
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
+
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
+
+          final entry = chunk[i];
+          final delta = entry.delta;
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: delta,
+            movementType: MovementType.receipt,
+            referenceType: ReferenceType.purchase_order,
+            referenceId: poId ?? invoiceRef,
+            referenceLabel: invoiceRef,
+            idempotencyKey: movRefs[i].id,
+            reason: 'Purchase Order Adjustment',
+            notes: 'PO Ref: $invoiceRef (${delta > 0 ? "+$delta" : "$delta"})',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
   }
 
@@ -1626,43 +1951,58 @@ class InventoryService {
     required List<OrderItem> items,
     String? poId,
   }) async {
-    if (items.isEmpty) return;
+    final validItems = items.where((i) => i.productId.isNotEmpty && i.effectiveQuantity > 0).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
 
-    for (final item in items) {
-      final qty = item.effectiveQuantity;
-      if (item.productId.isEmpty || qty <= 0) continue;
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('revertReplenishedStockForPurchaseOrder', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'po_revert_${poId ?? invoiceNumber}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: -qty,
-        movementType: MovementType.reversal,
-        referenceType: ReferenceType.purchase_order,
-        referenceId: poId ?? invoiceNumber,
-        referenceLabel: invoiceNumber,
-        reason: 'Purchase Order Deleted (Stock Reverted)',
-        notes: 'PO Ref: $invoiceNumber (Reverted: -$qty)',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
+
+          final item = chunk[i];
+          final qty = item.effectiveQuantity;
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: -qty,
+            movementType: MovementType.reversal,
+            referenceType: ReferenceType.purchase_order,
+            referenceId: poId ?? invoiceNumber,
+            referenceLabel: invoiceNumber,
+            idempotencyKey: movRefs[i].id,
+            reason: 'Purchase Order Deleted (Stock Reverted)',
+            notes: 'PO Ref: $invoiceNumber (Reverted: -$qty)',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
-
-    await batch.commit();
   }
 
   /// Adds floating incoming stock (`incomingQuantity`) when a new Purchase Order is created
@@ -1673,47 +2013,58 @@ class InventoryService {
     String poNumber = '',
     String? poId,
   }) async {
-    if (items.isEmpty) return;
+    final validItems = items.where((i) => i.productId.isNotEmpty && i.effectiveQuantity > 0).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
-    bool hasUpdates = false;
 
-    for (final item in items) {
-      final qty = item.effectiveQuantity;
-      if (item.productId.isEmpty || qty <= 0) continue;
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('addIncomingStockForPurchaseOrder', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'po_incoming_add_${poId ?? poNumber}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: 0,
-        incomingDelta: qty,
-        movementType: MovementType.incoming_added,
-        referenceType: ReferenceType.purchase_order,
-        referenceId: poId ?? poNumber,
-        referenceLabel: poNumber,
-        reason: 'PO Placed (Incoming Stock Added)',
-        notes: poNumber.isNotEmpty ? 'PO Ref: $poNumber (Incoming: +$qty)' : 'Incoming: +$qty',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasUpdates = true;
-    }
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
 
-    if (hasUpdates) {
-      await batch.commit();
+          final item = chunk[i];
+          final qty = item.effectiveQuantity;
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: 0,
+            incomingDelta: qty,
+            movementType: MovementType.incoming_added,
+            referenceType: ReferenceType.purchase_order,
+            referenceId: poId ?? poNumber,
+            referenceLabel: poNumber,
+            idempotencyKey: movRefs[i].id,
+            reason: 'PO Placed (Incoming Stock Added)',
+            notes: poNumber.isNotEmpty ? 'PO Ref: $poNumber (Incoming: +$qty)' : 'Incoming: +$qty',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
   }
 
@@ -1728,7 +2079,6 @@ class InventoryService {
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
 
     final Map<String, int> oldQtyByKey = {
       for (final item in oldItems) '${item.productSource}:${item.productId}': item.effectiveQuantity
@@ -1738,7 +2088,7 @@ class InventoryService {
     };
 
     final allKeys = {...oldQtyByKey.keys, ...newQtyByKey.keys};
-    bool hasUpdates = false;
+    final List<({String source, String productId, int delta})> diffs = [];
 
     for (final key in allKeys) {
       final parts = key.split(':');
@@ -1749,42 +2099,61 @@ class InventoryService {
       final oldQty = oldQtyByKey[key] ?? 0;
       final newQty = newQtyByKey[key] ?? 0;
       final delta = newQty - oldQty;
-      if (delta == 0) continue;
-
-      final collectionName = _collectionForSource(source);
-      final productRef = _firestore.collection(collectionName).doc(productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
-
-
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: 0,
-        incomingDelta: delta,
-        movementType: MovementType.incoming_adjusted,
-        referenceType: ReferenceType.purchase_order,
-        referenceId: poId ?? poNumber,
-        referenceLabel: poNumber,
-        reason: 'PO Adjusted (Incoming Stock)',
-        notes: poNumber.isNotEmpty
-            ? 'PO Ref: $poNumber (Incoming: ${delta > 0 ? "+$delta" : "$delta"})'
-            : 'Incoming: ${delta > 0 ? "+$delta" : "$delta"}',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
-
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasUpdates = true;
+      if (delta != 0) {
+        diffs.add((source: source, productId: productId, delta: delta));
+      }
     }
 
-    if (hasUpdates) {
-      await batch.commit();
+    if (diffs.isEmpty) return;
+
+    for (final chunk in _chunk(diffs, 100)) {
+      await _runInventoryTransaction('adjustIncomingStockForPurchaseOrder', (transaction) async {
+        final productRefs = chunk.map((entry) {
+          final collectionName = _collectionForSource(entry.source);
+          return _firestore.collection(collectionName).doc(entry.productId);
+        }).toList();
+        final movRefs = chunk.map((entry) {
+          final idKey = 'po_incoming_adj_${poId ?? poNumber}_${entry.productId}_${now.millisecondsSinceEpoch}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
+
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
+
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
+
+          final entry = chunk[i];
+          final delta = entry.delta;
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: 0,
+            incomingDelta: delta,
+            movementType: MovementType.incoming_adjusted,
+            referenceType: ReferenceType.purchase_order,
+            referenceId: poId ?? poNumber,
+            referenceLabel: poNumber,
+            idempotencyKey: movRefs[i].id,
+            reason: 'PO Adjusted (Incoming Stock)',
+            notes: poNumber.isNotEmpty
+                ? 'PO Ref: $poNumber (Incoming: ${delta > 0 ? "+$delta" : "$delta"})'
+                : 'Incoming: ${delta > 0 ? "+$delta" : "$delta"}',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
   }
 
@@ -1794,47 +2163,58 @@ class InventoryService {
     String poNumber = '',
     String? poId,
   }) async {
-    if (items.isEmpty) return;
+    final validItems = items.where((i) => i.productId.isNotEmpty && i.effectiveQuantity > 0).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
-    bool hasUpdates = false;
 
-    for (final item in items) {
-      final qty = item.effectiveQuantity;
-      if (item.productId.isEmpty || qty <= 0) continue;
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('removeIncomingStockForPurchaseOrder', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'po_incoming_rem_${poId ?? poNumber}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: 0,
-        incomingDelta: -qty,
-        movementType: MovementType.incoming_removed,
-        referenceType: ReferenceType.purchase_order,
-        referenceId: poId ?? poNumber,
-        referenceLabel: poNumber,
-        reason: 'PO Cancelled (Incoming Removed)',
-        notes: poNumber.isNotEmpty ? 'PO Ref: $poNumber (Cancelled: -$qty)' : 'Cancelled: -$qty',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasUpdates = true;
-    }
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
 
-    if (hasUpdates) {
-      await batch.commit();
+          final item = chunk[i];
+          final qty = item.effectiveQuantity;
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: 0,
+            incomingDelta: -qty,
+            movementType: MovementType.incoming_removed,
+            referenceType: ReferenceType.purchase_order,
+            referenceId: poId ?? poNumber,
+            referenceLabel: poNumber,
+            idempotencyKey: movRefs[i].id,
+            reason: 'PO Cancelled (Incoming Removed)',
+            notes: poNumber.isNotEmpty ? 'PO Ref: $poNumber (Cancelled: -$qty)' : 'Cancelled: -$qty',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
   }
 
@@ -1850,7 +2230,6 @@ class InventoryService {
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
     final invoiceRef = invoiceNumber.trim().isNotEmpty
         ? invoiceNumber.trim()
         : 'PO-${DateFormat('yyyyMMdd').format(orderDate)}';
@@ -1883,59 +2262,88 @@ class InventoryService {
       );
     }
 
+    final activeEntries = merged.values.where((e) => e.stockAdd > 0 || e.incomingDeduct > 0).toList();
+    if (activeEntries.isEmpty) return;
+
     final correlationId = 'po_$invoiceRef';
+    final List<({String id, String name, String source, int expected, int actual})> shortShipments = [];
 
-    for (final entry in merged.values) {
-      final collectionName = _collectionForSource(entry.source);
-      final productRef = _firestore.collection(collectionName).doc(entry.id);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(activeEntries, 100)) {
+      await _runInventoryTransaction('replenishAndClearIncomingStockForPurchaseOrder', (transaction) async {
+        final productRefs = chunk.map((entry) {
+          final collectionName = _collectionForSource(entry.source);
+          return _firestore.collection(collectionName).doc(entry.id);
+        }).toList();
+        final movRefs = chunk.map((entry) {
+          final idKey = 'po_rcpt_${invoiceRef}_${entry.id}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      // 8.5: Track PO receiving variance (short shipment)
-      if (entry.incomingDeduct > entry.stockAdd) {
-        final shortQty = entry.incomingDeduct - entry.stockAdd;
-        _recordDiscrepancy(
-          productId: entry.id,
-          productName: entry.name,
-          productSource: entry.source,
-          type: 'po_short_shipment',
-          expected: entry.incomingDeduct,
-          actual: entry.stockAdd,
-          details: 'PO $invoiceRef short-shipment: expected ${entry.incomingDeduct}, received ${entry.stockAdd} (short: $shortQty).',
-        );
-      }
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: entry.stockAdd,
-        incomingDelta: -entry.incomingDeduct,
-        movementType: MovementType.receipt,
-        referenceType: ReferenceType.purchase_order,
-        referenceId: poId ?? invoiceRef,
-        referenceLabel: invoiceRef,
-        correlationId: correlationId,
-        idempotencyKey: 'po_rcpt_${invoiceRef}_${entry.id}',
-        sourceLocation: 'supplier',
-        targetLocation: 'warehouse',
-        reason: 'Purchase Order Replenishment',
-        notes: 'PO Ref: $invoiceRef (Received: +${entry.stockAdd}, Cleared: -${entry.incomingDeduct})',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
 
-      batch.update(productRef, change.productUpdates);
+          final entry = chunk[i];
 
-      if (entry.stockAdd > 0 || entry.incomingDeduct > 0) {
-        final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-        batch.set(movRef, change.movement.toJson());
-      }
+          // 8.5: Track PO receiving variance (short shipment)
+          if (entry.incomingDeduct > entry.stockAdd) {
+            shortShipments.add((
+              id: entry.id,
+              name: entry.name,
+              source: entry.source,
+              expected: entry.incomingDeduct,
+              actual: entry.stockAdd,
+            ));
+          }
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: entry.stockAdd,
+            incomingDelta: -entry.incomingDeduct,
+            movementType: MovementType.receipt,
+            referenceType: ReferenceType.purchase_order,
+            referenceId: poId ?? invoiceRef,
+            referenceLabel: invoiceRef,
+            correlationId: correlationId,
+            idempotencyKey: movRefs[i].id,
+            sourceLocation: 'supplier',
+            targetLocation: 'warehouse',
+            reason: 'Purchase Order Replenishment',
+            notes: 'PO Ref: $invoiceRef (Received: +${entry.stockAdd}, Cleared: -${entry.incomingDeduct})',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+
+          if (entry.stockAdd > 0 || entry.incomingDeduct > 0) {
+            transaction.set(movRefs[i], change.movement.toJson());
+          }
+        }
+      });
     }
 
-    await batch.commit();
+    for (final s in shortShipments) {
+      final shortQty = s.expected - s.actual;
+      _recordDiscrepancy(
+        productId: s.id,
+        productName: s.name,
+        productSource: s.source,
+        type: 'po_short_shipment',
+        expected: s.expected,
+        actual: s.actual,
+        details: 'PO $invoiceRef short-shipment: expected ${s.expected}, received ${s.actual} (short: $shortQty).',
+      );
+    }
   }
 
   /// Adds returned items into incoming stock (`incomingQuantity`) when a delivery order
@@ -1946,51 +2354,64 @@ class InventoryService {
     required List<OrderItem> returnedItems,
     String? deliveryId,
   }) async {
-    if (returnedItems.isEmpty) return;
+    final validItems = returnedItems.where((i) {
+      final qty = i.returnedQuantity > 0 ? i.returnedQuantity : i.pickedQuantity;
+      return i.productId.isNotEmpty && qty > 0;
+    }).toList();
+    if (validItems.isEmpty) return;
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
-    bool hasUpdates = false;
 
-    for (final item in returnedItems) {
-      final qty = item.returnedQuantity > 0 ? item.returnedQuantity : item.pickedQuantity;
-      if (item.productId.isEmpty || qty <= 0) continue;
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(validItems, 100)) {
+      await _runInventoryTransaction('addIncomingStockForReturn', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'return_incoming_${deliveryId ?? storeName}_${item.productId}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: 0,
-        incomingDelta: qty,
-        movementType: MovementType.incoming_added,
-        referenceType: ReferenceType.return_doc,
-        referenceId: deliveryId,
-        referenceLabel: storeName,
-        correlationId: 'return_${deliveryId ?? storeName}',
-        idempotencyKey: 'return_incoming_${deliveryId ?? storeName}_${item.productId}',
-        sourceLocation: 'customer',
-        targetLocation: 'incoming',
-        reason: 'Return Received (Incoming to Warehouse)',
-        notes: 'Store: $storeName (Incoming Return: +$qty, Pending Inspection)',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasUpdates = true;
-    }
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
 
-    if (hasUpdates) {
-      await batch.commit();
+          final item = chunk[i];
+          final qty = item.returnedQuantity > 0 ? item.returnedQuantity : item.pickedQuantity;
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: 0,
+            incomingDelta: qty,
+            movementType: MovementType.incoming_added,
+            referenceType: ReferenceType.return_doc,
+            referenceId: deliveryId,
+            referenceLabel: storeName,
+            correlationId: 'return_${deliveryId ?? storeName}',
+            idempotencyKey: movRefs[i].id,
+            sourceLocation: 'customer',
+            targetLocation: 'incoming',
+            reason: 'Return Received (Incoming to Warehouse)',
+            notes: 'Store: $storeName (Incoming Return: +$qty, Pending Inspection)',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
   }
 
@@ -2010,8 +2431,6 @@ class InventoryService {
     final now = Timestamp.now();
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
-    final batch = _firestore.batch();
-    bool hasUpdates = false;
     final correlationId = 'return_approve_${deliveryId ?? delivery.storeName}_${now.millisecondsSinceEpoch}';
 
     final isFullReturn = delivery.transactionStatus == DeliveryStatus.returned;
@@ -2019,92 +2438,116 @@ class InventoryService {
       final qty = i.returnedQuantity > 0 ? i.returnedQuantity : (isFullReturn ? i.pickedQuantity : 0);
       return i.productId.isNotEmpty && qty > 0;
     }).toList();
+    if (returnItems.isEmpty) return;
 
-    for (final item in returnItems) {
-      final retQty = item.returnedQuantity > 0 ? item.returnedQuantity : (isFullReturn ? item.pickedQuantity : 0);
-      if (retQty <= 0) continue;
+    final List<({String productId, String productName, String productSource, String type, int qty, String details})> discrepancies = [];
 
-      final collectionName = _collectionForSource(item.productSource);
-      final productRef = _firestore.collection(collectionName).doc(item.productId);
-      final snap = await productRef.get();
-      if (!snap.exists) continue;
+    for (final chunk in _chunk(returnItems, 100)) {
+      await _runInventoryTransaction('approveReturnAndReplenishStock', (transaction) async {
+        final productRefs = chunk.map((item) {
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+        final movRefs = chunk.map((item) {
+          final idKey = 'return_appr_${deliveryId ?? delivery.storeName}_${item.productId}_${disposition.key}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
 
-      final int stockDelta;
-      final String targetLoc;
-      final String reasonText;
-      final ReasonCode? rc;
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+        final movSnaps = await Future.wait(movRefs.map((r) => transaction.get(r)));
 
-      switch (disposition) {
-        case ReturnDisposition.restock:
-          stockDelta = retQty;
-          targetLoc = 'warehouse';
-          reasonText = 'Return Approved & Restocked';
-          rc = null;
-          break;
-        case ReturnDisposition.quarantine:
-          stockDelta = 0;
-          targetLoc = 'quarantine';
-          reasonText = 'Return Quarantined for Inspection';
-          rc = ReasonCode.damaged;
-          _recordDiscrepancy(
-            productId: item.productId,
-            productName: item.productName,
-            productSource: item.productSource,
-            type: 'return_quarantine',
-            expected: 0,
-            actual: retQty,
-            details: 'Returned goods quarantined from ${delivery.storeName}: $retQty units. ${dispositionNotes ?? ""}',
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          final movSnap = movSnaps[i];
+          if (!snap.exists) continue;
+          if (movSnap.exists) continue;
+
+          final item = chunk[i];
+          final retQty = item.returnedQuantity > 0 ? item.returnedQuantity : (isFullReturn ? item.pickedQuantity : 0);
+          if (retQty <= 0) continue;
+
+          final int stockDelta;
+          final String targetLoc;
+          final String reasonText;
+          final ReasonCode? rc;
+
+          switch (disposition) {
+            case ReturnDisposition.restock:
+              stockDelta = retQty;
+              targetLoc = 'warehouse';
+              reasonText = 'Return Approved & Restocked';
+              rc = null;
+              break;
+            case ReturnDisposition.quarantine:
+              stockDelta = 0;
+              targetLoc = 'quarantine';
+              reasonText = 'Return Quarantined for Inspection';
+              rc = ReasonCode.damaged;
+              discrepancies.add((
+                productId: item.productId,
+                productName: item.productName,
+                productSource: item.productSource,
+                type: 'return_quarantine',
+                qty: retQty,
+                details: 'Returned goods quarantined from ${delivery.storeName}: $retQty units. ${dispositionNotes ?? ""}',
+              ));
+              break;
+            case ReturnDisposition.write_off:
+              stockDelta = 0;
+              targetLoc = 'scrap';
+              reasonText = 'Return Written-Off (Scrapped)';
+              rc = ReasonCode.damaged;
+              discrepancies.add((
+                productId: item.productId,
+                productName: item.productName,
+                productSource: item.productSource,
+                type: 'return_write_off',
+                qty: retQty,
+                details: 'Returned goods written off from ${delivery.storeName}: $retQty units scrapped. ${dispositionNotes ?? ""}',
+              ));
+              break;
+          }
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: stockDelta,
+            incomingDelta: -retQty,
+            movementType: MovementType.customer_return,
+            reasonCode: rc,
+            referenceType: ReferenceType.return_doc,
+            referenceId: deliveryId,
+            referenceLabel: delivery.storeName,
+            correlationId: correlationId,
+            idempotencyKey: movRefs[i].id,
+            sourceLocation: 'incoming',
+            targetLocation: targetLoc,
+            disposition: disposition,
+            reason: reasonText,
+            notes: 'Store: ${delivery.storeName} (${disposition.label}: $retQty)${dispositionNotes != null && dispositionNotes.isNotEmpty ? " Note: $dispositionNotes" : ""}',
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
           );
-          break;
-        case ReturnDisposition.write_off:
-          stockDelta = 0;
-          targetLoc = 'scrap';
-          reasonText = 'Return Written-Off (Scrapped)';
-          rc = ReasonCode.damaged;
-          _recordDiscrepancy(
-            productId: item.productId,
-            productName: item.productName,
-            productSource: item.productSource,
-            type: 'return_write_off',
-            expected: 0,
-            actual: retQty,
-            details: 'Returned goods written off from ${delivery.storeName}: $retQty units scrapped. ${dispositionNotes ?? ""}',
-          );
-          break;
-      }
 
-      final change = _computeStockChange(
-        productRef: productRef,
-        productSnap: snap,
-        stockDelta: stockDelta,
-        incomingDelta: -retQty,
-        movementType: MovementType.customer_return,
-        reasonCode: rc,
-        referenceType: ReferenceType.return_doc,
-        referenceId: deliveryId,
-        referenceLabel: delivery.storeName,
-        correlationId: correlationId,
-        idempotencyKey: 'return_appr_${deliveryId ?? delivery.storeName}_${item.productId}_${disposition.key}',
-        sourceLocation: 'incoming',
-        targetLocation: targetLoc,
-        disposition: disposition,
-        reason: reasonText,
-        notes: 'Store: ${delivery.storeName} (${disposition.label}: $retQty)${dispositionNotes != null && dispositionNotes.isNotEmpty ? " Note: $dispositionNotes" : ""}',
-        actorUid: actor.uid,
-        actorRole: actor.role,
-        actorName: actor.name,
-        appVersion: appVersion,
-        timestamp: now,
-      );
-
-      batch.update(productRef, change.productUpdates);
-      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
-      batch.set(movRef, change.movement.toJson());
-      hasUpdates = true;
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+        }
+      });
     }
 
-    if (hasUpdates) {
-      await batch.commit();
+    for (final d in discrepancies) {
+      _recordDiscrepancy(
+        productId: d.productId,
+        productName: d.productName,
+        productSource: d.productSource,
+        type: d.type,
+        expected: 0,
+        actual: d.qty,
+        details: d.details,
+      );
     }
   }
 
@@ -2620,6 +3063,47 @@ class InventoryService {
     );
   }
 
+  /// Fetches all active inventory items across Selecta and Other products.
+  Future<List<InventoryItem>> getAllInventoryItems() async {
+    final List<InventoryItem> items = [];
+    final selectaSnaps = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
+    for (final doc in selectaSnaps.docs) {
+      items.add(InventoryItem.fromSelectaProduct(SelectaProduct.fromSnapshot(doc)));
+    }
+    final otherSnaps = await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).get();
+    for (final doc in otherSnaps.docs) {
+      items.add(InventoryItem.fromOtherProduct(doc.id, OtherProduct.fromJson(doc.data())));
+    }
+    return items;
+  }
+
+  /// Fetches recent movements with optional limit and date filter.
+  Future<List<InventoryMovement>> getMovements({
+    int limit = 1000,
+    DateTime? startDate,
+  }) async {
+    Query<Map<String, dynamic>> query = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF);
+    if (startDate != null) {
+      query = query.where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate));
+    }
+    query = query.orderBy('createdAt', descending: true).limit(limit);
+    try {
+      final snap = await query.get();
+      return snap.docs.map((d) => InventoryMovement.fromSnapshot(d)).toList();
+    } catch (_) {
+      final snap = await _firestore
+          .collection(INVENTORY_MOVEMENTS_COLLECTION_REF)
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .get();
+      var list = snap.docs.map((d) => InventoryMovement.fromSnapshot(d)).toList();
+      if (startDate != null) {
+        list = list.where((m) => m.createdAt.toDate().isAfter(startDate) || m.createdAt.toDate().isAtSameMomentAs(startDate)).toList();
+      }
+      return list;
+    }
+  }
+
   /// Generates CSV formatted text for a list of [InventoryMovement] audit records.
   static String exportMovementsToCsv(List<InventoryMovement> movements) {
     final buffer = StringBuffer();
@@ -2812,6 +3296,9 @@ class InventoryService {
     required InventoryItem item,
     required int countedQuantity,
     String notes = '',
+    bool isBlind = false,
+    int countRound = 1,
+    int? systemQuantityAtStart,
   }) async {
     final variance = countedQuantity - item.stockQuantity;
     final actor = await _resolveActor();
@@ -2824,7 +3311,7 @@ class InventoryService {
 
     InventoryMovement? resultingMovement;
 
-    await _firestore.runTransaction((transaction) async {
+    await _runInventoryTransaction('submitCycleCount', (transaction) async {
       final productRef = _firestore.collection(collectionName).doc(item.id);
       final snap = await transaction.get(productRef);
       if (!snap.exists) {
@@ -2848,6 +3335,9 @@ class InventoryService {
         actorName: actor.name,
         appVersion: appVersion,
         timestamp: now,
+        isBlind: isBlind,
+        countRound: countRound,
+        systemQuantityAtStart: systemQuantityAtStart ?? item.stockQuantity,
       );
 
       transaction.update(productRef, change.productUpdates);
@@ -2868,12 +3358,208 @@ class InventoryService {
         'countedBy': actor.name,
         'countedByUid': actor.uid,
         'countedAt': now,
+        'isBlind': isBlind,
+        'countRound': countRound,
       });
     } catch (e) {
       debugPrint('Error recording cycle count: $e');
     }
 
     return resultingMovement!;
+  }
+
+  /// Captures an end-of-day stock snapshot across all active products into `inventory_snapshots/{dateId}`
+  /// and subcollection `items/{productId}`. Reconciles daily movements against opening/closing balances.
+  Future<InventorySnapshot> captureDailyStockSnapshot([DateTime? date]) async {
+    final targetDate = date ?? DateTime.now();
+    final dateId = DateFormat('yyyy-MM-dd').format(targetDate);
+    final startOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day, 0, 0, 0);
+    final endOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day, 23, 59, 59, 999);
+
+    final selectaSnaps = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
+    final otherSnaps = await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).get();
+
+    final List<InventoryItem> items = [
+      ...selectaSnaps.docs.map((d) => InventoryItem.fromSelectaProduct(SelectaProduct.fromSnapshot(d))),
+      ...otherSnaps.docs.map((d) => InventoryItem.fromOtherProduct(d.id, OtherProduct.fromJson(d.data()))),
+    ];
+
+    final movementsSnap = await _firestore
+        .collection(INVENTORY_MOVEMENTS_COLLECTION_REF)
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+        .get();
+
+    final Map<String, int> totalInPerProduct = {};
+    final Map<String, int> totalOutPerProduct = {};
+
+    for (final doc in movementsSnap.docs) {
+      final mov = InventoryMovement.fromSnapshot(doc);
+      if (mov.delta > 0) {
+        totalInPerProduct[mov.productId] = (totalInPerProduct[mov.productId] ?? 0) + mov.delta;
+      } else if (mov.delta < 0) {
+        totalOutPerProduct[mov.productId] = (totalOutPerProduct[mov.productId] ?? 0) + mov.delta.abs();
+      }
+    }
+
+    final List<InventorySnapshotItem> snapshotItems = [];
+    int totalStock = 0;
+    int totalReserved = 0;
+    int totalIncoming = 0;
+    bool hasDiscrepancy = false;
+
+    for (final item in items) {
+      final closing = item.stockQuantity;
+      final totalIn = totalInPerProduct[item.id] ?? 0;
+      final totalOut = totalOutPerProduct[item.id] ?? 0;
+      final net = totalIn - totalOut;
+      final opening = closing - net < 0 ? 0 : closing - net;
+      final reconciled = (opening + totalIn - totalOut == closing);
+
+      if (!reconciled) {
+        hasDiscrepancy = true;
+        _recordDiscrepancy(
+          productId: item.id,
+          productName: item.productName,
+          productSource: item.productSource,
+          type: 'snapshot_mismatch',
+          expected: opening + totalIn - totalOut,
+          actual: closing,
+          details: 'Daily stock snapshot mismatch on $dateId for ${item.productName}: opening $opening + in $totalIn - out $totalOut != closing $closing.',
+        );
+      }
+
+      totalStock += closing;
+      totalReserved += item.reservedQuantity;
+      totalIncoming += item.incomingQuantity;
+
+      snapshotItems.add(InventorySnapshotItem(
+        productId: item.id,
+        productName: item.productName,
+        productSource: item.productSource,
+        openingStock: opening,
+        closingStock: closing,
+        totalIn: totalIn,
+        totalOut: totalOut,
+        reserved: item.reservedQuantity,
+        reconciled: reconciled,
+      ));
+    }
+
+    final snapshot = InventorySnapshot(
+      dateKey: dateId,
+      id: dateId,
+      date: dateId,
+      snapshotAt: targetDate,
+      totalProducts: items.length,
+      totalStockQuantity: totalStock,
+      totalReservedQuantity: totalReserved,
+      totalIncomingQuantity: totalIncoming,
+      status: hasDiscrepancy ? 'discrepancy' : 'captured',
+      items: snapshotItems,
+    );
+
+    await _firestore.collection('inventory_snapshots').doc(dateId).set(snapshot.toJson());
+
+    for (final chunk in _chunk(snapshotItems, 400)) {
+      final batch = _firestore.batch();
+      for (final sItem in chunk) {
+        final itemRef = _firestore
+            .collection('inventory_snapshots')
+            .doc(dateId)
+            .collection('items')
+            .doc(sItem.productId);
+        batch.set(itemRef, sItem.toJson());
+      }
+      await batch.commit();
+    }
+
+    return snapshot;
+  }
+
+  /// Ensures yesterday's end-of-day snapshot was captured, backfilling it if missing.
+  Future<void> ensureYesterdaySnapshotCaptured() async {
+    try {
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      final dateId = DateFormat('yyyy-MM-dd').format(yesterday);
+      final doc = await _firestore.collection('inventory_snapshots').doc(dateId).get();
+      if (!doc.exists) {
+        await captureDailyStockSnapshot(yesterday);
+      }
+    } catch (e) {
+      debugPrint('ensureYesterdaySnapshotCaptured error: $e');
+    }
+  }
+
+  /// Reconciles daily stock snapshots over a date range.
+  Future<List<InventorySnapshot>> reconcileDailySnapshots({
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    final List<InventorySnapshot> snapshots = [];
+    DateTime current = DateTime(startDate.year, startDate.month, startDate.day);
+    final end = DateTime(endDate.year, endDate.month, endDate.day);
+
+    while (!current.isAfter(end)) {
+      final dateId = DateFormat('yyyy-MM-dd').format(current);
+      final doc = await _firestore.collection('inventory_snapshots').doc(dateId).get();
+      if (doc.exists) {
+        final itemsSnap = await doc.reference.collection('items').get();
+        final items = itemsSnap.docs.map(InventorySnapshotItem.fromSnapshot).toList();
+        final snapshot = InventorySnapshot.fromSnapshot(doc, items: items);
+        snapshots.add(snapshot);
+      } else {
+        final captured = await captureDailyStockSnapshot(current);
+        snapshots.add(captured);
+      }
+      current = current.add(const Duration(days: 1));
+    }
+
+    return snapshots;
+  }
+
+  /// Retrieves closing stock for a product as of a given date.
+  Future<int?> getStockAsOfDate(DateTime date, String productId) async {
+    final dateId = DateFormat('yyyy-MM-dd').format(date);
+    final itemDoc = await _firestore
+        .collection('inventory_snapshots')
+        .doc(dateId)
+        .collection('items')
+        .doc(productId)
+        .get();
+    if (itemDoc.exists) {
+      return (itemDoc.data()?['closingStock'] as num?)?.toInt();
+    }
+    return null;
+  }
+
+  /// Checks if 24 hours have elapsed since the last stock audit and runs one automatically if due.
+  Future<StockAuditReport?> checkAndRunScheduledAudit() async {
+    try {
+      final config = await ConfigurationService().getConfiguration();
+      final lastAudit = config.lastStockAuditAt?.toDate();
+      final now = DateTime.now();
+
+      if (lastAudit == null || now.difference(lastAudit).inHours >= 24) {
+        final report = await runStockAudit();
+        await ConfigurationService().saveConfiguration(
+          config.copyWith(lastStockAuditAt: Timestamp.fromDate(now)),
+        );
+        return report;
+      }
+    } catch (e) {
+      debugPrint('checkAndRunScheduledAudit error: $e');
+    }
+    return null;
+  }
+
+  /// Realtime stream of open discrepancy count.
+  Stream<int> getOpenDiscrepanciesCountStream() {
+    return _firestore
+        .collection('inventory_discrepancies')
+        .where('status', isEqualTo: 'open')
+        .snapshots()
+        .map((s) => s.docs.length);
   }
 
   /// Realtime stream providing unified floating stock details across active Purchase Orders

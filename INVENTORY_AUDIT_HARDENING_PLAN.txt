@@ -1,0 +1,276 @@
+INVENTORY AUDIT HARDENING PLAN (follow-up to INVENTORY_AUDIT_IMPLEMENTATION_PLAN.txt)
+=====================================================================================
+
+SCOPE
+-----
+A. Remaining issues found in the review of commit ce68334 (issues 1-6)
+B. Further recommendations 3-6: daily stock snapshot, blind counts, anomaly
+   alerts, offline-safety.
+(Not in scope: lot/expiry + FEFO, bin/location codes.)
+
+Key files
+- firestore.rules
+- lib/services/inventory_service.dart (_resolveActor, batch/transaction writers)
+- lib/services/selecta_product_service.dart (direct stockQuantity writer)
+- lib/views/pages/dashboard/picklist_page.dart
+- lib/models/inventory_movement.dart
+- lib/views/widgets/inventory/{stock_audit_dialog,cycle_count_dialog,
+  inventory_exceptions_sheet}.dart
+- test/inventory_audit_service_test.dart, test/inventory_movement_model_test.dart
+
+==============================================================================
+PART A - REMAINING ISSUES
+==============================================================================
+
+A1. Firestore rules: restrict and validate ledger writes   [HIGH]
+------------------------------------------------------------------
+Problem: inventory_movements create is allowed for any authenticated user and
+fields are not validated.
+Steps:
+ 1. Add helper functions in firestore.rules:
+      isDealer()  - role == 'Dealer' (from users doc / custom claim)
+      validMovement(d) - required keys present; productId/reason strings;
+        previousStock, newStock, delta ints; newStock >= 0;
+        delta == newStock - previousStock; createdBy/actorUid ==
+        request.auth.uid; createdAt == request.time (see A5).
+ 2. Split create by movementType:
+      - Manual types (adjustment, count_correction, damage_expiry):
+        isDealer() && validMovement.
+      - System flow types (pick, van_load, van_return, receipt, reserve, ...):
+        isAuthenticated() && validMovement (other roles run picklist/van).
+ 3. Keep update/delete = false.
+ 4. Test with the Firestore emulator rules tests (@firebase/rules-unit-testing):
+    dealer ok, non-dealer manual denied, bad delta denied, update/delete
+    denied, spoofed actorUid denied.
+Acceptance: forged/non-dealer manual movements are rejected by the server.
+
+A2. Lock down inventory_discrepancies / inventory_audit_runs   [HIGH]
+------------------------------------------------------------------
+Problem: any authenticated user may create/update discrepancies (can clear
+flags).
+Steps:
+ 1. read: authenticated (unchanged).
+ 2. create: authenticated system flows may create (auto-flag on clamp/short
+    pick) but only with status == 'open'.
+ 3. update (resolve/dismiss/assign): isDealer() only; resolvedBy == auth.uid;
+    only status/resolution/resolvedAt/resolvedBy fields may change.
+ 4. delete: false (keep history); archive via status instead.
+ 5. Rules tests for each case.
+Acceptance: non-dealers cannot resolve or alter a discrepancy.
+
+A3. Detect edits that bypass the ledger   [HIGH]
+------------------------------------------------------------------
+Problem: selecta_product_service.dart writes stockQuantity directly (catalog
+import preserves stock, form saves); rules cannot block direct product writes.
+Steps:
+ 1. Audit all writers of stockQuantity/reservedQuantity/incomingQuantity
+    (grep). For each: route via InventoryService helper, or confirm it only
+    preserves the existing value.
+ 2. Remove stock fields from product form/import payloads (use merge updates
+    that omit them) so catalog edits cannot change stock.
+ 3. Rules: on selecta_products / other_products update, deny changes to
+    stockQuantity/reservedQuantity/incomingQuantity unless the writer is a
+    dealer (diff().affectedKeys() check). Pair with 4 below for system flows
+    that legitimately update stock in the same batch (allow when the request
+    also creates a matching movement via getAfter()/existsAfter() on the
+    movement doc ID, or restrict to authenticated flows only).
+ 3b. If rules-level enforcement proves too complex, keep detection-only (step 4).
+ 4. Scheduled in-app audit: on dealer app open, if config
+    inventory_audit_config/lastAuditAt is older than 24h, run the stock audit
+    in the background, write inventory_audit_runs, create discrepancies,
+    update lastAuditAt (transaction to avoid duplicate runs).
+ 5. Show unread discrepancy count badge on the Inventory page.
+Acceptance: a direct stockQuantity edit appears as a discrepancy within 24h
+(or immediately on manual audit); catalog edits cannot change stock.
+
+A4. Move read-then-write paths to transactions   [HIGH]
+------------------------------------------------------------------
+Problem: 17 WriteBatch uses in inventory_service.dart read the product first,
+then write; concurrent devices can overwrite each other.
+Steps:
+ 1. List every method using _firestore.batch() that reads stock beforehand
+    (grep "_firestore.batch()" and inspect).
+ 2. For each, rewrite using runTransaction: read product doc(s) inside the
+    transaction, compute next values, write product + movement(s) together.
+    Reuse the central helper from Phase 2 (_applyStockChange) to avoid
+    duplication.
+ 3. Multi-line operations (picklist with many items): Firestore transactions
+    limit 500 writes; chunk by 200 products per transaction and tie chunks with
+    the same correlationId; make chunks idempotent via idempotencyKey so a
+    retry after partial failure is safe.
+ 4. Keep batches only where no prior read is needed.
+ 5. Tests (fake_cloud_firestore): two concurrent updates produce
+    previousStock/newStock chain without gaps; retry with same idempotencyKey
+    writes once.
+Acceptance: no read-then-batch stock writers remain; chain check shows no
+gaps under concurrent use.
+
+A5. Server timestamps for ledger time   [MEDIUM]
+------------------------------------------------------------------
+Problem: createdAt uses Timestamp.now() (device clock) in most writers.
+Steps:
+ 1. Add createdAt = FieldValue.serverTimestamp() in InventoryMovement.toJson
+    for new writes (keep clientCreatedAt for debugging/offline ordering).
+ 2. Model: parse createdAt that may be null on pending local snapshots (use
+    clientCreatedAt fallback); order queries by createdAt.
+ 3. Product updatedAt also serverTimestamp.
+ 4. Rules: createdAt == request.time (A1).
+ 5. Update chain check in audit to order by createdAt then by a per-product
+    sequence number if ties exist (see B3 for optional sequence).
+ 6. Tests: model parse with null createdAt; ordering.
+Acceptance: history order is unaffected by device clock changes.
+
+A6. Fail closed on actor / dealer approval   [MEDIUM]
+------------------------------------------------------------------
+Problem: _resolveActor defaults role to 'Dealer' and name 'Dealer' when lookup
+fails; approval for large adjustments is UI-only.
+Steps:
+ 1. _resolveActor: if no authenticated user or role is unknown, throw a
+    StateError / return role 'Unknown' and block manual adjustments; system
+    flows log role 'Unknown' (flagged) instead of 'Dealer'.
+ 2. Pending adjustment flow: store adjustments above the unit threshold in
+    inventory_pending_adjustments (status pending/approved/rejected). Only
+    approval (dealer, different user than requester if more than one dealer
+    exists) applies the stock change and writes the movement.
+ 3. Rules: pending doc create by dealer; status change by dealer only;
+    movement of type adjustment above threshold must reference an approved
+    pending doc (existsAfter/get check).
+ 4. Config: add unitApprovalThreshold (default 10) to configuration.
+ 5. Tests: unknown actor blocked; above-threshold adjustment goes pending;
+    approval applies it exactly once.
+Acceptance: no default-dealer fallback; large adjustments cannot bypass
+approval.
+
+==============================================================================
+PART B - FURTHER RECOMMENDATIONS (3-6)
+==============================================================================
+
+B1. Daily end-of-day stock snapshot   [MEDIUM]
+------------------------------------------------------------------
+Purpose: rebuild stock for any date; prove when a variance started.
+Steps:
+ 1. Collection inventory_snapshots/{yyyy-MM-dd}/items/{productId} with
+    stockQuantity, reservedQuantity, incomingQuantity, productName, source,
+    capturedAt (server), capturedBy.
+ 2. Trigger (no Cloud Functions): dealer-side job on app open - if yesterday's
+    snapshot is missing, create it (idempotent doc IDs; run in chunks of 400
+    writes). Also capture at end-of-day settlement.
+ 3. Rules: create dealer only; no update/delete.
+ 4. Reconciliation: snapshot(D) + sum(movement.delta on D+1) should equal
+    snapshot(D+1); show mismatches as discrepancies.
+ 5. UI: "Stock as of date" view per product / CSV export; chart of daily stock.
+ 6. Retention: keep indefinitely (small docs); optional monthly roll-up.
+ 7. Tests: snapshot creation idempotent; reconciliation detects an injected
+    bypass edit.
+Acceptance: any date's stock can be viewed and reconciled with movements.
+
+B2. Blind counts in cycle counting   [MEDIUM]
+------------------------------------------------------------------
+Purpose: unbiased counts (counter does not see system quantity).
+Steps:
+ 1. cycle_count_dialog.dart: hide system quantity while counting; show only
+    product, image, barcode, unit of measure.
+ 2. Reveal variance only after the count is submitted; require recount when
+    |variance| > threshold (units) before it can be approved.
+ 3. Record on each count: countedBy, countedAt, countRound (1, 2...), blind =
+    true, systemQuantity snapshot at count start (to show that movements
+    during the count are accounted for).
+ 4. Handle movements between count start and submit: compute expected =
+    systemAtStart + movementsSinceStart; variance against expected.
+ 5. Approval: dealer approves variance -> creates count_correction movement
+    (existing flow).
+ 6. Config flag blindCountEnabled (default true).
+ 7. Tests: system quantity not rendered in blind mode; variance uses expected
+    quantity; recount required above threshold.
+Acceptance: counters cannot see system stock during counting; recount enforced
+for large variance.
+
+B3. Anomaly alerts   [MEDIUM]
+------------------------------------------------------------------
+Purpose: surface suspicious or risky patterns early (in-app; no Cloud
+Functions).
+Rules to detect (run in the scheduled in-app audit from A3 and on exception
+sheet open):
+ - Same user makes >N manual adjustments in 24h (config).
+ - Same product adjusted >N times in 7 days.
+ - Write-off / damage_expiry rate above X% of on-hand or value in a period.
+ - Repeated short picks on the same product (>N in 7 days) -> trigger count.
+ - Clamped-at-zero events (any occurrence).
+ - Adjustment just below approval threshold repeated (threshold-splitting).
+ - Negative-chain break / unexplained variance.
+ - Returns pending inspection older than N days.
+Steps:
+ 1. Add AnomalyRule definitions and evaluator in a new service
+    (inventory_alert_service.dart) reading recent movements.
+ 2. Write results to inventory_alerts (status open/acknowledged, severity,
+    productId/userId, ruleId, evidence movement IDs). Deduplicate by
+    ruleId+subject+period.
+ 3. UI: add Alerts tab/section to inventory_exceptions_sheet.dart; badge count
+    on Inventory page; dealer acknowledge with note.
+ 4. Optional push: use existing notification mechanism if the app has one.
+ 5. Config thresholds in configuration page.
+ 6. Tests: each rule triggers/does not trigger on fixtures; dedupe works.
+Acceptance: dealer sees alerts for repeated adjustments, high write-offs and
+repeated short picks without manual searching.
+
+B4. Offline safety   [MEDIUM]
+------------------------------------------------------------------
+Purpose: queued/retried writes must never double-post or corrupt stock.
+Steps:
+ 1. Inventory: confirm which flows can run offline (Firestore persistence is
+    on by default on mobile). Document it. Note: Firestore transactions do
+    NOT run offline (they fail), batches queue. Decide per flow:
+      - Stock-affecting flows (picklist complete, van load, adjustments):
+        require connectivity; show a clear "online required" message and do
+        not queue.
+      - Non-stock flows may stay offline.
+ 2. Idempotency: ensure every stock-affecting writer sets a deterministic
+    idempotencyKey (extend to remaining writers: van load/return, manual
+    adjustments (use per-submit UUID generated when the sheet opens), cycle
+    count, returns, settlement). Movement doc ID = idempotencyKey (or hash) so
+    a replay overwrites the same doc rather than creating a duplicate; inside
+    transactions check existence and skip.
+ 3. Disable double-tap: wrap submit buttons with AsyncButton (already in the
+    repo) and keep the key stable across retries.
+ 4. Add a sync-status indicator: pending writes (snapshotsInSync /
+    metadata.hasPendingWrites) on inventory and picklist pages.
+ 5. Record clientCreatedAt, deviceId, appVersion, and wasOffline (best effort)
+    on movements to help investigate.
+ 6. Tests: same key twice -> one movement and one stock change; transaction
+    path blocked offline with friendly error.
+Acceptance: retries/replays never double-post; stock-affecting actions are
+blocked or safe when offline.
+
+==============================================================================
+SUGGESTED ORDER
+==============================================================================
+ 1. A1, A2, A6 (rules + fail-closed actor)      - security and trust
+ 2. A5, A4 (server time, transactions)          - data correctness
+ 3. B4 (idempotency/offline)                    - prevents double posting
+ 4. A3 (bypass detection + scheduled audit)
+ 5. B1 (snapshots), B3 (alerts)
+ 6. B2 (blind counts)
+
+DEPENDENCIES
+ - A1 depends on A5 (createdAt == request.time) and A6 (role source).
+ - B1 reconciliation and B3 rules depend on A3's scheduled-audit hook.
+ - B2 uses the existing count_correction flow.
+
+ROLLOUT NOTES
+ - Deploy app changes first (sending serverTimestamp and actorUid), then deploy
+   stricter firestore.rules, otherwise older app versions will be blocked
+   (use the force-update mechanism already in the release process).
+ - Test rules in the emulator before deploy.
+ - Add new composite indexes (firestore.indexes.json) for alerts/snapshots
+   queries.
+
+TESTING SUMMARY
+ - Rules tests (emulator): A1, A2, A3, A6, B1.
+ - Unit/service tests (fake_cloud_firestore): A4, A5, B2, B3, B4.
+ - Manual: two devices doing picklist + manual adjust simultaneously;
+   offline toggle during van load; blind count with concurrent movements.
+
+OPEN ITEMS
+ - Default unitApprovalThreshold (assumed 10 units).
+ - Alert thresholds (N adjustments, write-off %, short-pick count).
+ - Is a second dealer/approver available (for requester != approver)?

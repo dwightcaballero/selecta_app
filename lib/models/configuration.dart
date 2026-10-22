@@ -35,6 +35,16 @@ class Configuration {
 
   String creditReminderSmsTemplate;
 
+  // Inventory Audit & Hardening Configuration
+  int unitApprovalThreshold;
+  bool blindCountEnabled;
+  int recountThreshold;
+  int maxAdjustmentsPerUser24h;
+  int maxAdjustmentsPerProduct7d;
+  double maxWriteOffPercentage;
+  int repeatedShortPickThreshold;
+  Timestamp? lastStockAuditAt;
+
   Configuration({
     required this.merchBlitzStartDate,
     required this.merchBlitzEndDate,
@@ -51,6 +61,14 @@ class Configuration {
     this.placementPairs = const [],
     this.enablePicklistBarcodeScanner = true,
     this.creditReminderSmsTemplate = defaultCreditReminderSmsTemplate,
+    this.unitApprovalThreshold = 10,
+    this.blindCountEnabled = true,
+    this.recountThreshold = 5,
+    this.maxAdjustmentsPerUser24h = 5,
+    this.maxAdjustmentsPerProduct7d = 3,
+    this.maxWriteOffPercentage = 10.0,
+    this.repeatedShortPickThreshold = 3,
+    this.lastStockAuditAt,
   });
 
   /// Returns true if [plainTextPassword] matches the stored SHA-256 hash.
@@ -87,6 +105,14 @@ class Configuration {
         placementPairs: const [],
         enablePicklistBarcodeScanner: true,
         creditReminderSmsTemplate: defaultCreditReminderSmsTemplate,
+        unitApprovalThreshold: 10,
+        blindCountEnabled: true,
+        recountThreshold: 5,
+        maxAdjustmentsPerUser24h: 5,
+        maxAdjustmentsPerProduct7d: 3,
+        maxWriteOffPercentage: 10.0,
+        repeatedShortPickThreshold: 3,
+        lastStockAuditAt: null,
       );
 
   Configuration.fromJson(Map<String, Object?> json)
@@ -119,6 +145,14 @@ class Configuration {
               : const [],
           enablePicklistBarcodeScanner: json['enablePicklistBarcodeScanner'] as bool? ?? true,
           creditReminderSmsTemplate: json['creditReminderSmsTemplate'] as String? ?? defaultCreditReminderSmsTemplate,
+          unitApprovalThreshold: (json['unitApprovalThreshold'] as num?)?.toInt() ?? 10,
+          blindCountEnabled: json['blindCountEnabled'] as bool? ?? true,
+          recountThreshold: (json['recountThreshold'] as num?)?.toInt() ?? 5,
+          maxAdjustmentsPerUser24h: (json['maxAdjustmentsPerUser24h'] as num?)?.toInt() ?? 5,
+          maxAdjustmentsPerProduct7d: (json['maxAdjustmentsPerProduct7d'] as num?)?.toInt() ?? 3,
+          maxWriteOffPercentage: (json['maxWriteOffPercentage'] as num?)?.toDouble() ?? 10.0,
+          repeatedShortPickThreshold: (json['repeatedShortPickThreshold'] as num?)?.toInt() ?? 3,
+          lastStockAuditAt: json['lastStockAuditAt'] as Timestamp?,
         );
 
   Configuration copyWith({
@@ -137,6 +171,14 @@ class Configuration {
     List<PlacementPair>? placementPairs,
     bool? enablePicklistBarcodeScanner,
     String? creditReminderSmsTemplate,
+    int? unitApprovalThreshold,
+    bool? blindCountEnabled,
+    int? recountThreshold,
+    int? maxAdjustmentsPerUser24h,
+    int? maxAdjustmentsPerProduct7d,
+    double? maxWriteOffPercentage,
+    int? repeatedShortPickThreshold,
+    Timestamp? lastStockAuditAt,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -154,6 +196,14 @@ class Configuration {
       placementPairs: placementPairs ?? List.from(this.placementPairs),
       enablePicklistBarcodeScanner: enablePicklistBarcodeScanner ?? this.enablePicklistBarcodeScanner,
       creditReminderSmsTemplate: creditReminderSmsTemplate ?? this.creditReminderSmsTemplate,
+      unitApprovalThreshold: unitApprovalThreshold ?? this.unitApprovalThreshold,
+      blindCountEnabled: blindCountEnabled ?? this.blindCountEnabled,
+      recountThreshold: recountThreshold ?? this.recountThreshold,
+      maxAdjustmentsPerUser24h: maxAdjustmentsPerUser24h ?? this.maxAdjustmentsPerUser24h,
+      maxAdjustmentsPerProduct7d: maxAdjustmentsPerProduct7d ?? this.maxAdjustmentsPerProduct7d,
+      maxWriteOffPercentage: maxWriteOffPercentage ?? this.maxWriteOffPercentage,
+      repeatedShortPickThreshold: repeatedShortPickThreshold ?? this.repeatedShortPickThreshold,
+      lastStockAuditAt: lastStockAuditAt ?? this.lastStockAuditAt,
     );
   }
 
@@ -175,6 +225,14 @@ class Configuration {
       'placementPairs': placementPairs.map((p) => p.toJson()).toList(),
       'enablePicklistBarcodeScanner': enablePicklistBarcodeScanner,
       'creditReminderSmsTemplate': creditReminderSmsTemplate,
+      'unitApprovalThreshold': unitApprovalThreshold,
+      'blindCountEnabled': blindCountEnabled,
+      'recountThreshold': recountThreshold,
+      'maxAdjustmentsPerUser24h': maxAdjustmentsPerUser24h,
+      'maxAdjustmentsPerProduct7d': maxAdjustmentsPerProduct7d,
+      'maxWriteOffPercentage': maxWriteOffPercentage,
+      'repeatedShortPickThreshold': repeatedShortPickThreshold,
+      if (lastStockAuditAt != null) 'lastStockAuditAt': lastStockAuditAt,
     };
   }
 }

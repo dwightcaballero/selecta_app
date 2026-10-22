@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/models/floating_stock.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/models/inventory_pending_adjustment.dart';
 import 'package:selecta_ops/services/inventory_service.dart';
 
 /// Aggregated metrics for the dealer's active inventory.
@@ -80,7 +81,7 @@ class InventoryController {
   }
 
   /// Updates the stock quantity (and optional low stock & max stock thresholds) of an [InventoryItem].
-  Future<void> updateStock({
+  Future<InventoryPendingAdjustment?> updateStock({
     required InventoryItem item,
     required int newStockQuantity,
     int? newLowStockThreshold,
@@ -155,11 +156,17 @@ class InventoryController {
     required InventoryItem item,
     required int countedQuantity,
     String notes = '',
+    bool isBlind = false,
+    int countRound = 1,
+    int? systemQuantityAtStart,
   }) =>
       _service.submitCycleCount(
         item: item,
         countedQuantity: countedQuantity,
         notes: notes,
+        isBlind: isBlind,
+        countRound: countRound,
+        systemQuantityAtStart: systemQuantityAtStart,
       );
 
   /// Streams recent stock movement logs across all products.
@@ -194,4 +201,32 @@ class InventoryController {
         discrepancyId: discrepancyId,
         resolutionNotes: resolutionNotes,
       );
+
+  /// Streams real-time pending adjustments awaiting dealer authorization.
+  Stream<List<InventoryPendingAdjustment>> getPendingAdjustmentsStream() =>
+      _service.getPendingAdjustmentsStream();
+
+  /// Approves a pending adjustment.
+  Future<void> approvePendingAdjustment(String adjustmentId) =>
+      _service.approvePendingAdjustment(adjustmentId);
+
+  /// Rejects a pending adjustment.
+  Future<void> rejectPendingAdjustment(String adjustmentId, {String? reason}) =>
+      _service.rejectPendingAdjustment(adjustmentId, reason: reason);
+
+  /// Checks and runs background scheduled audit if >24h elapsed since last audit.
+  Future<StockAuditReport?> checkAndRunScheduledAudit() =>
+      _service.checkAndRunScheduledAudit();
+
+  /// Captures daily end-of-day stock snapshot.
+  Future<void> captureDailyStockSnapshot([DateTime? date]) =>
+      _service.captureDailyStockSnapshot(date);
+
+  /// Ensures yesterday's end-of-day snapshot is captured if missing.
+  Future<void> ensureYesterdaySnapshotCaptured() =>
+      _service.ensureYesterdaySnapshotCaptured();
+
+  /// Streams open discrepancy count for badges.
+  Stream<int> getOpenDiscrepanciesCountStream() =>
+      _service.getOpenDiscrepanciesCountStream();
 }

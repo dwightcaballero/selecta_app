@@ -556,7 +556,7 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                           final newMaxStock = item.source == InventoryProductSource.selecta
                               ? (int.tryParse(_maxStockController.text.trim()) ?? item.maxStock)
                               : 0;
-                          await widget.controller.updateStock(
+                          final pending = await widget.controller.updateStock(
                             item: item,
                             newStockQuantity: previewStock,
                             newLowStockThreshold: newThreshold,
@@ -568,10 +568,17 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                           );
                           if (context.mounted) Navigator.pop(context);
                           if (context.mounted) {
-                            ShowMessage.success(
-                              context,
-                              'Updated "${item.productName}" stock to $previewStock.',
-                            );
+                            if (pending != null) {
+                              ShowMessage.warning(
+                                context,
+                                'Adjustment of ${pending.delta.abs()} units exceeds approval limit and has been submitted for pending dealer approval.',
+                              );
+                            } else {
+                              ShowMessage.success(
+                                context,
+                                'Updated "${item.productName}" stock to $previewStock.',
+                              );
+                            }
                           }
                         } catch (e) {
                           if (context.mounted) {

@@ -986,7 +986,13 @@ class SelectaProductService {
         );
 
         final docRef = _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(targetId);
-        batch.set(docRef, dealerProduct.toJson(), SetOptions(merge: true));
+        final dealerPayload = Map<String, dynamic>.from(dealerProduct.toJson());
+        if (existingData != null) {
+          dealerPayload.remove('stockQuantity');
+          dealerPayload.remove('reservedQuantity');
+          dealerPayload.remove('incomingQuantity');
+        }
+        batch.set(docRef, dealerPayload, SetOptions(merge: true));
 
         final processed = i + j + 1;
         onProgress?.call(processed, total, 'Syncing ${adminProd.productName} ($processed/$total)...');

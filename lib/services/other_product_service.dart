@@ -36,9 +36,17 @@ class OtherProductService {
   }
 
   Future<void> updateProduct(String productId, OtherProduct product) async {
-    await _productsRef
-        .doc(productId)
-        .update(product.copyWith(updatedAt: Timestamp.now()).toJson());
+    final now = Timestamp.now();
+    await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).doc(productId).update({
+      'productName': product.productName,
+      'imageUrl': product.imageUrl,
+      'barcode': product.barcode,
+      'buyingPrice': product.buyingPrice,
+      'sellingPrice': product.sellingPrice,
+      'isActive': product.isActive,
+      'lowStockThreshold': product.lowStockThreshold,
+      'updatedAt': now,
+    });
   }
 
   Future<void> deleteProduct(String productId) async {

@@ -53,6 +53,10 @@ class _InventoryPageState extends State<InventoryPage> {
   void initState() {
     super.initState();
     _inventoryStream = _controller.getActiveInventoryStream();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _controller.checkAndRunScheduledAudit();
+      _controller.ensureYesterdaySnapshotCaptured();
+    });
   }
 
   Future<void> _refreshInventory() async {
@@ -507,102 +511,125 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Widget _buildAppbarMenu(InventorySummary summary, int floatingCount, ColorScheme colorScheme) {
-    final hasAlert = floatingCount > 0 || summary.needsRestockCount > 0;
+    return StreamBuilder<int>(
+      stream: _controller.getOpenDiscrepanciesCountStream(),
+      builder: (context, snapshot) {
+        final openDiscrepanciesCount = snapshot.data ?? 0;
+        final hasAlert = floatingCount > 0 || summary.needsRestockCount > 0 || openDiscrepanciesCount > 0;
+        final badgeColor = openDiscrepanciesCount > 0
+            ? const Color(0xFFE11D48)
+            : (floatingCount > 0 ? const Color(0xFF7C3AED) : const Color(0xFFE11D48));
 
-    return PopupMenuButton<String>(
-      tooltip: 'Inventory Options',
-      icon: Badge(
-        isLabelVisible: hasAlert,
-        smallSize: 8,
-        backgroundColor: floatingCount > 0 ? const Color(0xFF7C3AED) : const Color(0xFFE11D48),
-        child: const Icon(Icons.more_vert_rounded, color: Colors.white),
-      ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      onSelected: (action) {
-        switch (action) {
-          case 'overview':
-            _showOverviewSheet(summary);
-            break;
-          case 'floating':
-            _showFloatingStocksSheet();
-            break;
-          case 'history':
-            _showOverallHistorySheet();
-            break;
-          case 'audit':
-            _showStockAuditDialog();
-            break;
-          case 'exceptions':
-            _showExceptionsSheet();
-            break;
-        }
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem<String>(
-          value: 'overview',
-          child: Row(
-            children: [
-              Icon(Icons.analytics_outlined, size: 20, color: colorScheme.primary),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text('Inventory Overview', style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
-            ],
+        return PopupMenuButton<String>(
+          tooltip: 'Inventory Options',
+          icon: Badge(
+            isLabelVisible: hasAlert,
+            smallSize: 8,
+            backgroundColor: badgeColor,
+            child: const Icon(Icons.more_vert_rounded, color: Colors.white),
           ),
-        ),
-        PopupMenuItem<String>(
-          value: 'floating',
-          child: Row(
-            children: [
-              const Icon(Icons.sync_alt_rounded, size: 20, color: Color(0xFF7C3AED)),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text('Incoming & Reserved Stocks', style: TextStyle(fontWeight: FontWeight.w600)),
-              ),
-              if (floatingCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(color: const Color(0xFF7C3AED).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-                  child: Text(
-                    '$floatingCount',
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          onSelected: (action) {
+            switch (action) {
+              case 'overview':
+                _showOverviewSheet(summary);
+                break;
+              case 'floating':
+                _showFloatingStocksSheet();
+                break;
+              case 'history':
+                _showOverallHistorySheet();
+                break;
+              case 'audit':
+                _showStockAuditDialog();
+                break;
+              case 'exceptions':
+                _showExceptionsSheet();
+                break;
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'overview',
+              child: Row(
+                children: [
+                  Icon(Icons.analytics_outlined, size: 20, color: colorScheme.primary),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('Inventory Overview', style: TextStyle(fontWeight: FontWeight.w600)),
                   ),
-                ),
-            ],
-          ),
-        ),
-        const PopupMenuDivider(),
-        const PopupMenuItem<String>(
-          value: 'history',
-          child: Row(
-            children: [
-              Icon(Icons.history_rounded, size: 20, color: Colors.grey),
-              SizedBox(width: 12),
-              Text('Movement History & Export', style: TextStyle(fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'audit',
-          child: Row(
-            children: [
-              Icon(Icons.rule_folder_rounded, size: 20, color: Colors.amber.shade900),
-              const SizedBox(width: 12),
-              const Text('Run Stock Reconciliation Audit', style: TextStyle(fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'exceptions',
-          child: Row(
-            children: [
-              Icon(Icons.insights_rounded, size: 20, color: Colors.deepOrange.shade800),
-              const SizedBox(width: 12),
-              const Text('Exceptions & Audit KPIs', style: TextStyle(fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-      ],
+                ],
+              ),
+            ),
+            PopupMenuItem<String>(
+              value: 'floating',
+              child: Row(
+                children: [
+                  const Icon(Icons.sync_alt_rounded, size: 20, color: Color(0xFF7C3AED)),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('Incoming & Reserved Stocks', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  if (floatingCount > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(color: const Color(0xFF7C3AED).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+                      child: Text(
+                        '$floatingCount',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF7C3AED)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem<String>(
+              value: 'history',
+              child: Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 20, color: Colors.grey),
+                  SizedBox(width: 12),
+                  Text('Movement History & Export', style: TextStyle(fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            PopupMenuItem<String>(
+              value: 'audit',
+              child: Row(
+                children: [
+                  Icon(Icons.rule_folder_rounded, size: 20, color: Colors.amber.shade900),
+                  const SizedBox(width: 12),
+                  const Text('Run Stock Reconciliation Audit', style: TextStyle(fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            PopupMenuItem<String>(
+              value: 'exceptions',
+              child: Row(
+                children: [
+                  Icon(Icons.insights_rounded, size: 20, color: Colors.deepOrange.shade800),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('Exceptions & Audit KPIs', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  if (openDiscrepanciesCount > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE11D48).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$openDiscrepanciesCount',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFE11D48)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
