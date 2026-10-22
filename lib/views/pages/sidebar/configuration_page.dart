@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/configuration_controller.dart';
 import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/models/sub_category.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
+import 'package:selecta_ops/views/pages/sidebar/admin_promos_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/product_sorting_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
@@ -30,6 +33,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
   bool _enablePicklistBarcodeScanner = true;
 
+  // State for Product Sorting & Sub-Categories
+  String _productSortMode = 'srp';
+  List<SubCategory> _subCategories = [];
+  int _selectedSubCategoryCategoryIndex = 0; // 0 = By Piece, 1 = By Case
+
   ThermalPaperSize _thermalPaperSize = ThermalPaperSize.mm58;
   String? _printerName;
   bool _isPrinterConnected = false;
@@ -46,13 +54,17 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   bool _isCreditSmsExpanded = false;
   bool _isWarehouseExpanded = false;
   bool _isPrinterExpanded = false;
+  bool _isProductSortExpanded = false;
+  bool _isPromosExpanded = false;
 
   bool get _allExpanded =>
       _isMerchBlitzExpanded &&
       _isKpiTargetsExpanded &&
       _isCreditSmsExpanded &&
       _isWarehouseExpanded &&
-      _isPrinterExpanded;
+      _isPrinterExpanded &&
+      _isProductSortExpanded &&
+      _isPromosExpanded;
 
   void _toggleAllSections() {
     final shouldExpand = !_allExpanded;
@@ -62,6 +74,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       _isCreditSmsExpanded = shouldExpand;
       _isWarehouseExpanded = shouldExpand;
       _isPrinterExpanded = shouldExpand;
+      _isProductSortExpanded = shouldExpand;
+      _isPromosExpanded = shouldExpand;
     });
   }
 
@@ -109,6 +123,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           _expansionTargetController.text = result.config.expansionTarget.toString();
           _creditSmsTemplateController.text = result.config.creditReminderSmsTemplate;
           _enablePicklistBarcodeScanner = result.config.enablePicklistBarcodeScanner;
+          _productSortMode = result.config.productSortMode;
+          _subCategories = List<SubCategory>.from(result.config.subCategories);
           _thermalPaperSize = paperSize;
           _printerName = pName;
           _isPrinterConnected = isConnected;
@@ -202,6 +218,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         expansionTarget: expansionTarget,
         enablePicklistBarcodeScanner: _enablePicklistBarcodeScanner,
         creditReminderSmsTemplate: smsTemplate,
+        productSortMode: _productSortMode,
+        subCategories: _subCategories,
       );
 
       _configExistsInDb = true;
@@ -1027,6 +1045,388 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     );
   }
 
+  void _showAddSubCategoryDialog(String category) {
+    final textCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Add $category Sub-Category'),
+        content: TextField(
+          controller: textCtrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Sub-Category Name',
+            hintText: 'e.g., Cones, Tubs, Sticks...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = textCtrl.text.trim();
+              if (name.isNotEmpty) {
+                final isCase = category.toLowerCase().contains('case');
+                final catName = isCase ? 'By Case' : 'By Piece';
+                final existing = _subCategories
+                    .where((s) => s.category.toLowerCase().contains(isCase ? 'case' : 'piece'))
+                    .toList();
+                final maxOrder = existing.isEmpty
+                    ? -1
+                    : existing.map((s) => s.order).reduce((a, b) => a > b ? a : b);
+                setState(() {
+                  _subCategories.add(SubCategory(
+                    id: 'sub_${DateTime.now().millisecondsSinceEpoch}',
+                    name: name,
+                    category: catName,
+                    order: maxOrder + 1,
+                    isActive: true,
+                  ));
+                });
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRenameSubCategoryDialog(SubCategory sub) {
+    final textCtrl = TextEditingController(text: sub.name);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Sub-Category'),
+        content: TextField(
+          controller: textCtrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = textCtrl.text.trim();
+              if (name.isNotEmpty) {
+                setState(() {
+                  final idx = _subCategories.indexWhere((s) => s.id == sub.id);
+                  if (idx != -1) {
+                    _subCategories[idx] = _subCategories[idx].copyWith(name: name);
+                  }
+                });
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteSubCategory(SubCategory sub) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Sub-Category?'),
+        content: Text(
+          'Are you sure you want to delete "${sub.name}"?\n\n'
+          'Products assigned to this sub-category will become Unassigned.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              setState(() {
+                _subCategories.removeWhere((s) => s.id == sub.id);
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProductSortingCard(ColorScheme colorScheme) {
+    final isCustom = _productSortMode == 'custom';
+    final currentCat = _selectedSubCategoryCategoryIndex == 0 ? 'By Piece' : 'By Case';
+    final forCat = _subCategories
+        .where((s) => s.category.toLowerCase().contains(
+              _selectedSubCategoryCategoryIndex == 0 ? 'piece' : 'case',
+            ))
+        .toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+
+    return _buildCollapsibleSectionCard(
+      isExpanded: _isProductSortExpanded,
+      onToggle: () => setState(() => _isProductSortExpanded = !_isProductSortExpanded),
+      iconColor: Colors.deepPurple,
+      icon: Icons.sort_rounded,
+      title: 'Product Sorting & Sub-Categories',
+      subtitle: 'Sequence products across book orders, loads, receipts & reports',
+      badgeText: isCustom ? 'Custom Sort' : 'Default (SRP)',
+      badgeColor: isCustom ? Colors.deepPurple : colorScheme.onSurfaceVariant,
+      children: [
+        // Mode Selector: SRP vs Custom
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'SORTING MODE',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+              ),
+              const SizedBox(height: 8),
+              RadioGroup<String>(
+                groupValue: _productSortMode,
+                onChanged: (val) {
+                  if (val != null) setState(() => _productSortMode = val);
+                },
+                child: Column(
+                  children: [
+                    RadioListTile<String>(
+                      value: 'srp',
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: Colors.deepPurple,
+                      title: const Text('Default (by SRP then Name)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      subtitle: const Text('Products sorted by descending Suggested Retail Price, then alphabetically.', style: TextStyle(fontSize: 11)),
+                    ),
+                    const Divider(height: 1),
+                    RadioListTile<String>(
+                      value: 'custom',
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: Colors.deepPurple,
+                      title: const Text('Custom Dealer Sort', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                      subtitle: const Text('Grouped by sub-categories with custom dealer drag-and-drop sequencing.', style: TextStyle(fontSize: 11)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Quick Link to Full Drag-and-Drop Page
+        FilledButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProductSortingPage(
+                  initialTabIndex: _selectedSubCategoryCategoryIndex,
+                ),
+              ),
+            ).then((_) => _loadConfiguration());
+          },
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          icon: const Icon(Icons.sort_rounded, size: 20),
+          label: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Open Product Sorting Page', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(width: 6),
+              Icon(Icons.arrow_forward_rounded, size: 16),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Sub-Categories Manager
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'SUB-CATEGORIES',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _showAddSubCategoryDialog(currentCat),
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: Text('Add $currentCat Sub-Category', style: const TextStyle(fontSize: 11)),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 8),
+
+        // Segmented Control for By Piece vs By Case
+        SegmentedButton<int>(
+          segments: const [
+            ButtonSegment<int>(value: 0, label: Text('By Piece'), icon: Icon(Icons.icecream_outlined, size: 16)),
+            ButtonSegment<int>(value: 1, label: Text('By Case'), icon: Icon(Icons.inventory_2_outlined, size: 16)),
+          ],
+          selected: {_selectedSubCategoryCategoryIndex},
+          onSelectionChanged: (val) {
+            setState(() => _selectedSubCategoryCategoryIndex = val.first);
+          },
+        ),
+
+        const SizedBox(height: 12),
+
+        if (forCat.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              'No sub-categories defined for $currentCat yet.',
+              style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: forCat.length,
+            separatorBuilder: (context, index) => Divider(height: 1, color: colorScheme.outlineVariant.withValues(alpha: 0.3)),
+            itemBuilder: (context, idx) {
+              final sub = forCat[idx];
+
+              return ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                leading: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '#${idx + 1}',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                  ),
+                ),
+                title: Text(
+                  sub.name,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: sub.isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                subtitle: Text(
+                  sub.isActive ? 'Active' : 'Inactive',
+                  style: TextStyle(fontSize: 11, color: sub.isActive ? Colors.green.shade700 : Colors.grey),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Switch(
+                      value: sub.isActive,
+                      onChanged: (val) {
+                        setState(() {
+                          final mIdx = _subCategories.indexWhere((s) => s.id == sub.id);
+                          if (mIdx != -1) {
+                            _subCategories[mIdx] = _subCategories[mIdx].copyWith(isActive: val);
+                          }
+                        });
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      tooltip: 'Rename',
+                      onPressed: () => _showRenameSubCategoryDialog(sub),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                      tooltip: 'Delete',
+                      onPressed: () => _confirmDeleteSubCategory(sub),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPromotionsCard(ColorScheme colorScheme) {
+    return _buildCollapsibleSectionCard(
+      isExpanded: _isPromosExpanded,
+      onToggle: () => setState(() => _isPromosExpanded = !_isPromosExpanded),
+      icon: Icons.local_offer_outlined,
+      iconColor: const Color(0xFFE11D48),
+      title: 'Promotions & Bundles',
+      subtitle: 'Manage promo mechanics, bundle discounts, and freebies',
+      badgeText: 'Pricing & Promos',
+      badgeColor: const Color(0xFFE11D48),
+      children: [
+        Text(
+          'Configure store promos, product discounts, bundle sets, and free items offered to retail stores during booking and sales.',
+          style: TextStyle(
+            fontSize: 12.5,
+            color: colorScheme.onSurfaceVariant,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AdminPromosPage()),
+            );
+          },
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            backgroundColor: const Color(0xFFE11D48),
+          ),
+          icon: const Icon(Icons.local_offer_rounded, size: 18),
+          label: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Manage Promotions & Bundles', style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(width: 6),
+              Icon(Icons.arrow_forward_rounded, size: 16),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -1105,6 +1505,16 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
                     // Thermal Printer Configuration Card (58mm / 80mm & Bluetooth)
                     _buildThermalPrinterCard(colorScheme),
+
+                    const SizedBox(height: 12),
+
+                    // Product Sorting & Sub-Categories Card
+                    _buildProductSortingCard(colorScheme),
+
+                    const SizedBox(height: 12),
+
+                    // Promotions & Bundles Card
+                    _buildPromotionsCard(colorScheme),
 
                     const SizedBox(height: 24),
 

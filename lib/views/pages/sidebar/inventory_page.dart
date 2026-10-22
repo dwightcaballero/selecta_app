@@ -909,11 +909,15 @@ class _InventoryPageState extends State<InventoryPage> {
       InventorySortOption.priceDesc => b.sellingPrice.compareTo(a.sellingPrice) != 0
           ? b.sellingPrice.compareTo(a.sellingPrice)
           : a.productName.toLowerCase().compareTo(b.productName.toLowerCase()),
-      InventorySortOption.defaultSrp => Helperfunctions.compareBySrpAndName(
+      InventorySortOption.defaultSrp => Helperfunctions.compareProducts(
           nameA: a.productName,
           priceA: a.sellingPrice,
           nameB: b.productName,
           priceB: b.sellingPrice,
+          productIdA: a.id,
+          productIdB: b.id,
+          categoryA: a.category,
+          categoryB: b.category,
         ),
     };
   }

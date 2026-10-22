@@ -509,7 +509,14 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     filtered.sort((a, b) {
       final pA = a.data();
       final pB = b.data();
-      return Helperfunctions.compareBySrpAndName(nameA: pA.productName, priceA: pA.sellingPrice, nameB: pB.productName, priceB: pB.sellingPrice);
+      return Helperfunctions.compareProducts(
+        nameA: pA.productName,
+        priceA: pA.sellingPrice,
+        nameB: pB.productName,
+        priceB: pB.sellingPrice,
+        productIdA: a.id,
+        productIdB: b.id,
+      );
     });
 
     return filtered;
@@ -821,7 +828,18 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                 final nameB = dataB['productName'] as String? ?? '';
                 final priceA = (dataA['sellingPrice'] as num?)?.toDouble() ?? 0.0;
                 final priceB = (dataB['sellingPrice'] as num?)?.toDouble() ?? 0.0;
-                return Helperfunctions.compareBySrpAndName(nameA: nameA, priceA: priceA, nameB: nameB, priceB: priceB);
+                final catA = (dataA['category'] as String? ?? '').trim();
+                final catB = (dataB['category'] as String? ?? '').trim();
+                return Helperfunctions.compareProducts(
+                  nameA: nameA,
+                  priceA: priceA,
+                  nameB: nameB,
+                  priceB: priceB,
+                  productIdA: a.id,
+                  productIdB: b.id,
+                  categoryA: catA,
+                  categoryB: catB,
+                );
               }
 
               selectaCaseItems.sort(compareProducts);

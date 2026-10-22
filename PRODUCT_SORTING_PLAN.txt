@@ -1,0 +1,127 @@
+PRODUCT SORTING - IMPLEMENTATION PLAN (FOR REVIEW)
+===================================================
+
+GOAL
+----
+Replace the hard-coded "SRP then name" ordering with a dealer-configurable,
+drag-and-drop ordering with two levels:
+  Level 1: Sub-Category order
+  Level 2: Product order inside each sub-category
+
+DECISIONS (confirmed)
+---------------------
+1. Separate sort setup for "By Piece" and "By Case".
+2. A product belongs to exactly ONE sub-category.
+3. Unassigned products appear at the bottom, ordered by SRP then name.
+4. Custom sort applies everywhere products are listed: book order, delivery,
+   van load, printed receipts, supplier OOS, reports.
+5. Lists show ORDER ONLY (no sub-category headers).
+6. Editors: Dealer and Admin. Salesmen read the synced result.
+7. Configurations page gets a "Product Sorting" option:
+   - Default (by SRP)  [default]
+   - Custom Dealer Sort
+
+DATA MODEL
+----------
+A. Configuration (lib/models/configuration.dart, Firestore config doc)
+   + productSortMode: 'srp' | 'custom'        (default 'srp')
+   + subCategories: List<SubCategory>
+       SubCategory { id, name, category ('By Piece'|'By Case'), order, isActive }
+
+B. Product (lib/models/admin_selecta_product.dart)
+   + subCategoryId: String?   (null = Unassigned)
+
+C. New Firestore doc: product_sort/{dealerId}
+   {
+     byPiece: { <subCategoryId>: [productId, productId, ...] },
+     byCase:  { <subCategoryId>: [productId, ...] },
+     updatedAt, updatedBy
+   }
+   Sub-category order comes from SubCategory.order.
+   Product position = index in the list above.
+   (Single doc per dealer = one read, cacheable, atomic save.)
+
+SERVICES / CONTROLLERS
+----------------------
+1. lib/services/product_sort_service.dart (new)
+   - load(), save(), in-memory cache, change stream.
+2. lib/controllers/product_sort_controller.dart (new)
+   - add/remove product to sub-category, reorder sub-categories,
+     reorder products, create/rename/delete sub-category.
+   - Deleting a sub-category moves its products to Unassigned.
+3. lib/controllers/configuration_controller.dart
+   - persist productSortMode and subCategories.
+
+CENTRAL COMPARATOR
+------------------
+lib/data/helperfunctions.dart
+  + compareProducts(...) honoring productSortMode:
+      srp    -> existing compareBySrpAndName behavior (unchanged)
+      custom -> (category, subCategory order, product index);
+                unassigned last, tie-break by SRP then name.
+  Fallback: if custom data is empty/not loaded, use SRP.
+
+Replace compareBySrpAndName callers:
+  - lib/controllers/pjp_controller.dart (2 places)
+  - lib/models/delivery.dart
+  - lib/models/van_load.dart
+  - lib/services/thermal_printer_service.dart
+  - lib/services/supplier_oos_service.dart
+  - any other list/report sorting found during implementation
+
+UI
+--
+1. Configurations page
+   - "Product Sorting" selector (Default SRP / Custom Dealer Sort).
+   - "Sub-Categories" manager: add / rename / activate / delete, per
+     By Piece / By Case tab.
+2. New "Product Sorting" page (Dealer/Admin only)
+   - Tabs: By Piece | By Case.
+   - Sub-category sections, reorderable by drag handle (Level 1).
+   - Products within each section, reorderable by drag handle (Level 2).
+   - "Add products" picker (multi-select, only unassigned products of that
+     category; moving a product between sub-categories supported).
+   - "Unassigned" section at the bottom (read-only order, SRP).
+   - Save button with unsaved-changes guard.
+   - Uses ReorderableListView.
+3. Navigation entry for the page, visible by role.
+
+FIRESTORE RULES
+---------------
+- product_sort and config: write for dealer/admin, read for authenticated.
+
+MIGRATION / ROLLOUT
+-------------------
+- Default mode stays 'srp', so nothing changes until the dealer opts in.
+- Existing products have no subCategoryId (Unassigned) - no data migration.
+
+TESTING
+-------
+- Unit: compareProducts in both modes (assigned, unassigned, empty data,
+  deleted sub-category, mixed By Piece/By Case).
+- Unit: controller reorder/add/delete logic.
+- Widget: Product Sorting page drag-and-drop and add-products flow.
+- Manual: switch mode and confirm book order, delivery, van load and printed
+  receipt orders match.
+
+PHASES
+------
+1. Data model + service + comparator + unit tests.
+2. Wire comparator into all existing sort sites.
+3. Configurations UI (mode + sub-category manager).
+4. Product Sorting page.
+5. Rules, QA, polish.
+
+RESOLVED POINTS
+---------------
+- Offline: YES. Salesmen cache the sort doc (product_sort + sub-categories +
+  productSortMode) locally (SharedPreferences/Firestore persistence) and refresh
+  on sync. If cache and network are both unavailable, fall back to SRP.
+- New Products / Best Sellers are TAGS, not sub-categories. They are separate
+  from this feature and do not affect ordering. Newly created products start
+  as Unassigned (no default sub-category) until the dealer adds them on the
+  Product Sorting page. Sub-categories stay a pure grouping/ordering concept.
+
+OPEN POINTS FOR YOUR REVIEW
+---------------------------
+- None outstanding. Awaiting approval to start Phase 1.

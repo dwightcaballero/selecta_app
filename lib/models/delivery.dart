@@ -357,11 +357,16 @@ class Delivery {
   static List<OrderItem> _parseItems(Object? raw) {
     if (raw is List) {
       final list = raw.whereType<Map>().map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e))).toList();
-      list.sort((a, b) {
-        final catComp = Helperfunctions.compareCategoryHierarchy(a.category, b.category);
-        if (catComp != 0) return catComp;
-        return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
-      });
+      list.sort((a, b) => Helperfunctions.compareProducts(
+            nameA: a.productName,
+            priceA: a.sellingPrice,
+            nameB: b.productName,
+            priceB: b.sellingPrice,
+            productIdA: a.productId,
+            productIdB: b.productId,
+            categoryA: a.category,
+            categoryB: b.category,
+          ));
       return list;
     }
     return const [];

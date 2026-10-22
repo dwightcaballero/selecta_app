@@ -242,11 +242,15 @@ class ThermalPrinterService {
     }
 
     int compareOrderItems(OrderItem a, OrderItem b) {
-      return Helperfunctions.compareBySrpAndName(
+      return Helperfunctions.compareProducts(
         nameA: a.productName,
         priceA: a.sellingPrice,
         nameB: b.productName,
         priceB: b.sellingPrice,
+        productIdA: a.productId,
+        productIdB: b.productId,
+        categoryA: a.category,
+        categoryB: b.category,
       );
     }
 

@@ -1114,11 +1114,15 @@ class _VanLoadPageState extends State<VanLoadPage> {
         return StatefulBuilder(
           builder: (sheetCtx, setSheetState) {
             final loadedItems = _allInventoryItems.where((i) => (_loadedQuantities[i.id] ?? 0) > 0).toList();
-            loadedItems.sort((a, b) => Helperfunctions.compareBySrpAndName(
+            loadedItems.sort((a, b) => Helperfunctions.compareProducts(
                   nameA: a.productName,
                   priceA: a.sellingPrice,
                   nameB: b.productName,
                   priceB: b.sellingPrice,
+                  productIdA: a.id,
+                  productIdB: b.id,
+                  categoryA: a.category,
+                  categoryB: b.category,
                 ));
 
             final skuCount = loadedItems.length;
@@ -1526,11 +1530,15 @@ class _VanLoadPageState extends State<VanLoadPage> {
     final isTabletLandscape = ScreenSize.isTabletLandscape(context);
 
     int compareProducts(InventoryItem a, InventoryItem b) {
-      return Helperfunctions.compareBySrpAndName(
+      return Helperfunctions.compareProducts(
         nameA: a.productName,
         priceA: a.sellingPrice,
         nameB: b.productName,
         priceB: b.sellingPrice,
+        productIdA: a.id,
+        productIdB: b.id,
+        categoryA: a.category,
+        categoryB: b.category,
       );
     }
 
@@ -1765,11 +1773,15 @@ class _VanLoadPageState extends State<VanLoadPage> {
   Widget _buildTabletManifestSummaryPanel(ThemeData theme) {
     final isDraft = _currentVanLoad == null || _currentVanLoad!.status == VanLoadStatus.draft;
     final loadedItems = _allInventoryItems.where((i) => (_loadedQuantities[i.id] ?? 0) > 0).toList();
-    loadedItems.sort((a, b) => Helperfunctions.compareBySrpAndName(
+    loadedItems.sort((a, b) => Helperfunctions.compareProducts(
           nameA: a.productName,
           priceA: a.sellingPrice,
           nameB: b.productName,
           priceB: b.sellingPrice,
+          productIdA: a.id,
+          productIdB: b.id,
+          categoryA: a.category,
+          categoryB: b.category,
         ));
 
     final skuCount = loadedItems.length;

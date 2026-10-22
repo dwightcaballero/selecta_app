@@ -16,6 +16,7 @@ import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:gal/gal.dart';
 import 'package:intl/intl.dart';
+import 'package:selecta_ops/services/product_sort_service.dart';
 
 /// Background worker function executed in an isolate via [compute] to inject current EXIF timestamp.
 Uint8List _injectTimestampWorker(Map<String, dynamic> params) {
@@ -644,5 +645,70 @@ class Helperfunctions {
       return 2;
     }
     return getRank(catA).compareTo(getRank(catB));
+  }
+
+  /// Central product comparator honoring dealer-configured sorting.
+  ///
+  /// - When [productSortMode] is 'srp' (or custom data is not available/empty):
+  ///   orders by extracted SRP ascending, then alphabetically by name.
+  /// - When [productSortMode] is 'custom':
+  ///   orders by (category hierarchy, sub-category order, product index).
+  ///   Unassigned products appear at the bottom, ordered by SRP then name.
+  /// - Fallback: if custom data is empty or not loaded, uses SRP.
+  static int compareProducts({
+    required String nameA,
+    required double priceA,
+    required String nameB,
+    required double priceB,
+    String? productIdA,
+    String? productIdB,
+    String? categoryA,
+    String? categoryB,
+    ProductSortService? sortService,
+  }) {
+    final service = sortService ?? ProductSortService.instance;
+
+    // 1. Fallback: if custom mode is not active, use SRP comparison
+    if (!service.isCustomMode) {
+      return compareBySrpAndName(nameA: nameA, priceA: priceA, nameB: nameB, priceB: priceB);
+    }
+
+    // 2. Category level comparison (if categories are supplied and differ)
+    if (categoryA != null && categoryB != null && categoryA.trim().isNotEmpty && categoryB.trim().isNotEmpty) {
+      final catComp = compareCategoryHierarchy(categoryA, categoryB);
+      if (catComp != 0) return catComp;
+    }
+
+    final catA = (categoryA != null && categoryA.trim().isNotEmpty) ? categoryA : 'By Piece';
+    final catB = (categoryB != null && categoryB.trim().isNotEmpty) ? categoryB : 'By Piece';
+
+    // 3. Lookup ranks in custom hierarchy
+    final rankA = service.getProductRank(productId: productIdA, category: catA);
+    final rankB = service.getProductRank(productId: productIdB, category: catB);
+
+    // Case A: Both products are assigned to an active sub-category
+    if (rankA != null && rankB != null) {
+      // Level 1: Sub-category order
+      final subCatComp = rankA.subCategoryOrder.compareTo(rankB.subCategoryOrder);
+      if (subCatComp != 0) return subCatComp;
+
+      // Level 2: Product order inside that sub-category
+      final prodIndexComp = rankA.productIndex.compareTo(rankB.productIndex);
+      if (prodIndexComp != 0) return prodIndexComp;
+
+      // Tie-break: SRP then name
+      return compareBySrpAndName(nameA: nameA, priceA: priceA, nameB: nameB, priceB: priceB);
+    }
+
+    // Case B: Exactly one is assigned -> assigned comes before unassigned (unassigned at bottom)
+    if (rankA != null && rankB == null) {
+      return -1;
+    }
+    if (rankA == null && rankB != null) {
+      return 1;
+    }
+
+    // Case C: Both are unassigned (or custom data is empty) -> ordered by SRP then name
+    return compareBySrpAndName(nameA: nameA, priceA: priceA, nameB: nameB, priceB: priceB);
   }
 }

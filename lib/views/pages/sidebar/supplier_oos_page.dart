@@ -89,11 +89,15 @@ class _SupplierOosPageState extends State<SupplierOosPage> {
       filtered.sort((a, b) {
         final streakComp = b.currentStreak.compareTo(a.currentStreak);
         if (streakComp != 0) return streakComp;
-        return Helperfunctions.compareBySrpAndName(
+        return Helperfunctions.compareProducts(
           nameA: a.product.productName,
           priceA: a.product.sellingPrice,
           nameB: b.product.productName,
           priceB: b.product.sellingPrice,
+          productIdA: a.product.id,
+          productIdB: b.product.id,
+          categoryA: a.product.category,
+          categoryB: b.product.category,
         );
       });
     }

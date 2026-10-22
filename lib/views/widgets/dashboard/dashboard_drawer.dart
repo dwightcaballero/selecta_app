@@ -3,16 +3,9 @@ import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
+import 'package:selecta_ops/views/pages/reports/reports_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistorelist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
@@ -22,13 +15,13 @@ import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
+import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/profit_loss_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/admin_promos_page.dart';
-import 'package:selecta_ops/views/pages/reports/promo_claims_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Navigation Drawer for Dashboard containing Operations, KPI shortcuts,
@@ -156,25 +149,21 @@ class DashboardDrawer extends StatelessWidget {
             initialData: dashboardDTO.unverifiedBreakdownCount,
             builder: (ctx, snap) => _buildDrawerItem(
               context,
-              Icons.today_outlined,
-              'End of Day Report',
-              const EndofdayPage(),
+              Icons.bar_chart_rounded,
+              'Reports',
+              ReportsPage(
+                dashboardDTO: dashboardDTO,
+                isDealer: isDealer,
+                unverifiedBreakdownCountStream: unverifiedBreakdownCountStream,
+              ),
               badgeCount: snap.data ?? dashboardDTO.unverifiedBreakdownCount,
             ),
           ),
-          _buildDrawerItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-          _buildDrawerItem(context, Icons.file_download_outlined, 'Export Reports (Excel/CSV)', const ExportReportsPage()),
-          _buildDrawerItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: dashboardDTO)),
-          if (isDealer) ...[
-            _buildDrawerItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
-            _buildDrawerItem(context, Icons.request_quote_outlined, 'Supplier Promo Claims', const PromoClaimsPage()),
-          ],
 
           const Divider(indent: 16, endIndent: 16),
 
           // 2. Applications
           _buildDrawerSectionHeader(context, 'Applications'),
-          _buildDrawerItem(context, Icons.local_offer_outlined, 'Promotions & Bundles', const AdminPromosPage()),
           _buildDrawerItem(context, Icons.inventory_2_outlined, 'Products', ProductsPage(userRole: 'Dealer')),
           _buildDrawerItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
           _buildDrawerItem(context, Icons.explore_outlined, 'Prospect Scouting', const ProspectScoutPage()),
@@ -186,7 +175,6 @@ class DashboardDrawer extends StatelessWidget {
 
           // 3. App Settings
           _buildDrawerSectionHeader(context, 'App Settings'),
-          _buildDrawerItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
           // Settings hosts Check for Updates & Upload Error Logs; surface update status here.
           ValueListenableBuilder<UpdateDownloadState>(
             valueListenable: AppUpdateService.downloadStateNotifier,

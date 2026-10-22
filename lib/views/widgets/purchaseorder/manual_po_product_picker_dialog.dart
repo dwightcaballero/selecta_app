@@ -68,11 +68,15 @@ class _ManualPoProductPickerDialogState extends State<ManualPoProductPickerDialo
   }
 
   int _compareProducts(InventoryItem a, InventoryItem b) {
-    return Helperfunctions.compareBySrpAndName(
+    return Helperfunctions.compareProducts(
       nameA: a.productName,
       priceA: a.sellingPrice,
       nameB: b.productName,
       priceB: b.sellingPrice,
+      productIdA: a.id,
+      productIdB: b.id,
+      categoryA: a.category,
+      categoryB: b.category,
     );
   }
 
@@ -383,25 +387,25 @@ class _ManualPoProductPickerDialogState extends State<ManualPoProductPickerDialo
                     _buildSliverProductList(recommendedPreOrders),
                   ],
 
-                // 2. By Case (sorted by SRP)
+                // 2. Best Sellers (sorted by SRP)
+                if (_selectedCategory == 'all' || _selectedCategory == 'best_sellers')
+                  if (bestSellerProducts.isNotEmpty) ...[
+                    _buildSliverHeader('Best Sellers', bestSellerProducts.length, Icons.star_rounded, const Color(0xFFD97706)),
+                    _buildSliverProductList(bestSellerProducts),
+                  ],
+
+                // 3. By Case (sorted by SRP)
                 if (_selectedCategory == 'all' || _selectedCategory == 'by_case')
                   if (caseProducts.isNotEmpty) ...[
                     _buildSliverHeader('By Case', caseProducts.length, Icons.all_inbox_rounded, const Color(0xFFEA580C)),
                     _buildSliverProductList(caseProducts),
                   ],
 
-                // 3. By Piece (sorted by SRP)
+                // 4. By Piece (sorted by SRP)
                 if (_selectedCategory == 'all' || _selectedCategory == 'by_piece')
                   if (pieceProducts.isNotEmpty) ...[
                     _buildSliverHeader('By Piece', pieceProducts.length, Icons.icecream_outlined, colorScheme.primary),
                     _buildSliverProductList(pieceProducts),
-                  ],
-
-                // 4. Best Sellers (only if explicitly filtered)
-                if (_selectedCategory == 'best_sellers')
-                  if (bestSellerProducts.isNotEmpty) ...[
-                    _buildSliverHeader('Best Sellers', bestSellerProducts.length, Icons.star_rounded, const Color(0xFFD97706)),
-                    _buildSliverProductList(bestSellerProducts),
                   ],
 
                 if (selectaCatalog.isEmpty)

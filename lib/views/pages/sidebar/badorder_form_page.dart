@@ -947,17 +947,21 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
               return matchesCat && matchesQuery;
             }).toList();
 
-            // Sort products by SRP ascending, consistent with Book Order, Purchase Order, and Van Sell
+            // Sort products honoring dealer product sorting hierarchy
             filteredProducts.sort((a, b) {
               if (_categoryFilter == 'All') {
                 final catComp = Helperfunctions.compareCategoryHierarchy(a.category, b.category);
                 if (catComp != 0) return catComp;
               }
-              return Helperfunctions.compareBySrpAndName(
+              return Helperfunctions.compareProducts(
                 nameA: a.productName,
                 priceA: a.sellingPrice,
                 nameB: b.productName,
                 priceB: b.sellingPrice,
+                productIdA: a.id,
+                productIdB: b.id,
+                categoryA: a.category,
+                categoryB: b.category,
               );
             });
 

@@ -328,11 +328,13 @@ class _StoreRecommendationsModalState extends State<StoreRecommendationsModal> w
   // ── Tab 1: Unplaced Recommended Products ─────────────────────────────────
   Widget _buildUnplacedTab(ColorScheme colorScheme) {
     final allItems = (_result?.unplacedRecommendations ?? []).toList()
-      ..sort((a, b) => Helperfunctions.compareBySrpAndName(
+      ..sort((a, b) => Helperfunctions.compareProducts(
             nameA: a.productName,
             priceA: a.sellingPrice,
             nameB: b.productName,
             priceB: b.sellingPrice,
+            categoryA: a.category,
+            categoryB: b.category,
           ));
     final filtered = _searchQuery.isEmpty
         ? allItems
@@ -533,11 +535,15 @@ class _StoreRecommendationsModalState extends State<StoreRecommendationsModal> w
   // ── Tab 2: Out of Stock (Avoid Today) ────────────────────────────────────
   Widget _buildOutOfStockTab(ColorScheme colorScheme) {
     final allItems = (_result?.outOfStockProducts ?? []).toList()
-      ..sort((a, b) => Helperfunctions.compareBySrpAndName(
+      ..sort((a, b) => Helperfunctions.compareProducts(
             nameA: a.productName,
             priceA: a.sellingPrice,
             nameB: b.productName,
             priceB: b.sellingPrice,
+            productIdA: a.id,
+            productIdB: b.id,
+            categoryA: a.category,
+            categoryB: b.category,
           ));
     final filtered = _searchQuery.isEmpty
         ? allItems

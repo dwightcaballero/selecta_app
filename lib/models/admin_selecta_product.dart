@@ -12,6 +12,7 @@ class AdminSelectaProduct {
   final double sellingPrice;
   final String category; // 'By Piece' or 'By Case'
   final String tag; // 'Best Seller', 'New Product', or ''
+  final String? subCategoryId; // null = Unassigned
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
 
@@ -24,6 +25,7 @@ class AdminSelectaProduct {
     this.sellingPrice = 0.0,
     this.category = 'By Piece',
     this.tag = '',
+    this.subCategoryId,
     this.createdAt,
     this.updatedAt,
   });
@@ -44,6 +46,7 @@ class AdminSelectaProduct {
         sellingPrice: 0.0,
         category: 'By Piece',
         tag: '',
+        subCategoryId: null,
       );
 
   factory AdminSelectaProduct.fromJson(String id, Map<String, Object?> json) {
@@ -75,6 +78,7 @@ class AdminSelectaProduct {
       sellingPrice: sellingPrice,
       category: category,
       tag: (json['tag'] as String? ?? '').trim(),
+      subCategoryId: json['subCategoryId'] as String?,
       createdAt: parseTimestamp(json['createdAt']),
       updatedAt: parseTimestamp(json['updatedAt']),
     );
@@ -127,6 +131,7 @@ class AdminSelectaProduct {
     final rawCategory = readString('category');
     final isCase = rawCategory.toLowerCase().contains('case');
     final category = isCase ? 'By Case' : 'By Piece';
+    final subCatId = readString('subCategoryId');
 
     return AdminSelectaProduct(
       id: id,
@@ -137,6 +142,7 @@ class AdminSelectaProduct {
       sellingPrice: sellingPrice,
       category: category,
       tag: readString('tag'),
+      subCategoryId: subCatId.isNotEmpty ? subCatId : null,
       createdAt: readTimestamp('createdAt'),
       updatedAt: updatedAt,
     );
@@ -158,6 +164,8 @@ class AdminSelectaProduct {
     double? sellingPrice,
     String? category,
     String? tag,
+    String? subCategoryId,
+    bool clearSubCategoryId = false,
     Timestamp? createdAt,
     Timestamp? updatedAt,
   }) {
@@ -170,6 +178,7 @@ class AdminSelectaProduct {
       sellingPrice: sellingPrice ?? this.sellingPrice,
       category: category ?? this.category,
       tag: tag ?? this.tag,
+      subCategoryId: clearSubCategoryId ? null : (subCategoryId ?? this.subCategoryId),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -184,6 +193,7 @@ class AdminSelectaProduct {
       'sellingPrice': sellingPrice,
       'category': category,
       'tag': tag,
+      if (subCategoryId != null) 'subCategoryId': subCategoryId,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
     };
@@ -200,6 +210,7 @@ class AdminSelectaProduct {
       'sellingPrice': sellingPrice,
       'category': category,
       'tag': tag,
+      if (subCategoryId != null) 'subCategoryId': subCategoryId,
       'updatedAt': (updatedAt ?? Timestamp.now()).toDate().toUtc().toIso8601String(),
     };
   }

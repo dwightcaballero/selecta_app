@@ -312,11 +312,15 @@ class _PicklistPageState extends State<PicklistPage> {
     int compareDeliveryItemIndices(int a, int b) {
       final itemA = _items[a];
       final itemB = _items[b];
-      return Helperfunctions.compareBySrpAndName(
+      return Helperfunctions.compareProducts(
         nameA: itemA.productName,
         priceA: itemA.sellingPrice,
         nameB: itemB.productName,
         priceB: itemB.sellingPrice,
+        productIdA: itemA.productId,
+        productIdB: itemB.productId,
+        categoryA: itemA.category,
+        categoryB: itemB.category,
       );
     }
 

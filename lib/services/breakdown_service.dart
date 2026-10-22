@@ -157,4 +157,28 @@ class BreakdownService {
       return 0;
     }
   }
+
+  /// Dates (date-only) of breakdown records not yet verified by the dealer, across all months.
+  static Future<Set<DateTime>> getUnverifiedBreakdownDates() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection(BREAKDOWN_COLLECTION_REF)
+          .get();
+      final dates = <DateTime>{};
+      for (final doc in snapshot.docs) {
+        if ((doc.data()['isVerifiedByDealer'] as bool?) == true) continue;
+        final rawDate = doc.data()['breakdownDate'];
+        DateTime? date;
+        if (rawDate is Timestamp) {
+          date = rawDate.toDate();
+        } else if (rawDate is String) {
+          date = DateTime.tryParse(rawDate);
+        }
+        if (date != null) dates.add(DateTime(date.year, date.month, date.day));
+      }
+      return dates;
+    } catch (e) {
+      return {};
+    }
+  }
 }

@@ -32,17 +32,23 @@ class BadOrderFilterResult {
 /// Controller encapsulating business logic, Firestore CRUD operations,
 /// logging, role validation, and filtering for Bad Order records.
 class BadOrderController {
-  final BadOrderService _badOrderService;
-  final HapiStoreService _hapiStoreService;
-  final BadOrderBatchService _badOrderBatchService;
+  BadOrderService? _customBadOrderService;
+  BadOrderService get _badOrderService => _customBadOrderService ??= BadOrderService();
+
+  HapiStoreService? _customHapiStoreService;
+  HapiStoreService get _hapiStoreService => _customHapiStoreService ??= HapiStoreService();
+
+  BadOrderBatchService? _customBadOrderBatchService;
+  BadOrderBatchService get _badOrderBatchService =>
+      _customBadOrderBatchService ??= BadOrderBatchService();
 
   BadOrderController({
     BadOrderService? badOrderService,
     HapiStoreService? hapiStoreService,
     BadOrderBatchService? badOrderBatchService,
-  })  : _badOrderService = badOrderService ?? BadOrderService(),
-        _hapiStoreService = hapiStoreService ?? HapiStoreService(),
-        _badOrderBatchService = badOrderBatchService ?? BadOrderBatchService();
+  })  : _customBadOrderService = badOrderService,
+        _customHapiStoreService = hapiStoreService,
+        _customBadOrderBatchService = badOrderBatchService;
 
   /// Real-time stream of all bad order documents.
   Stream<QuerySnapshot<BadOrder>> getBadOrdersStream() =>

@@ -268,11 +268,15 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
   }
 
   void _sortExtractedItems(List<_ExtractedOosItem> items) {
-    items.sort((a, b) => Helperfunctions.compareBySrpAndName(
+    items.sort((a, b) => Helperfunctions.compareProducts(
           nameA: a.product.productName,
           priceA: a.product.sellingPrice,
           nameB: b.product.productName,
           priceB: b.product.sellingPrice,
+          productIdA: a.product.id,
+          productIdB: b.product.id,
+          categoryA: a.product.category,
+          categoryB: b.product.category,
         ));
   }
 

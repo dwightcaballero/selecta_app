@@ -475,7 +475,16 @@ class _BookOrderPageState extends State<BookOrderPage> {
         if (idxA != -1) return -1;
         if (idxB != -1) return 1;
       }
-      return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
+      return Helperfunctions.compareProducts(
+        nameA: a.productName,
+        priceA: a.sellingPrice,
+        nameB: b.productName,
+        priceB: b.sellingPrice,
+        productIdA: a.productId,
+        productIdB: b.productId,
+        categoryA: a.category,
+        categoryB: b.category,
+      );
     });
     return result;
   }
@@ -3080,7 +3089,16 @@ class _BookOrderPageState extends State<BookOrderPage> {
   }
 
   int _compareProducts(InventoryItem a, InventoryItem b) {
-    return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
+    return Helperfunctions.compareProducts(
+      nameA: a.productName,
+      priceA: a.sellingPrice,
+      nameB: b.productName,
+      priceB: b.sellingPrice,
+      productIdA: a.id,
+      productIdB: b.id,
+      categoryA: a.category,
+      categoryB: b.category,
+    );
   }
 
   Widget _buildUnifiedProductList({

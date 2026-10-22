@@ -8,6 +8,8 @@ import 'package:selecta_ops/views/pages/sidebar/breakdown_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
+import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
+import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:intl/intl.dart';
 
 class EndofdayPage extends StatefulWidget {
@@ -37,11 +39,13 @@ class _EndofdayPageState extends State<EndofdayPage> {
   }
 
   void onChangeDate() async {
-    final DateTime? dateTime = await showDatePicker(
+    final unverifiedDates = await BreakdownService.getUnverifiedBreakdownDates();
+    if (!mounted) return;
+    final DateTime? dateTime = await showMarkedDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(3000),
+      markedDates: unverifiedDates,
+      lastDate: DateTime.now(),
     );
 
     if (dateTime != null) {

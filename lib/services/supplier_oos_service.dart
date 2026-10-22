@@ -267,12 +267,16 @@ class SupplierOosService {
       ));
     }
 
-    // Sort by SRP ascending, then alphabetically by name (identical to book order page)
-    summaries.sort((a, b) => Helperfunctions.compareBySrpAndName(
+    // Sort honoring dealer product sorting hierarchy
+    summaries.sort((a, b) => Helperfunctions.compareProducts(
           nameA: a.product.productName,
           priceA: a.product.sellingPrice,
           nameB: b.product.productName,
           priceB: b.product.sellingPrice,
+          productIdA: a.product.id,
+          productIdB: b.product.id,
+          categoryA: a.product.category,
+          categoryB: b.product.category,
         ));
 
     return summaries;

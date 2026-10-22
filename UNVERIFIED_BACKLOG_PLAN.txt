@@ -1,0 +1,200 @@
+UNVERIFIED BREAKDOWN BACKLOG - IMPLEMENTATION PLAN (FOR REVIEW)
+================================================================
+
+PROBLEM
+-------
+The End of Day badge shows a count of breakdown records not yet verified by
+the dealer, but not WHICH days. Dealers cannot tell what to settle.
+
+ALREADY DONE (previous step)
+----------------------------
+- lib/views/widgets/marked_date_picker.dart : month-grid picker, red dot on
+  marked dates.
+- BreakdownService.getUnverifiedBreakdownDates() : Set<DateTime> of all
+  unverified dates (all months).
+- EndofdayPage.onChangeDate uses the marked picker.
+
+KNOWN INCONSISTENCY TO RESOLVE
+------------------------------
+The badge counts only the CURRENT MONTH (getUnverifiedBreakdownsCountStream /
+getCountUnverifiedBreakdowns), but the calendar marks ALL months. Old backlog
+is therefore invisible on the badge.
+  RESOLVED: badge counts ALL unverified records within the last 3 months.
+
+DECISIONS (confirmed by owner)
+------------------------------
+1. Badge counts ALL unverified days (not just current month).
+2. Backlog scan window: last 3 months.
+3. Badge is NOT tappable (too small, misclick risk). Instead: a large
+   "Needs verification" banner card on the dashboard with a "Review" button
+   (opens End of Day on the oldest unverified date), plus the date list and
+   "Next unverified" button inside End of Day. Badge stays display-only and
+   existing navigation (opens End of Day as today) is unchanged.
+4. Verification must be oldest-first: on End of Day, verifying a date is blocked
+   while an older unverified date exists (message names the oldest date and
+   offers a "Go to oldest" action).
+5. Age colours: amber at 2 days, red at 3+ days.
+6. Expenses page: NOT implemented.
+7. Reminders: IN-APP BANNER ONLY. No push notification, no Cloud Function,
+   no backend, no Blaze plan, no extra cost. (Server push was considered and
+   dropped by owner.)
+
+PHASES (in recommended order; each is independently shippable)
+--------------------------------------------------------------
+
+PHASE 1 - Shared backlog data layer  [foundation for 2,3,4,5]
+  Files: lib/services/breakdown_service.dart, lib/controllers/dashboard_controller.dart
+  - Add model UnverifiedSummary { int count; DateTime? oldest; Set<DateTime> dates; }
+  - Add BreakdownService.getUnverifiedSummaryStream() (Firestore snapshots,
+    same pattern as existing count stream) and a static one-shot variant for
+    the dashboard DTO.
+  - Dates normalised to local date-only (year, month, day).
+  - Re-implement getUnverifiedBreakdownsCountStream / getCountUnverifiedBreakdowns
+    on top of the summary so badge, calendar and "next" button always agree.
+  - Optimisation: query where('isVerifiedByDealer', isEqualTo: false) is NOT
+    reliable because old docs may lack the field; keep client-side filter,
+    but add a lower bound on breakdownDate (e.g. last 12 months) to limit reads.
+    Confirm with OPEN QUESTIONS #2.
+  - Rule: today's breakdown is not "overdue"; it is excluded from the overdue
+    age but still counted/marked as pending.
+
+PHASE 2 - Dashboard "Needs verification" banner + End of Day entry  [Rec #1]
+  (REVISED: badge is not tappable; a large banner card with a Review button
+  is the entry point. Replace "badge/card" below accordingly; do not add
+  onTap to badges.)
+  Files: endofday_page.dart (new optional ctor arg `DateTime? initialDate`),
+         dashboard_quick_access.dart, dashboard_sidebar.dart,
+         dashboard_drawer.dart, reports_page.dart, salesman_dashboard_page.dart,
+         widget_tree.dart (EndofdayPage entry points)
+  - EndofdayPage(initialDate:) sets _selectedDate in initState.
+  - New helper `openEndOfDay(BuildContext, {oldestUnverified})` so every entry
+    point behaves the same: if oldest != null -> EndofdayPage(initialDate: oldest)
+    else EndofdayPage().
+  - "Needs verification" list: bottom sheet (new widget
+    lib/views/widgets/dashboard/unverified_dates_sheet.dart) listing each date
+    as "Mon, 20 Oct - 3 days overdue"; tapping a row opens End of Day on that
+    date. Opened from "View all dates" inside End of Day and from the banner.
+  - Banner (new widget unverified_banner.dart) hidden when count == 0; shows
+    "N days need verification - oldest 3 days overdue" with a Review button.
+
+PHASE 3 - "Next unverified" button on End of Day  [Rec #2]
+  File: endofday_page.dart
+  - Load Phase-1 summary in getData() (or a stream subscription).
+  - Add a button/chip near _buildDateNavigator: "Next unverified (N)".
+    Target = oldest unverified date that is != _selectedDate (oldest first so
+    the backlog is cleared chronologically, which also matters for inventory
+    settlement order).
+  - After a successful verify (returns from BreakdownPage -> getData()), if
+    more remain, show a snackbar action "Go to next unverified".
+  - Hidden/disabled when none remain or user is not a dealer (_isDealer).
+  - Oldest-first enforced (decision #4): validateBeforeBreakdown /
+    verifyAndSettleBreakdown reject a date while an older unverified date
+    exists within the window; also enforce in EndOfDayController, not only UI.
+
+PHASE 4 - Badge age + colour  [Rec #3]
+  Files: dashboard_quick_access.dart (Badge at ~line 93), dashboard_sidebar.dart,
+         dashboard_drawer.dart, reports_page.dart; dashboard_dto.dart
+         (add oldestUnverifiedDate, nullable, with json/ctor/default updates)
+  - Age in whole local days = today - oldest (date-only).
+  - Colour: 0-1 days neutral/primary; 2 days amber; >=3 days red
+    (thresholds in one constant block; confirm OPEN QUESTIONS #5).
+  - Card shows subtitle "Oldest: 3 days overdue" beneath the count.
+  - Sidebar/drawer: keep numeric badge, apply colour, tooltip with age.
+  - Accessibility: colour is not the only signal (text subtitle/tooltip).
+
+PHASE 5 - Day-cell status in calendar  [Rec #4]
+  File: marked_date_picker.dart (+ small callers)
+  - Replace `Set<DateTime> markedDates` with
+    `Map<DateTime, DayStatus> statuses`, enum DayStatus { pending, done }.
+    Days with no record = grey/plain (no marker).
+  - Red dot = unverified, green dot (or check) = verified, no dot = no data.
+  - Legend row updated with the 3 states. Keep a convenience constructor so
+    other pages can keep passing a simple Set (pending only).
+  - Service: BreakdownService.getBreakdownDayStatuses() returns the map in one
+    query (extends Phase 1; same docs, no extra reads if fetched together).
+
+PHASE 6 - In-app reminder banner  [Rec #5]  (in-app only, decision #7)
+  - Reuse the Phase 2 dashboard "Needs verification" banner as the reminder.
+  - Shown on dashboard load/resume when oldest unverified age >= 1 day;
+    escalates wording/colour with age (amber 2 days, red 3+ days).
+  - Optional dismiss: hides for the current session only; reappears next app
+    open while backlog remains (do not persist dismissal, so it can't be
+    silenced forever).
+  - Limitation (accepted): reminder only appears when the app is opened.
+  - No new packages, no Cloud Function, no FCM token handling.
+
+PHASE 7 - Reuse picker on other pages
+  Generalise: add DateMarkerService-style loaders per page that return
+  Map<DateTime, DayStatus>; each page swaps showDatePicker for
+  showMarkedDatePicker. All are ONE-SHOT fetches when the picker opens.
+  a) deliverylist_page.dart, delivery_page.dart (onChangeDate)
+     Mark days with deliveries still pending (DeliveryStatus.pending, i.e.
+     "For Delivery"), using Delivery.deliveryDate. Add
+     DeliveryService.getPendingDeliveryDates(). Also consider
+     pendingPicklist (same rules as endofday_services.dart lines ~33-73).
+     Must respect existing role/dealer scoping used by those pages.
+  b) picklist_list_page.dart (onChangeDate, guarded by isDealer)
+     Mark days with picklists not yet completed (picklistCompletedDate == null
+     and pendingPicklist status). Add service method.
+  c) expenses_page.dart -- OUT OF SCOPE (owner decision #6). Ignore below.
+     (original note) expenses_page.dart (onChangeDate)
+     Expenses model (models/expenses.dart) has NO approval/verified field, so
+     there is nothing to mark today. Options: (i) skip; (ii) mark days that
+     have expenses at all (green = has data); (iii) add an approval field
+     (schema + UI change, out of scope). Plan: (ii) is cheap; confirm
+     OPEN QUESTIONS #6.
+  d) transactionlog_page.dart (_pickDate)
+     Not reviewed for a pending state yet. Step 1: read transactionlog model /
+     service to see if a status exists. If none, leave unchanged.
+  - Do NOT touch: hapistore_page (opening date), report range pickers.
+  - Each page: lastDate currently DateTime(3000); keep existing bounds where
+    future dates are legitimate (deliveries can be scheduled ahead). The
+    marked picker must therefore be called with each page's own lastDate.
+
+DATA / INFRA NOTES
+------------------
+- Firestore reads: summary stream reads the whole `breakdown` collection today
+  (existing behaviour). Phase 1 should bound it (date lower bound) or use a
+  composite index; if an index is added, update firestore.indexes.json
+  (not present in repo root; would need creating) and deploy.
+- Timezone: all comparisons use device-local date-only values (matches the
+  existing code in getDocumentsBySpecificDate).
+- breakdownDate may be Timestamp or String in old data; reuse the existing
+  parsing helper logic.
+- firestore.rules: no change expected (read-only queries on existing
+  collections); verify dealer read access for deliveries/picklists.
+
+TESTING
+-------
+- Unit tests (test/): summary builder (oldest, count, dedupe by day, string vs
+  Timestamp dates, missing isVerifiedByDealer, today exclusion); age ->
+  colour mapping; next-unverified selection (skips current, oldest first).
+- Widget tests: marked picker shows dots per status, month navigation,
+  disabled out-of-range days, returns tapped date.
+- Manual: dealer with backlog across 2 months; verify badge count == number
+  of dots == list rows; verify clears one-by-one with "Next unverified";
+  non-dealer role sees no change.
+- flutter analyze on all touched files.
+
+RISKS
+-----
+- Badge definition change (month -> all) changes numbers dealers already see.
+- Extra Firestore reads on dashboard (mitigated by Phase 1 bound/shared stream).
+- Settlement ordering assumptions (see Q4).
+- Reminder only visible when the app is opened (no push) - accepted by owner.
+
+OPEN QUESTIONS
+--------------
+None blocking. Remaining: confirm transactionlog_page has any pending state
+(Phase 7d).
+
+EFFORT ESTIMATE (rough)
+-----------------------
+Phase 1: 0.5d | 2: 1d | 3: 0.5d | 4: 0.5d | 5: 0.5d | 6: 0.25d |
+7a/b: 1d | 7c/d: 0.5d | tests: 1d.   Total ~5-6 days.
+
+SUGGESTED RELEASE SLICES
+------------------------
+Slice 1: Phases 1+2+3 (core backlog workflow)
+Slice 2: Phases 4+5 (visual signals) + 6 (in-app reminder)
+Slice 3: Phase 7 (other pages)

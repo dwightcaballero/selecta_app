@@ -18,6 +18,7 @@ class SelectaProduct {
   final int lowStockThreshold;
   final int maxStock;
   final double? badOrderPricePerPiece;
+  final String? subCategoryId;
   final Timestamp? importedAt;
   final Timestamp? updatedAt;
 
@@ -38,6 +39,7 @@ class SelectaProduct {
     this.lowStockThreshold = 10,
     this.maxStock = 0,
     this.badOrderPricePerPiece,
+    this.subCategoryId,
     this.importedAt,
     this.updatedAt,
   });
@@ -132,6 +134,7 @@ class SelectaProduct {
       lowStockThreshold: (json['lowStockThreshold'] as num?)?.toInt() ?? 10,
       maxStock: (json['maxStock'] as num?)?.toInt() ?? 0,
       badOrderPricePerPiece: (json['badOrderPricePerPiece'] as num?)?.toDouble(),
+      subCategoryId: json['subCategoryId'] as String?,
       importedAt: json['importedAt'] as Timestamp?,
       updatedAt: json['updatedAt'] as Timestamp?,
     );
@@ -161,6 +164,8 @@ class SelectaProduct {
     int? lowStockThreshold,
     int? maxStock,
     double? badOrderPricePerPiece,
+    String? subCategoryId,
+    bool clearSubCategoryId = false,
     Timestamp? importedAt,
     Timestamp? updatedAt,
   }) {
@@ -181,6 +186,7 @@ class SelectaProduct {
       lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
       maxStock: maxStock ?? this.maxStock,
       badOrderPricePerPiece: badOrderPricePerPiece ?? this.badOrderPricePerPiece,
+      subCategoryId: clearSubCategoryId ? null : (subCategoryId ?? this.subCategoryId),
       importedAt: importedAt ?? this.importedAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -205,6 +211,7 @@ class SelectaProduct {
     String category = '',
     String tag = '',
     double? badOrderPricePerPiece,
+    String? subCategoryId,
     Timestamp? importedAt,
     Timestamp? updatedAt,
   }) {
@@ -225,6 +232,7 @@ class SelectaProduct {
       lowStockThreshold: lowStockThreshold,
       maxStock: maxStock,
       badOrderPricePerPiece: badOrderPricePerPiece,
+      subCategoryId: subCategoryId,
       importedAt: importedAt,
       updatedAt: updatedAt,
     );
@@ -248,6 +256,7 @@ class SelectaProduct {
       'lowStockThreshold': lowStockThreshold,
       'maxStock': maxStock,
       'badOrderPricePerPiece': badOrderPricePerPiece,
+      if (subCategoryId != null) 'subCategoryId': subCategoryId,
       'importedAt': importedAt,
       'updatedAt': updatedAt,
     };

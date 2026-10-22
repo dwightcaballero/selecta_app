@@ -67,12 +67,16 @@ class _SupplierOosProductPickerDialogState extends State<SupplierOosProductPicke
       return name.contains(query) || code.contains(query) || cat.contains(query);
     }).toList();
 
-    // Sort by SRP ascending, then name
-    list.sort((a, b) => Helperfunctions.compareBySrpAndName(
+    // Sort honoring dealer product sorting hierarchy
+    list.sort((a, b) => Helperfunctions.compareProducts(
           nameA: a.productName,
           priceA: a.sellingPrice,
           nameB: b.productName,
           priceB: b.sellingPrice,
+          productIdA: a.id,
+          productIdB: b.id,
+          categoryA: a.category,
+          categoryB: b.category,
         ));
 
     return list;

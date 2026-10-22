@@ -2,9 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/models/sub_category.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/gemini_ai_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
+import 'package:selecta_ops/services/product_sort_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Data class representing the loaded configuration state.
@@ -34,6 +36,12 @@ class ConfigurationController {
   Future<ConfigurationLoadResult> loadConfiguration() async {
     final exists = await _configService.configurationExists();
     final config = await _configService.getConfiguration();
+
+    // Sync product sort service with latest configuration
+    ProductSortService.instance.updateConfiguration(
+      sortMode: config.productSortMode,
+      subCategories: config.subCategories,
+    );
 
     final start = config.merchBlitzStartDate.toDate();
     final end = config.merchBlitzEndDate.toDate();
@@ -65,6 +73,8 @@ class ConfigurationController {
     String? superAdminPasswordHash,
     bool? enablePicklistBarcodeScanner,
     String? creditReminderSmsTemplate,
+    String? productSortMode,
+    List<SubCategory>? subCategories,
   }) async {
     if (endDate.isBefore(startDate)) {
       throw ArgumentError('Merch Blitz End Date must be after or equal to the Start Date.');
@@ -81,6 +91,8 @@ class ConfigurationController {
     final finalSuperAdminHash = superAdminPasswordHash ?? originalConfig?.superAdminPasswordHash ?? '';
     final finalEnableScanner = enablePicklistBarcodeScanner ?? originalConfig?.enablePicklistBarcodeScanner ?? true;
     final finalCreditSmsTemplate = creditReminderSmsTemplate ?? originalConfig?.creditReminderSmsTemplate ?? Configuration.defaultCreditReminderSmsTemplate;
+    final finalProductSortMode = productSortMode ?? originalConfig?.productSortMode ?? 'srp';
+    final finalSubCategories = subCategories ?? originalConfig?.subCategories ?? const [];
 
     final config = Configuration(
       merchBlitzStartDate: newStartDateTs,
@@ -98,9 +110,15 @@ class ConfigurationController {
       placementPairs: originalConfig?.placementPairs ?? const [],
       enablePicklistBarcodeScanner: finalEnableScanner,
       creditReminderSmsTemplate: finalCreditSmsTemplate,
+      productSortMode: finalProductSortMode,
+      subCategories: finalSubCategories,
     );
 
     await _configService.saveConfiguration(config);
+    ProductSortService.instance.updateConfiguration(
+      sortMode: finalProductSortMode,
+      subCategories: finalSubCategories,
+    );
     HapiStoreService.invalidateCache();
 
     // Record transaction log for the audit trail
@@ -115,6 +133,7 @@ class ConfigurationController {
       'Placement Target Percentage': finalPlacementPct,
       'Scanning Target Percentage': finalScanningPct,
       'Expansion Target': finalExpansionTarget,
+      'Product Sort Mode': finalProductSortMode,
     };
 
     if (existsInDb && originalConfig != null) {
@@ -129,6 +148,7 @@ class ConfigurationController {
         'Placement Target Percentage': originalConfig.placementTargetPercentage,
         'Scanning Target Percentage': originalConfig.scanningTargetPercentage,
         'Expansion Target': originalConfig.expansionTarget,
+        'Product Sort Mode': originalConfig.productSortMode,
       };
       await Helperfunctions.logUpdate(
         'Configuration - App & KPI Settings',

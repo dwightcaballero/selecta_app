@@ -56,7 +56,13 @@ service cloud.firestore {
     // System configurations
     match /configurations/{configId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isDealerOrAdmin();
+    }
+
+    // Product custom sorting per dealer
+    match /product_sort/{dealerId} {
+      allow read: if isAuthenticated();
+      allow write: if isDealerOrAdmin();
     }
 
     // User management

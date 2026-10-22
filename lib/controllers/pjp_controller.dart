@@ -1162,11 +1162,15 @@ class PjpController {
       final outOfStockProducts = activeInventory
           .where((i) => i.availableQuantity <= 0 || i.isOutOfStock)
           .toList()
-        ..sort((a, b) => Helperfunctions.compareBySrpAndName(
+        ..sort((a, b) => Helperfunctions.compareProducts(
               nameA: a.productName,
               priceA: a.sellingPrice,
               nameB: b.productName,
               priceB: b.sellingPrice,
+              productIdA: a.id,
+              productIdB: b.id,
+              categoryA: a.category,
+              categoryB: b.category,
             ));
 
       // 4. Target placement products (Best Sellers)
@@ -1239,11 +1243,13 @@ class PjpController {
           .where((entry) => !placedLowerNames.contains(entry.key))
           .map((entry) => entry.value)
           .toList()
-        ..sort((a, b) => Helperfunctions.compareBySrpAndName(
+        ..sort((a, b) => Helperfunctions.compareProducts(
               nameA: a.productName,
               priceA: a.sellingPrice,
               nameB: b.productName,
               priceB: b.sellingPrice,
+              categoryA: a.category,
+              categoryB: b.category,
             ));
 
       return StoreRecommendationsResult(

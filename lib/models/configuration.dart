@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:selecta_ops/models/placement_pair.dart';
+import 'package:selecta_ops/models/sub_category.dart';
 
 class Configuration {
   Timestamp merchBlitzStartDate;
@@ -45,6 +46,10 @@ class Configuration {
   int repeatedShortPickThreshold;
   Timestamp? lastStockAuditAt;
 
+  // Product Sorting Configuration
+  String productSortMode; // 'srp' | 'custom'
+  List<SubCategory> subCategories;
+
   Configuration({
     required this.merchBlitzStartDate,
     required this.merchBlitzEndDate,
@@ -69,6 +74,8 @@ class Configuration {
     this.maxWriteOffPercentage = 10.0,
     this.repeatedShortPickThreshold = 3,
     this.lastStockAuditAt,
+    this.productSortMode = 'srp',
+    this.subCategories = const [],
   });
 
   /// Returns true if [plainTextPassword] matches the stored SHA-256 hash.
@@ -113,6 +120,8 @@ class Configuration {
         maxWriteOffPercentage: 10.0,
         repeatedShortPickThreshold: 3,
         lastStockAuditAt: null,
+        productSortMode: 'srp',
+        subCategories: const [],
       );
 
   Configuration.fromJson(Map<String, Object?> json)
@@ -153,6 +162,13 @@ class Configuration {
           maxWriteOffPercentage: (json['maxWriteOffPercentage'] as num?)?.toDouble() ?? 10.0,
           repeatedShortPickThreshold: (json['repeatedShortPickThreshold'] as num?)?.toInt() ?? 3,
           lastStockAuditAt: json['lastStockAuditAt'] as Timestamp?,
+          productSortMode: json['productSortMode'] as String? ?? 'srp',
+          subCategories: (json['subCategories'] is List)
+              ? (json['subCategories'] as List)
+                  .whereType<Map>()
+                  .map((m) => SubCategory.fromJson(Map<String, dynamic>.from(m)))
+                  .toList()
+              : const [],
         );
 
   Configuration copyWith({
@@ -179,6 +195,8 @@ class Configuration {
     double? maxWriteOffPercentage,
     int? repeatedShortPickThreshold,
     Timestamp? lastStockAuditAt,
+    String? productSortMode,
+    List<SubCategory>? subCategories,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -204,6 +222,8 @@ class Configuration {
       maxWriteOffPercentage: maxWriteOffPercentage ?? this.maxWriteOffPercentage,
       repeatedShortPickThreshold: repeatedShortPickThreshold ?? this.repeatedShortPickThreshold,
       lastStockAuditAt: lastStockAuditAt ?? this.lastStockAuditAt,
+      productSortMode: productSortMode ?? this.productSortMode,
+      subCategories: subCategories ?? List.from(this.subCategories),
     );
   }
 
@@ -233,6 +253,8 @@ class Configuration {
       'maxWriteOffPercentage': maxWriteOffPercentage,
       'repeatedShortPickThreshold': repeatedShortPickThreshold,
       if (lastStockAuditAt != null) 'lastStockAuditAt': lastStockAuditAt,
+      'productSortMode': productSortMode,
+      'subCategories': subCategories.map((s) => s.toJson()).toList(),
     };
   }
 }

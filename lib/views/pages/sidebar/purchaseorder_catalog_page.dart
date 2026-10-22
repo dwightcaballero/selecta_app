@@ -111,7 +111,16 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
   }
 
   int _compareProducts(InventoryItem a, InventoryItem b) {
-    return Helperfunctions.compareBySrpAndName(nameA: a.productName, priceA: a.sellingPrice, nameB: b.productName, priceB: b.sellingPrice);
+    return Helperfunctions.compareProducts(
+      nameA: a.productName,
+      priceA: a.sellingPrice,
+      nameB: b.productName,
+      priceB: b.sellingPrice,
+      productIdA: a.id,
+      productIdB: b.id,
+      categoryA: a.category,
+      categoryB: b.category,
+    );
   }
 
   Future<void> _promptDirectQuantityDialog(InventoryItem item) async {

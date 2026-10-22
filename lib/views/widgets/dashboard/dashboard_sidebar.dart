@@ -6,7 +6,7 @@ import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/offline_sync_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
-import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
+import 'package:selecta_ops/views/pages/reports/reports_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
@@ -15,20 +15,13 @@ import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistorelist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/profit_loss_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
-import 'package:selecta_ops/views/pages/sidebar/admin_promos_page.dart';
-import 'package:selecta_ops/views/pages/reports/promo_claims_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Permanent left sidebar used on desktop/wide screens.
@@ -212,35 +205,27 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
                     _buildItem(context, Icons.explore_outlined, 'Prospect Scouting', const ProspectScoutPage()),
                     _buildItem(context, Icons.assignment_late_outlined, 'Bad Orders', BadOrderlistPage()),
                     _buildItem(context, Icons.receipt_long_outlined, 'Expenses', const ExpenselistPage()),
-                    StreamBuilder<int>(
-                      stream: widget.unverifiedBreakdownCountStream,
-                      initialData: widget.dashboardDTO.unverifiedBreakdownCount,
-                      builder: (ctx, snap) => _buildItem(
-                        ctx,
-                        Icons.today_outlined,
-                        'End of Day',
-                        const EndofdayPage(),
-                        badge: snap.data ?? widget.dashboardDTO.unverifiedBreakdownCount,
-                      ),
-                    ),
-                    _buildItem(context, Icons.swap_horiz_outlined, 'Transactions', const TransactionListPage(storeName: '')),
-                    _buildItem(context, Icons.local_offer_outlined, 'Promotions & Bundles', const AdminPromosPage()),
                     _buildItem(
                       context,
                       Icons.inventory_2_outlined,
                       'Products',
                       ProductsPage(userRole: widget.currentUser?.role ?? (widget.isDealer ? 'Dealer' : 'Salesman')),
                     ),
-                    _buildItem(context, Icons.file_download_outlined, 'Export Reports', const ExportReportsPage()),
-
-                    const _SidebarDivider(),
-
-                    _buildSection(context, 'KPI & Analytics'),
-                    _buildItem(context, Icons.insights_rounded, 'KPI & Analytics Hub', KpiOverviewPage(dashboardDTO: widget.dashboardDTO)),
-                    if (widget.isDealer) ...[
-                      _buildItem(context, Icons.analytics_outlined, 'Business Analytics', const ProfitLossPage()),
-                      _buildItem(context, Icons.request_quote_outlined, 'Supplier Promo Claims', const PromoClaimsPage()),
-                    ],
+                    StreamBuilder<int>(
+                      stream: widget.unverifiedBreakdownCountStream,
+                      initialData: widget.dashboardDTO.unverifiedBreakdownCount,
+                      builder: (ctx, snap) => _buildItem(
+                        ctx,
+                        Icons.bar_chart_rounded,
+                        'Reports',
+                        ReportsPage(
+                          dashboardDTO: widget.dashboardDTO,
+                          isDealer: widget.isDealer,
+                          unverifiedBreakdownCountStream: widget.unverifiedBreakdownCountStream,
+                        ),
+                        badge: snap.data ?? widget.dashboardDTO.unverifiedBreakdownCount,
+                      ),
+                    ),
 
                     const _SidebarDivider(),
 
@@ -263,7 +248,6 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
                     if (widget.isDealer) _buildItem(context, Icons.event_busy_outlined, 'Supplier Out of Stock', const SupplierOosPage()),
                     if (widget.isDealer) _buildItem(context, Icons.warehouse_outlined, 'Inventory', const InventoryPage()),
                     _buildItem(context, Icons.map_outlined, 'Journey Plan (PJP)', const PjpListPage(), badge: widget.dashboardDTO.pendingPjpCount),
-                    _buildItem(context, Icons.history_outlined, 'Audit Logs', const TransactionLogPage()),
                     // Settings hosts Check for Updates & Upload Error Logs; surface update status here.
                     ValueListenableBuilder<UpdateDownloadState>(
                       valueListenable: AppUpdateService.downloadStateNotifier,
