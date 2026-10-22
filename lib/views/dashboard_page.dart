@@ -7,6 +7,7 @@ import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/models/configuration.dart';
+import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
@@ -27,6 +28,7 @@ import 'package:selecta_ops/views/widgets/dashboard/dashboard_kpi_section.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_quick_access.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_sidebar.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_welcome_banner.dart';
+import 'package:selecta_ops/views/widgets/dashboard/unverified_banner.dart';
 import 'package:selecta_ops/views/widgets/exit_guard.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -48,6 +50,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   late final Stream<int> _pendingDeliveriesCountStream;
   late final Stream<int> _activeReturnsCountStream;
   late final Stream<int> _unverifiedBreakdownsCountStream;
+  late final Stream<UnverifiedSummary> _unverifiedSummaryStream;
   DashboardDTO dashboardDTO = DashboardDTO.empty();
   Users? _currentUser;
   Configuration? _configuration;
@@ -85,6 +88,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _pendingDeliveriesCountStream = _controller.getPendingDeliveriesCountStream();
     _activeReturnsCountStream = _controller.getActiveReturnsCountStream();
     _unverifiedBreakdownsCountStream = _controller.getUnverifiedBreakdownsCountStream();
+    _unverifiedSummaryStream = _controller.getUnverifiedSummaryStream();
     _configSubscription = ConfigurationService().getConfigurationStream().listen((config) {
       if (mounted && config != null) {
         setState(() {
@@ -448,6 +452,18 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                     onSyncTap: () => syncDashboard(force: true),
                     onSecretTap: _showSecretRoleSwitchDialog,
                   ),
+
+                  // 1a. Needs Verification Banner (Dealer backlog alert & in-app reminder)
+                  if (isDealer)
+                    UnverifiedBanner(
+                      summary: UnverifiedSummary(
+                        count: dashboardDTO.unverifiedBreakdownCount,
+                        oldest: dashboardDTO.oldestUnverifiedDate,
+                        dates: dashboardDTO.oldestUnverifiedDate != null ? {dashboardDTO.oldestUnverifiedDate!} : {},
+                      ),
+                      summaryStream: _unverifiedSummaryStream,
+                      onNavigate: _navigateToPage,
+                    ),
 
                   // 2. Quick Access Section
                   _buildSectionHeader('Quick Access', 'Orders, credits, van operations, and scouting'),

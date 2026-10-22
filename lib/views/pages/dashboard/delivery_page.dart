@@ -23,6 +23,7 @@ import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
+import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 
 class DeliveryPage extends StatefulWidget {
   const DeliveryPage({super.key, required this.deliveryID, required this.delivery});
@@ -210,11 +211,14 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   void onChangeDate() async {
-    final DateTime? dateTime = await showDatePicker(
+    final dayStatuses = await _controller.getDeliveryDayStatuses();
+    if (!mounted) return;
+    final DateTime? dateTime = await showMarkedDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(3000),
+      dayStatuses: dayStatuses,
     );
 
     if (dateTime != null) {

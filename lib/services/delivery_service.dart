@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 
 // ignore: constant_identifier_names
 const String DELIVERY_COLLECTION_REF = 'delivery';
@@ -299,5 +300,128 @@ class DeliveryService {
       batch.update(_ordersRef.doc(id), {DeliveryModelString.deliverySequence: null, DeliveryModelString.lastupdatedDate: Timestamp.now()});
     }
     await batch.commit();
+  }
+
+  /// Default lower bound for date scans (3 months ago from current month start).
+  static DateTime get defaultCutoffDate {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month - 3, 1);
+  }
+
+  /// Parses date from Timestamp, DateTime, or ISO String safely.
+  static DateTime? parseDeliveryDate(dynamic val) {
+    if (val == null) return null;
+    if (val is Timestamp) return val.toDate();
+    if (val is DateTime) return val;
+    if (val is String) return DateTime.tryParse(val.trim());
+    return null;
+  }
+
+  /// Map of dates to [DayStatus] for delivery calendar visualization.
+  /// Days with uncompleted deliveries (status == pending or pendingPicklist) are [DayStatus.pending].
+  /// Days with only completed deliveries (delivered or returned) are [DayStatus.done].
+  static Future<Map<DateTime, DayStatus>> getDeliveryDayStatuses({
+    DateTime? cutoffDate,
+  }) async {
+    try {
+      final cutoff = cutoffDate ?? defaultCutoffDate;
+      final map = <DateTime, DayStatus>{};
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection(DELIVERY_COLLECTION_REF)
+          .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+          .get();
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final status = data[DeliveryModelString.transactionStatus] as String?;
+        if (status == DeliveryStatus.voided) continue;
+
+        final date = parseDeliveryDate(data[DeliveryModelString.deliveryDate]) ??
+            parseDeliveryDate(data[DeliveryModelString.createdDate]);
+        if (date == null) continue;
+        final dateOnly = DateTime(date.year, date.month, date.day);
+
+        if (status == DeliveryStatus.pending || status == DeliveryStatus.pendingPicklist) {
+          map[dateOnly] = DayStatus.pending;
+        } else if ((status == DeliveryStatus.delivered || status == DeliveryStatus.returned) &&
+            map[dateOnly] != DayStatus.pending) {
+          map[dateOnly] = DayStatus.done;
+        }
+      }
+      return map;
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /// Dates with uncompleted deliveries within the scan window.
+  static Future<Set<DateTime>> getPendingDeliveryDates({DateTime? cutoffDate}) async {
+    final statuses = await getDeliveryDayStatuses(cutoffDate: cutoffDate);
+    return statuses.entries
+        .where((e) => e.value == DayStatus.pending)
+        .map((e) => e.key)
+        .toSet();
+  }
+
+  /// Map of dates to [DayStatus] for picklist calendar visualization.
+  /// Days with pending picklists (pendingPicklist status and picklistCompletedDate == null) are [DayStatus.pending].
+  /// Days with completed picklists (picklistCompletedDate != null) are [DayStatus.done].
+  static Future<Map<DateTime, DayStatus>> getPicklistDayStatuses({
+    DateTime? cutoffDate,
+  }) async {
+    try {
+      final cutoff = cutoffDate ?? defaultCutoffDate;
+      final map = <DateTime, DayStatus>{};
+
+      // 1. Mark completed picklists from the scan window
+      final completedSnapshot = await FirebaseFirestore.instance
+          .collection(DELIVERY_COLLECTION_REF)
+          .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff))
+          .get();
+
+      for (final doc in completedSnapshot.docs) {
+        final data = doc.data();
+        final status = data[DeliveryModelString.transactionStatus] as String?;
+        if (status == DeliveryStatus.voided) continue;
+        final isCompleted = data['picklistCompletedDate'] != null;
+        if (!isCompleted) continue;
+
+        final date = parseDeliveryDate(data[DeliveryModelString.deliveryDate]) ??
+            parseDeliveryDate(data[DeliveryModelString.createdDate]);
+        if (date == null) continue;
+        final dateOnly = DateTime(date.year, date.month, date.day);
+        map[dateOnly] = DayStatus.done;
+      }
+
+      // 2. Mark pending picklists (overrides done if any remain pending on that day)
+      final pendingSnapshot = await FirebaseFirestore.instance
+          .collection(DELIVERY_COLLECTION_REF)
+          .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.pendingPicklist)
+          .get();
+
+      for (final doc in pendingSnapshot.docs) {
+        final data = doc.data();
+        final date = parseDeliveryDate(data[DeliveryModelString.deliveryDate]) ??
+            parseDeliveryDate(data[DeliveryModelString.createdDate]);
+        if (date == null) continue;
+        final dateOnly = DateTime(date.year, date.month, date.day);
+        if (dateOnly.isBefore(cutoff)) continue;
+        map[dateOnly] = DayStatus.pending;
+      }
+
+      return map;
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /// Dates with pending picklists within the scan window.
+  static Future<Set<DateTime>> getPendingPicklistDates({DateTime? cutoffDate}) async {
+    final statuses = await getPicklistDayStatuses(cutoffDate: cutoffDate);
+    return statuses.entries
+        .where((e) => e.value == DayStatus.pending)
+        .map((e) => e.key)
+        .toSet();
   }
 }

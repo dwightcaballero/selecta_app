@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
+import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
 import 'package:selecta_ops/views/pages/reports/promo_claims_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
@@ -81,14 +82,20 @@ class ReportsPage extends StatelessWidget {
               initialData: effectiveDto.unverifiedBreakdownCount,
               builder: (ctx, snap) {
                 final count = snap.data ?? effectiveDto.unverifiedBreakdownCount;
+                final age = UnverifiedAgeHelper.calculateAgeInDays(effectiveDto.oldestUnverifiedDate);
+                final badgeColor = UnverifiedAgeHelper.getBadgeColor(age, Theme.of(ctx).colorScheme);
+                final overdueNotice = count > 0 && effectiveDto.oldestUnverifiedDate != null
+                    ? ' • ${UnverifiedAgeHelper.getOverdueText(age)}'
+                    : '';
+
                 return _buildReportCard(
                   context,
                   title: 'End of Day Report',
-                  subtitle: 'Daily salesman collection, remittances & breakdown reconciliation',
+                  subtitle: 'Daily salesman collection, remittances & breakdown reconciliation$overdueNotice',
                   icon: Icons.today_outlined,
                   iconColor: const Color(0xFFEA580C),
                   badgeCount: count,
-                  badgeColor: const Color(0xFFEA580C),
+                  badgeColor: badgeColor,
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const EndofdayPage()),

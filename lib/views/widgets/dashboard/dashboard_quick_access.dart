@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
+import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/endofday_page.dart';
@@ -26,7 +27,15 @@ class DashboardQuickAccessGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final primaryColor = colorScheme.primary;
+
+    final eodAge = UnverifiedAgeHelper.calculateAgeInDays(dashboardDTO.oldestUnverifiedDate);
+    final eodBadgeColor = UnverifiedAgeHelper.getBadgeColor(eodAge, colorScheme);
+    final eodSubtitle = dashboardDTO.unverifiedBreakdownCount > 0 && dashboardDTO.oldestUnverifiedDate != null
+        ? UnverifiedAgeHelper.getOverdueText(eodAge)
+        : null;
 
     return Column(
       children: [
@@ -46,8 +55,10 @@ class DashboardQuickAccessGrid extends StatelessWidget {
             _buildCard(
               context,
               label: 'End of Day Report',
+              subtitle: eodSubtitle,
               icon: Icons.today_outlined,
               count: dashboardDTO.unverifiedBreakdownCount,
+              badgeColor: eodBadgeColor,
               stream: unverifiedBreakdownsCountStream,
               color: primaryColor,
               nextPage: const EndofdayPage(),
@@ -64,6 +75,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
     String? subtitle,
     required IconData icon,
     int count = 0,
+    Color? badgeColor,
     Stream<int>? stream,
     required Color color,
     required Widget nextPage,
@@ -93,7 +105,7 @@ class DashboardQuickAccessGrid extends StatelessWidget {
                 Badge(
                   isLabelVisible: badgeCount > 0,
                   label: Text('$badgeCount', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
-                  backgroundColor: Colors.red,
+                  backgroundColor: badgeColor ?? Colors.red,
                   child: Container(
                     padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(color: color.withAlpha(isDark ? 40 : 25), shape: BoxShape.circle),

@@ -4,16 +4,30 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/models/breakdown.dart';
+import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/views/pages/sidebar/breakdown_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
+import 'package:selecta_ops/views/widgets/dashboard/unverified_dates_sheet.dart';
 import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:intl/intl.dart';
 
+/// Opens the End of Day page. If [oldestUnverified] is provided, opens on that date;
+/// otherwise defaults to today.
+Future<void> openEndOfDay(BuildContext context, {DateTime? oldestUnverified}) {
+  return Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => EndofdayPage(initialDate: oldestUnverified),
+    ),
+  );
+}
+
 class EndofdayPage extends StatefulWidget {
-  const EndofdayPage({super.key});
+  final DateTime? initialDate;
+  const EndofdayPage({super.key, this.initialDate});
 
   @override
   State<EndofdayPage> createState() => _EndofdayPageState();
@@ -28,7 +42,11 @@ class _EndofdayPageState extends State<EndofdayPage> {
   EndOfDayDTO endOfDayData = EndOfDayDTO.empty();
 
   bool _isDealer = true;
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate = widget.initialDate != null
+      ? DateTime(widget.initialDate!.year, widget.initialDate!.month, widget.initialDate!.day)
+      : DateTime.now();
+
+  UnverifiedSummary _unverifiedSummary = UnverifiedSummary.empty;
 
   @override
   void initState() {
@@ -39,12 +57,12 @@ class _EndofdayPageState extends State<EndofdayPage> {
   }
 
   void onChangeDate() async {
-    final unverifiedDates = await BreakdownService.getUnverifiedBreakdownDates();
+    final dayStatuses = await BreakdownService.getBreakdownDayStatuses();
     if (!mounted) return;
     final DateTime? dateTime = await showMarkedDatePicker(
       context: context,
       initialDate: _selectedDate,
-      markedDates: unverifiedDates,
+      dayStatuses: dayStatuses,
       lastDate: DateTime.now(),
     );
 
@@ -57,9 +75,11 @@ class _EndofdayPageState extends State<EndofdayPage> {
   Future<void> getData() async {
     showLoading(true);
     try {
+      final summary = await BreakdownService.getUnverifiedSummary();
       final snapshot = await _controller.fetchEndOfDayData(_selectedDate);
       if (mounted) {
         setState(() {
+          _unverifiedSummary = summary;
           _isDealer = snapshot.isDealer;
           endOfDayData = snapshot.endOfDayData;
           breakdown = snapshot.breakdown;
@@ -75,7 +95,44 @@ class _EndofdayPageState extends State<EndofdayPage> {
 
   Future<void> validateBeforeBreakdown() async {
     try {
-      _controller.validateBeforeBreakdown(endOfDayData: endOfDayData, breakdownId: breakdownID);
+      _controller.validateBeforeBreakdown(
+        endOfDayData: endOfDayData,
+        breakdownId: breakdownID,
+        currentDate: _selectedDate,
+        oldestUnverifiedDate: _unverifiedSummary.oldest,
+      );
+    } on OlderUnverifiedException catch (e) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.history_toggle_off_rounded, color: Colors.amber),
+              SizedBox(width: 8),
+              Text('Verification Blocked', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            ],
+          ),
+          content: Text(e.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              label: Text('Go to ${DateFormat('d MMM').format(e.oldestDate)}'),
+              onPressed: () {
+                Navigator.pop(dialogCtx);
+                setState(() => _selectedDate = e.oldestDate);
+                getData();
+              },
+            ),
+          ],
+        ),
+      );
+      return;
     } catch (e) {
       ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       return;
@@ -91,7 +148,31 @@ class _EndofdayPageState extends State<EndofdayPage> {
         ),
       ),
     );
-    getData();
+    await getData();
+
+    // After a successful verify, if more remain, show a snackbar action "Go to next unverified"
+    if (mounted && _unverifiedSummary.hasUnverified) {
+      final candidateDates = _unverifiedSummary.dates
+          .where((d) => d.year != _selectedDate.year || d.month != _selectedDate.month || d.day != _selectedDate.day)
+          .toList()
+        ..sort();
+      if (candidateDates.isNotEmpty) {
+        final nextDate = candidateDates.first;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_unverifiedSummary.count} unverified day(s) remain in backlog.'),
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: 'Next (${DateFormat('d MMM').format(nextDate)})',
+              onPressed: () {
+                setState(() => _selectedDate = nextDate);
+                getData();
+              },
+            ),
+          ),
+        );
+      }
+    }
   }
 
   void showLoading(bool showLoading) async {
@@ -150,6 +231,92 @@ class _EndofdayPageState extends State<EndofdayPage> {
             ),
           ),
           IconButton(icon: const Icon(Icons.chevron_right), tooltip: 'Next Day', onPressed: (_isDealer && !isToday) ? () => _changeDate(1) : null),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUnverifiedBacklogBar() {
+    if (!_isDealer || !_unverifiedSummary.hasUnverified) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final candidateDates = _unverifiedSummary.dates
+        .where((d) => d.year != _selectedDate.year || d.month != _selectedDate.month || d.day != _selectedDate.day)
+        .toList()
+      ..sort();
+    final nextDate = candidateDates.isNotEmpty ? candidateDates.first : null;
+    final count = _unverifiedSummary.count;
+    final age = _unverifiedSummary.oldestAgeDays;
+    final dotColor = age >= 3 ? Colors.red.shade700 : (age == 2 ? Colors.amber.shade800 : colorScheme.primary);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: dotColor.withAlpha(isDark ? 30 : 15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: dotColor.withAlpha(isDark ? 80 : 60)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.history_toggle_off_rounded, size: 18, color: dotColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: InkWell(
+              onTap: () => UnverifiedDatesSheet.show(
+                context,
+                summary: _unverifiedSummary,
+                onSelectDate: (d) {
+                  setState(() => _selectedDate = d);
+                  getData();
+                },
+              ),
+              child: Text(
+                '$count unverified date${count == 1 ? '' : 's'} in backlog',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: dotColor,
+                ),
+              ),
+            ),
+          ),
+          if (nextDate != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.skip_next_rounded, size: 16),
+                label: Text(
+                  'Next (${DateFormat('d MMM').format(nextDate)})',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                onPressed: () {
+                  setState(() => _selectedDate = nextDate);
+                  getData();
+                },
+              ),
+            ),
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('View all', style: TextStyle(fontSize: 12)),
+            onPressed: () => UnverifiedDatesSheet.show(
+              context,
+              summary: _unverifiedSummary,
+              onSelectDate: (d) {
+                setState(() => _selectedDate = d);
+                getData();
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -818,6 +985,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
         children: [
           // 1. Date Navigation Header
           _buildDateNavigator(),
+          _buildUnverifiedBacklogBar(),
 
           // 2. Pending Status Warning (if any)
           if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
@@ -863,6 +1031,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
               spacing: 16,
               children: [
                 _buildDateNavigator(),
+                _buildUnverifiedBacklogBar(),
                 if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
                 if (endOfDayData.totaldelivery == 0) _buildEmptyStateNotice(colorScheme),
                 _buildDeliveryStatusGrid(),

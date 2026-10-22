@@ -22,6 +22,7 @@ import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/controllers/placement_controller.dart';
 import 'package:selecta_ops/models/promo.dart';
 import 'package:selecta_ops/services/promo_service.dart';
+import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 import 'package:intl/intl.dart';
 
 /// Aggregated counts by delivery status for summary widgets.
@@ -186,6 +187,16 @@ class DeliveryController {
   /// Real-time stream of the count of returned deliveries requiring dealer action.
   Stream<int> getActiveReturnedDeliveriesCountStream() {
     return _deliveryService.getActiveReturnedDeliveriesCountStream();
+  }
+
+  /// Map of dates to [DayStatus] for delivery calendar visualization.
+  Future<Map<DateTime, DayStatus>> getDeliveryDayStatuses({DateTime? cutoffDate}) {
+    return DeliveryService.getDeliveryDayStatuses(cutoffDate: cutoffDate);
+  }
+
+  /// Map of dates to [DayStatus] for picklist calendar visualization.
+  Future<Map<DateTime, DayStatus>> getPicklistDayStatuses({DateTime? cutoffDate}) {
+    return DeliveryService.getPicklistDayStatuses(cutoffDate: cutoffDate);
   }
 
   /// Formats the selected date into a friendly navigation label (e.g. "Today, 28 Sep 2026").

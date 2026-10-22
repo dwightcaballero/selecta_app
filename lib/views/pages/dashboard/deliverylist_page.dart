@@ -17,6 +17,7 @@ import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
+import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
 /// Presentation view displaying the list of deliveries for a selected date.
@@ -109,11 +110,14 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   void onChangeDate() async {
-    final DateTime? dateTime = await showDatePicker(
+    final dayStatuses = await _controller.getDeliveryDayStatuses();
+    if (!mounted) return;
+    final DateTime? dateTime = await showMarkedDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(3000),
+      dayStatuses: dayStatuses,
     );
 
     if (dateTime != null) {

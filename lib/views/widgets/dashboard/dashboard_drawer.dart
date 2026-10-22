@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
+import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/creditlist_page.dart';
@@ -147,17 +148,28 @@ class DashboardDrawer extends StatelessWidget {
           StreamBuilder<int>(
             stream: unverifiedBreakdownCountStream,
             initialData: dashboardDTO.unverifiedBreakdownCount,
-            builder: (ctx, snap) => _buildDrawerItem(
-              context,
-              Icons.bar_chart_rounded,
-              'Reports',
-              ReportsPage(
-                dashboardDTO: dashboardDTO,
-                isDealer: isDealer,
-                unverifiedBreakdownCountStream: unverifiedBreakdownCountStream,
-              ),
-              badgeCount: snap.data ?? dashboardDTO.unverifiedBreakdownCount,
-            ),
+            builder: (ctx, snap) {
+              final count = snap.data ?? dashboardDTO.unverifiedBreakdownCount;
+              final age = UnverifiedAgeHelper.calculateAgeInDays(dashboardDTO.oldestUnverifiedDate);
+              final badgeColor = UnverifiedAgeHelper.getBadgeColor(age, Theme.of(ctx).colorScheme);
+              final tooltip = count > 0 && dashboardDTO.oldestUnverifiedDate != null
+                  ? 'Unverified reports backlog: ${UnverifiedAgeHelper.getOverdueText(age)}'
+                  : null;
+
+              return _buildDrawerItem(
+                context,
+                Icons.bar_chart_rounded,
+                'Reports',
+                ReportsPage(
+                  dashboardDTO: dashboardDTO,
+                  isDealer: isDealer,
+                  unverifiedBreakdownCountStream: unverifiedBreakdownCountStream,
+                ),
+                badgeCount: count,
+                badgeColor: badgeColor,
+                tooltip: tooltip,
+              );
+            },
           ),
 
           const Divider(indent: 16, endIndent: 16),
@@ -272,27 +284,33 @@ class DashboardDrawer extends StatelessWidget {
     bool isLogout = false,
     int badgeCount = 0,
     Color? badgeColor,
+    String? tooltip,
     VoidCallback? onTap,
     Widget? trailing,
   }) {
+    final badgeWidget = badgeCount > 0
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              '$badgeCount',
+              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          )
+        : null;
+
+    final effectiveTrailing = trailing ??
+        (badgeWidget != null
+            ? (tooltip != null ? Tooltip(message: tooltip, child: badgeWidget) : badgeWidget)
+            : null);
+
     return ListTile(
       leading: Icon(icon, color: isLogout ? Colors.red : null, size: 22),
       title: Text(
         title,
         style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: isLogout ? Colors.red : null),
       ),
-      trailing:
-          trailing ??
-          (badgeCount > 0
-              ? Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
-                  child: Text(
-                    '$badgeCount',
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                )
-              : null),
+      trailing: effectiveTrailing,
       onTap: () async {
         Navigator.pop(context);
         if (onTap != null) {

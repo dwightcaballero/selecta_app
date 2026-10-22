@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/models/breakdown.dart';
+import 'package:selecta_ops/models/unverified_summary.dart';
+import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 
 // ignore: constant_identifier_names
 const String BREAKDOWN_COLLECTION_REF = 'breakdown';
@@ -16,6 +18,55 @@ class BreakdownService {
               Breakdown.fromJson(snapshots.data()!),
           toFirestore: (breakdown, _) => breakdown.toJson(),
         );
+  }
+
+  /// Default scan window cutoff (last 3 months)
+  static DateTime get defaultCutoffDate {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month - 3, now.day);
+  }
+
+  /// Parses date from dynamic raw value (Timestamp or ISO String).
+  static DateTime? parseBreakdownDate(dynamic rawDate) {
+    if (rawDate is Timestamp) {
+      return rawDate.toDate();
+    } else if (rawDate is String) {
+      return DateTime.tryParse(rawDate);
+    }
+    return null;
+  }
+
+  /// Extracts [UnverifiedSummary] from raw Firestore document snapshots.
+  static UnverifiedSummary summaryFromDocs(
+    Iterable<QueryDocumentSnapshot> docs, {
+    DateTime? cutoffDate,
+  }) {
+    final cutoff = cutoffDate ?? defaultCutoffDate;
+    final dates = <DateTime>{};
+
+    for (final doc in docs) {
+      final data = doc.data() as Map<String, dynamic>? ?? {};
+      if ((data['isVerifiedByDealer'] as bool?) == true) continue;
+
+      final date = parseBreakdownDate(data['breakdownDate']);
+      if (date == null) continue;
+
+      final dateOnly = DateTime(date.year, date.month, date.day);
+      if (dateOnly.isBefore(cutoff)) continue;
+
+      dates.add(dateOnly);
+    }
+
+    DateTime? oldest;
+    if (dates.isNotEmpty) {
+      oldest = dates.reduce((a, b) => a.isBefore(b) ? a : b);
+    }
+
+    return UnverifiedSummary(
+      count: dates.length,
+      oldest: oldest,
+      dates: dates,
+    );
   }
 
   Future<Breakdown?> getDocumentsBySpecificDate(DateTime breakdownDate) async {
@@ -106,77 +157,79 @@ class BreakdownService {
     _breakdownRef.doc(breakdownID).delete();
   }
 
-  /// Real-time stream of the count of breakdown records not yet verified by the dealer within the current month.
-  Stream<int> getUnverifiedBreakdownsCountStream({DateTime? month}) {
+  /// Real-time stream of the [UnverifiedSummary] within the scan window.
+  Stream<UnverifiedSummary> getUnverifiedSummaryStream({DateTime? cutoffDate}) {
     return _firestore
         .collection(BREAKDOWN_COLLECTION_REF)
         .snapshots()
-        .map((snapshot) {
-      final target = month ?? DateTime.now();
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        if ((data['isVerifiedByDealer'] as bool?) == true) return false;
-
-        final rawDate = data['breakdownDate'];
-        DateTime? date;
-        if (rawDate is Timestamp) {
-          date = rawDate.toDate();
-        } else if (rawDate is String) {
-          date = DateTime.tryParse(rawDate);
-        }
-        if (date == null) return false;
-
-        return date.year == target.year && date.month == target.month;
-      }).length;
-    });
+        .map((snapshot) => summaryFromDocs(snapshot.docs, cutoffDate: cutoffDate));
   }
 
-  /// One-time count of breakdown records not yet verified by the dealer within the current month.
-  static Future<int> getCountUnverifiedBreakdowns({DateTime? month}) async {
+  /// One-time fetch of the [UnverifiedSummary] within the scan window.
+  static Future<UnverifiedSummary> getUnverifiedSummary({DateTime? cutoffDate}) async {
     try {
-      final target = month ?? DateTime.now();
       final snapshot = await FirebaseFirestore.instance
           .collection(BREAKDOWN_COLLECTION_REF)
           .get();
-      return snapshot.docs.where((doc) {
-        final data = doc.data();
-        if ((data['isVerifiedByDealer'] as bool?) == true) return false;
-
-        final rawDate = data['breakdownDate'];
-        DateTime? date;
-        if (rawDate is Timestamp) {
-          date = rawDate.toDate();
-        } else if (rawDate is String) {
-          date = DateTime.tryParse(rawDate);
-        }
-        if (date == null) return false;
-
-        return date.year == target.year && date.month == target.month;
-      }).length;
+      return summaryFromDocs(snapshot.docs, cutoffDate: cutoffDate);
     } catch (e) {
-      return 0;
+      return UnverifiedSummary.empty;
     }
   }
 
-  /// Dates (date-only) of breakdown records not yet verified by the dealer, across all months.
-  static Future<Set<DateTime>> getUnverifiedBreakdownDates() async {
+  /// Real-time stream of the count of breakdown records not yet verified by the dealer.
+  /// If [month] is omitted, counts ALL unverified records within the backlog window (last 3 months).
+  Stream<int> getUnverifiedBreakdownsCountStream({DateTime? month, DateTime? cutoffDate}) {
+    return getUnverifiedSummaryStream(cutoffDate: cutoffDate).map((summary) {
+      if (month != null) {
+        return summary.dates.where((d) => d.year == month.year && d.month == month.month).length;
+      }
+      return summary.count;
+    });
+  }
+
+  /// One-time count of breakdown records not yet verified by the dealer.
+  /// If [month] is omitted, counts ALL unverified records within the backlog window (last 3 months).
+  static Future<int> getCountUnverifiedBreakdowns({DateTime? month, DateTime? cutoffDate}) async {
+    final summary = await getUnverifiedSummary(cutoffDate: cutoffDate);
+    if (month != null) {
+      return summary.dates.where((d) => d.year == month.year && d.month == month.month).length;
+    }
+    return summary.count;
+  }
+
+  /// Dates (date-only) of breakdown records not yet verified by the dealer within the scan window.
+  static Future<Set<DateTime>> getUnverifiedBreakdownDates({DateTime? cutoffDate}) async {
+    final summary = await getUnverifiedSummary(cutoffDate: cutoffDate);
+    return summary.dates;
+  }
+
+  /// Map of dates to [DayStatus] for calendar visualization (pending vs verified).
+  static Future<Map<DateTime, DayStatus>> getBreakdownDayStatuses({DateTime? cutoffDate}) async {
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection(BREAKDOWN_COLLECTION_REF)
           .get();
-      final dates = <DateTime>{};
+      final cutoff = cutoffDate ?? defaultCutoffDate;
+      final map = <DateTime, DayStatus>{};
+
       for (final doc in snapshot.docs) {
-        if ((doc.data()['isVerifiedByDealer'] as bool?) == true) continue;
-        final rawDate = doc.data()['breakdownDate'];
-        DateTime? date;
-        if (rawDate is Timestamp) {
-          date = rawDate.toDate();
-        } else if (rawDate is String) {
-          date = DateTime.tryParse(rawDate);
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        final date = parseBreakdownDate(data['breakdownDate']);
+        if (date == null) continue;
+
+        final dateOnly = DateTime(date.year, date.month, date.day);
+        if (dateOnly.isBefore(cutoff)) continue;
+
+        final isVerified = (data['isVerifiedByDealer'] as bool?) == true;
+        if (!isVerified) {
+          // Any unverified record makes the day pending
+          map[dateOnly] = DayStatus.pending;
+        } else if (!map.containsKey(dateOnly)) {
+          map[dateOnly] = DayStatus.done;
         }
-        if (date != null) dates.add(DateTime(date.year, date.month, date.day));
       }
-      return dates;
+      return map;
     } catch (e) {
       return {};
     }

@@ -18,6 +18,7 @@ class DashboardDTO {
   int pendingPjpCount;
   int totalUnassignedCount;
   int unverifiedBreakdownCount;
+  DateTime? oldestUnverifiedDate;
 
   DashboardDTO({
     required this.buyingCount,
@@ -39,6 +40,7 @@ class DashboardDTO {
     this.pendingPjpCount = 0,
     this.totalUnassignedCount = 0,
     this.unverifiedBreakdownCount = 0,
+    this.oldestUnverifiedDate,
   });
 
   int get pendingScanningCount => totalNotScannedCount + totalUnassignedCount;
@@ -64,6 +66,7 @@ class DashboardDTO {
       pendingPjpCount: 0,
       totalUnassignedCount: 0,
       unverifiedBreakdownCount: 0,
+      oldestUnverifiedDate: null,
     );
   }
 
@@ -88,6 +91,9 @@ class DashboardDTO {
         pendingPjpCount: (json['pendingPjpCount'] as num?)?.toInt() ?? 0,
         totalUnassignedCount: (json['totalUnassignedCount'] as num?)?.toInt() ?? 0,
         unverifiedBreakdownCount: (json['unverifiedBreakdownCount'] as num?)?.toInt() ?? 0,
+        oldestUnverifiedDate: json['oldestUnverifiedDate'] != null
+            ? DateTime.tryParse(json['oldestUnverifiedDate'] as String)
+            : null,
       );
 
   Map<String, Object?> toJson() {
@@ -111,6 +117,7 @@ class DashboardDTO {
       'pendingPjpCount': pendingPjpCount,
       'totalUnassignedCount': totalUnassignedCount,
       'unverifiedBreakdownCount': unverifiedBreakdownCount,
+      'oldestUnverifiedDate': oldestUnverifiedDate?.toIso8601String(),
     };
   }
 }

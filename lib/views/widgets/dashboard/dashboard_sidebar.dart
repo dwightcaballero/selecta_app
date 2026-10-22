@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
+import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/offline_sync_service.dart';
@@ -214,17 +215,28 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
                     StreamBuilder<int>(
                       stream: widget.unverifiedBreakdownCountStream,
                       initialData: widget.dashboardDTO.unverifiedBreakdownCount,
-                      builder: (ctx, snap) => _buildItem(
-                        ctx,
-                        Icons.bar_chart_rounded,
-                        'Reports',
-                        ReportsPage(
-                          dashboardDTO: widget.dashboardDTO,
-                          isDealer: widget.isDealer,
-                          unverifiedBreakdownCountStream: widget.unverifiedBreakdownCountStream,
-                        ),
-                        badge: snap.data ?? widget.dashboardDTO.unverifiedBreakdownCount,
-                      ),
+                      builder: (ctx, snap) {
+                        final count = snap.data ?? widget.dashboardDTO.unverifiedBreakdownCount;
+                        final age = UnverifiedAgeHelper.calculateAgeInDays(widget.dashboardDTO.oldestUnverifiedDate);
+                        final badgeColor = UnverifiedAgeHelper.getBadgeColor(age, Theme.of(ctx).colorScheme);
+                        final tooltip = count > 0 && widget.dashboardDTO.oldestUnverifiedDate != null
+                            ? 'Unverified reports backlog: ${UnverifiedAgeHelper.getOverdueText(age)}'
+                            : null;
+
+                        return _buildItem(
+                          ctx,
+                          Icons.bar_chart_rounded,
+                          'Reports',
+                          ReportsPage(
+                            dashboardDTO: widget.dashboardDTO,
+                            isDealer: widget.isDealer,
+                            unverifiedBreakdownCountStream: widget.unverifiedBreakdownCountStream,
+                          ),
+                          badge: count,
+                          badgeColor: badgeColor,
+                          badgeTooltip: tooltip,
+                        );
+                      },
                     ),
 
                     const _SidebarDivider(),
@@ -475,27 +487,33 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
     Widget? page, {
     int badge = 0,
     Color? badgeColor,
+    String? badgeTooltip,
     VoidCallback? onTap,
     Widget? trailing,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final badgeWidget = badge > 0
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              '$badge',
+              style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+          )
+        : null;
+
+    final effectiveTrailing = trailing ??
+        (badgeWidget != null
+            ? (badgeTooltip != null ? Tooltip(message: badgeTooltip, child: badgeWidget) : badgeWidget)
+            : null);
+
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       leading: Icon(icon, size: 20, color: colorScheme.onSurfaceVariant),
       title: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-      trailing:
-          trailing ??
-          (badge > 0
-              ? Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(color: badgeColor ?? Colors.red, borderRadius: BorderRadius.circular(10)),
-                  child: Text(
-                    '$badge',
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                  ),
-                )
-              : null),
+      trailing: effectiveTrailing,
       onTap: () async {
         if (onTap != null) {
           onTap();

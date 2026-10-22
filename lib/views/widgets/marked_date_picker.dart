@@ -1,19 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-/// Month-grid date picker dialog that shows a red dot on [markedDates].
+enum DayStatus {
+  pending,
+  done,
+}
+
+/// Month-grid date picker dialog that shows red dots on pending dates and green dots on verified/done dates.
 Future<DateTime?> showMarkedDatePicker({
   required BuildContext context,
   required DateTime initialDate,
-  required Set<DateTime> markedDates,
+  Set<DateTime>? markedDates,
+  Map<DateTime, DayStatus>? dayStatuses,
   DateTime? firstDate,
   DateTime? lastDate,
 }) {
+  final Map<DateTime, DayStatus> effectiveStatuses = {};
+  if (dayStatuses != null) {
+    for (final entry in dayStatuses.entries) {
+      effectiveStatuses[DateTime(entry.key.year, entry.key.month, entry.key.day)] = entry.value;
+    }
+  } else if (markedDates != null) {
+    for (final d in markedDates) {
+      effectiveStatuses[DateTime(d.year, d.month, d.day)] = DayStatus.pending;
+    }
+  }
+
   return showDialog<DateTime>(
     context: context,
     builder: (_) => _MarkedDatePickerDialog(
       initialDate: initialDate,
-      markedDates: markedDates,
+      dayStatuses: effectiveStatuses,
       firstDate: firstDate ?? DateTime(2000),
       lastDate: lastDate ?? DateTime.now(),
     ),
@@ -22,13 +39,13 @@ Future<DateTime?> showMarkedDatePicker({
 
 class _MarkedDatePickerDialog extends StatefulWidget {
   final DateTime initialDate;
-  final Set<DateTime> markedDates;
+  final Map<DateTime, DayStatus> dayStatuses;
   final DateTime firstDate;
   final DateTime lastDate;
 
   const _MarkedDatePickerDialog({
     required this.initialDate,
-    required this.markedDates,
+    required this.dayStatuses,
     required this.firstDate,
     required this.lastDate,
   });
@@ -42,7 +59,9 @@ class _MarkedDatePickerDialogState extends State<_MarkedDatePickerDialog> {
 
   DateTime _d(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  int _markedInMonth(DateTime m) => widget.markedDates.where((d) => d.year == m.year && d.month == m.month).length;
+  int _pendingInMonth(DateTime m) => widget.dayStatuses.entries
+      .where((e) => e.key.year == m.year && e.key.month == m.month && e.value == DayStatus.pending)
+      .length;
 
   @override
   Widget build(BuildContext context) {
@@ -55,9 +74,10 @@ class _MarkedDatePickerDialogState extends State<_MarkedDatePickerDialog> {
     final last = _d(widget.lastDate);
     final canPrev = DateTime(_month.year, _month.month).isAfter(DateTime(first.year, first.month));
     final canNext = DateTime(_month.year, _month.month).isBefore(DateTime(last.year, last.month));
-    final pending = _markedInMonth(_month);
+    final pending = _pendingInMonth(_month);
     final labels = MaterialLocalizations.of(context).narrowWeekdays;
     final startDay = MaterialLocalizations.of(context).firstDayOfWeekIndex;
+    final hasDoneStatuses = widget.dayStatuses.values.contains(DayStatus.done);
 
     return Dialog(
       child: ConstrainedBox(
@@ -102,15 +122,39 @@ class _MarkedDatePickerDialogState extends State<_MarkedDatePickerDialog> {
                   for (var day = 1; day <= daysInMonth; day++) _dayCell(cs, DateTime(_month.year, _month.month, day), today, selected, first, last),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Row(
                 children: [
-                  const Icon(Icons.circle, size: 8, color: Colors.red),
-                  const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
-                      pending > 0 ? '$pending day${pending == 1 ? '' : 's'} pending dealer verification this month' : 'Pending dealer verification',
-                      style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.circle, size: 7, color: Colors.red),
+                            const SizedBox(width: 4),
+                            Text(
+                              pending > 0 ? '$pending Pending' : 'Pending',
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                        if (hasDoneStatuses)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.circle, size: 7, color: Colors.green),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Verified',
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                   ),
                   TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
@@ -126,7 +170,7 @@ class _MarkedDatePickerDialogState extends State<_MarkedDatePickerDialog> {
   Widget _dayCell(ColorScheme cs, DateTime date, DateTime today, DateTime selected, DateTime first, DateTime last) {
     final enabled = !date.isBefore(first) && !date.isAfter(last);
     final isSelected = date == selected;
-    final isMarked = widget.markedDates.contains(date);
+    final status = widget.dayStatuses[date];
     return InkWell(
       customBorder: const CircleBorder(),
       onTap: enabled ? () => Navigator.pop(context, date) : null,
@@ -144,7 +188,15 @@ class _MarkedDatePickerDialogState extends State<_MarkedDatePickerDialog> {
               '${date.day}',
               style: TextStyle(color: !enabled ? cs.onSurface.withValues(alpha: 0.38) : isSelected ? cs.onPrimary : cs.onSurface),
             ),
-            if (isMarked) const Positioned(bottom: 5, child: Icon(Icons.circle, size: 6, color: Colors.red)),
+            if (status != null)
+              Positioned(
+                bottom: 5,
+                child: Icon(
+                  Icons.circle,
+                  size: 6,
+                  color: status == DayStatus.done ? Colors.green : Colors.red,
+                ),
+              ),
           ],
         ),
       ),

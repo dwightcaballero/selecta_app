@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
+import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
@@ -28,7 +29,11 @@ class DashboardController {
   final ScanningServices _scanningService = ScanningServices();
   final BreakdownService _breakdownService = BreakdownService();
 
-  /// Live count stream for breakdown records not yet verified by the dealer within the current month.
+  /// Real-time stream of the [UnverifiedSummary] within the scan window.
+  Stream<UnverifiedSummary> getUnverifiedSummaryStream({DateTime? cutoffDate}) =>
+      _breakdownService.getUnverifiedSummaryStream(cutoffDate: cutoffDate);
+
+  /// Live count stream for breakdown records not yet verified by the dealer.
   Stream<int> getUnverifiedBreakdownsCountStream({DateTime? month}) => _breakdownService.getUnverifiedBreakdownsCountStream(month: month);
 
   /// Live count stream for pending and overdue tasks.
@@ -209,7 +214,7 @@ class DashboardController {
     final pendingPicklistFuture = DeliveryService.getCountPendingPicklistsForDate(DateTime.now());
     final pendingDeliveryFuture = DeliveryService.getCountDeliveriesByStatus(DeliveryStatus.pending);
     final returnedDeliveryFuture = DeliveryService.getCountActiveReturnedDeliveries();
-    final unverifiedBreakdownFuture = BreakdownService.getCountUnverifiedBreakdowns();
+    final unverifiedSummaryFuture = BreakdownService.getUnverifiedSummary();
     final overpaymentFuture = PurchaseOrderService.getCountDeliveriesNotYetSettled();
     final listStoresFuture = HapiStoreService.getListHapiStores();
     final listDeliveryFuture = DeliveryService.getListDeliveryWithinCurrentMonth();
@@ -224,7 +229,7 @@ class DashboardController {
       pendingPicklistFuture,
       pendingDeliveryFuture,
       returnedDeliveryFuture,
-      unverifiedBreakdownFuture,
+      unverifiedSummaryFuture,
       overpaymentFuture,
       listStoresFuture,
       listDeliveryFuture,
@@ -239,7 +244,9 @@ class DashboardController {
     dashboardDTO.pendingPicklistCount = await pendingPicklistFuture;
     dashboardDTO.pendingDeliveryCount = (await pendingDeliveryFuture) ?? 0;
     dashboardDTO.returnedDeliveryCount = await returnedDeliveryFuture;
-    dashboardDTO.unverifiedBreakdownCount = await unverifiedBreakdownFuture;
+    final unverifiedSummary = await unverifiedSummaryFuture;
+    dashboardDTO.unverifiedBreakdownCount = unverifiedSummary.count;
+    dashboardDTO.oldestUnverifiedDate = unverifiedSummary.oldest;
     dashboardDTO.overpaymentCount = (await overpaymentFuture) ?? 0;
 
     // DASHBOARD: buying and non Buying

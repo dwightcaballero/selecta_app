@@ -16,6 +16,7 @@ import 'package:selecta_ops/views/pages/dashboard/picklist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
 class PicklistListPage extends StatefulWidget {
@@ -301,11 +302,14 @@ class _PicklistListPageState extends State<PicklistListPage> {
 
   void onChangeDate() async {
     if (!isDealer) return;
-    final DateTime? dateTime = await showDatePicker(
+    final dayStatuses = await _controller.getPicklistDayStatuses();
+    if (!mounted) return;
+    final DateTime? dateTime = await showMarkedDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(3000),
+      dayStatuses: dayStatuses,
     );
 
     if (dateTime != null) {
