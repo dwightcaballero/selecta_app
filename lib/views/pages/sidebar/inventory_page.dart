@@ -7,9 +7,12 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 import 'package:selecta_ops/views/widgets/inventory/adjust_stock_sheet.dart';
+import 'package:selecta_ops/views/widgets/inventory/cycle_count_dialog.dart';
 import 'package:selecta_ops/views/widgets/inventory/floating_stocks_sheet.dart';
 import 'package:selecta_ops/views/widgets/inventory/inventory_card.dart';
+import 'package:selecta_ops/views/widgets/inventory/inventory_exceptions_sheet.dart';
 import 'package:selecta_ops/views/widgets/inventory/inventory_movements_sheet.dart';
+import 'package:selecta_ops/views/widgets/inventory/stock_audit_dialog.dart';
 import 'package:intl/intl.dart';
 
 /// Dedicated Inventory Management page unifying active [SelectaProduct] and [OtherProduct] items.
@@ -116,6 +119,18 @@ class _InventoryPageState extends State<InventoryPage> {
 
   void _showFloatingStocksSheet([String? initialProductId]) {
     FloatingStocksSheet.show(context: context, controller: _controller, initialProductId: initialProductId);
+  }
+
+  void _showStockAuditDialog([String? targetProductId]) {
+    StockAuditDialog.show(context: context, controller: _controller, targetProductId: targetProductId);
+  }
+
+  void _showCycleCountDialog(InventoryItem item) {
+    CycleCountDialog.show(context: context, item: item, controller: _controller);
+  }
+
+  void _showExceptionsSheet() {
+    InventoryExceptionsSheet.show(context: context, controller: _controller);
   }
 
   @override
@@ -514,6 +529,12 @@ class _InventoryPageState extends State<InventoryPage> {
           case 'history':
             _showOverallHistorySheet();
             break;
+          case 'audit':
+            _showStockAuditDialog();
+            break;
+          case 'exceptions':
+            _showExceptionsSheet();
+            break;
         }
       },
       itemBuilder: (context) => [
@@ -557,7 +578,27 @@ class _InventoryPageState extends State<InventoryPage> {
             children: [
               Icon(Icons.history_rounded, size: 20, color: Colors.grey),
               SizedBox(width: 12),
-              Text('Movement History', style: TextStyle(fontWeight: FontWeight.w600)),
+              Text('Movement History & Export', style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'audit',
+          child: Row(
+            children: [
+              Icon(Icons.rule_folder_rounded, size: 20, color: Colors.amber.shade900),
+              const SizedBox(width: 12),
+              const Text('Run Stock Reconciliation Audit', style: TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'exceptions',
+          child: Row(
+            children: [
+              Icon(Icons.insights_rounded, size: 20, color: Colors.deepOrange.shade800),
+              const SizedBox(width: 12),
+              const Text('Exceptions & Audit KPIs', style: TextStyle(fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -945,11 +986,14 @@ class _InventoryPageState extends State<InventoryPage> {
     bool isSelected = false,
     VoidCallback? onTap,
   }) {
-    final card = InventoryCard(
-      item: item,
-      currencyFormat: _currencyFormat,
-      onTapCard: onTap ?? () => _showAdjustStockSheet(item),
-      onTapFloating: (item.incomingQuantity > 0 || item.reservedQuantity > 0) ? () => _showFloatingStocksSheet(item.id) : null,
+    final card = GestureDetector(
+      onLongPress: () => _showCycleCountDialog(item),
+      child: InventoryCard(
+        item: item,
+        currencyFormat: _currencyFormat,
+        onTapCard: onTap ?? () => _showAdjustStockSheet(item),
+        onTapFloating: (item.incomingQuantity > 0 || item.reservedQuantity > 0) ? () => _showFloatingStocksSheet(item.id) : null,
+      ),
     );
 
     if (isSelected) {

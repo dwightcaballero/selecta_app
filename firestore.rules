@@ -163,10 +163,23 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Inventory Movement Audit Ledger (Append-only: immutable historical records)
     match /inventory_movements/{movementId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update, delete: if isDealerOrAdmin();
+      allow update, delete: if false; // Strict audit immutability: movements cannot be modified or deleted
+    }
+
+    // Inventory Discrepancies and Audit Runs
+    match /inventory_discrepancies/{discrepancyId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isDealerOrAdmin();
+    }
+
+    match /inventory_audit_runs/{runId} {
+      allow read: if isAuthenticated();
+      allow write: if isDealerOrAdmin();
     }
 
     // FCM Notification Device Tokens

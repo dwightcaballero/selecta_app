@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/admin_selecta_product.dart';
 import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/models/delivery.dart';
@@ -24,10 +27,132 @@ import 'package:intl/intl.dart';
 // ignore: constant_identifier_names
 const String INVENTORY_MOVEMENTS_COLLECTION_REF = 'inventory_movements';
 
+/// Container for computed stock mutations, payload, and audit movement.
+class StockChangeRecord {
+  final InventoryMovement movement;
+  final Map<String, dynamic> productUpdates;
+  final bool clamped;
+
+  const StockChangeRecord({
+    required this.movement,
+    required this.productUpdates,
+    this.clamped = false,
+  });
+}
+
+/// Discrepancy finding between ledger records, physical documents, and active product stock.
+class StockDiscrepancy {
+  final String id;
+  final String productId;
+  final String productName;
+  final String productSource;
+  final String discrepancyType; // 'ledger_mismatch', 'chain_broken', 'reserved_mismatch', 'clamped_negative_stock', 'short_pick', 'short_allocation', 'po_short_shipment', 'return_quarantine', 'return_write_off'
+  final int expectedValue;
+  final int actualValue;
+  final String message;
+  final DateTime detectedAt;
+  final String status; // 'open', 'resolved'
+  final String? resolutionNotes;
+  final DateTime? resolvedAt;
+  final String? resolvedBy;
+
+  const StockDiscrepancy({
+    this.id = '',
+    required this.productId,
+    required this.productName,
+    required this.productSource,
+    required this.discrepancyType,
+    required this.expectedValue,
+    required this.actualValue,
+    required this.message,
+    required this.detectedAt,
+    this.status = 'open',
+    this.resolutionNotes,
+    this.resolvedAt,
+    this.resolvedBy,
+  });
+
+  factory StockDiscrepancy.fromJson(String id, Map<String, dynamic> json) {
+    return StockDiscrepancy(
+      id: id,
+      productId: json['productId'] as String? ?? '',
+      productName: json['productName'] as String? ?? '',
+      productSource: json['productSource'] as String? ?? 'selecta',
+      discrepancyType: json['discrepancyType'] as String? ?? json['type'] as String? ?? 'unknown',
+      expectedValue: (json['expectedValue'] as num?)?.toInt() ?? (json['expected'] as num?)?.toInt() ?? 0,
+      actualValue: (json['actualValue'] as num?)?.toInt() ?? (json['actual'] as num?)?.toInt() ?? 0,
+      message: json['message'] as String? ?? json['details'] as String? ?? '',
+      detectedAt: (json['detectedAt'] as Timestamp?)?.toDate() ?? (json['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      status: json['status'] as String? ?? 'open',
+      resolutionNotes: json['resolutionNotes'] as String?,
+      resolvedAt: (json['resolvedAt'] as Timestamp?)?.toDate(),
+      resolvedBy: json['resolvedBy'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'productId': productId,
+        'productName': productName,
+        'productSource': productSource,
+        'discrepancyType': discrepancyType,
+        'expectedValue': expectedValue,
+        'actualValue': actualValue,
+        'message': message,
+        'detectedAt': Timestamp.fromDate(detectedAt),
+        'status': status,
+        if (resolutionNotes != null) 'resolutionNotes': resolutionNotes,
+        if (resolvedAt != null) 'resolvedAt': Timestamp.fromDate(resolvedAt!),
+        if (resolvedBy != null) 'resolvedBy': resolvedBy,
+      };
+}
+
+/// Audit report containing reconciliation findings across the product catalog.
+class StockAuditReport {
+  final DateTime auditedAt;
+  final int totalProductsAudited;
+  final int discrepanciesFound;
+  final List<StockDiscrepancy> discrepancies;
+
+  const StockAuditReport({
+    required this.auditedAt,
+    required this.totalProductsAudited,
+    required this.discrepanciesFound,
+    required this.discrepancies,
+  });
+}
+
+/// Exception dashboard metrics bundle summarizing critical inventory discrepancies and KPIs.
+class InventoryExceptionDashboardMetrics {
+  final int openDiscrepanciesCount;
+  final int shortPicksCount;
+  final int clampedZeroCount;
+  final int manualOverridesCount;
+  final int largeAdjustmentsCount;
+  final int quarantinedItemsCount;
+  final double inventoryAccuracyRate;
+  final double pickAccuracyRate;
+  final List<StockDiscrepancy> recentDiscrepancies;
+
+  const InventoryExceptionDashboardMetrics({
+    required this.openDiscrepanciesCount,
+    required this.shortPicksCount,
+    required this.clampedZeroCount,
+    required this.manualOverridesCount,
+    required this.largeAdjustmentsCount,
+    required this.quarantinedItemsCount,
+    required this.inventoryAccuracyRate,
+    required this.pickAccuracyRate,
+    this.recentDiscrepancies = const [],
+  });
+}
+
 /// Service that manages stock levels across both [SelectaProduct] (`selecta_products`)
 /// and [OtherProduct] (`other_products`), as well as stock movement audit logs (`inventory_movements`).
 class InventoryService {
-  final _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore? _customFirestore;
+  InventoryService({FirebaseFirestore? firestore}) : _customFirestore = firestore;
+
+  FirebaseFirestore get _firestore => _customFirestore ?? FirebaseFirestore.instance;
 
   /// Combines real-time streams of active [SelectaProduct] and active [OtherProduct]
   /// into a single unified stream of [InventoryItem]s sorted alphabetically by product name.
@@ -367,24 +492,223 @@ class InventoryService {
         : SELECTA_PRODUCTS_COLLECTION_REF;
   }
 
-  String _currentActorName() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user?.displayName?.trim().isNotEmpty == true) {
-      return user!.displayName!.trim();
+  static String? _cachedAppVersion;
+
+  static Future<String> _resolveAppVersion() async {
+    if (_cachedAppVersion != null) return _cachedAppVersion!;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _cachedAppVersion = '${info.version}+${info.buildNumber}';
+      return _cachedAppVersion!;
+    } catch (_) {
+      return '1.0.0+51';
     }
-    return user?.email ?? 'Dealer';
+  }
+
+  Future<({String uid, String role, String name})> _resolveActor() async {
+    try {
+      final authUser = FirebaseAuth.instance.currentUser;
+      final cachedUser = await KVariables.getUser();
+      final uid = authUser?.uid ?? '';
+      final role = cachedUser?.role ?? 'Dealer';
+      final name = (authUser?.displayName?.trim().isNotEmpty == true)
+          ? authUser!.displayName!.trim()
+          : ((cachedUser?.username.trim().isNotEmpty ?? false)
+              ? cachedUser!.username.trim()
+              : (authUser?.email ?? 'Dealer'));
+      return (uid: uid, role: role, name: name);
+    } catch (_) {
+      return (uid: '', role: 'Dealer', name: 'Dealer');
+    }
+  }
+
+
+  /// Central logic for computing stock mutations, enforcing non-negative floors,
+  /// tracking clamping, and creating rich [InventoryMovement] audit records.
+  StockChangeRecord _computeStockChange({
+    required DocumentReference<Map<String, dynamic>> productRef,
+    required DocumentSnapshot<Map<String, dynamic>> productSnap,
+    int stockDelta = 0,
+    int reservedDelta = 0,
+    int incomingDelta = 0,
+    required MovementType movementType,
+    ReasonCode? reasonCode,
+    ReferenceType? referenceType,
+    String? referenceId,
+    String? referenceLabel,
+    String? reason,
+    String notes = '',
+    bool allowClamping = true,
+    String? batchId,
+    String? actorUid,
+    String? actorRole,
+    String? actorName,
+    String? appVersion,
+    String? deviceId,
+    Timestamp? timestamp,
+    // Phase 8 parameters
+    String? correlationId,
+    String? idempotencyKey,
+    String? sourceLocation,
+    String? targetLocation,
+    bool isOverride = false,
+    String? overrideReason,
+    double? costPrice,
+    double? sellingPrice,
+    ReturnDisposition? disposition,
+    ShortPickReason? shortPickReason,
+  }) {
+    final data = productSnap.data() ?? {};
+    final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+    final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
+    final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
+
+    int nextStock = currentStock;
+    bool clamped = false;
+    int? requestedQuantity;
+
+    if (stockDelta != 0) {
+      final target = currentStock + stockDelta;
+      if (target < 0) {
+        if (!allowClamping) {
+          throw ArgumentError(
+            'Stock cannot be reduced below zero (requested: $target, current: $currentStock).',
+          );
+        }
+        clamped = true;
+        requestedQuantity = stockDelta.abs();
+        nextStock = 0;
+      } else {
+        nextStock = target;
+      }
+    }
+
+    final targetReserved = currentReserved + reservedDelta;
+    final nextReserved = targetReserved < 0 ? 0 : targetReserved;
+
+    final targetIncoming = currentIncoming + incomingDelta;
+    final nextIncoming = targetIncoming < 0 ? 0 : targetIncoming;
+
+    final effectiveDelta = nextStock - currentStock;
+    final now = timestamp ?? Timestamp.now();
+
+    final productUpdates = <String, dynamic>{
+      if (stockDelta != 0 || clamped) 'stockQuantity': nextStock,
+      if (reservedDelta != 0) 'reservedQuantity': nextReserved,
+      if (incomingDelta != 0) 'incomingQuantity': nextIncoming,
+      'updatedAt': now,
+    };
+
+    final movementDoc = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
+    final productName = (data['productName'] as String?) ??
+        (data['name'] as String?) ??
+        'Product';
+    final productSource = (data['productSource'] as String?) ??
+        (productRef.parent.id == OTHER_PRODUCTS_COLLECTION_REF ? 'other' : 'selecta');
+
+    final resolvedCostPrice = costPrice ?? (data['buyingPrice'] as num?)?.toDouble();
+    final resolvedSellingPrice = sellingPrice ?? (data['sellingPrice'] as num?)?.toDouble();
+
+    final movement = InventoryMovement(
+      id: movementDoc.id,
+      productId: productRef.id,
+      productName: productName,
+      productSource: productSource,
+      previousStock: currentStock,
+      newStock: nextStock,
+      delta: effectiveDelta,
+      reason: reason ?? movementType.label,
+      notes: notes,
+      createdBy: actorName ?? 'System',
+      createdAt: now,
+      movementType: movementType,
+      reasonCode: reasonCode,
+      referenceType: referenceType,
+      referenceId: referenceId,
+      referenceLabel: referenceLabel,
+      previousReserved: reservedDelta != 0 ? currentReserved : null,
+      newReserved: reservedDelta != 0 ? nextReserved : null,
+      previousIncoming: incomingDelta != 0 ? currentIncoming : null,
+      newIncoming: incomingDelta != 0 ? nextIncoming : null,
+      requestedQuantity: clamped ? requestedQuantity : null,
+      clamped: clamped,
+      actorUid: actorUid,
+      actorRole: actorRole,
+      actorName: actorName,
+      source: 'app',
+      deviceId: deviceId,
+      appVersion: appVersion,
+      batchId: batchId,
+      correlationId: correlationId,
+      idempotencyKey: idempotencyKey,
+      sourceLocation: sourceLocation,
+      targetLocation: targetLocation,
+      isOverride: isOverride,
+      overrideReason: overrideReason,
+      costPrice: resolvedCostPrice,
+      sellingPrice: resolvedSellingPrice,
+      disposition: disposition,
+      shortPickReason: shortPickReason,
+    );
+
+    return StockChangeRecord(
+      movement: movement,
+      productUpdates: productUpdates,
+      clamped: clamped,
+    );
+  }
+
+  /// Logs a discrepancy into `inventory_discrepancies` collection.
+  Future<void> _recordDiscrepancy({
+    required String productId,
+    required String productName,
+    required String productSource,
+    required String type,
+    required int expected,
+    required int actual,
+    required String details,
+    String? movementId,
+    String? batchId,
+  }) async {
+    try {
+      await _firestore.collection('inventory_discrepancies').add({
+        'productId': productId,
+        'productName': productName,
+        'productSource': productSource,
+        'discrepancyType': type,
+        'type': type,
+        'expectedValue': expected,
+        'expected': expected,
+        'actualValue': actual,
+        'actual': actual,
+        'message': details,
+        'details': details,
+        'movementId': movementId,
+        'batchId': batchId,
+        'status': 'open',
+        'detectedAt': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('Error recording inventory discrepancy: $e');
+    }
   }
 
   /// Temporarily reserves floating stock (`reservedQuantity`) when a new order is booked
   /// (`Pending Picklist`), preventing over-ordering before the picklist is completed.
+  /// Logs an [InventoryMovement] audit entry with [MovementType.reserve].
   Future<void> reserveStockForOrder({
     required String storeName,
     required List<OrderItem> items,
+    String? orderId,
   }) async {
     final validItems = items.where((i) => i.productId.isNotEmpty && i.pickedQuantity > 0).toList();
     if (validItems.isEmpty) return;
     final now = Timestamp.now();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
+    final correlationId = 'order_${orderId ?? storeName}_${now.millisecondsSinceEpoch}';
 
     final snapshots = await Future.wait(validItems.map((item) {
       final collectionName = _collectionForSource(item.productSource);
@@ -396,14 +720,49 @@ class InventoryService {
       final snap = snapshots[i];
       if (!snap.exists) continue;
       final item = validItems[i];
-      final data = snap.data() ?? {};
-      final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
-      final newReserved = currentReserved + item.pickedQuantity;
+      final currentStock = (snap.data()?['stockQuantity'] as num?)?.toInt() ?? 0;
+      final currentReserved = (snap.data()?['reservedQuantity'] as num?)?.toInt() ?? 0;
+      final availableAtMoment = currentStock - currentReserved;
 
-      batch.update(snap.reference, {
-        'reservedQuantity': newReserved < 0 ? 0 : newReserved,
-        'updatedAt': now,
-      });
+      // 8.1: Check short allocation
+      final isShort = availableAtMoment < item.pickedQuantity;
+      if (isShort) {
+        _recordDiscrepancy(
+          productId: snap.id,
+          productName: (snap.data()?['productName'] as String?) ?? item.productName,
+          productSource: item.productSource,
+          type: 'short_allocation',
+          expected: item.pickedQuantity,
+          actual: availableAtMoment > 0 ? availableAtMoment : 0,
+          details: 'Order booking short allocation for $storeName: requested ${item.pickedQuantity}, available $availableAtMoment.',
+        );
+      }
+
+      final change = _computeStockChange(
+        productRef: snap.reference,
+        productSnap: snap,
+        stockDelta: 0,
+        reservedDelta: item.pickedQuantity,
+        movementType: MovementType.reserve,
+        referenceType: ReferenceType.order,
+        referenceId: orderId,
+        referenceLabel: storeName,
+        correlationId: correlationId,
+        idempotencyKey: 'order_reserve_${orderId ?? storeName}_${snap.id}',
+        sourceLocation: 'warehouse',
+        targetLocation: 'reserved',
+        reason: 'Order Booked (Reserved Stock)',
+        notes: 'Store: $storeName (Reserved: +${item.pickedQuantity}${isShort ? " [Short Allocation: Avail $availableAtMoment]" : ""})',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
+      );
+
+      batch.update(snap.reference, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
       hasUpdates = true;
     }
 
@@ -414,10 +773,12 @@ class InventoryService {
 
   /// Adjusts floating stock (`reservedQuantity`) when an order in `Pending Picklist`
   /// has its quantities or items updated prior to picklist completion.
+  /// Logs an [InventoryMovement] audit entry.
   Future<void> adjustReservedStockForOrderUpdate({
     required String storeName,
     required List<OrderItem> oldItems,
     required List<OrderItem> newItems,
+    String? orderId,
   }) async {
     final Map<String, ({String source, int delta})> deltas = {};
 
@@ -445,6 +806,8 @@ class InventoryService {
     if (activeEntries.isEmpty) return;
 
     final now = Timestamp.now();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     bool hasChanges = false;
 
@@ -459,14 +822,31 @@ class InventoryService {
       final snap = snapshots[i];
       if (!snap.exists) continue;
       final entry = activeEntries[i];
-      final data = snap.data() ?? {};
-      final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
-      final nextReserved = (currentReserved + entry.value.delta);
+      final delta = entry.value.delta;
 
-      batch.update(snap.reference, {
-        'reservedQuantity': nextReserved < 0 ? 0 : nextReserved,
-        'updatedAt': now,
-      });
+      final change = _computeStockChange(
+        productRef: snap.reference,
+        productSnap: snap,
+        stockDelta: 0,
+        reservedDelta: delta,
+        movementType: delta > 0 ? MovementType.reserve : MovementType.release,
+        referenceType: ReferenceType.order,
+        referenceId: orderId,
+        referenceLabel: storeName,
+        reason: delta > 0
+            ? 'Order Updated (Reserved Stock Increased)'
+            : 'Order Updated (Reserved Stock Released)',
+        notes: 'Store: $storeName (${delta > 0 ? "+$delta" : "$delta"} reserved)',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
+      );
+
+      batch.update(snap.reference, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
       hasChanges = true;
     }
 
@@ -476,13 +856,17 @@ class InventoryService {
   }
 
   /// Releases floating stock (`reservedQuantity`) when a `Pending Picklist` order is deleted/cancelled.
+  /// Logs an [InventoryMovement] audit entry with [MovementType.release].
   Future<void> releaseReservedStockForOrder({
     required String storeName,
     required List<OrderItem> items,
+    String? orderId,
   }) async {
     final validItems = items.where((i) => i.productId.isNotEmpty && i.pickedQuantity > 0).toList();
     if (validItems.isEmpty) return;
     final now = Timestamp.now();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     bool hasChanges = false;
 
@@ -495,14 +879,28 @@ class InventoryService {
       final snap = snapshots[i];
       if (!snap.exists) continue;
       final item = validItems[i];
-      final data = snap.data() ?? {};
-      final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
-      final nextReserved = currentReserved - item.pickedQuantity;
 
-      batch.update(snap.reference, {
-        'reservedQuantity': nextReserved < 0 ? 0 : nextReserved,
-        'updatedAt': now,
-      });
+      final change = _computeStockChange(
+        productRef: snap.reference,
+        productSnap: snap,
+        stockDelta: 0,
+        reservedDelta: -item.pickedQuantity,
+        movementType: MovementType.release,
+        referenceType: ReferenceType.order,
+        referenceId: orderId,
+        referenceLabel: storeName,
+        reason: 'Order Cancelled (Reservation Released)',
+        notes: 'Store: $storeName (Released: -${item.pickedQuantity})',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
+      );
+
+      batch.update(snap.reference, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
       hasChanges = true;
     }
 
@@ -518,10 +916,12 @@ class InventoryService {
     required List<OrderItem> items,
     required bool wasDeducted,
     required bool wasReserved,
+    String? orderId,
   }) async {
     if (items.isEmpty) return;
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     bool hasUpdates = false;
 
@@ -531,52 +931,38 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
-
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
 
       final orderedQty = item.effectiveQuantity;
-      // Subtract any already returned quantity that was already restocked
       final diff = orderedQty - item.returnedQuantity;
       final int netDeductedQty = diff < 0 ? 0 : diff;
 
-      int nextStock = currentStock;
-      int nextReserved = currentReserved;
+      final stockDelta = (wasDeducted && netDeductedQty > 0) ? netDeductedQty : 0;
+      final reservedDelta = (wasReserved && !wasDeducted && orderedQty > 0) ? -orderedQty : 0;
 
-      if (wasDeducted && netDeductedQty > 0) {
-        nextStock = currentStock + netDeductedQty;
-        final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-        final movement = InventoryMovement(
-          id: movementRef.id,
-          productId: item.productId,
-          productName: item.productName,
-          productSource: item.productSource,
-          previousStock: currentStock,
-          newStock: nextStock,
-          delta: netDeductedQty,
-          reason: 'Admin Delete Order Reversal',
-          notes: 'Restored stock for deleted test order [$storeName]',
-          createdBy: createdBy,
-          createdAt: now,
-        );
-        batch.set(movementRef, movement.toJson());
-        hasUpdates = true;
-      }
+      if (stockDelta == 0 && reservedDelta == 0) continue;
 
-      if (wasReserved && !wasDeducted && orderedQty > 0) {
-        nextReserved = (currentReserved - orderedQty) < 0 ? 0 : (currentReserved - orderedQty);
-        hasUpdates = true;
-      }
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: stockDelta,
+        reservedDelta: reservedDelta,
+        movementType: MovementType.reversal,
+        referenceType: ReferenceType.order,
+        referenceId: orderId,
+        referenceLabel: storeName,
+        reason: 'Admin Delete Order Reversal',
+        notes: 'Restored stock for deleted order [$storeName]',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
+      );
 
-      if (nextStock != currentStock || nextReserved != currentReserved) {
-        batch.update(productRef, {
-          'stockQuantity': nextStock,
-          'reservedQuantity': nextReserved,
-          'updatedAt': now,
-        });
-        hasUpdates = true;
-      }
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
+      hasUpdates = true;
     }
 
     if (hasUpdates) {
@@ -592,82 +978,89 @@ class InventoryService {
     required List<OrderItem> reservedItems,
     required List<OrderItem> pickedItems,
     required bool wasReserved,
+    String? deliveryId,
   }) async {
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
+    final List<StockChangeRecord> clampedRecords = [];
 
-    // Map reserved quantities by key so we release exact reserved amounts even if items were edited
-    final Map<String, ({String source, String id, String name, int reservedQty, int pickedQty})> merged = {};
-
+    final Map<String, int> reservedQtyByKey = {};
     if (wasReserved) {
       for (final r in reservedItems) {
         if (r.productId.isEmpty) continue;
         final key = '${r.productSource}:${r.productId}';
-        final existing = merged[key];
-        merged[key] = (
-          source: r.productSource,
-          id: r.productId,
-          name: r.productName,
-          reservedQty: (existing?.reservedQty ?? 0) + r.pickedQuantity,
-          pickedQty: existing?.pickedQty ?? 0,
-        );
+        reservedQtyByKey[key] = (reservedQtyByKey[key] ?? 0) + r.pickedQuantity;
       }
     }
 
+    final Map<String, int> pickedQtyByKey = {};
     for (final p in pickedItems) {
       if (p.productId.isEmpty) continue;
       final key = '${p.productSource}:${p.productId}';
-      final existing = merged[key];
-      merged[key] = (
-        source: p.productSource,
-        id: p.productId,
-        name: p.productName,
-        reservedQty: existing?.reservedQty ?? 0,
-        pickedQty: (existing?.pickedQty ?? 0) + p.pickedQuantity,
-      );
+      pickedQtyByKey[key] = (pickedQtyByKey[key] ?? 0) + p.pickedQuantity;
     }
 
-    for (final item in merged.values) {
-      final collectionName = _collectionForSource(item.source);
-      final productRef = _firestore.collection(collectionName).doc(item.id);
-      final snap = await productRef.get();
+    final allKeys = {...reservedQtyByKey.keys, ...pickedQtyByKey.keys};
+    final snapshots = await Future.wait(allKeys.map((k) {
+      final parts = k.split(':');
+      final source = parts[0];
+      final productId = parts[1];
+      final collectionName = _collectionForSource(source);
+      return _firestore.collection(collectionName).doc(productId).get();
+    }));
+
+    final snapList = snapshots.toList();
+    for (int i = 0; i < allKeys.length; i++) {
+      final snap = snapList[i];
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
+      final key = allKeys.elementAt(i);
+      final reservedQty = reservedQtyByKey[key] ?? 0;
+      final pickedQty = pickedQtyByKey[key] ?? 0;
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
+      final change = _computeStockChange(
+        productRef: snap.reference,
+        productSnap: snap,
+        stockDelta: -pickedQty,
+        reservedDelta: -reservedQty,
+        movementType: MovementType.pick,
+        referenceType: ReferenceType.picklist,
+        referenceId: deliveryId,
+        referenceLabel: storeName,
+        reason: 'Picklist Completed (For Delivery)',
+        notes: 'Store: $storeName (Picked: $pickedQty)',
+        allowClamping: true,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
+      );
 
-      final nextStock = (currentStock - item.pickedQty) < 0 ? 0 : (currentStock - item.pickedQty);
-      final nextReserved = (currentReserved - item.reservedQty) < 0 ? 0 : (currentReserved - item.reservedQty);
-      final delta = nextStock - currentStock;
+      batch.update(snap.reference, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
 
-      batch.update(productRef, {
-        'stockQuantity': nextStock,
-        'reservedQuantity': nextReserved,
-        'updatedAt': now,
-      });
-
-      if (item.pickedQty > 0) {
-        final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-        final movement = InventoryMovement(
-          id: movementRef.id,
-          productId: item.id,
-          productName: item.name,
-          productSource: item.source,
-          previousStock: currentStock,
-          newStock: nextStock,
-          delta: delta != 0 ? delta : -item.pickedQty,
-          reason: 'Picklist Completed (For Delivery)',
-          notes: 'Store: $storeName (Picked: ${item.pickedQty})',
-          createdBy: createdBy,
-          createdAt: now,
-        );
-        batch.set(movementRef, movement.toJson());
+      if (change.clamped) {
+        clampedRecords.add(change);
       }
     }
 
     await batch.commit();
+
+    for (final rec in clampedRecords) {
+      _recordDiscrepancy(
+        productId: rec.movement.productId,
+        productName: rec.movement.productName,
+        productSource: rec.movement.productSource,
+        type: 'clamped_negative_stock',
+        expected: rec.movement.previousStock,
+        actual: 0,
+        details: 'Picklist stock deduction clamped to 0. Requested: ${rec.movement.requestedQuantity}, available: ${rec.movement.previousStock}. Store: $storeName',
+        movementId: rec.movement.id,
+      );
+    }
   }
 
   /// Deducts warehouse stock when dealer confirms a Van Load manifest.
@@ -675,10 +1068,13 @@ class InventoryService {
   Future<void> deductVanLoadInventory({
     required String vanLoadId,
     required List<VanLoadItem> items,
+    String? driverName,
   }) async {
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
+    final List<StockChangeRecord> clampedRecords = [];
 
     for (final item in items) {
       if (item.productId.isEmpty || item.loadedQuantity <= 0) continue;
@@ -686,35 +1082,48 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final nextStock = (currentStock - item.loadedQuantity) < 0 ? 0 : (currentStock - item.loadedQuantity);
-      final delta = nextStock - currentStock;
-
-      batch.update(productRef, {
-        'stockQuantity': nextStock,
-        'updatedAt': now,
-      });
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.productId,
-        productName: item.productName,
-        productSource: item.productSource,
-        previousStock: currentStock,
-        newStock: nextStock,
-        delta: delta != 0 ? delta : -item.loadedQuantity,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: -item.loadedQuantity,
+        movementType: MovementType.van_load,
+        referenceType: ReferenceType.van_load,
+        referenceId: vanLoadId,
+        referenceLabel: driverName != null ? 'Van Load: $driverName' : 'Van Load #$vanLoadId',
         reason: 'Van Load',
-        notes: 'Van Load #$vanLoadId',
-        createdBy: createdBy,
-        createdAt: now,
+        notes: 'Van Load #$vanLoadId${driverName != null ? ' ($driverName)' : ''}',
+        allowClamping: true,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
+
+      if (change.clamped) {
+        clampedRecords.add(change);
+      }
     }
 
     await batch.commit();
+
+    for (final rec in clampedRecords) {
+      _recordDiscrepancy(
+        productId: rec.movement.productId,
+        productName: rec.movement.productName,
+        productSource: rec.movement.productSource,
+        type: 'clamped_negative_stock',
+        expected: rec.movement.previousStock,
+        actual: 0,
+        details: 'Van load deduction clamped to 0. Requested: ${rec.movement.requestedQuantity}, available: ${rec.movement.previousStock}. Van Load: $vanLoadId',
+        movementId: rec.movement.id,
+      );
+    }
   }
 
   /// Replenishes warehouse stock when unsold items from a Van Load are returned at EOD.
@@ -722,9 +1131,11 @@ class InventoryService {
   Future<void> returnVanLoadInventory({
     required String vanLoadId,
     required List<VanLoadItem> returnedItems,
+    String? driverName,
   }) async {
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
 
     for (final item in returnedItems) {
@@ -733,32 +1144,27 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final nextStock = currentStock + item.returnedQuantity;
-      final delta = item.returnedQuantity;
-
-      batch.update(productRef, {
-        'stockQuantity': nextStock,
-        'updatedAt': now,
-      });
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.productId,
-        productName: item.productName,
-        productSource: item.productSource,
-        previousStock: currentStock,
-        newStock: nextStock,
-        delta: delta,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: item.returnedQuantity,
+        movementType: MovementType.van_return,
+        referenceType: ReferenceType.van_load,
+        referenceId: vanLoadId,
+        referenceLabel: driverName != null ? 'Van Return: $driverName' : 'Van Return #$vanLoadId',
         reason: 'Van Return',
         notes: 'Returned from Van Load #$vanLoadId',
-        createdBy: createdBy,
-        createdAt: now,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
     }
 
     await batch.commit();
@@ -781,9 +1187,12 @@ class InventoryService {
     required List<OrderItem> pickedItems,
     required bool wasReserved,
     Placement? placement,
+    Map<String, ShortPickReason>? shortPickReasons,
   }) async {
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final correlationId = 'picklist_$deliveryId';
 
     await _firestore.runTransaction((transaction) async {
       // 1. Idempotency & Concurrency check: read latest delivery document
@@ -840,44 +1249,61 @@ class InventoryService {
       }
 
       // 3. Stage product stock updates and movement logs
+      final List<StockChangeRecord> clampedRecords = [];
+      final List<({String id, String name, String source, int req, int picked, ShortPickReason reason})> shortPicks = [];
+
       for (final item in merged.values) {
         final key = '${item.source}:${item.id}';
         final snap = productSnaps[key];
         if (snap == null || !snap.exists) continue;
-        final data = snap.data() ?? {};
 
-        final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-        final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
+        final isShort = wasReserved && item.reservedQty > 0 && item.pickedQty < item.reservedQty;
+        final ShortPickReason? spr = isShort ? (shortPickReasons?[item.id] ?? ShortPickReason.out_of_stock) : null;
 
-        final nextStock = (currentStock - item.pickedQty) < 0 ? 0 : (currentStock - item.pickedQty);
-        final nextReserved = (currentReserved - item.reservedQty) < 0 ? 0 : (currentReserved - item.reservedQty);
-        final delta = nextStock - currentStock;
+        if (isShort) {
+          shortPicks.add((
+            id: item.id,
+            name: item.name,
+            source: item.source,
+            req: item.reservedQty,
+            picked: item.pickedQty,
+            reason: spr ?? ShortPickReason.out_of_stock,
+          ));
+        }
 
-        final collectionName = _collectionForSource(item.source);
-        final productRef = _firestore.collection(collectionName).doc(item.id);
+        final change = _computeStockChange(
+          productRef: snap.reference,
+          productSnap: snap,
+          stockDelta: -item.pickedQty,
+          reservedDelta: -item.reservedQty,
+          movementType: MovementType.pick,
+          referenceType: ReferenceType.picklist,
+          referenceId: deliveryId,
+          referenceLabel: updatedDelivery.storeName,
+          correlationId: correlationId,
+          idempotencyKey: 'picklist_${deliveryId}_${item.id}',
+          sourceLocation: 'warehouse',
+          targetLocation: 'van',
+          shortPickReason: spr,
+          reason: isShort ? 'Picklist Short-Pick (${spr?.label ?? "Short"})' : 'Picklist Completed (For Delivery)',
+          notes: 'Store: ${updatedDelivery.storeName} (Picked: ${item.pickedQty}${isShort ? ", Short: ${item.reservedQty - item.pickedQty} [${spr?.label}]" : ""})',
+          allowClamping: true,
+          actorUid: actor.uid,
+          actorRole: actor.role,
+          actorName: actor.name,
+          appVersion: appVersion,
+          timestamp: now,
+        );
 
-        transaction.update(productRef, {
-          'stockQuantity': nextStock,
-          'reservedQuantity': nextReserved,
-          'updatedAt': now,
-        });
+        transaction.update(snap.reference, change.productUpdates);
 
-        if (item.pickedQty > 0) {
-          final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-          final movement = InventoryMovement(
-            id: movementRef.id,
-            productId: item.id,
-            productName: item.name,
-            productSource: item.source,
-            previousStock: currentStock,
-            newStock: nextStock,
-            delta: delta != 0 ? delta : -item.pickedQty,
-            reason: 'Picklist Completed (For Delivery)',
-            notes: 'Store: ${updatedDelivery.storeName} (Picked: ${item.pickedQty})',
-            createdBy: createdBy,
-            createdAt: now,
-          );
-          transaction.set(movementRef, movement.toJson());
+        if (item.pickedQty > 0 || change.clamped || isShort) {
+          final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+          transaction.set(movRef, change.movement.toJson());
+        }
+
+        if (change.clamped) {
+          clampedRecords.add(change);
         }
       }
 
@@ -890,11 +1316,39 @@ class InventoryService {
         final placementRef = _firestore.collection(PLACEMENT_COLLECTION_REF).doc(pId);
         transaction.set(placementRef, placement.toJson(), SetOptions(merge: true));
       }
+
+      // 6. Record discrepancies if any clamped deductions occurred
+      for (final rec in clampedRecords) {
+        _recordDiscrepancy(
+          productId: rec.movement.productId,
+          productName: rec.movement.productName,
+          productSource: rec.movement.productSource,
+          type: 'clamped_negative_stock',
+          expected: rec.movement.previousStock,
+          actual: 0,
+          details: 'Picklist stock deduction clamped to 0 for delivery $deliveryId (${updatedDelivery.storeName}). Requested: ${rec.movement.requestedQuantity}, available: ${rec.movement.previousStock}.',
+          movementId: rec.movement.id,
+        );
+      }
+
+      // 7. Record short pick discrepancies & flag for cycle count
+      for (final sp in shortPicks) {
+        _recordDiscrepancy(
+          productId: sp.id,
+          productName: sp.name,
+          productSource: sp.source,
+          type: 'short_pick',
+          expected: sp.req,
+          actual: sp.picked,
+          details: 'Short-pick on picklist for ${updatedDelivery.storeName}: required ${sp.req}, picked ${sp.picked} (Reason: ${sp.reason.label}). Flagged for physical count.',
+        );
+      }
     });
   }
 
   /// Updates the stock quantity (and optionally lowStockThreshold and maxStock) of a product
   /// and records an [InventoryMovement] entry in `inventory_movements`.
+  /// Manual adjustments that would result in negative stock are rejected with an [ArgumentError].
   Future<void> updateStock({
     required InventoryItem item,
     required int newStockQuantity,
@@ -902,56 +1356,121 @@ class InventoryService {
     int? newMaxStock,
     required String reason,
     String notes = '',
+    ReasonCode? reasonCode,
+    ReferenceType? referenceType,
+    String? referenceId,
   }) async {
-    final clampedNewStock = newStockQuantity < 0 ? 0 : newStockQuantity;
+    if (newStockQuantity < 0) {
+      throw ArgumentError('Stock cannot be set to a negative value ($newStockQuantity).');
+    }
+
     final threshold = (newLowStockThreshold ?? item.lowStockThreshold) < 0
         ? 0
         : (newLowStockThreshold ?? item.lowStockThreshold);
     final maxStockVal = (newMaxStock ?? item.maxStock) < 0
         ? 0
         : (newMaxStock ?? item.maxStock);
-    final delta = clampedNewStock - item.stockQuantity;
-    final now = Timestamp.now();
 
     final collectionName = item.source == InventoryProductSource.selecta
         ? SELECTA_PRODUCTS_COLLECTION_REF
         : OTHER_PRODUCTS_COLLECTION_REF;
 
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final now = Timestamp.now();
 
-    final batch = _firestore.batch();
-    final productRef = _firestore.collection(collectionName).doc(item.id);
+    await _firestore.runTransaction((transaction) async {
+      final productRef = _firestore.collection(collectionName).doc(item.id);
+      final snap = await transaction.get(productRef);
+      if (!snap.exists) {
+        throw Exception('Product "${item.productName}" not found.');
+      }
 
-    final updatePayload = <String, dynamic>{
-      'stockQuantity': clampedNewStock,
-      'lowStockThreshold': threshold,
-      'updatedAt': now,
-    };
-    if (item.source == InventoryProductSource.selecta) {
-      updatePayload['maxStock'] = maxStockVal;
-    }
+      final data = snap.data() ?? {};
+      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final stockDelta = newStockQuantity - currentStock;
 
-    batch.update(productRef, updatePayload);
-
-    if (delta != 0) {
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.id,
-        productName: item.productName,
-        productSource: item.source.key,
-        previousStock: item.stockQuantity,
-        newStock: clampedNewStock,
-        delta: delta,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: stockDelta,
+        movementType: MovementType.adjustment,
+        reasonCode: reasonCode,
+        referenceType: referenceType ?? ReferenceType.manual,
+        referenceId: referenceId,
         reason: reason.trim().isEmpty ? 'Manual Adjustment' : reason.trim(),
         notes: notes.trim(),
-        createdBy: createdBy,
-        createdAt: now,
+        allowClamping: false,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
-    }
 
-    await batch.commit();
+      final payload = Map<String, dynamic>.from(change.productUpdates);
+      payload['lowStockThreshold'] = threshold;
+      if (item.source == InventoryProductSource.selecta) {
+        payload['maxStock'] = maxStockVal;
+      }
+
+      transaction.update(productRef, payload);
+
+      if (stockDelta != 0) {
+        final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+        transaction.set(movRef, change.movement.toJson());
+      }
+    });
+  }
+
+  /// Quick adjustment helper that applies a positive or negative delta to an item's stock.
+  /// Rejects any change that would cause stock to go below zero.
+  Future<void> adjustStockByDelta({
+    required InventoryItem item,
+    required int delta,
+    String reason = 'Manual Adjustment',
+    ReasonCode reasonCode = ReasonCode.count_correction,
+    String notes = '',
+  }) async {
+    final collectionName = item.source == InventoryProductSource.selecta
+        ? SELECTA_PRODUCTS_COLLECTION_REF
+        : OTHER_PRODUCTS_COLLECTION_REF;
+
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final now = Timestamp.now();
+
+    await _firestore.runTransaction((transaction) async {
+      final productRef = _firestore.collection(collectionName).doc(item.id);
+      final snap = await transaction.get(productRef);
+      if (!snap.exists) {
+        throw Exception('Product "${item.productName}" not found.');
+      }
+
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: delta,
+        movementType: MovementType.adjustment,
+        reasonCode: reasonCode,
+        referenceType: ReferenceType.manual,
+        reason: reason,
+        notes: notes,
+        allowClamping: false,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
+      );
+
+      transaction.update(productRef, change.productUpdates);
+
+      if (change.movement.hasPhysicalStockChange) {
+        final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+        transaction.set(movRef, change.movement.toJson());
+      }
+    });
   }
 
   /// Streams recent inventory movements ordered by newest first.
@@ -981,15 +1500,17 @@ class InventoryService {
   }
 
   /// Replenishes inventory stock for items received in a Purchase Order.
-  /// Increments `stockQuantity` and logs an [InventoryMovement] audit entry for each product.
+  /// Increments physical `stockQuantity` and logs an [InventoryMovement] audit entry for each product.
   Future<void> replenishStockForPurchaseOrder({
     required String invoiceNumber,
     required DateTime orderDate,
     required List<OrderItem> items,
+    String? poId,
   }) async {
     if (items.isEmpty) return;
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     final invoiceRef = invoiceNumber.trim().isNotEmpty
         ? invoiceNumber.trim()
@@ -1002,31 +1523,27 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final nextStock = currentStock + qty;
-
-      batch.update(productRef, {
-        'stockQuantity': nextStock,
-        'updatedAt': now,
-      });
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.productId,
-        productName: item.productName,
-        productSource: item.productSource,
-        previousStock: currentStock,
-        newStock: nextStock,
-        delta: qty,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: qty,
+        movementType: MovementType.receipt,
+        referenceType: ReferenceType.purchase_order,
+        referenceId: poId ?? invoiceRef,
+        referenceLabel: invoiceRef,
         reason: 'Purchase Order Replenishment',
-        notes: 'PO Ref: $invoiceRef',
-        createdBy: createdBy,
-        createdAt: now,
+        notes: 'PO Ref: $invoiceRef (Qty: +$qty)',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
     }
 
     await batch.commit();
@@ -1038,9 +1555,11 @@ class InventoryService {
     required DateTime orderDate,
     required List<OrderItem> oldItems,
     required List<OrderItem> newItems,
+    String? poId,
   }) async {
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     final invoiceRef = invoiceNumber.trim().isNotEmpty
         ? invoiceNumber.trim()
@@ -1071,36 +1590,28 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final nextStock = (currentStock + delta) < 0 ? 0 : (currentStock + delta);
 
-      batch.update(productRef, {
-        'stockQuantity': nextStock,
-        'updatedAt': now,
-      });
-
-      final itemSample = newItems.firstWhere(
-        (i) => '${i.productSource}:${i.productId}' == key,
-        orElse: () => oldItems.firstWhere((i) => '${i.productSource}:${i.productId}' == key),
-      );
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: productId,
-        productName: itemSample.productName,
-        productSource: source,
-        previousStock: currentStock,
-        newStock: nextStock,
-        delta: delta,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: delta,
+        movementType: MovementType.receipt,
+        referenceType: ReferenceType.purchase_order,
+        referenceId: poId ?? invoiceRef,
+        referenceLabel: invoiceRef,
         reason: 'Purchase Order Adjustment',
         notes: 'PO Ref: $invoiceRef (${delta > 0 ? "+$delta" : "$delta"})',
-        createdBy: createdBy,
-        createdAt: now,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
       hasChanges = true;
     }
 
@@ -1113,10 +1624,12 @@ class InventoryService {
   Future<void> revertReplenishedStockForPurchaseOrder({
     required String invoiceNumber,
     required List<OrderItem> items,
+    String? poId,
   }) async {
     if (items.isEmpty) return;
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
 
     for (final item in items) {
@@ -1126,45 +1639,44 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final nextStock = (currentStock - qty) < 0 ? 0 : (currentStock - qty);
-
-      batch.update(productRef, {
-        'stockQuantity': nextStock,
-        'updatedAt': now,
-      });
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.productId,
-        productName: item.productName,
-        productSource: item.productSource,
-        previousStock: currentStock,
-        newStock: nextStock,
-        delta: -qty,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: -qty,
+        movementType: MovementType.reversal,
+        referenceType: ReferenceType.purchase_order,
+        referenceId: poId ?? invoiceNumber,
+        referenceLabel: invoiceNumber,
         reason: 'Purchase Order Deleted (Stock Reverted)',
-        notes: 'PO Ref: $invoiceNumber',
-        createdBy: createdBy,
-        createdAt: now,
+        notes: 'PO Ref: $invoiceNumber (Reverted: -$qty)',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
     }
 
     await batch.commit();
   }
 
   /// Adds floating incoming stock (`incomingQuantity`) when a new Purchase Order is created
-  /// with status `'pending'`, and logs an [InventoryMovement] audit entry.
+  /// with status `'pending'`, and logs an [InventoryMovement] audit entry with [MovementType.incoming_added].
+  /// Note: On-hand physical stock delta remains 0.
   Future<void> addIncomingStockForPurchaseOrder({
     required List<OrderItem> items,
     String poNumber = '',
+    String? poId,
   }) async {
     if (items.isEmpty) return;
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     bool hasUpdates = false;
 
@@ -1175,33 +1687,29 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
-      final nextIncoming = currentIncoming + qty;
-
-      batch.update(productRef, {
-        'incomingQuantity': nextIncoming,
-        'updatedAt': now,
-      });
-      hasUpdates = true;
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.productId,
-        productName: item.productName,
-        productSource: item.productSource,
-        previousStock: currentStock,
-        newStock: currentStock,
-        delta: qty,
-        reason: 'PO Placed (Incoming Stock)',
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: 0,
+        incomingDelta: qty,
+        movementType: MovementType.incoming_added,
+        referenceType: ReferenceType.purchase_order,
+        referenceId: poId ?? poNumber,
+        referenceLabel: poNumber,
+        reason: 'PO Placed (Incoming Stock Added)',
         notes: poNumber.isNotEmpty ? 'PO Ref: $poNumber (Incoming: +$qty)' : 'Incoming: +$qty',
-        createdBy: createdBy,
-        createdAt: now,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
+      hasUpdates = true;
     }
 
     if (hasUpdates) {
@@ -1215,9 +1723,11 @@ class InventoryService {
     required List<OrderItem> oldItems,
     required List<OrderItem> newItems,
     String poNumber = '',
+    String? poId,
   }) async {
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
 
     final Map<String, int> oldQtyByKey = {
@@ -1245,40 +1755,32 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
-      final nextIncoming = (currentIncoming + delta) < 0 ? 0 : (currentIncoming + delta);
 
-      batch.update(productRef, {
-        'incomingQuantity': nextIncoming,
-        'updatedAt': now,
-      });
-      hasUpdates = true;
-
-      final itemSample = newItems.firstWhere(
-        (i) => '${i.productSource}:${i.productId}' == key,
-        orElse: () => oldItems.firstWhere((i) => '${i.productSource}:${i.productId}' == key),
-      );
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: productId,
-        productName: itemSample.productName,
-        productSource: source,
-        previousStock: currentStock,
-        newStock: currentStock,
-        delta: delta,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: 0,
+        incomingDelta: delta,
+        movementType: MovementType.incoming_adjusted,
+        referenceType: ReferenceType.purchase_order,
+        referenceId: poId ?? poNumber,
+        referenceLabel: poNumber,
         reason: 'PO Adjusted (Incoming Stock)',
         notes: poNumber.isNotEmpty
             ? 'PO Ref: $poNumber (Incoming: ${delta > 0 ? "+$delta" : "$delta"})'
             : 'Incoming: ${delta > 0 ? "+$delta" : "$delta"}',
-        createdBy: createdBy,
-        createdAt: now,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
+      hasUpdates = true;
     }
 
     if (hasUpdates) {
@@ -1290,10 +1792,12 @@ class InventoryService {
   Future<void> removeIncomingStockForPurchaseOrder({
     required List<OrderItem> items,
     String poNumber = '',
+    String? poId,
   }) async {
     if (items.isEmpty) return;
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     bool hasUpdates = false;
 
@@ -1304,33 +1808,29 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
-      final nextIncoming = currentIncoming - qty;
-
-      batch.update(productRef, {
-        'incomingQuantity': nextIncoming < 0 ? 0 : nextIncoming,
-        'updatedAt': now,
-      });
-      hasUpdates = true;
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.productId,
-        productName: item.productName,
-        productSource: item.productSource,
-        previousStock: currentStock,
-        newStock: currentStock,
-        delta: -qty,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: 0,
+        incomingDelta: -qty,
+        movementType: MovementType.incoming_removed,
+        referenceType: ReferenceType.purchase_order,
+        referenceId: poId ?? poNumber,
+        referenceLabel: poNumber,
         reason: 'PO Cancelled (Incoming Removed)',
         notes: poNumber.isNotEmpty ? 'PO Ref: $poNumber (Cancelled: -$qty)' : 'Cancelled: -$qty',
-        createdBy: createdBy,
-        createdAt: now,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
+      hasUpdates = true;
     }
 
     if (hasUpdates) {
@@ -1345,15 +1845,16 @@ class InventoryService {
     required DateTime orderDate,
     required List<OrderItem> originalPoItems,
     required List<OrderItem> confirmedItems,
+    String? poId,
   }) async {
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     final invoiceRef = invoiceNumber.trim().isNotEmpty
         ? invoiceNumber.trim()
         : 'PO-${DateFormat('yyyyMMdd').format(orderDate)}';
 
-    // Map all involved product IDs: source + id -> { incomingDelta, physicalDelta, name }
     final Map<String, ({String source, String id, String name, int incomingDeduct, int stockAdd})> merged = {};
 
     for (final item in originalPoItems) {
@@ -1382,41 +1883,55 @@ class InventoryService {
       );
     }
 
+    final correlationId = 'po_$invoiceRef';
+
     for (final entry in merged.values) {
       final collectionName = _collectionForSource(entry.source);
       final productRef = _firestore.collection(collectionName).doc(entry.id);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
-
-      final nextStock = currentStock + entry.stockAdd;
-      final nextIncoming = currentIncoming - entry.incomingDeduct;
-
-      batch.update(productRef, {
-        'stockQuantity': nextStock,
-        'incomingQuantity': nextIncoming < 0 ? 0 : nextIncoming,
-        'updatedAt': now,
-      });
-
-      if (entry.stockAdd > 0) {
-        final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-        final movement = InventoryMovement(
-          id: movementRef.id,
+      // 8.5: Track PO receiving variance (short shipment)
+      if (entry.incomingDeduct > entry.stockAdd) {
+        final shortQty = entry.incomingDeduct - entry.stockAdd;
+        _recordDiscrepancy(
           productId: entry.id,
           productName: entry.name,
           productSource: entry.source,
-          previousStock: currentStock,
-          newStock: nextStock,
-          delta: entry.stockAdd,
-          reason: 'Purchase Order Replenishment',
-          notes: 'PO Ref: $invoiceRef',
-          createdBy: createdBy,
-          createdAt: now,
+          type: 'po_short_shipment',
+          expected: entry.incomingDeduct,
+          actual: entry.stockAdd,
+          details: 'PO $invoiceRef short-shipment: expected ${entry.incomingDeduct}, received ${entry.stockAdd} (short: $shortQty).',
         );
-        batch.set(movementRef, movement.toJson());
+      }
+
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: entry.stockAdd,
+        incomingDelta: -entry.incomingDeduct,
+        movementType: MovementType.receipt,
+        referenceType: ReferenceType.purchase_order,
+        referenceId: poId ?? invoiceRef,
+        referenceLabel: invoiceRef,
+        correlationId: correlationId,
+        idempotencyKey: 'po_rcpt_${invoiceRef}_${entry.id}',
+        sourceLocation: 'supplier',
+        targetLocation: 'warehouse',
+        reason: 'Purchase Order Replenishment',
+        notes: 'PO Ref: $invoiceRef (Received: +${entry.stockAdd}, Cleared: -${entry.incomingDeduct})',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
+      );
+
+      batch.update(productRef, change.productUpdates);
+
+      if (entry.stockAdd > 0 || entry.incomingDeduct > 0) {
+        final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+        batch.set(movRef, change.movement.toJson());
       }
     }
 
@@ -1429,10 +1944,12 @@ class InventoryService {
   Future<void> addIncomingStockForReturn({
     required String storeName,
     required List<OrderItem> returnedItems,
+    String? deliveryId,
   }) async {
     if (returnedItems.isEmpty) return;
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     bool hasUpdates = false;
 
@@ -1443,33 +1960,33 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
-      final nextIncoming = currentIncoming + qty;
-
-      batch.update(productRef, {
-        'incomingQuantity': nextIncoming,
-        'updatedAt': now,
-      });
-      hasUpdates = true;
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.productId,
-        productName: item.productName,
-        productSource: item.productSource,
-        previousStock: currentStock,
-        newStock: currentStock,
-        delta: qty,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: 0,
+        incomingDelta: qty,
+        movementType: MovementType.incoming_added,
+        referenceType: ReferenceType.return_doc,
+        referenceId: deliveryId,
+        referenceLabel: storeName,
+        correlationId: 'return_${deliveryId ?? storeName}',
+        idempotencyKey: 'return_incoming_${deliveryId ?? storeName}_${item.productId}',
+        sourceLocation: 'customer',
+        targetLocation: 'incoming',
         reason: 'Return Received (Incoming to Warehouse)',
-        notes: 'Store: $storeName (Incoming: +$qty, Pending Inspection)',
-        createdBy: createdBy,
-        createdAt: now,
+        notes: 'Store: $storeName (Incoming Return: +$qty, Pending Inspection)',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
+      hasUpdates = true;
     }
 
     if (hasUpdates) {
@@ -1478,16 +1995,24 @@ class InventoryService {
   }
 
   /// Called when the dealer approves returned items in the Return page.
-  /// Moves returned stock out of `incomingQuantity` and adds it into physical `stockQuantity`.
-  /// Also logs an [InventoryMovement] audit record for each approved returned item.
+  /// Supports explicit [ReturnDisposition]:
+  /// - [ReturnDisposition.restock]: Adds returned units to physical warehouse stock.
+  /// - [ReturnDisposition.quarantine]: Retains units in quarantine for inspection (does not enter saleable stock).
+  /// - [ReturnDisposition.write_off]: Scraps/writes off damaged units (does not enter saleable stock).
+  /// Always clears units from incoming stock and logs an immutable [InventoryMovement].
   Future<void> approveReturnAndReplenishStock({
     required Delivery delivery,
+    String? deliveryId,
+    ReturnDisposition disposition = ReturnDisposition.restock,
+    String? dispositionNotes,
   }) async {
     if (delivery.items.isEmpty) return;
     final now = Timestamp.now();
-    final createdBy = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
     final batch = _firestore.batch();
     bool hasUpdates = false;
+    final correlationId = 'return_approve_${deliveryId ?? delivery.storeName}_${now.millisecondsSinceEpoch}';
 
     final isFullReturn = delivery.transactionStatus == DeliveryStatus.returned;
     final returnItems = delivery.items.where((i) {
@@ -1503,36 +2028,79 @@ class InventoryService {
       final productRef = _firestore.collection(collectionName).doc(item.productId);
       final snap = await productRef.get();
       if (!snap.exists) continue;
-      final data = snap.data() ?? {};
 
-      final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-      final currentIncoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
+      final int stockDelta;
+      final String targetLoc;
+      final String reasonText;
+      final ReasonCode? rc;
 
-      final nextStock = currentStock + retQty;
-      final nextIncoming = (currentIncoming - retQty) < 0 ? 0 : (currentIncoming - retQty);
+      switch (disposition) {
+        case ReturnDisposition.restock:
+          stockDelta = retQty;
+          targetLoc = 'warehouse';
+          reasonText = 'Return Approved & Restocked';
+          rc = null;
+          break;
+        case ReturnDisposition.quarantine:
+          stockDelta = 0;
+          targetLoc = 'quarantine';
+          reasonText = 'Return Quarantined for Inspection';
+          rc = ReasonCode.damaged;
+          _recordDiscrepancy(
+            productId: item.productId,
+            productName: item.productName,
+            productSource: item.productSource,
+            type: 'return_quarantine',
+            expected: 0,
+            actual: retQty,
+            details: 'Returned goods quarantined from ${delivery.storeName}: $retQty units. ${dispositionNotes ?? ""}',
+          );
+          break;
+        case ReturnDisposition.write_off:
+          stockDelta = 0;
+          targetLoc = 'scrap';
+          reasonText = 'Return Written-Off (Scrapped)';
+          rc = ReasonCode.damaged;
+          _recordDiscrepancy(
+            productId: item.productId,
+            productName: item.productName,
+            productSource: item.productSource,
+            type: 'return_write_off',
+            expected: 0,
+            actual: retQty,
+            details: 'Returned goods written off from ${delivery.storeName}: $retQty units scrapped. ${dispositionNotes ?? ""}',
+          );
+          break;
+      }
 
-      batch.update(productRef, {
-        'stockQuantity': nextStock,
-        'incomingQuantity': nextIncoming,
-        'updatedAt': now,
-      });
-      hasUpdates = true;
-
-      final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-      final movement = InventoryMovement(
-        id: movementRef.id,
-        productId: item.productId,
-        productName: item.productName,
-        productSource: item.productSource,
-        previousStock: currentStock,
-        newStock: nextStock,
-        delta: retQty,
-        reason: 'Return Approved by Dealer',
-        notes: 'Store: ${delivery.storeName} (Restocked: $retQty)',
-        createdBy: createdBy,
-        createdAt: now,
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: stockDelta,
+        incomingDelta: -retQty,
+        movementType: MovementType.customer_return,
+        reasonCode: rc,
+        referenceType: ReferenceType.return_doc,
+        referenceId: deliveryId,
+        referenceLabel: delivery.storeName,
+        correlationId: correlationId,
+        idempotencyKey: 'return_appr_${deliveryId ?? delivery.storeName}_${item.productId}_${disposition.key}',
+        sourceLocation: 'incoming',
+        targetLocation: targetLoc,
+        disposition: disposition,
+        reason: reasonText,
+        notes: 'Store: ${delivery.storeName} (${disposition.label}: $retQty)${dispositionNotes != null && dispositionNotes.isNotEmpty ? " Note: $dispositionNotes" : ""}',
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
       );
-      batch.set(movementRef, movement.toJson());
+
+      batch.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      batch.set(movRef, change.movement.toJson());
+      hasUpdates = true;
     }
 
     if (hasUpdates) {
@@ -1757,7 +2325,9 @@ class InventoryService {
     }
 
     final now = Timestamp.now();
-    final actorName = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final actorName = actor.name;
 
     await _firestore.runTransaction((transaction) async {
       // 1. Check breakdown doc to prevent double-verification unless in reconciliation mode
@@ -1778,56 +2348,50 @@ class InventoryService {
         productSnaps['${delta.productSource}:${delta.productId}'] = pSnap;
       }
 
-      // 3. Update products
+      // 3. Update products and stage movement logs
+      final List<StockChangeRecord> clampedRecords = [];
       for (final delta in plan.productDeltas.values) {
         final key = '${delta.productSource}:${delta.productId}';
         final pSnap = productSnaps[key];
         if (pSnap == null || !pSnap.exists) continue;
 
-        final data = pSnap.data() ?? {};
-        final currentStock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
-        final currentReserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
-
-        final nextStock = (currentStock + delta.stockDelta).clamp(0, 99999999);
-        final nextReserved = (currentReserved + delta.reservedDelta).clamp(0, 99999999);
-
         final collectionName = _collectionForSource(delta.productSource);
         final pRef = _firestore.collection(collectionName).doc(delta.productId);
 
-        transaction.update(pRef, {
-          'stockQuantity': nextStock,
-          'reservedQuantity': nextReserved,
-          'updatedAt': now,
-        });
-      }
-
-      // 4. Record stock movement logs
-      for (final mov in plan.movements) {
-        final key = '${mov.productSource}:${mov.productId}';
-        final pSnap = productSnaps[key];
-        final currentStock = ((pSnap?.data()?['stockQuantity'] as num?)?.toInt() ?? 0);
-        final nextStock = (currentStock + mov.delta).clamp(0, 99999999);
-
-        final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-        final movement = InventoryMovement(
-          id: movementRef.id,
-          productId: mov.productId,
-          productName: mov.productName,
-          productSource: mov.productSource,
-          previousStock: currentStock,
-          newStock: nextStock,
-          delta: mov.delta,
+        final change = _computeStockChange(
+          productRef: pRef,
+          productSnap: pSnap,
+          stockDelta: delta.stockDelta,
+          reservedDelta: delta.reservedDelta,
+          movementType: MovementType.settlement,
+          referenceType: ReferenceType.delivery,
+          referenceId: breakdownId.isNotEmpty ? breakdownId : null,
+          referenceLabel: 'Daily Settlement (${DateFormat('yyyy-MM-dd').format(date)})',
           reason: allowReconciliation
               ? 'Delivery Settled (Reconciled Past Breakdown)'
-              : mov.reason,
-          notes: mov.notes,
-          createdBy: actorName,
-          createdAt: now,
+              : 'Daily Delivery Settlement',
+          notes: 'Settled deliveries for ${DateFormat('yyyy-MM-dd').format(date)}',
+          allowClamping: true,
+          actorUid: actor.uid,
+          actorRole: actor.role,
+          actorName: actor.name,
+          appVersion: appVersion,
+          timestamp: now,
         );
-        transaction.set(movementRef, movement.toJson());
+
+        transaction.update(pRef, change.productUpdates);
+
+        if (delta.stockDelta != 0 || delta.reservedDelta != 0 || change.clamped) {
+          final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+          transaction.set(movRef, change.movement.toJson());
+        }
+
+        if (change.clamped) {
+          clampedRecords.add(change);
+        }
       }
 
-      // 5. Mark all affected deliveries as settled
+      // 4. Mark all affected deliveries as settled
       for (final deliveryId in plan.settledDeliveryIds) {
         final dRef = _firestore.collection(DELIVERY_COLLECTION_REF).doc(deliveryId);
         transaction.update(dRef, {
@@ -1841,7 +2405,7 @@ class InventoryService {
         });
       }
 
-      // 6. Update breakdown doc
+      // 5. Update breakdown doc
       if (breakdownId.isNotEmpty) {
         final bRef = _firestore.collection(BREAKDOWN_COLLECTION_REF).doc(breakdownId);
         transaction.update(bRef, {
@@ -1852,6 +2416,20 @@ class InventoryService {
           'lastupdatedDate': now,
           'lastUpdatedBy': actorName,
         });
+      }
+
+      // 6. Record discrepancies if clamped
+      for (final rec in clampedRecords) {
+        _recordDiscrepancy(
+          productId: rec.movement.productId,
+          productName: rec.movement.productName,
+          productSource: rec.movement.productSource,
+          type: 'clamped_negative_stock',
+          expected: rec.movement.previousStock,
+          actual: 0,
+          details: 'Settlement stock deduction clamped to 0 for date ${DateFormat('yyyy-MM-dd').format(date)}. Requested: ${rec.movement.requestedQuantity}, available: ${rec.movement.previousStock}.',
+          movementId: rec.movement.id,
+        );
       }
     });
   }
@@ -1871,7 +2449,9 @@ class InventoryService {
 
     final plan = computeSettlement([(id: deliveryId, delivery: delivery)]);
     final now = Timestamp.now();
-    final actorName = _currentActorName();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final actorName = actor.name;
 
     if (plan.settledDeliveryIds.isEmpty) {
       // If not delivered or returned (e.g., cancelled or rescheduled), release any held reserved stock
@@ -1879,6 +2459,7 @@ class InventoryService {
         await releaseReservedStockForOrder(
           storeName: delivery.storeName,
           items: delivery.items,
+          orderId: deliveryId,
         );
       }
       await dRef.update({
@@ -1902,54 +2483,48 @@ class InventoryService {
         productSnaps['${delta.productSource}:${delta.productId}'] = pSnap;
       }
 
-      // 2. Update products
+      // 2. Update products and movement logs
+      final List<StockChangeRecord> clampedRecords = [];
       for (final delta in plan.productDeltas.values) {
         final key = '${delta.productSource}:${delta.productId}';
         final pSnap = productSnaps[key];
         if (pSnap == null || !pSnap.exists) continue;
 
-        final pData = pSnap.data() ?? {};
-        final currentStock = (pData['stockQuantity'] as num?)?.toInt() ?? 0;
-        final currentReserved = (pData['reservedQuantity'] as num?)?.toInt() ?? 0;
-
-        final nextStock = (currentStock + delta.stockDelta).clamp(0, 99999999);
-        final nextReserved = (currentReserved + delta.reservedDelta).clamp(0, 99999999);
-
         final collectionName = _collectionForSource(delta.productSource);
         final pRef = _firestore.collection(collectionName).doc(delta.productId);
 
-        transaction.update(pRef, {
-          'stockQuantity': nextStock,
-          'reservedQuantity': nextReserved,
-          'updatedAt': now,
-        });
-      }
-
-      // 3. Record movement logs
-      for (final mov in plan.movements) {
-        final key = '${mov.productSource}:${mov.productId}';
-        final pSnap = productSnaps[key];
-        final currentStock = ((pSnap?.data()?['stockQuantity'] as num?)?.toInt() ?? 0);
-        final nextStock = (currentStock + mov.delta).clamp(0, 99999999);
-
-        final movementRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc();
-        final movement = InventoryMovement(
-          id: movementRef.id,
-          productId: mov.productId,
-          productName: mov.productName,
-          productSource: mov.productSource,
-          previousStock: currentStock,
-          newStock: nextStock,
-          delta: mov.delta,
+        final change = _computeStockChange(
+          productRef: pRef,
+          productSnap: pSnap,
+          stockDelta: delta.stockDelta,
+          reservedDelta: delta.reservedDelta,
+          movementType: MovementType.settlement,
+          referenceType: ReferenceType.delivery,
+          referenceId: deliveryId,
+          referenceLabel: delivery.storeName,
           reason: 'Manual Delivery Settlement (Reconciliation)',
           notes: 'Store: ${delivery.storeName}',
-          createdBy: actorName,
-          createdAt: now,
+          allowClamping: true,
+          actorUid: actor.uid,
+          actorRole: actor.role,
+          actorName: actor.name,
+          appVersion: appVersion,
+          timestamp: now,
         );
-        transaction.set(movementRef, movement.toJson());
+
+        transaction.update(pRef, change.productUpdates);
+
+        if (delta.stockDelta != 0 || delta.reservedDelta != 0 || change.clamped) {
+          final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+          transaction.set(movRef, change.movement.toJson());
+        }
+
+        if (change.clamped) {
+          clampedRecords.add(change);
+        }
       }
 
-      // 4. Mark delivery settled
+      // 3. Mark delivery settled
       transaction.update(dRef, {
         DeliveryModelString.isInventorySettled: true,
         DeliveryModelString.isInventoryDeducted: true,
@@ -1959,6 +2534,20 @@ class InventoryService {
         DeliveryModelString.lastupdatedDate: now,
         DeliveryModelString.lastUpdatedBy: actorName,
       });
+
+      // 4. Record discrepancies if clamped
+      for (final rec in clampedRecords) {
+        _recordDiscrepancy(
+          productId: rec.movement.productId,
+          productName: rec.movement.productName,
+          productSource: rec.movement.productSource,
+          type: 'clamped_negative_stock',
+          expected: rec.movement.previousStock,
+          actual: 0,
+          details: 'Delivery settlement stock deduction clamped to 0 for delivery $deliveryId (${delivery.storeName}). Requested: ${rec.movement.requestedQuantity}, available: ${rec.movement.previousStock}.',
+          movementId: rec.movement.id,
+        );
+      }
     });
   }
 
@@ -1966,6 +2555,325 @@ class InventoryService {
   /// a verified returned delivery.
   Future<void> reReserveForRescheduledOrder(List<OrderItem> items) async {
     await reserveStockForOrder(storeName: 'Rescheduled Order', items: items);
+  }
+
+  /// Retrieves paginated inventory movements with optional multi-attribute filters.
+  Future<({List<InventoryMovement> movements, DocumentSnapshot? lastDoc, bool hasMore})> getMovementsPaginated({
+    String? productId,
+    MovementType? movementType,
+    String? searchQuery,
+    DateTime? startDate,
+    DateTime? endDate,
+    ReferenceType? referenceType,
+    int limit = 40,
+    DocumentSnapshot? startAfter,
+  }) async {
+    Query<Map<String, dynamic>> query = _firestore
+        .collection(INVENTORY_MOVEMENTS_COLLECTION_REF)
+        .orderBy('createdAt', descending: true);
+
+    if (productId != null && productId.isNotEmpty) {
+      query = query.where('productId', isEqualTo: productId);
+    }
+    if (movementType != null) {
+      query = query.where('movementType', isEqualTo: movementType.key);
+    }
+    if (referenceType != null) {
+      query = query.where('referenceType', isEqualTo: referenceType.key);
+    }
+    if (startDate != null) {
+      query = query.where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate));
+    }
+    if (endDate != null) {
+      final endOfDay = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
+      query = query.where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay));
+    }
+
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
+    }
+
+    query = query.limit(limit + 1);
+
+    final snapshot = await query.get();
+    final docs = snapshot.docs;
+    final hasMore = docs.length > limit;
+    final returnDocs = hasMore ? docs.sublist(0, limit) : docs;
+
+    List<InventoryMovement> results = returnDocs.map(InventoryMovement.fromSnapshot).toList();
+
+    if (searchQuery != null && searchQuery.trim().isNotEmpty) {
+      final q = searchQuery.trim().toLowerCase();
+      results = results.where((m) {
+        return m.displayActor.toLowerCase().contains(q) ||
+            m.notes.toLowerCase().contains(q) ||
+            (m.referenceLabel?.toLowerCase().contains(q) ?? false) ||
+            m.productName.toLowerCase().contains(q) ||
+            m.reason.toLowerCase().contains(q);
+      }).toList();
+    }
+
+    return (
+      movements: results,
+      lastDoc: returnDocs.isNotEmpty ? returnDocs.last : null,
+      hasMore: hasMore,
+    );
+  }
+
+  /// Generates CSV formatted text for a list of [InventoryMovement] audit records.
+  static String exportMovementsToCsv(List<InventoryMovement> movements) {
+    final buffer = StringBuffer();
+    buffer.writeln(
+      'Movement ID,Date Time,Product ID,Product Name,Source,Movement Type,Reason Code,Reference Type,Reference ID,Reference Label,Previous Stock,New Stock,Delta,Previous Reserved,New Reserved,Previous Incoming,New Incoming,Requested Qty,Clamped,Actor Name,Actor Role,Device ID,App Version,Correlation ID,Idempotency Key,Source Location,Target Location,Override,Override Reason,Unit Cost,Selling Price,Disposition,Short Pick Reason,Notes',
+    );
+
+    for (final m in movements) {
+      final dt = DateFormat('yyyy-MM-dd HH:mm:ss').format(m.createdAt.toDate());
+      final row = [
+        _escapeCsv(m.id),
+        _escapeCsv(dt),
+        _escapeCsv(m.productId),
+        _escapeCsv(m.productName),
+        _escapeCsv(m.productSource),
+        _escapeCsv(m.movementType.label),
+        _escapeCsv(m.reasonCode?.label ?? ''),
+        _escapeCsv(m.referenceType?.label ?? ''),
+        _escapeCsv(m.referenceId ?? ''),
+        _escapeCsv(m.referenceLabel ?? ''),
+        m.previousStock,
+        m.newStock,
+        m.delta,
+        m.previousReserved ?? '',
+        m.newReserved ?? '',
+        m.previousIncoming ?? '',
+        m.newIncoming ?? '',
+        m.requestedQuantity ?? '',
+        m.clamped ? 'YES' : 'NO',
+        _escapeCsv(m.displayActor),
+        _escapeCsv(m.actorRole ?? ''),
+        _escapeCsv(m.deviceId ?? ''),
+        _escapeCsv(m.appVersion ?? ''),
+        _escapeCsv(m.correlationId ?? ''),
+        _escapeCsv(m.idempotencyKey ?? ''),
+        _escapeCsv(m.sourceLocation ?? ''),
+        _escapeCsv(m.targetLocation ?? ''),
+        m.isOverride ? 'YES' : 'NO',
+        _escapeCsv(m.overrideReason ?? ''),
+        m.costPrice != null ? m.costPrice!.toStringAsFixed(2) : '',
+        m.sellingPrice != null ? m.sellingPrice!.toStringAsFixed(2) : '',
+        _escapeCsv(m.disposition?.label ?? ''),
+        _escapeCsv(m.shortPickReason?.label ?? ''),
+        _escapeCsv(m.notes),
+      ];
+      buffer.writeln(row.join(','));
+    }
+    return buffer.toString();
+  }
+
+  static String _escapeCsv(String value) {
+    if (value.contains(',') || value.contains('"') || value.contains('\n')) {
+      return '"${value.replaceAll('"', '""')}"';
+    }
+    return value;
+  }
+
+  /// Performs an in-app stock audit and reconciliation across all products or a single product.
+  Future<StockAuditReport> runStockAudit({String? targetProductId}) async {
+    final now = DateTime.now();
+    final List<StockDiscrepancy> findings = [];
+
+    // 1. Gather products to audit
+    List<InventoryItem> items = [];
+    if (targetProductId != null && targetProductId.isNotEmpty) {
+      final selectaDoc = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(targetProductId).get();
+      if (selectaDoc.exists) {
+        items.add(InventoryItem.fromSelectaProduct(SelectaProduct.fromSnapshot(selectaDoc)));
+      } else {
+        final otherDoc = await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).doc(targetProductId).get();
+        if (otherDoc.exists) {
+          items.add(InventoryItem.fromOtherProduct(otherDoc.id, OtherProduct.fromJson(otherDoc.data() ?? {})));
+        }
+      }
+    } else {
+      final selectaSnaps = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
+      for (final doc in selectaSnaps.docs) {
+        items.add(InventoryItem.fromSelectaProduct(SelectaProduct.fromSnapshot(doc)));
+      }
+      final otherSnaps = await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).get();
+      for (final doc in otherSnaps.docs) {
+        items.add(InventoryItem.fromOtherProduct(doc.id, OtherProduct.fromJson(doc.data())));
+      }
+    }
+
+    // 2. Fetch pending picklist deliveries to compute actual expected reservedQuantity
+    final pendingDeliveriesSnap = await _firestore
+        .collection(DELIVERY_COLLECTION_REF)
+        .where('transactionStatus', isEqualTo: DeliveryStatus.pendingPicklist)
+        .where('isInventoryDeducted', isEqualTo: false)
+        .get();
+
+    final Map<String, int> actualReservedPerProduct = {};
+    for (final doc in pendingDeliveriesSnap.docs) {
+      final d = Delivery.fromJson(doc.data());
+      for (final item in d.items) {
+        if (item.productId.isEmpty) continue;
+        final key = item.productId;
+        actualReservedPerProduct[key] = (actualReservedPerProduct[key] ?? 0) + item.pickedQuantity;
+      }
+    }
+
+    // 3. Audit each product
+    for (final item in items) {
+      final expectedReserved = actualReservedPerProduct[item.id] ?? 0;
+      if (item.reservedQuantity != expectedReserved) {
+        findings.add(StockDiscrepancy(
+          productId: item.id,
+          productName: item.productName,
+          productSource: item.productSource,
+          discrepancyType: 'reserved_mismatch',
+          expectedValue: expectedReserved,
+          actualValue: item.reservedQuantity,
+          message: 'Reserved stock on product doc (${item.reservedQuantity}) does not match open picklist sum ($expectedReserved).',
+          detectedAt: now,
+        ));
+      }
+
+      final movementsSnap = await _firestore
+          .collection(INVENTORY_MOVEMENTS_COLLECTION_REF)
+          .where('productId', isEqualTo: item.id)
+          .orderBy('createdAt', descending: true)
+          .limit(20)
+          .get();
+
+      final movements = movementsSnap.docs.map(InventoryMovement.fromSnapshot).toList();
+      if (movements.isNotEmpty) {
+        final latest = movements.first;
+        if (latest.newStock != item.stockQuantity) {
+          findings.add(StockDiscrepancy(
+            productId: item.id,
+            productName: item.productName,
+            productSource: item.productSource,
+            discrepancyType: 'ledger_mismatch',
+            expectedValue: latest.newStock,
+            actualValue: item.stockQuantity,
+            message: 'Direct product document modification detected: Current stock (${item.stockQuantity}) differs from latest recorded movement (${latest.newStock}).',
+            detectedAt: now,
+          ));
+        }
+
+        for (int i = 0; i < movements.length - 1; i++) {
+          final newer = movements[i];
+          final older = movements[i + 1];
+          if (newer.previousStock != older.newStock) {
+            findings.add(StockDiscrepancy(
+              productId: item.id,
+              productName: item.productName,
+              productSource: item.productSource,
+              discrepancyType: 'chain_broken',
+              expectedValue: older.newStock,
+              actualValue: newer.previousStock,
+              message: 'Movement ledger sequence break: Movement at ${newer.createdAt.toDate()} has previous stock ${newer.previousStock}, but prior movement ended with ${older.newStock}.',
+              detectedAt: now,
+            ));
+            break;
+          }
+        }
+      }
+    }
+
+    // 4. Save findings to inventory_discrepancies collection
+    if (findings.isNotEmpty) {
+      final batch = _firestore.batch();
+      for (final f in findings) {
+        final docRef = _firestore.collection('inventory_discrepancies').doc();
+        batch.set(docRef, f.toJson());
+      }
+      final auditRef = _firestore.collection('inventory_audit_runs').doc();
+      batch.set(auditRef, {
+        'auditedAt': Timestamp.fromDate(now),
+        'totalProductsAudited': items.length,
+        'discrepanciesFound': findings.length,
+      });
+      await batch.commit();
+    }
+
+    return StockAuditReport(
+      auditedAt: now,
+      totalProductsAudited: items.length,
+      discrepanciesFound: findings.length,
+      discrepancies: findings,
+    );
+  }
+
+  /// Records a physical cycle count entry for a product.
+  /// Immediately adjusts physical stock and logs a [MovementType.count_correction]
+  /// with [ReasonCode.count_correction].
+  Future<InventoryMovement> submitCycleCount({
+    required InventoryItem item,
+    required int countedQuantity,
+    String notes = '',
+  }) async {
+    final variance = countedQuantity - item.stockQuantity;
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final now = Timestamp.now();
+
+    final collectionName = item.source == InventoryProductSource.selecta
+        ? SELECTA_PRODUCTS_COLLECTION_REF
+        : OTHER_PRODUCTS_COLLECTION_REF;
+
+    InventoryMovement? resultingMovement;
+
+    await _firestore.runTransaction((transaction) async {
+      final productRef = _firestore.collection(collectionName).doc(item.id);
+      final snap = await transaction.get(productRef);
+      if (!snap.exists) {
+        throw Exception('Product "${item.productName}" not found.');
+      }
+
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: variance,
+        movementType: MovementType.count_correction,
+        reasonCode: ReasonCode.count_correction,
+        referenceType: ReferenceType.manual,
+        reason: 'Physical Cycle Count Correction',
+        notes: notes.isNotEmpty
+            ? notes
+            : 'Cycle count adjusted by ${variance >= 0 ? "+$variance" : "$variance"} (Counted: $countedQuantity)',
+        allowClamping: false,
+        actorUid: actor.uid,
+        actorRole: actor.role,
+        actorName: actor.name,
+        appVersion: appVersion,
+        timestamp: now,
+      );
+
+      transaction.update(productRef, change.productUpdates);
+      final movRef = _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(change.movement.id);
+      transaction.set(movRef, change.movement.toJson());
+      resultingMovement = change.movement;
+    });
+
+    try {
+      await _firestore.collection('cycle_counts').add({
+        'productId': item.id,
+        'productName': item.productName,
+        'productSource': item.productSource,
+        'systemStock': item.stockQuantity,
+        'countedStock': countedQuantity,
+        'variance': variance,
+        'notes': notes,
+        'countedBy': actor.name,
+        'countedByUid': actor.uid,
+        'countedAt': now,
+      });
+    } catch (e) {
+      debugPrint('Error recording cycle count: $e');
+    }
+
+    return resultingMovement!;
   }
 
   /// Realtime stream providing unified floating stock details across active Purchase Orders
@@ -2180,6 +3088,102 @@ class InventoryService {
     );
 
     return controller.stream;
+  }
+
+  /// Checks if an inventory movement with the given [idempotencyKey] has already been recorded.
+  Future<bool> hasMovementWithIdempotencyKey(String idempotencyKey) async {
+    final snap = await _firestore
+        .collection(INVENTORY_MOVEMENTS_COLLECTION_REF)
+        .where('idempotencyKey', isEqualTo: idempotencyKey)
+        .limit(1)
+        .get();
+    return snap.docs.isNotEmpty;
+  }
+
+  /// Fetches exception metrics, KPI summary, and open discrepancies for the Dealer Exception Dashboard.
+  Future<InventoryExceptionDashboardMetrics> fetchExceptionDashboardMetrics() async {
+    // 1. Fetch open discrepancies
+    final discSnap = await _firestore
+        .collection('inventory_discrepancies')
+        .where('status', isEqualTo: 'open')
+        .get();
+
+    final discrepancies = discSnap.docs.map((d) {
+      return StockDiscrepancy.fromJson(d.id, d.data());
+    }).toList();
+
+    int shortPicks = 0;
+    int clampedZero = 0;
+    int quarantined = 0;
+
+    for (final d in discrepancies) {
+      if (d.discrepancyType == 'short_pick') shortPicks++;
+      if (d.discrepancyType == 'clamped_negative_stock') clampedZero++;
+      if (d.discrepancyType == 'return_quarantine') quarantined++;
+    }
+
+    // 2. Fetch movements in last 30 days to compute manual overrides and large adjustments
+    final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+    final movSnap = await _firestore
+        .collection(INVENTORY_MOVEMENTS_COLLECTION_REF)
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(thirtyDaysAgo))
+        .get();
+
+    int manualOverrides = 0;
+    int largeAdjustments = 0;
+    int pickCount = 0;
+
+    for (final doc in movSnap.docs) {
+      final m = InventoryMovement.fromSnapshot(doc);
+      if (m.isOverride) manualOverrides++;
+      if (m.movementType == MovementType.adjustment && m.delta.abs() >= 10) {
+        largeAdjustments++;
+      }
+      if (m.movementType == MovementType.pick) {
+        pickCount++;
+      }
+    }
+
+    // 3. Accuracy calculations
+    final totalDiscrepancies = discrepancies.length;
+    final selectaCount = (await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).count().get()).count ?? 1;
+    final otherCount = (await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).count().get()).count ?? 0;
+    final totalProducts = (selectaCount + otherCount) > 0 ? (selectaCount + otherCount) : 1;
+    final affectedProducts = discrepancies.map((d) => d.productId).toSet().length;
+    final inventoryAccuracy = ((totalProducts - affectedProducts) / totalProducts * 100).clamp(0.0, 100.0);
+
+    final totalPicksAttempted = pickCount + shortPicks;
+    final pickAccuracy = totalPicksAttempted > 0
+        ? ((pickCount / totalPicksAttempted) * 100).clamp(0.0, 100.0)
+        : 100.0;
+
+    discrepancies.sort((a, b) => b.detectedAt.compareTo(a.detectedAt));
+
+    return InventoryExceptionDashboardMetrics(
+      openDiscrepanciesCount: totalDiscrepancies,
+      shortPicksCount: shortPicks,
+      clampedZeroCount: clampedZero,
+      manualOverridesCount: manualOverrides,
+      largeAdjustmentsCount: largeAdjustments,
+      quarantinedItemsCount: quarantined,
+      inventoryAccuracyRate: inventoryAccuracy,
+      pickAccuracyRate: pickAccuracy,
+      recentDiscrepancies: discrepancies.take(50).toList(),
+    );
+  }
+
+  /// Resolves an open stock discrepancy with dealer resolution notes.
+  Future<void> resolveDiscrepancy({
+    required String discrepancyId,
+    required String resolutionNotes,
+  }) async {
+    final actor = await _resolveActor();
+    await _firestore.collection('inventory_discrepancies').doc(discrepancyId).update({
+      'status': 'resolved',
+      'resolutionNotes': resolutionNotes,
+      'resolvedBy': actor.name,
+      'resolvedAt': FieldValue.serverTimestamp(),
+    });
   }
 }
 

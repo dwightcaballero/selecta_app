@@ -4,6 +4,7 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/inventory_service.dart';
@@ -112,12 +113,14 @@ class ReturnController {
   // Detail Operations (ReturnPage)
   // ==========================================
 
-  /// Dealer approves returned delivery order:
-  /// Verifies physical arrival at warehouse, moves returned items from Incoming Stock into Current Stock,
+  /// Dealer approves returned delivery order with explicit [ReturnDisposition]:
+  /// Verifies physical arrival at warehouse, executes chosen disposition (restock, quarantine, write-off),
   /// and updates delivery record with approval metadata.
   Future<Delivery> approveReturnedStock({
     required String deliveryId,
     required Delivery delivery,
+    ReturnDisposition disposition = ReturnDisposition.restock,
+    String? dispositionNotes,
   }) async {
     final isDealer = await checkIsDealer();
     if (!isDealer) {
@@ -131,8 +134,13 @@ class ReturnController {
         authService.value.currentUser?.email ??
         'Dealer';
 
-    // 1. Move returned units from incomingQuantity to physical stockQuantity
-    await _inventoryService.approveReturnAndReplenishStock(delivery: delivery);
+    // 1. Move returned units according to disposition
+    await _inventoryService.approveReturnAndReplenishStock(
+      delivery: delivery,
+      deliveryId: deliveryId,
+      disposition: disposition,
+      dispositionNotes: dispositionNotes,
+    );
 
     // 2. Mark delivery document as dealer approved
     final updatedDelivery = delivery.copyWith(
@@ -148,7 +156,7 @@ class ReturnController {
     await _deliveryService.updateDelivery(deliveryId, updatedDelivery);
 
     await Helperfunctions.logUpdate(
-      '[RETURN APPROVED] ${delivery.storeName}',
+      '[RETURN APPROVED - ${disposition.label}] ${delivery.storeName}',
       delivery.toJson(),
       updatedDelivery.toJson(),
       page: AppPages.returnPage,

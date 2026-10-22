@@ -1,0 +1,261 @@
+INVENTORY STOCK AUDIT TRAIL - IMPLEMENTATION PLAN
+=================================================
+
+GOAL
+----
+Make "Stock Movement History" a complete, trustworthy ledger so every change to
+on-hand, reserved and incoming stock can be traced (who, what, why, which
+document) and discrepancies against physical warehouse counts can be detected
+and explained.
+
+CURRENT STATE (summary)
+-----------------------
+- Collection: inventory_movements (lib/services/inventory_service.dart)
+- Model: InventoryMovement (lib/models/inventory_movement.dart)
+  Fields: productId, productName, productSource, previousStock, newStock,
+  delta, reason (free text), notes (free text), createdBy (name), createdAt.
+- UI: lib/views/widgets/inventory/inventory_movements_sheet.dart
+  One line per movement, reason/notes truncated, no filters.
+- Gaps:
+  1. Reserve / release of reservedQuantity is not logged.
+  2. Incoming (PO placed/adjusted/cancelled) logged like real stock movement.
+  3. Negative values silently clamped to 0 (hides missing movements).
+  4. Source document IDs only in free-text notes.
+  5. createdBy is only a name (no uid/role/device/app version/system flag).
+  6. Not all writes are in a single transaction; direct doc edits bypass log.
+  7. Manual adjustments allow vague/empty reasons.
+  8. UI lacks detail, filters, running balance, export.
+
+------------------------------------------------------------------------------
+PHASE 1 - Richer, backward-compatible movement model
+------------------------------------------------------------------------------
+Files: lib/models/inventory_movement.dart
+
+1.1 Add enums
+    - MovementType: receipt, pick, van_load, van_return, customer_return,
+      adjustment, count_correction, damage_expiry, reserve, release,
+      incoming_added, incoming_adjusted, incoming_removed, reversal, settlement
+    - ReasonCode (for manual adjustments): count_correction, damaged, expired,
+      lost, found, supplier_shortage, data_entry_error, other
+    - ReferenceType: order, delivery, picklist, purchase_order, van_load,
+      return, manual
+1.2 Add fields to InventoryMovement (all optional, with defaults so old
+    documents still parse):
+    - movementType, reasonCode
+    - referenceType, referenceId, referenceLabel (e.g. PO number, store name)
+    - previousReserved / newReserved
+    - previousIncoming / newIncoming
+    - requestedQuantity + clamped (bool) when a value was floored at 0
+    - actorUid, actorRole, actorName (keep createdBy for compatibility)
+    - source: 'app' | 'system' | 'migration'
+    - deviceId, appVersion
+    - batchId / correlationId (groups lines of one picklist/PO/delivery)
+1.3 Update fromJson/toJson; legacy docs map movementType from reason text.
+1.4 Unit tests: parse legacy doc, parse new doc, round-trip.
+
+------------------------------------------------------------------------------
+PHASE 2 - Central, transactional recording helper
+------------------------------------------------------------------------------
+Files: lib/services/inventory_service.dart
+
+2.1 Add a single private helper, e.g.
+    _applyStockChange(Transaction/WriteBatch, productRef, {stockDelta,
+    reservedDelta, incomingDelta, movementType, reasonCode, reference...}).
+    It reads current values, computes next values, writes product update and
+    movement doc together, and returns the movement.
+2.2 Refactor existing call sites (reverseStockForDeletedOrder,
+    confirmPicklistAndDeductStock, completePicklistAtomicTransaction,
+    deductVanLoadInventory, returnVanLoadInventory, updateStock,
+    PO replenish/adjust/revert, incoming add/adjust/remove, return restock,
+    settlement) to use it. Pass reference IDs as structured fields; keep
+    human-readable notes.
+2.3 Use runTransaction (not read-then-batch) so concurrent picklist / van /
+    manual edits cannot overwrite each other.
+2.4 Add logging for reservedQuantity changes: reserveStockForOrder,
+    adjustReservedStockForOrderUpdate, releaseReservedStockForOrder.
+2.5 Tag incoming-only movements with incoming_* types so they are not
+    confused with physical on-hand movements (on-hand delta = 0).
+2.6 No negative stock (DECIDED). Stock never goes below 0. Manual adjustments
+    that would go below 0 are rejected with a clear message. For automated
+    flows (picklist, van load, settlement) that would go below 0, floor at 0
+    but record requestedQuantity and clamped = true on the movement, and flag
+    it as a discrepancy (4.6/5.2) so the missing stock record is investigated.
+2.7 Resolve actor info once (uid, role, name) via _currentActorName()
+    replacement; add deviceId and appVersion (package_info_plus).
+
+------------------------------------------------------------------------------
+PHASE 3 - Manual adjustment controls
+------------------------------------------------------------------------------
+Files: lib/views/widgets/inventory/adjust_stock_sheet.dart,
+       lib/controllers/inventory_controller.dart
+
+3.1 Require a ReasonCode dropdown for every manual adjustment.
+3.2 Require a note for code "other" and for any adjustment above a
+    configurable threshold measured in UNITS (DECIDED). Add the threshold to
+    app configuration (default value to be confirmed, e.g. 10 units).
+3.3 adjustStockByDelta ("quick adjust") must pass a reason code and be
+    logged as adjustment, never anonymous.
+3.4 Permissions (DECIDED): only the dealer role can adjust stock manually or
+    approve adjustments. Other roles see history read-only. Enforce in UI and
+    in Firestore rules (5.1). Adjustments above the unit threshold are saved as
+    pending and applied only after dealer approval.
+
+------------------------------------------------------------------------------
+PHASE 4 - Movement history UI
+------------------------------------------------------------------------------
+Files: lib/views/widgets/inventory/inventory_movements_sheet.dart (+ new
+       detail widget)
+
+4.1 Expandable tile showing: type, reason code, full notes (no truncation),
+    previous -> new for on-hand / reserved / incoming, reference document,
+    actor (name, role), timestamp, device/app version, clamped warning.
+4.2 Tap reference to open the related order/PO/delivery/van load.
+4.3 Filters: product, movement type, user, date range, reference.
+4.4 Pagination (cursor-based) instead of a fixed 60-item stream.
+4.5 Per-product ledger view with running balance.
+4.6 "Discrepancy" badge when previousStock != prior movement's newStock.
+4.7 CSV export of the filtered list (required, DECIDED).
+4.8 Firestore composite indexes for new filters (firestore.indexes.json).
+
+------------------------------------------------------------------------------
+PHASE 5 - Integrity and reconciliation
+------------------------------------------------------------------------------
+5.1 Firestore security rules for inventory_movements: create-only, no update,
+    no delete; validate required fields and that delta == newStock - prev.
+    Restrict manual-adjustment writes to the dealer role.
+5.2 No Cloud Functions available (DECIDED), so run reconciliation inside the
+    app: a dealer-triggered "Run Stock Audit" action (and optionally on app
+    open, once per day, guarded by a lastAuditAt config doc). Per product:
+    - compares product.stockQuantity with the latest movement.newStock
+    - verifies the movement chain (each previousStock == prior newStock)
+    - verifies reservedQuantity against open orders
+    Writes findings to inventory_discrepancies and shows them to the dealer.
+5.3 Detect direct product-doc edits that bypass the ledger (mismatch found by
+    5.2) and create a system "unexplained variance" movement only after admin
+    review.
+5.4 Audit remaining direct writers of stockQuantity
+    (e.g. selecta_product_service.dart import path preserving stock) and route
+    them through the helper.
+
+------------------------------------------------------------------------------
+PHASE 6 - Warehouse process: cycle counting
+------------------------------------------------------------------------------
+6.1 Cycle count feature: pick products (ABC classification: fast movers
+    weekly, others monthly), enter counted qty, show variance.
+6.2 Confirm count -> creates count_correction movement with reason code.
+6.3 Variance approval threshold (manager sign-off).
+6.4 Reports: shrinkage/variance by product, user, reason, period; accuracy %.
+
+------------------------------------------------------------------------------
+PHASE 7 - Rollout
+------------------------------------------------------------------------------
+7.1 Ship Phase 1-2 first (model + logging), backward compatible; no data
+    migration required for old documents.
+7.2 Ship Phase 3-4 (UI and controls).
+7.3 Ship Phase 5 rules after confirming all writers use the helper (rules
+    would otherwise block legitimate writes).
+7.4 Run a one-time physical count to set a clean baseline, record as
+    count_correction with source 'migration'.
+7.5 Train warehouse staff: all adjustments through the app with a reason code.
+
+------------------------------------------------------------------------------
+PHASE 8 - Per-workflow logging improvements (after Phases 1-7)
+------------------------------------------------------------------------------
+Principle: stock moves through explicit states
+(Ordered > Reserved > Picked > Dispatched/Delivered > Returned >
+Restocked/Quarantined/Written off). Each transition writes one ledger entry
+with referenceType/referenceId, quantity, before/after for on-hand, reserved
+and incoming, and the actor.
+
+8.1 Book order
+    - Log reservation: ordered qty, reserved qty, available at that moment.
+    - Short allocation: record requested vs reserved and mark the shortfall as
+      backorder/pre-order instead of silently reserving less.
+    - Log every order edit as a delta (item added, qty changed, removed,
+      cancelled) with old/new values and actor; log releases on cancel.
+    - Record price and product snapshot used.
+8.2 Picklist
+    - Per line: required, picked, short, and scanned vs manually typed qty.
+      Log scanner disabled/override events.
+    - Log picker, start/finish time, and confirmer (two-step confirmation
+      where a different person confirms).
+    - Short pick requires a reason code (out of stock, damaged, not found) and
+      automatically flags the item for a cycle count.
+    - Reopening/editing a completed picklist creates a reversal entry, never
+      an overwrite.
+8.3 Delivery
+    - Status timeline with timestamp + actor: loaded, out for delivery,
+      delivered, settled.
+    - Per line: picked, delivered, refused, damaged, returned on the spot;
+      reason code required for any difference.
+    - Link van load and delivery (IDs on both). Treat the van as its own
+      location (warehouse > van > customer): loads/returns are transfers.
+    - Proof of delivery: receiver name, signature or photo, timestamp.
+    - Manual settlement/reconciliation requires a note and before/after
+      snapshot.
+8.4 Return
+    - Log reason code (damaged, wrong item, expired, refusal), condition on
+      receipt, and disposition: restock, quarantine or write-off. Do not auto
+      restock; inspect first.
+    - Link to original order/delivery line; block returns above delivered
+      qty; record approver.
+    - Keep returned-quantity history so legacy restock/settlement paths
+      cannot double-count.
+8.5 Purchase order
+    - Log full lifecycle: ordered, partially received, fully received,
+      cancelled. Each receipt is its own action (ordered vs received vs
+      rejected, with delivery receipt/invoice number).
+    - Log damaged/short-shipped/rejected quantities as separate entries.
+    - Record received date, receiver, unit cost (cost-change tracking); edits
+      after receipt are adjustment entries with a reason.
+    - Keep incoming (expected) separate from on-hand.
+8.6 Cross-cutting
+    - One correlationId per business event so linked entries open together.
+    - Corrections are new reversing entries; nothing edited or deleted.
+    - Idempotency: unique key per document line + action to prevent
+      double-posting (retries, double taps, offline replay).
+    - Flag manual overrides (typed qty vs scan, forced complete, admin
+      delete).
+    - Use server timestamps, not device clock.
+8.7 Dealer exception dashboard
+    - Short picks, clamped-at-zero events, manual overrides, large
+      adjustments, returns pending inspection, ledger chain breaks.
+    - KPIs: inventory accuracy %, pick accuracy, short-pick rate, return rate
+      by reason, PO receiving variance, shrinkage.
+    - Cycle count triggers: after a short pick, after a clamp event, when an
+      item hits zero, plus the regular schedule.
+8.8 Phase 8 priority
+    1) Short-pick/short-allocation reason codes, correlationId + references
+    2) Return disposition; PO partial receiving
+    3) Idempotency keys; override flags
+    4) Van/warehouse as locations; scan enforcement; proof of delivery
+    5) Exception dashboard and KPIs
+
+TESTING
+-------
+- Unit: model parsing (legacy + new), helper delta math, clamping flag.
+- Service (fake_cloud_firestore): each flow writes exactly one product update
+  and matching movement(s); reserve/release logged; concurrent updates.
+- Widget: expandable tile, filters, adjustment sheet validation.
+- Manual: run picklist, van load/return, PO receive/cancel, return, manual
+  adjust; confirm the ledger sums to the product's stockQuantity.
+
+SUGGESTED PRIORITY
+------------------
+High:   Phase 1, 2, 3  (fix data capture first)
+Medium: Phase 4        (visibility)
+Medium: Phase 5        (detection)
+Later:  Phase 6, 8     (process improvement, per-workflow logging)
+
+DECISIONS (resolved)
+--------------------
+1. Negative stock: not allowed. Reject manual; floor + flag automated (2.6).
+2. Approval threshold: measured in units; exact number to be set in config.
+3. Cloud Functions: not available; reconciliation runs in-app (5.2).
+4. Roles: dealer only for manual adjustment and approval (3.4, 5.1).
+5. Retention/export: movements are kept indefinitely (never deleted, enforced
+   by append-only rules) and CSV export is required (4.7).
+
+REMAINING OPEN ITEM
+-------------------
+- Default unit threshold for requiring a note / dealer approval (e.g. 10).

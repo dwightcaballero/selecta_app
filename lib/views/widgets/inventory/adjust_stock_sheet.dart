@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/inventory_controller.dart';
+import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/views/widgets/inventory/cycle_count_dialog.dart';
 import 'package:selecta_ops/views/widgets/inventory/inventory_movements_sheet.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/product_supplier_calendar_dialog.dart';
 
@@ -58,12 +60,30 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
   late final TextEditingController _thresholdController;
   late final TextEditingController _maxStockController;
   late final TextEditingController _notesController;
-  String _selectedReason = 'Restock / PO';
+  ReasonCode _selectedReasonCode = ReasonCode.count_correction;
+  bool _isDealer = true;
+  bool _isLoadingRole = true;
 
-  static const _reasonsByMode = <String, List<String>>{
-    'add': ['Restock / PO', 'Return from Store', 'Physical Audit', 'Manual Adjustment'],
-    'deduct': ['Delivery / Sale', 'Bad Order', 'Physical Audit', 'Manual Adjustment'],
-    'set': ['Physical Audit', 'Initial Stock', 'Manual Adjustment'],
+  static const _reasonsByMode = <String, List<ReasonCode>>{
+    'add': [
+      ReasonCode.found,
+      ReasonCode.count_correction,
+      ReasonCode.data_entry_error,
+      ReasonCode.other,
+    ],
+    'deduct': [
+      ReasonCode.damaged,
+      ReasonCode.expired,
+      ReasonCode.lost,
+      ReasonCode.count_correction,
+      ReasonCode.data_entry_error,
+      ReasonCode.other,
+    ],
+    'set': [
+      ReasonCode.count_correction,
+      ReasonCode.data_entry_error,
+      ReasonCode.other,
+    ],
   };
 
   @override
@@ -77,6 +97,17 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
       text: widget.item.maxStock > 0 ? widget.item.maxStock.toString() : '',
     );
     _notesController = TextEditingController();
+    _checkDealerRole();
+  }
+
+  Future<void> _checkDealerRole() async {
+    final isDealer = await KVariables.getIsDealer();
+    if (mounted) {
+      setState(() {
+        _isDealer = isDealer;
+        _isLoadingRole = false;
+      });
+    }
   }
 
   @override
@@ -113,16 +144,19 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
     final colorScheme = Theme.of(context).colorScheme;
     final item = widget.item;
     final inputVal = int.tryParse(_qtyController.text.trim()) ?? 0;
-    final previewStock = switch (_mode) {
+    final int rawTargetStock = switch (_mode) {
       'add' => item.stockQuantity + (inputVal > 0 ? inputVal : 0),
-      'deduct' => (item.stockQuantity - (inputVal > 0 ? inputVal : 0)).clamp(0, 999999),
-      _ => inputVal.clamp(0, 999999),
+      'deduct' => item.stockQuantity - (inputVal > 0 ? inputVal : 0),
+      _ => inputVal,
     };
-    final previewDelta = previewStock - item.stockQuantity;
+    final bool isNegative = rawTargetStock < 0;
+    final previewStock = isNegative ? 0 : rawTargetStock;
+    final previewDelta = rawTargetStock - item.stockQuantity;
     final reasons = _reasonsByMode[_mode]!;
-    if (!reasons.contains(_selectedReason)) {
-      _selectedReason = reasons.first;
+    if (!reasons.contains(_selectedReasonCode)) {
+      _selectedReasonCode = reasons.first;
     }
+    final bool requiresNotes = _selectedReasonCode == ReasonCode.other || previewDelta.abs() >= 10;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -147,6 +181,62 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                 ),
               ),
             ),
+
+            if (!_isLoadingRole && !_isDealer) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade700),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.lock_outline, size: 18, color: Colors.amber.shade900),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Read-only: Only Dealers are authorized to perform manual inventory adjustments.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            if (isNegative) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline, size: 18, color: colorScheme.error),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Negative stock is forbidden (attempted: $rawTargetStock). Adjustment cannot be saved.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             // Product Header
             Row(
               children: [
@@ -186,6 +276,18 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                       ),
                     ],
                   ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.fact_check_outlined, color: Color(0xFF7C3AED)),
+                  tooltip: 'Physical Cycle Count',
+                  onPressed: () {
+                    Navigator.pop(context);
+                    CycleCountDialog.show(
+                      context: context,
+                      item: item,
+                      controller: widget.controller,
+                    );
+                  },
                 ),
                 if (item.source == InventoryProductSource.selecta)
                   IconButton(
@@ -231,7 +333,7 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                   } else if (_qtyController.text == item.stockQuantity.toString()) {
                     _qtyController.text = '1';
                   }
-                  _selectedReason = _reasonsByMode[_mode]!.first;
+                  _selectedReasonCode = _reasonsByMode[_mode]!.first;
                 });
               },
             ),
@@ -345,7 +447,7 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
 
             // Reason Chips
             Text(
-              'Reason',
+              'Reason Code',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -357,10 +459,10 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
               spacing: 6,
               runSpacing: 6,
               children: reasons.map((reason) {
-                final isSelected = _selectedReason == reason;
+                final isSelected = _selectedReasonCode == reason;
                 return ChoiceChip(
                   label: Text(
-                    reason,
+                    reason.displayName,
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
@@ -370,18 +472,26 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                   selected: isSelected,
                   selectedColor: colorScheme.primary,
                   visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() => _selectedReason = reason),
+                  onSelected: (_) => setState(() => _selectedReasonCode = reason),
                 );
               }).toList(),
             ),
             const SizedBox(height: 10),
 
-            // Optional Notes
+            // Optional / Required Notes
             TextField(
               controller: _notesController,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                labelText: 'Notes / Reference (Optional)',
-                hintText: 'e.g. PO #1024 or Store Name',
+                labelText: requiresNotes
+                    ? 'Notes / Justification (Required)'
+                    : 'Notes / Reference (Optional)',
+                hintText: requiresNotes
+                    ? 'Required for adjustments ≥ 10 units or "Other"'
+                    : 'e.g. PO #1024 or Store Name',
+                errorText: requiresNotes && _notesController.text.trim().isEmpty
+                    ? 'Note is required for changes ≥ 10 units or "Other"'
+                    : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -406,9 +516,10 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
                   Text(
                     'Resulting Stock: ${item.stockQuantity} → $previewStock '
                     '(${previewDelta >= 0 ? '+$previewDelta' : '$previewDelta'})',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12.5,
                       fontWeight: FontWeight.bold,
+                      color: isNegative ? colorScheme.error : null,
                     ),
                   ),
                   Text(
@@ -426,36 +537,48 @@ class _AdjustStockSheetState extends State<AdjustStockSheet> {
             SizedBox(
               width: double.infinity,
               child: AsyncFilledButton.icon(
-                onPressed: () async {
-                  try {
-                    final newThreshold = int.tryParse(
-                          _thresholdController.text.trim(),
-                        ) ??
-                        item.lowStockThreshold;
-                    final newMaxStock = item.source == InventoryProductSource.selecta
-                        ? (int.tryParse(_maxStockController.text.trim()) ?? item.maxStock)
-                        : 0;
-                    await widget.controller.updateStock(
-                      item: item,
-                      newStockQuantity: previewStock,
-                      newLowStockThreshold: newThreshold,
-                      newMaxStock: newMaxStock,
-                      reason: _selectedReason,
-                      notes: _notesController.text,
-                    );
-                    if (context.mounted) Navigator.pop(context);
-                    if (context.mounted) {
-                      ShowMessage.success(
-                        context,
-                        'Updated "${item.productName}" stock to $previewStock.',
-                      );
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ShowMessage.error(context, 'Failed to update stock: $e');
-                    }
-                  }
-                },
+                onPressed: (!_isDealer || isNegative)
+                    ? null
+                    : () async {
+                        if (requiresNotes && _notesController.text.trim().isEmpty) {
+                          ShowMessage.error(
+                            context,
+                            'Please provide a justification note for adjustments of 10+ units or "Other".',
+                          );
+                          return;
+                        }
+
+                        try {
+                          final newThreshold = int.tryParse(
+                                _thresholdController.text.trim(),
+                              ) ??
+                              item.lowStockThreshold;
+                          final newMaxStock = item.source == InventoryProductSource.selecta
+                              ? (int.tryParse(_maxStockController.text.trim()) ?? item.maxStock)
+                              : 0;
+                          await widget.controller.updateStock(
+                            item: item,
+                            newStockQuantity: previewStock,
+                            newLowStockThreshold: newThreshold,
+                            newMaxStock: newMaxStock,
+                            reason: _selectedReasonCode.displayName,
+                            notes: _notesController.text.trim(),
+                            reasonCode: _selectedReasonCode,
+                            referenceType: ReferenceType.manual,
+                          );
+                          if (context.mounted) Navigator.pop(context);
+                          if (context.mounted) {
+                            ShowMessage.success(
+                              context,
+                              'Updated "${item.productName}" stock to $previewStock.',
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ShowMessage.error(context, 'Failed to update stock: $e');
+                          }
+                        }
+                      },
                 icon: const Icon(Icons.check_rounded),
                 label: const Text('Save Stock Adjustment'),
               ),

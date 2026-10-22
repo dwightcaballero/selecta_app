@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/models/floating_stock.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/services/inventory_service.dart';
@@ -86,6 +87,9 @@ class InventoryController {
     int? newMaxStock,
     required String reason,
     String notes = '',
+    ReasonCode? reasonCode,
+    ReferenceType? referenceType,
+    String? referenceId,
   }) =>
       _service.updateStock(
         item: item,
@@ -94,6 +98,9 @@ class InventoryController {
         newMaxStock: newMaxStock,
         reason: reason,
         notes: notes,
+        reasonCode: reasonCode,
+        referenceType: referenceType,
+        referenceId: referenceId,
       );
 
   /// Quick increment/decrement helper (e.g., +1 or -1 from the card).
@@ -101,14 +108,59 @@ class InventoryController {
     required InventoryItem item,
     required int delta,
     String reason = 'Quick Adjustment',
-  }) {
-    final nextStock = (item.stockQuantity + delta) < 0 ? 0 : (item.stockQuantity + delta);
-    return _service.updateStock(
-      item: item,
-      newStockQuantity: nextStock,
-      reason: reason,
-    );
-  }
+    ReasonCode reasonCode = ReasonCode.count_correction,
+    String notes = '',
+  }) =>
+      _service.adjustStockByDelta(
+        item: item,
+        delta: delta,
+        reason: reason,
+        reasonCode: reasonCode,
+        notes: notes,
+      );
+
+  /// Paginated movement query for audit ledger exploration with multi-attribute filtering.
+  Future<({List<InventoryMovement> movements, DocumentSnapshot? lastDoc, bool hasMore})>
+      getMovementsPaginated({
+    String? productId,
+    MovementType? movementType,
+    String? searchQuery,
+    DateTime? startDate,
+    DateTime? endDate,
+    ReferenceType? referenceType,
+    int limit = 40,
+    DocumentSnapshot? startAfter,
+  }) =>
+          _service.getMovementsPaginated(
+            productId: productId,
+            movementType: movementType,
+            searchQuery: searchQuery,
+            startDate: startDate,
+            endDate: endDate,
+            referenceType: referenceType,
+            limit: limit,
+            startAfter: startAfter,
+          );
+
+  /// Generates CSV text of inventory movements for export.
+  String exportMovementsToCsv(List<InventoryMovement> movements) =>
+      InventoryService.exportMovementsToCsv(movements);
+
+  /// Runs full in-app stock audit and reconciliation.
+  Future<StockAuditReport> runStockAudit({String? targetProductId}) =>
+      _service.runStockAudit(targetProductId: targetProductId);
+
+  /// Submits physical cycle count.
+  Future<InventoryMovement> submitCycleCount({
+    required InventoryItem item,
+    required int countedQuantity,
+    String notes = '',
+  }) =>
+      _service.submitCycleCount(
+        item: item,
+        countedQuantity: countedQuantity,
+        notes: notes,
+      );
 
   /// Streams recent stock movement logs across all products.
   Stream<List<InventoryMovement>> getRecentMovementsStream({int limit = 50}) =>
@@ -128,4 +180,18 @@ class InventoryController {
   /// Manually settles or reconciles an individual delivery whose inventory was left floating / unsettled.
   Future<void> settleSingleDelivery(String deliveryId) =>
       _service.settleSingleDelivery(deliveryId);
+
+  /// Fetches exception metrics, KPI summary, and open discrepancies for the Dealer Exception Dashboard.
+  Future<InventoryExceptionDashboardMetrics> fetchExceptionDashboardMetrics() =>
+      _service.fetchExceptionDashboardMetrics();
+
+  /// Resolves an open stock discrepancy with dealer resolution notes.
+  Future<void> resolveDiscrepancy({
+    required String discrepancyId,
+    required String resolutionNotes,
+  }) =>
+      _service.resolveDiscrepancy(
+        discrepancyId: discrepancyId,
+        resolutionNotes: resolutionNotes,
+      );
 }
