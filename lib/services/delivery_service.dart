@@ -302,10 +302,10 @@ class DeliveryService {
     await batch.commit();
   }
 
-  /// Default lower bound for date scans (3 months ago from current month start).
+  /// Default lower bound for date scans (1 month ago from current date).
   static DateTime get defaultCutoffDate {
     final now = DateTime.now();
-    return DateTime(now.year, now.month - 3, 1);
+    return DateTime(now.year, now.month - 1, now.day);
   }
 
   /// Parses date from Timestamp, DateTime, or ISO String safely.

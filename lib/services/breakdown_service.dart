@@ -20,10 +20,10 @@ class BreakdownService {
         );
   }
 
-  /// Default scan window cutoff (last 3 months)
+  /// Default scan window cutoff (last 1 month)
   static DateTime get defaultCutoffDate {
     final now = DateTime.now();
-    return DateTime(now.year, now.month - 3, now.day);
+    return DateTime(now.year, now.month - 1, now.day);
   }
 
   /// Parses date from dynamic raw value (Timestamp or ISO String).
@@ -178,7 +178,7 @@ class BreakdownService {
   }
 
   /// Real-time stream of the count of breakdown records not yet verified by the dealer.
-  /// If [month] is omitted, counts ALL unverified records within the backlog window (last 3 months).
+  /// If [month] is omitted, counts ALL unverified records within the backlog window (last 1 month).
   Stream<int> getUnverifiedBreakdownsCountStream({DateTime? month, DateTime? cutoffDate}) {
     return getUnverifiedSummaryStream(cutoffDate: cutoffDate).map((summary) {
       if (month != null) {
@@ -189,7 +189,7 @@ class BreakdownService {
   }
 
   /// One-time count of breakdown records not yet verified by the dealer.
-  /// If [month] is omitted, counts ALL unverified records within the backlog window (last 3 months).
+  /// If [month] is omitted, counts ALL unverified records within the backlog window (last 1 month).
   static Future<int> getCountUnverifiedBreakdowns({DateTime? month, DateTime? cutoffDate}) async {
     final summary = await getUnverifiedSummary(cutoffDate: cutoffDate);
     if (month != null) {

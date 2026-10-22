@@ -1,8 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:selecta_ops/controllers/endofday_controller.dart';
+import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
+import 'package:selecta_ops/services/endofday_services.dart';
+import 'package:selecta_ops/services/inventory_service.dart';
 import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 
 // Helper fake QueryDocumentSnapshot for testing summaryFromDocs without mock libraries
@@ -22,6 +26,10 @@ class FakeQueryDocumentSnapshot implements QueryDocumentSnapshot {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+class FakeEndOfDayServices extends Fake implements EndofdayServices {}
+class FakeBreakdownService extends Fake implements BreakdownService {}
+class FakeInventoryService extends Fake implements InventoryService {}
 
 void main() {
   group('UnverifiedSummary Model Tests', () {
@@ -184,9 +192,19 @@ void main() {
       expect(summary.count, 1);
       expect(summary.oldestDate, DateTime(2026, 1, 10));
     });
+
+    test('BreakdownService.defaultCutoffDate is 1 month ago', () {
+      final now = DateTime.now();
+      final cutoff = BreakdownService.defaultCutoffDate;
+      final expectedCutoff = DateTime(now.year, now.month - 1, now.day);
+
+      expect(cutoff.year, expectedCutoff.year);
+      expect(cutoff.month, expectedCutoff.month);
+      expect(cutoff.day, expectedCutoff.day);
+    });
   });
 
-  group('Oldest-First Enforcement Tests', () {
+  group('Non-Blocking Verification & Navigation Tests', () {
     test('OlderUnverifiedException properties', () {
       final oldest = DateTime(2026, 9, 15);
       final exception = OlderUnverifiedException(
@@ -196,6 +214,28 @@ void main() {
 
       expect(exception.oldestDate, oldest);
       expect(exception.toString(), contains('2026-09-15'));
+    });
+
+    test('validateBeforeBreakdown does not throw when older unverified date exists', () {
+      final controller = EndOfDayController(
+        endOfDayService: FakeEndOfDayServices(),
+        breakdownService: FakeBreakdownService(),
+        inventoryService: FakeInventoryService(),
+      );
+      final endOfDayData = EndOfDayDTO.empty();
+      endOfDayData.totaldelivery = 5;
+      endOfDayData.pendingstatus = 0;
+
+      // Currently selecting 2026-10-15 while an older unverified date exists on 2026-10-01
+      expect(
+        () => controller.validateBeforeBreakdown(
+          endOfDayData: endOfDayData,
+          breakdownId: 'breakdown_1',
+          currentDate: DateTime(2026, 10, 15),
+          oldestUnverifiedDate: DateTime(2026, 10, 1),
+        ),
+        returnsNormally,
+      );
     });
 
     test('Next unverified selection skips currently selected date', () {

@@ -1,11 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/models/breakdown.dart';
-import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/endofday_services.dart';
@@ -57,9 +55,17 @@ class RecomputeResult {
 /// Controller responsible for End of Day reconciliations,
 /// cash breakdown calculation, verification, and audit logging.
 class EndOfDayController {
-  final EndofdayServices _endOfDayService = EndofdayServices();
-  final BreakdownService _breakdownService = BreakdownService();
-  final InventoryService _inventoryService = InventoryService();
+  final EndofdayServices _endOfDayService;
+  final BreakdownService _breakdownService;
+  final InventoryService _inventoryService;
+
+  EndOfDayController({
+    EndofdayServices? endOfDayService,
+    BreakdownService? breakdownService,
+    InventoryService? inventoryService,
+  })  : _endOfDayService = endOfDayService ?? EndofdayServices(),
+        _breakdownService = breakdownService ?? BreakdownService(),
+        _inventoryService = inventoryService ?? InventoryService();
 
   /// Checks if the active user is a dealer
   Future<bool> checkIsDealer() async {
@@ -90,19 +96,6 @@ class EndOfDayController {
     }
 
     if (!isReconciliation) {
-      final summary = await BreakdownService.getUnverifiedSummary();
-      if (summary.oldest != null) {
-        final cur = DateTime(date.year, date.month, date.day);
-        final oldest = DateTime(summary.oldest!.year, summary.oldest!.month, summary.oldest!.day);
-        if (cur.isAfter(oldest)) {
-          final fmtOldest = DateFormat('dd MMM yyyy').format(oldest);
-          throw OlderUnverifiedException(
-            'Cannot verify breakdown for ${DateFormat('dd MMM yyyy').format(date)}: an older unverified breakdown exists for $fmtOldest. Please verify older dates first.',
-            oldestDate: oldest,
-          );
-        }
-      }
-
       final endOfDayData = await _endOfDayService.getListDeliveryForEndOfDay(date);
       if (endOfDayData.pendingstatus > 0) {
         throw Exception(
@@ -171,17 +164,6 @@ class EndOfDayController {
     }
     if (endOfDayData.pendingstatus > 0) {
       throw Exception('There should be no transaction that is pending for delivery');
-    }
-    if (currentDate != null && oldestUnverifiedDate != null) {
-      final cur = DateTime(currentDate.year, currentDate.month, currentDate.day);
-      final oldest = DateTime(oldestUnverifiedDate.year, oldestUnverifiedDate.month, oldestUnverifiedDate.day);
-      if (cur.isAfter(oldest)) {
-        final fmtOldest = DateFormat('dd MMM yyyy').format(oldest);
-        throw OlderUnverifiedException(
-          'Cannot verify this date because an older unverified date exists ($fmtOldest). Please settle chronologically.',
-          oldestDate: oldest,
-        );
-      }
     }
   }
 

@@ -101,38 +101,6 @@ class _EndofdayPageState extends State<EndofdayPage> {
         currentDate: _selectedDate,
         oldestUnverifiedDate: _unverifiedSummary.oldest,
       );
-    } on OlderUnverifiedException catch (e) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (dialogCtx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.history_toggle_off_rounded, color: Colors.amber),
-              SizedBox(width: 8),
-              Text('Verification Blocked', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-            ],
-          ),
-          content: Text(e.message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton.icon(
-              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-              label: Text('Go to ${DateFormat('d MMM').format(e.oldestDate)}'),
-              onPressed: () {
-                Navigator.pop(dialogCtx);
-                setState(() => _selectedDate = e.oldestDate);
-                getData();
-              },
-            ),
-          ],
-        ),
-      );
-      return;
     } catch (e) {
       ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
       return;
