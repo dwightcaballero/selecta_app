@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/inventory_controller.dart';
 import 'package:selecta_ops/controllers/van_load_controller.dart';
@@ -15,6 +17,7 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
 class VanLoadPage extends StatefulWidget {
@@ -30,6 +33,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
   final VanLoadController _vanLoadController = VanLoadController();
   final InventoryController _inventoryController = InventoryController();
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
+  final ImagePicker _picker = ImagePicker();
 
   final TextEditingController _remarksController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
@@ -38,10 +42,14 @@ class _VanLoadPageState extends State<VanLoadPage> {
   String _selectedCategory = 'All';
   String _searchQuery = '';
   bool _isCreatingNew = false;
+  bool _isEditingExisting = false;
   bool _isLoading = false;
   bool _isDealer = false;
 
   VanLoad? _currentVanLoad;
+  VanLoad? _editingOriginalLoad;
+  File? _proofImage;
+  String _networkImagePath = '';
   StreamSubscription? _activeLoadSub;
   StreamSubscription? _inventorySub;
 
@@ -50,8 +58,22 @@ class _VanLoadPageState extends State<VanLoadPage> {
   final Map<String, TextEditingController> _qtyControllers = {};
 
   bool get _hasUnsavedChanges {
+    if (_isEditingExisting && _editingOriginalLoad != null) {
+      if (_proofImage != null) return true;
+      if (_remarksController.text.trim() != _editingOriginalLoad!.remarks.trim()) return true;
+      final oldMap = {for (final i in _editingOriginalLoad!.items) i.productId: i.loadedQuantity};
+      for (final entry in _loadedQuantities.entries) {
+        if (entry.value != (oldMap[entry.key] ?? 0)) return true;
+      }
+      for (final entry in oldMap.entries) {
+        if ((_loadedQuantities[entry.key] ?? 0) != entry.value) return true;
+      }
+      return false;
+    }
     if (_isCreatingNew) {
-      return _loadedQuantities.values.any((q) => q > 0) || _remarksController.text.trim().isNotEmpty;
+      return _loadedQuantities.values.any((q) => q > 0) ||
+          _remarksController.text.trim().isNotEmpty ||
+          _proofImage != null;
     }
     return false;
   }
@@ -132,6 +154,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
       _loadedQuantities[item.productId] = item.loadedQuantity;
       _getQtyController(item.productId).text = item.loadedQuantity > 0 ? '${item.loadedQuantity}' : '';
     }
+    _networkImagePath = load.imagePath;
+    _proofImage = null;
   }
 
   TextEditingController _getQtyController(String productId) {
@@ -141,8 +165,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
     });
   }
 
-  void _updateQuantity(String productId, int newQty, int maxStock) {
-    final clamped = newQty.clamp(0, maxStock);
+  void _updateQuantity(String productId, int newQty, int maxStock, {int minStock = 0}) {
+    final clamped = newQty.clamp(minStock, maxStock);
     setState(() {
       if (clamped <= 0) {
         _loadedQuantities.remove(productId);
@@ -151,6 +175,128 @@ class _VanLoadPageState extends State<VanLoadPage> {
         _loadedQuantities[productId] = clamped;
         _getQtyController(productId).text = '$clamped';
       }
+    });
+  }
+
+  Future<void> _pickProofImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+      if (pickedFile != null) {
+        setState(() {
+          _proofImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        SnackBarWidget.error(context, 'Failed to capture image: $e');
+      }
+    }
+  }
+
+  void _showImageSourceSelector() {
+    final colorScheme = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(color: colorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Attach Proof of Van Load', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
+                  child: const Icon(Icons.camera_alt_outlined, color: Colors.teal),
+                ),
+                title: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Capture loaded van with camera'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickProofImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
+                  child: const Icon(Icons.photo_library_outlined, color: Colors.teal),
+                ),
+                title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Select photo from gallery'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickProofImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _removeProofImage() async {
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Remove Image',
+      message: 'Are you sure you want to remove the attached Proof of Van Load image?',
+      icon: Icons.delete_outline,
+      confirmText: 'Remove',
+      isDestructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() {
+      _proofImage = null;
+      _networkImagePath = '';
+    });
+  }
+
+  void _startEditingVanLoad(VanLoad load) {
+    if (!_isDealer) {
+      SnackBarWidget.error(context, 'Only dealers are allowed to edit van load records.');
+      return;
+    }
+    setState(() {
+      _isCreatingNew = true;
+      _isEditingExisting = true;
+      _editingOriginalLoad = load;
+      _currentVanLoad = load;
+      _remarksController.text = load.remarks;
+      _networkImagePath = load.imagePath;
+      _proofImage = null;
+      _syncLoadedQuantitiesFromVanLoad(load);
+    });
+  }
+
+  void _viewVanLoadManifest(VanLoad load) {
+    setState(() {
+      _isCreatingNew = true;
+      _isEditingExisting = false;
+      _editingOriginalLoad = null;
+      _currentVanLoad = load;
+      _remarksController.text = load.remarks;
+      _networkImagePath = load.imagePath;
+      _proofImage = null;
+      _syncLoadedQuantitiesFromVanLoad(load);
     });
   }
 
@@ -171,10 +317,15 @@ class _VanLoadPageState extends State<VanLoadPage> {
 
   List<VanLoadItem> _buildVanLoadItems() {
     final List<VanLoadItem> items = [];
+    final oldMap = _editingOriginalLoad != null
+        ? {for (final item in _editingOriginalLoad!.items) item.productId: item}
+        : <String, VanLoadItem>{};
+
     for (final entry in _loadedQuantities.entries) {
       if (entry.value <= 0) continue;
       final prod = _allInventoryItems.where((i) => i.id == entry.key).firstOrNull;
       if (prod != null) {
+        final oldItem = oldMap[prod.id];
         items.add(VanLoadItem(
           productId: prod.id,
           productName: prod.productName,
@@ -186,8 +337,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
           buyingPrice: prod.buyingPrice,
           sellingPrice: prod.sellingPrice,
           loadedQuantity: entry.value,
-          soldQuantity: 0,
-          returnedQuantity: 0,
+          soldQuantity: oldItem?.soldQuantity ?? 0,
+          returnedQuantity: oldItem?.returnedQuantity ?? 0,
         ));
       }
     }
@@ -207,12 +358,23 @@ class _VanLoadPageState extends State<VanLoadPage> {
       final now = Timestamp.now();
       final user = _vanLoadController.getCurrentUserDisplayName();
 
+      String imageFilePath = _networkImagePath;
+      if (_proofImage != null) {
+        imageFilePath = await Helperfunctions.updateImage(
+          context,
+          _proofImage,
+          _networkImagePath,
+          _currentVanLoad?.imagePath ?? '',
+        );
+      }
+
       if (_currentVanLoad == null || _currentVanLoad!.id == null) {
         final newLoad = VanLoad(
           date: Timestamp.fromDate(_selectedDate),
           status: VanLoadStatus.draft,
           items: items,
           remarks: _remarksController.text.trim(),
+          imagePath: imageFilePath,
           totalLoadedAmount: _totalLoadedAmount,
           createdDate: now,
           createdBy: user,
@@ -226,6 +388,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
         final updated = _currentVanLoad!.copyWith(
           items: items,
           remarks: _remarksController.text.trim(),
+          imagePath: imageFilePath,
           totalLoadedAmount: _totalLoadedAmount,
           lastUpdatedDate: now,
           lastUpdatedBy: user,
@@ -238,6 +401,10 @@ class _VanLoadPageState extends State<VanLoadPage> {
         SnackBarWidget.success(context, 'Draft Van Load saved successfully.');
         setState(() {
           _isCreatingNew = false;
+          _isEditingExisting = false;
+          _editingOriginalLoad = null;
+          _proofImage = null;
+          _networkImagePath = '';
         });
       }
     } catch (e) {
@@ -255,6 +422,11 @@ class _VanLoadPageState extends State<VanLoadPage> {
     final items = _buildVanLoadItems();
     if (items.isEmpty) {
       SnackBarWidget.error(context, 'Please add at least one product with quantity > 0');
+      return;
+    }
+
+    if (_proofImage == null && _networkImagePath.trim().isEmpty) {
+      SnackBarWidget.error(context, 'Proof of van load photo is required. Please attach a photo before confirming.');
       return;
     }
 
@@ -297,6 +469,27 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 ],
               ),
             ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.verified_outlined, size: 18, color: Colors.green),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Proof of Van Load is attached.',
+                      style: TextStyle(fontSize: 12.5, color: Colors.green, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             const Text('Proceed with loading?', style: TextStyle(fontWeight: FontWeight.bold)),
           ],
@@ -313,11 +506,22 @@ class _VanLoadPageState extends State<VanLoadPage> {
     );
 
     if (confirmed != true) return;
+    if (!mounted) return;
 
     setState(() => _isLoading = true);
     try {
       final now = Timestamp.now();
       final user = _vanLoadController.getCurrentUserDisplayName();
+
+      String imageFilePath = _networkImagePath;
+      if (_proofImage != null) {
+        imageFilePath = await Helperfunctions.updateImage(
+          context,
+          _proofImage,
+          _networkImagePath,
+          _currentVanLoad?.imagePath ?? '',
+        );
+      }
 
       VanLoad targetLoad;
       if (_currentVanLoad == null || _currentVanLoad!.id == null) {
@@ -326,6 +530,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
           status: VanLoadStatus.draft,
           items: items,
           remarks: _remarksController.text.trim(),
+          imagePath: imageFilePath,
           totalLoadedAmount: _totalLoadedAmount,
           createdDate: now,
           createdBy: user,
@@ -339,6 +544,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
         targetLoad = _currentVanLoad!.copyWith(
           items: items,
           remarks: _remarksController.text.trim(),
+          imagePath: imageFilePath,
           totalLoadedAmount: _totalLoadedAmount,
           lastUpdatedDate: now,
           lastUpdatedBy: user,
@@ -351,10 +557,150 @@ class _VanLoadPageState extends State<VanLoadPage> {
         SnackBarWidget.success(context, 'Van loaded successfully! Stock has been deducted from warehouse.');
         setState(() {
           _isCreatingNew = false;
+          _isEditingExisting = false;
+          _editingOriginalLoad = null;
+          _proofImage = null;
+          _networkImagePath = '';
         });
       }
     } catch (e) {
       if (mounted) SnackBarWidget.error(context, 'Failed to confirm load: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveEditedVanLoad() async {
+    if (!_isDealer) {
+      SnackBarWidget.error(context, 'Only dealers are allowed to edit van load records.');
+      return;
+    }
+    if (_editingOriginalLoad == null) return;
+
+    final items = _buildVanLoadItems();
+    if (items.isEmpty && !_editingOriginalLoad!.isStockSettled) {
+      SnackBarWidget.error(context, 'Please add at least one product with quantity > 0');
+      return;
+    }
+
+    if (_proofImage == null && _networkImagePath.trim().isEmpty) {
+      SnackBarWidget.error(context, 'Proof of van load photo is required. Please attach a photo before saving.');
+      return;
+    }
+
+    // Validate that no item is reduced below soldQuantity
+    final oldMap = {for (final i in _editingOriginalLoad!.items) i.productId: i};
+    for (final item in items) {
+      final old = oldMap[item.productId];
+      if (old != null && item.loadedQuantity < old.soldQuantity) {
+        SnackBarWidget.error(
+          context,
+          'Cannot reduce ${item.productName} below ${old.soldQuantity} (already sold on the van).',
+        );
+        return;
+      }
+    }
+
+    for (final old in _editingOriginalLoad!.items) {
+      final newQty = _loadedQuantities[old.productId] ?? 0;
+      if (newQty < old.soldQuantity) {
+        SnackBarWidget.error(
+          context,
+          'Cannot reduce ${old.productName} below ${old.soldQuantity} (already sold on the van).',
+        );
+        return;
+      }
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.edit_note_rounded, color: Colors.teal),
+            SizedBox(width: 8),
+            Text('Save Van Load Changes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Updated load: $_totalLoadedUnits units (${Helperfunctions.formatDoubleAmountForDisplay(_totalLoadedAmount)}).',
+              style: const TextStyle(fontSize: 14.5),
+            ),
+            const SizedBox(height: 12),
+            if (_editingOriginalLoad!.isStockDeducted && !_editingOriginalLoad!.isStockSettled)
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade300),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, color: Colors.amber.shade900, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Warehouse stock differences will be automatically adjusted with audit logs.',
+                        style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 12),
+            const Text('Confirm and apply changes?', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.teal),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save Changes'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      String imageFilePath = _networkImagePath;
+      if (_proofImage != null) {
+        imageFilePath = await Helperfunctions.updateImage(
+          context,
+          _proofImage,
+          _networkImagePath,
+          _editingOriginalLoad!.imagePath,
+        );
+      }
+
+      await _vanLoadController.editVanLoadRecord(
+        originalVanLoad: _editingOriginalLoad!,
+        newItems: items,
+        remarks: _remarksController.text.trim(),
+        imagePath: imageFilePath,
+      );
+
+      if (mounted) {
+        SnackBarWidget.success(context, 'Van Load record updated successfully.');
+        setState(() {
+          _isCreatingNew = false;
+          _isEditingExisting = false;
+          _editingOriginalLoad = null;
+          _proofImage = null;
+          _networkImagePath = '';
+        });
+      }
+    } catch (e) {
+      if (mounted) SnackBarWidget.error(context, 'Failed to save van load changes: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -607,8 +953,10 @@ class _VanLoadPageState extends State<VanLoadPage> {
         if (_hasUnsavedChanges) {
           final shouldDiscard = await ShowMessage.confirm(
             context,
-            title: 'Discard Van Load?',
-            message: 'You have unsaved manifest entries. Are you sure you want to go back and discard them?',
+            title: _isEditingExisting ? 'Discard Changes?' : 'Discard Van Load?',
+            message: _isEditingExisting
+                ? 'You have unsaved changes to this van load. Are you sure you want to discard them?'
+                : 'You have unsaved manifest entries. Are you sure you want to go back and discard them?',
             confirmText: 'Discard',
             cancelText: 'Keep Editing',
             isDestructive: true,
@@ -619,6 +967,10 @@ class _VanLoadPageState extends State<VanLoadPage> {
         if (_isCreatingNew) {
           setState(() {
             _isCreatingNew = false;
+            _isEditingExisting = false;
+            _editingOriginalLoad = null;
+            _proofImage = null;
+            _networkImagePath = '';
             _loadedQuantities.clear();
             _remarksController.clear();
           });
@@ -629,9 +981,15 @@ class _VanLoadPageState extends State<VanLoadPage> {
       child: Scaffold(
         appBar: CustomAppbar(
           title: 'Van Load',
-          subtitle: _isCreatingNew
-              ? 'New Van Manifest'
-              : (_currentVanLoad != null ? 'Manifest • ${DateFormat('d MMM yyyy').format(_currentVanLoad!.date.toDate())}' : 'Manifests & Loading'),
+          subtitle: _isEditingExisting
+              ? 'Edit Manifest • ${DateFormat('d MMM yyyy').format((_editingOriginalLoad ?? _currentVanLoad)!.date.toDate())}'
+              : _isCreatingNew
+                  ? (_currentVanLoad != null
+                      ? 'Manifest • ${DateFormat('d MMM yyyy').format(_currentVanLoad!.date.toDate())}'
+                      : 'New Van Manifest')
+                  : (_currentVanLoad != null
+                      ? 'Manifest • ${DateFormat('d MMM yyyy').format(_currentVanLoad!.date.toDate())}'
+                      : 'Manifests & Loading'),
           showBackButton: true,
           actions: [
             if (!_isCreatingNew && _currentVanLoad != null && _currentVanLoad!.status == VanLoadStatus.draft)
@@ -816,6 +1174,9 @@ class _VanLoadPageState extends State<VanLoadPage> {
 
   Widget _buildActiveLoadCard(ThemeData theme, VanLoad load) {
     final progress = load.totalLoadedUnits > 0 ? (load.totalSoldUnits / load.totalLoadedUnits).clamp(0.0, 1.0) : 0.0;
+    final cardTitle = load.isCompleted
+        ? 'Completed Van Load'
+        : (load.status == VanLoadStatus.draft ? 'Draft Van Load' : 'Active Van Load');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -846,7 +1207,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Active Van Load', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                          Text(cardTitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                           Text(DateFormat('EEE, d MMM yyyy').format(load.date.toDate()), style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                         ],
                       ),
@@ -898,40 +1259,177 @@ class _VanLoadPageState extends State<VanLoadPage> {
               _buildMiniStat('Remaining', '${load.totalAvailableUnits} units', color: Colors.teal.shade800),
             ],
           ),
+          if (load.remarks.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Text(
+                'Remarks: ${load.remarks.trim()}',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontStyle: FontStyle.italic),
+              ),
+            ),
+          ],
+          if (load.hasProofOfLoad) ...[
+            const SizedBox(height: 12),
+            InkWell(
+              onTap: () => Helperfunctions.navigateTo(
+                context,
+                ImageViewerPage(image: null, networkImagePath: load.imagePath),
+              ),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.04),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.network(
+                        load.imagePath,
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          width: 48,
+                          height: 48,
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.broken_image, size: 20, color: Colors.grey),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.verified_outlined, size: 14, color: Colors.green),
+                              SizedBox(width: 4),
+                              Text('Proof of Van Load', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          Text('Tap to inspect full photo', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.fullscreen, size: 20, color: Colors.teal),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           // Action buttons
-          Row(
-            children: [
-              if (load.status == VanLoadStatus.draft)
-                Expanded(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(backgroundColor: Colors.teal),
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit Draft'),
-                    onPressed: () => setState(() => _isCreatingNew = true),
-                  ),
-                )
-              else if (load.isActive) ...[
+          if (load.status == VanLoadStatus.draft) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.teal,
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Edit Draft', style: TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: () => _startEditingVanLoad(load),
+              ),
+            ),
+          ] else if (load.isActive) ...[
+            Row(
+              children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.teal, side: const BorderSide(color: Colors.teal)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.teal.shade800,
+                      side: BorderSide(color: Colors.teal.shade300),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
                     icon: const Icon(Icons.list_alt_rounded, size: 18),
-                    label: const Text('View Manifest'),
-                    onPressed: () => setState(() => _isCreatingNew = true),
+                    label: const Text('View Manifest', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onPressed: () => _viewVanLoadManifest(load),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(backgroundColor: Colors.teal),
-                    icon: const Icon(Icons.assignment_turned_in_outlined, size: 18),
-                    label: const Text('EOD Settlement'),
-                    onPressed: () => _showEodSettlementModal(load),
+                if (_isDealer) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.teal.shade800,
+                        side: BorderSide(color: Colors.teal.shade600),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.edit_note_rounded, size: 18),
+                      label: const Text('Edit Load', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      onPressed: () => _startEditingVanLoad(load),
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
-          ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.teal,
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.assignment_turned_in_outlined, size: 18),
+                label: const Text(
+                  'EOD Settlement',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                ),
+                onPressed: () => _showEodSettlementModal(load),
+              ),
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.teal.shade800,
+                      side: BorderSide(color: Colors.teal.shade300),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.list_alt_rounded, size: 18),
+                    label: const Text('View Manifest', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onPressed: () => _viewVanLoadManifest(load),
+                  ),
+                ),
+                if (_isDealer) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('Edit Record', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      onPressed: () => _startEditingVanLoad(load),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1023,10 +1521,11 @@ class _VanLoadPageState extends State<VanLoadPage> {
     );
   }
 
-  Future<void> _showQuantityDialog(InventoryItem item, int currentQty, int maxAllowed) async {
+  Future<void> _showQuantityDialog(InventoryItem item, int currentQty, int maxAllowed, {int minAllowed = 0}) async {
     FocusManager.instance.primaryFocus?.unfocus();
-    final defaultQty = currentQty > 0 ? currentQty : (maxAllowed >= 1 ? 1 : 0);
-    final initialText = defaultQty > 0 ? '$defaultQty' : '';
+    final effectiveMax = maxAllowed < minAllowed ? minAllowed : maxAllowed;
+    final defaultQty = currentQty >= minAllowed ? currentQty : minAllowed;
+    final initialText = defaultQty > 0 ? '$defaultQty' : (minAllowed > 0 ? '$minAllowed' : '');
     final controller = TextEditingController(text: initialText)
       ..selection = TextSelection(baseOffset: 0, extentOffset: initialText.length);
     final entered = await showDialog<int>(
@@ -1035,7 +1534,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
             void setVal(int v) {
-              final clamped = v.clamp(0, maxAllowed);
+              final clamped = v.clamp(minAllowed, effectiveMax);
               final text = clamped > 0 ? '$clamped' : '';
               controller.value = TextEditingValue(
                 text: text,
@@ -1051,9 +1550,24 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Available Warehouse Stock: $maxAllowed',
+                    'On-Hand Warehouse Stock: $maxAllowed',
                     style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700),
                   ),
+                  if (minAllowed > 0) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: Text(
+                        'Minimum allowed: $minAllowed (already sold on this van)',
+                        style: TextStyle(fontSize: 11.5, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: controller,
@@ -1063,7 +1577,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     decoration: InputDecoration(
-                      hintText: '0',
+                      hintText: '$minAllowed',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                       contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                     ),
@@ -1072,10 +1586,10 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   Wrap(
                     spacing: 8,
                     children: [
-                      ActionChip(label: const Text('+1'), onPressed: () => setVal((int.tryParse(controller.text) ?? 0) + 1)),
-                      ActionChip(label: const Text('+5'), onPressed: () => setVal((int.tryParse(controller.text) ?? 0) + 5)),
-                      ActionChip(label: const Text('+10'), onPressed: () => setVal((int.tryParse(controller.text) ?? 0) + 10)),
-                      ActionChip(label: const Text('Max'), onPressed: () => setVal(maxAllowed)),
+                      ActionChip(label: const Text('+1'), onPressed: () => setVal((int.tryParse(controller.text) ?? minAllowed) + 1)),
+                      ActionChip(label: const Text('+5'), onPressed: () => setVal((int.tryParse(controller.text) ?? minAllowed) + 5)),
+                      ActionChip(label: const Text('+10'), onPressed: () => setVal((int.tryParse(controller.text) ?? minAllowed) + 10)),
+                      ActionChip(label: const Text('Max'), onPressed: () => setVal(effectiveMax)),
                     ],
                   ),
                 ],
@@ -1085,7 +1599,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 FilledButton(
                   style: FilledButton.styleFrom(backgroundColor: Colors.teal),
                   onPressed: () {
-                    final qty = int.tryParse(controller.text.trim()) ?? 0;
+                    final raw = int.tryParse(controller.text.trim()) ?? minAllowed;
+                    final qty = raw.clamp(minAllowed, effectiveMax);
                     Navigator.pop(dCtx, qty);
                   },
                   child: const Text('Apply'),
@@ -1098,12 +1613,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
     );
 
     if (entered != null) {
-      _updateQuantity(item.id, entered, maxAllowed);
+      _updateQuantity(item.id, entered, effectiveMax, minStock: minAllowed);
     }
   }
 
   Future<void> _showLoadedSummaryModal(ThemeData theme) async {
     final isDraft = _currentVanLoad == null || _currentVanLoad!.status == VanLoadStatus.draft;
+    final isQuantityEditable = isDraft || (_isDealer && _isEditingExisting && !(_editingOriginalLoad?.isStockSettled ?? false));
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1159,7 +1675,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          if (isDraft && loadedItems.isNotEmpty) ...[
+                          if (isDraft && loadedItems.isNotEmpty)
                             IconButton(
                               visualDensity: VisualDensity.compact,
                               icon: Icon(Icons.delete_sweep_outlined, size: 20, color: Colors.red.shade700),
@@ -1192,6 +1708,23 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                 }
                               },
                             ),
+                          if (_isEditingExisting && _isDealer) ...[
+                            const SizedBox(width: 4),
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.teal,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              icon: const Icon(Icons.save_rounded, size: 16),
+                              label: const Text('Save Changes', style: TextStyle(fontSize: 12.5)),
+                              onPressed: () {
+                                Navigator.pop(sheetCtx);
+                                _saveEditedVanLoad();
+                              },
+                            ),
+                          ] else if (isDraft && _isDealer && loadedItems.isNotEmpty) ...[
                             const SizedBox(width: 4),
                             FilledButton.icon(
                               style: FilledButton.styleFrom(
@@ -1239,7 +1772,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
                             itemBuilder: (context, index) {
                               final item = loadedItems[index];
                               final currentQty = _loadedQuantities[item.id] ?? 0;
-                              final availableWarehouseStock = item.availableQuantity;
+                              final oldItem = _editingOriginalLoad?.items.where((i) => i.productId == item.id).firstOrNull;
+                              final minAllowed = oldItem?.soldQuantity ?? 0;
+                              final onHandWarehouseStock = item.stockQuantity;
+                              final maxAllowed = isDraft
+                                  ? onHandWarehouseStock
+                                  : (onHandWarehouseStock + (oldItem?.loadedQuantity ?? 0));
+                              final effectiveMax = maxAllowed < minAllowed ? minAllowed : maxAllowed;
                               final lineTotal = item.sellingPrice * currentQty;
 
                               return Column(
@@ -1260,19 +1799,31 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                             ),
                                             const SizedBox(height: 3),
                                             Text(
-                                              '${item.isSelecta ? 'Selecta' : 'Other'} • ${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} each',
+                                              '${item.isSelecta ? 'Selecta' : 'Other'} • ${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} each • $effectiveMax on hand',
                                               style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
                                             ),
+                                            if (minAllowed > 0)
+                                              Padding(
+                                                padding: const EdgeInsets.only(top: 2),
+                                                child: Text(
+                                                  '$minAllowed units already sold (min limit)',
+                                                  style: TextStyle(fontSize: 10.5, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
-                                      if (isDraft)
+                                      if (isQuantityEditable)
                                         IconButton(
                                           visualDensity: VisualDensity.compact,
                                           icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400, size: 20),
                                           tooltip: 'Remove',
                                           onPressed: () {
-                                            _updateQuantity(item.id, 0, availableWarehouseStock);
+                                            if (minAllowed > 0) {
+                                              SnackBarWidget.error(context, 'Cannot remove: $minAllowed units already sold on this van.');
+                                              return;
+                                            }
+                                            _updateQuantity(item.id, 0, effectiveMax, minStock: minAllowed);
                                             setSheetState(() {});
                                           },
                                         ),
@@ -1289,7 +1840,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.teal.shade800),
                                         ),
                                       ),
-                                      if (isDraft)
+                                      if (isQuantityEditable)
                                         Container(
                                           height: 32,
                                           decoration: BoxDecoration(
@@ -1303,7 +1854,11 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                               InkWell(
                                                 borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
                                                 onTap: () {
-                                                  _updateQuantity(item.id, currentQty - 1, availableWarehouseStock);
+                                                  if (currentQty <= minAllowed && minAllowed > 0) {
+                                                    SnackBarWidget.error(context, 'Cannot reduce below $minAllowed (already sold).');
+                                                    return;
+                                                  }
+                                                  _updateQuantity(item.id, currentQty - 1, effectiveMax, minStock: minAllowed);
                                                   setSheetState(() {});
                                                 },
                                                 child: SizedBox(
@@ -1312,13 +1867,15 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                                   child: Icon(
                                                     currentQty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
                                                     size: 16,
-                                                    color: currentQty == 1 ? Colors.red : Colors.teal.shade800,
+                                                    color: (currentQty <= minAllowed && minAllowed > 0)
+                                                        ? Colors.grey.shade400
+                                                        : (currentQty == 1 ? Colors.red : Colors.teal.shade800),
                                                   ),
                                                 ),
                                               ),
                                               InkWell(
                                                 onTap: () async {
-                                                  await _showQuantityDialog(item, currentQty, availableWarehouseStock);
+                                                  await _showQuantityDialog(item, currentQty, effectiveMax, minAllowed: minAllowed);
                                                   setSheetState(() {});
                                                 },
                                                 child: Container(
@@ -1333,9 +1890,9 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                               ),
                                               InkWell(
                                                 borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
-                                                onTap: currentQty < availableWarehouseStock
+                                                onTap: currentQty < effectiveMax
                                                     ? () {
-                                                        _updateQuantity(item.id, currentQty + 1, availableWarehouseStock);
+                                                        _updateQuantity(item.id, currentQty + 1, effectiveMax, minStock: minAllowed);
                                                         setSheetState(() {});
                                                       }
                                                     : null,
@@ -1345,7 +1902,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                                   child: Icon(
                                                     Icons.add_rounded,
                                                     size: 16,
-                                                    color: currentQty < availableWarehouseStock ? Colors.teal.shade800 : Colors.grey.shade400,
+                                                    color: currentQty < effectiveMax ? Colors.teal.shade800 : Colors.grey.shade400,
                                                   ),
                                                 ),
                                               ),
@@ -1525,8 +2082,281 @@ class _VanLoadPageState extends State<VanLoadPage> {
     );
   }
 
+  Widget _buildEditBanner(ThemeData theme) {
+    if (!_isEditingExisting || _editingOriginalLoad == null) return const SizedBox.shrink();
+    final isSettled = _editingOriginalLoad!.isStockSettled;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isSettled ? Colors.blue.shade50 : Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: isSettled ? Colors.blue.shade200 : Colors.amber.shade300),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isSettled ? Icons.lock_clock_rounded : Icons.edit_note_rounded,
+            size: 16,
+            color: isSettled ? Colors.blue.shade800 : Colors.amber.shade900,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              isSettled
+                  ? 'Settled load: Stock locked. Updating proof photo & notes.'
+                  : 'Editing load: Stock differences adjust automatically upon saving.',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isSettled ? Colors.blue.shade900 : Colors.amber.shade900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProofOfLoadSection(ThemeData theme, {required bool isEditable}) {
+    final hasLocalImage = _proofImage != null;
+    final hasNetworkImage = !hasLocalImage && _networkImagePath.trim().isNotEmpty;
+    final hasImage = hasLocalImage || hasNetworkImage;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: hasImage ? Colors.teal.shade50.withValues(alpha: 0.35) : Colors.amber.shade50.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: hasImage ? Colors.teal.shade300 : Colors.amber.shade400,
+          width: 1.0,
+        ),
+      ),
+      child: hasImage
+          ? Row(
+              children: [
+                GestureDetector(
+                  onTap: () {
+                    Helperfunctions.navigateTo(
+                      context,
+                      ImageViewerPage(
+                        image: _proofImage,
+                        networkImagePath: _networkImagePath,
+                      ),
+                    );
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Stack(
+                      children: [
+                        if (hasLocalImage)
+                          Image.file(
+                            _proofImage!,
+                            width: 38,
+                            height: 38,
+                            fit: BoxFit.cover,
+                          )
+                        else
+                          Image.network(
+                            _networkImagePath,
+                            width: 38,
+                            height: 38,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Container(
+                              width: 38,
+                              height: 38,
+                              color: Colors.grey.shade200,
+                              child: const Icon(Icons.broken_image, size: 20, color: Colors.grey),
+                            ),
+                          ),
+                        Positioned(
+                          bottom: 1,
+                          right: 1,
+                          child: Container(
+                            padding: const EdgeInsets.all(1.5),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.6),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: const Icon(Icons.zoom_in, color: Colors.white, size: 10),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Proof Attached',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.check_circle_rounded, size: 13, color: Colors.teal.shade700),
+                        ],
+                      ),
+                      Text(
+                        'Tap photo to zoom preview',
+                        style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isEditable) ...[
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(),
+                    icon: Icon(Icons.edit_outlined, size: 18, color: Colors.teal.shade800),
+                    tooltip: 'Change Photo',
+                    onPressed: _showImageSourceSelector,
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(),
+                    icon: Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red.shade600),
+                    tooltip: 'Remove Photo',
+                    onPressed: _removeProofImage,
+                  ),
+                ],
+              ],
+            )
+          : Row(
+              children: [
+                Icon(
+                  Icons.camera_alt_rounded,
+                  size: 18,
+                  color: Colors.amber.shade900,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'Proof of Van Load',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'REQUIRED *',
+                              style: TextStyle(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.red.shade900,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        'Photo required to confirm',
+                        style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                if (isEditable) ...[
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                      side: BorderSide(color: Colors.amber.shade700),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                    icon: Icon(Icons.camera_alt_outlined, size: 14, color: Colors.amber.shade900),
+                    label: Text(
+                      'Camera',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                    ),
+                    onPressed: () => _pickProofImage(ImageSource.camera),
+                  ),
+                  const SizedBox(width: 4),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                      side: BorderSide(color: Colors.amber.shade700),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                    icon: Icon(Icons.photo_library_outlined, size: 14, color: Colors.amber.shade900),
+                    label: Text(
+                      'Gallery',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                    ),
+                    onPressed: () => _pickProofImage(ImageSource.gallery),
+                  ),
+                ] else
+                  Text(
+                    'No photo',
+                    style: TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Colors.grey.shade600),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildRemarksSection(ThemeData theme, {required bool isEditable}) {
+    return Container(
+      height: 38,
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: TextField(
+        controller: _remarksController,
+        enabled: isEditable,
+        maxLines: 1,
+        style: const TextStyle(fontSize: 12),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          border: InputBorder.none,
+          prefixIcon: Icon(Icons.notes_rounded, size: 17, color: Colors.teal.shade700),
+          hintText: isEditable ? 'Remarks / Notes (Optional)...' : 'No remarks recorded',
+          hintStyle: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+        ),
+      ),
+    );
+  }
+
   Widget _buildManifestEditor(ThemeData theme) {
     final isDraft = _currentVanLoad == null || _currentVanLoad!.status == VanLoadStatus.draft;
+    final isQuantityEditable = isDraft || (_isDealer && _isEditingExisting && !(_editingOriginalLoad?.isStockSettled ?? false));
+    final isMetadataEditable = isDraft || (_isDealer && _isEditingExisting);
     final isTabletLandscape = ScreenSize.isTabletLandscape(context);
 
     int compareProducts(InventoryItem a, InventoryItem b) {
@@ -1633,10 +2463,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
       children: [
         // Top info card
         Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           color: Colors.white,
           child: Column(
             children: [
+              _buildEditBanner(theme),
+              _buildProofOfLoadSection(theme, isEditable: isMetadataEditable),
+              _buildRemarksSection(theme, isEditable: isMetadataEditable),
               // Search input
               SizedBox(
                 height: 42,
@@ -1715,25 +2548,37 @@ class _VanLoadPageState extends State<VanLoadPage> {
                     } else if (entry is _VanLoadProductEntry) {
                       final item = entry.item;
                       final currentQty = _loadedQuantities[item.id] ?? 0;
-                      final availableWarehouseStock = item.availableQuantity;
+                      final oldItem = _editingOriginalLoad?.items.where((i) => i.productId == item.id).firstOrNull;
+                      final minAllowed = oldItem?.soldQuantity ?? 0;
+                      final onHandWarehouseStock = item.stockQuantity;
+                      final maxAllowed = isDraft
+                          ? onHandWarehouseStock
+                          : (onHandWarehouseStock + (oldItem?.loadedQuantity ?? 0));
+                      final effectiveMax = maxAllowed < minAllowed ? minAllowed : maxAllowed;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: isDraft
+                        child: isQuantityEditable
                             ? ProductOrderCard(
                                 item: item,
                                 selectedQty: currentQty,
-                                maxOrderable: availableWarehouseStock,
+                                maxOrderable: effectiveMax,
                                 isPlaced: false,
+                                customStockLabel: '• $effectiveMax on hand',
+                                customOutOfStockLabel: '0 on hand',
                                 currencyFormat: _currencyFormat,
-                                onTap: () => _showQuantityDialog(item, currentQty, availableWarehouseStock),
+                                onTap: () => _showQuantityDialog(item, currentQty, effectiveMax, minAllowed: minAllowed),
                                 onIncrement: () {
                                   HapticFeedback.lightImpact();
-                                  _updateQuantity(item.id, currentQty + 1, availableWarehouseStock);
+                                  _updateQuantity(item.id, currentQty + 1, effectiveMax, minStock: minAllowed);
                                 },
                                 onDecrement: () {
                                   HapticFeedback.lightImpact();
-                                  _updateQuantity(item.id, currentQty - 1, availableWarehouseStock);
+                                  if (currentQty <= minAllowed && minAllowed > 0) {
+                                    SnackBarWidget.error(context, 'Cannot reduce below $minAllowed (already sold on van).');
+                                    return;
+                                  }
+                                  _updateQuantity(item.id, currentQty - 1, effectiveMax, minStock: minAllowed);
                                 },
                               )
                             : _buildReadOnlyProductCard(item, currentQty),
@@ -1772,6 +2617,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
 
   Widget _buildTabletManifestSummaryPanel(ThemeData theme) {
     final isDraft = _currentVanLoad == null || _currentVanLoad!.status == VanLoadStatus.draft;
+    final isQuantityEditable = isDraft || (_isDealer && _isEditingExisting && !(_editingOriginalLoad?.isStockSettled ?? false));
     final loadedItems = _allInventoryItems.where((i) => (_loadedQuantities[i.id] ?? 0) > 0).toList();
     loadedItems.sort((a, b) => Helperfunctions.compareProducts(
           nameA: a.productName,
@@ -1878,7 +2724,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
                     itemBuilder: (context, index) {
                       final item = loadedItems[index];
                       final currentQty = _loadedQuantities[item.id] ?? 0;
-                      final availableWarehouseStock = item.availableQuantity;
+                      final oldItem = _editingOriginalLoad?.items.where((i) => i.productId == item.id).firstOrNull;
+                      final minAllowed = oldItem?.soldQuantity ?? 0;
+                      final onHandWarehouseStock = item.stockQuantity;
+                      final maxAllowed = isDraft
+                          ? onHandWarehouseStock
+                          : (onHandWarehouseStock + (oldItem?.loadedQuantity ?? 0));
+                      final effectiveMax = maxAllowed < minAllowed ? minAllowed : maxAllowed;
                       final lineTotal = item.sellingPrice * currentQty;
 
                       return Column(
@@ -1901,18 +2753,32 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
-                                      '${item.isSelecta ? 'Selecta' : 'Other'} • ${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)}',
+                                      '${item.isSelecta ? 'Selecta' : 'Other'} • ${Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice)} • $effectiveMax on hand',
                                       style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                                     ),
+                                    if (minAllowed > 0)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(
+                                          '$minAllowed sold (min limit)',
+                                          style: TextStyle(fontSize: 10, color: Colors.amber.shade900, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
-                              if (isDraft)
+                              if (isQuantityEditable)
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
                                   icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400, size: 18),
                                   tooltip: 'Remove',
-                                  onPressed: () => _updateQuantity(item.id, 0, availableWarehouseStock),
+                                  onPressed: () {
+                                    if (minAllowed > 0) {
+                                      SnackBarWidget.error(context, 'Cannot remove: $minAllowed units already sold.');
+                                      return;
+                                    }
+                                    _updateQuantity(item.id, 0, effectiveMax, minStock: minAllowed);
+                                  },
                                 ),
                             ],
                           ),
@@ -1927,7 +2793,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                   style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Colors.teal.shade800),
                                 ),
                               ),
-                              if (isDraft)
+                              if (isQuantityEditable)
                                 Container(
                                   height: 30,
                                   decoration: BoxDecoration(
@@ -1940,19 +2806,27 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                     children: [
                                       InkWell(
                                         borderRadius: const BorderRadius.horizontal(left: Radius.circular(15)),
-                                        onTap: () => _updateQuantity(item.id, currentQty - 1, availableWarehouseStock),
+                                        onTap: () {
+                                          if (currentQty <= minAllowed && minAllowed > 0) {
+                                            SnackBarWidget.error(context, 'Cannot reduce below $minAllowed (already sold).');
+                                            return;
+                                          }
+                                          _updateQuantity(item.id, currentQty - 1, effectiveMax, minStock: minAllowed);
+                                        },
                                         child: SizedBox(
                                           width: 28,
                                           height: 30,
                                           child: Icon(
                                             currentQty == 1 ? Icons.delete_outline_rounded : Icons.remove_rounded,
                                             size: 15,
-                                            color: currentQty == 1 ? Colors.red : Colors.teal.shade800,
+                                            color: (currentQty <= minAllowed && minAllowed > 0)
+                                                ? Colors.grey.shade400
+                                                : (currentQty == 1 ? Colors.red : Colors.teal.shade800),
                                           ),
                                         ),
                                       ),
                                       InkWell(
-                                        onTap: () => _showQuantityDialog(item, currentQty, availableWarehouseStock),
+                                        onTap: () => _showQuantityDialog(item, currentQty, effectiveMax, minAllowed: minAllowed),
                                         child: Container(
                                           constraints: const BoxConstraints(minWidth: 32),
                                           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1965,8 +2839,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                       ),
                                       InkWell(
                                         borderRadius: const BorderRadius.horizontal(right: Radius.circular(15)),
-                                        onTap: currentQty < availableWarehouseStock
-                                            ? () => _updateQuantity(item.id, currentQty + 1, availableWarehouseStock)
+                                        onTap: currentQty < effectiveMax
+                                            ? () => _updateQuantity(item.id, currentQty + 1, effectiveMax, minStock: minAllowed)
                                             : null,
                                         child: SizedBox(
                                           width: 28,
@@ -1974,7 +2848,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                           child: Icon(
                                             Icons.add_rounded,
                                             size: 15,
-                                            color: currentQty < availableWarehouseStock ? Colors.teal.shade800 : Colors.grey.shade400,
+                                            color: currentQty < effectiveMax ? Colors.teal.shade800 : Colors.grey.shade400,
                                           ),
                                         ),
                                       ),
@@ -2008,7 +2882,41 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   ),
                 ],
               ),
-              if (isDraft && _isDealer)
+              if (_isEditingExisting && _isDealer)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isCreatingNew = false;
+                          _isEditingExisting = false;
+                          _editingOriginalLoad = null;
+                          _proofImage = null;
+                          _networkImagePath = '';
+                        });
+                      },
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 8),
+                    AsyncFilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.save_rounded, size: 18),
+                      label: const Text('Save Changes', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      loadingLabel: 'Saving...',
+                      onPressed: _saveEditedVanLoad,
+                    ),
+                  ],
+                )
+              else if (isDraft && _isDealer)
                 AsyncFilledButton.icon(
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.teal,
@@ -2026,7 +2934,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
-                  onPressed: () => setState(() => _isCreatingNew = false),
+                  onPressed: () => setState(() {
+                    _isCreatingNew = false;
+                    _isEditingExisting = false;
+                    _editingOriginalLoad = null;
+                    _proofImage = null;
+                    _networkImagePath = '';
+                  }),
                   child: const Text('Close View'),
                 ),
             ],
@@ -2041,7 +2955,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
     final loadedSkuCount = _loadedQuantities.values.where((q) => q > 0).length;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.grey.shade300)),
@@ -2061,13 +2975,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(7),
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           color: Colors.teal.shade50,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: Colors.teal.shade200),
                         ),
-                        child: const Icon(Icons.receipt_long_rounded, color: Colors.teal, size: 20),
+                        child: const Icon(Icons.receipt_long_rounded, color: Colors.teal, size: 18),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -2077,18 +2991,23 @@ class _VanLoadPageState extends State<VanLoadPage> {
                           children: [
                             Row(
                               children: [
-                                Text(
-                                  '$loadedSkuCount SKU${loadedSkuCount == 1 ? '' : 's'} • $_totalLoadedUnits units',
-                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
-                                  overflow: TextOverflow.ellipsis,
+                                Flexible(
+                                  child: Text(
+                                    '$loadedSkuCount SKU${loadedSkuCount == 1 ? '' : 's'} • $_totalLoadedUnits units',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                                    overflow: TextOverflow.ellipsis,
+                                    maxLines: 1,
+                                  ),
                                 ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.keyboard_arrow_up_rounded, size: 18, color: Colors.teal),
+                                const SizedBox(width: 2),
+                                const Icon(Icons.keyboard_arrow_up_rounded, size: 16, color: Colors.teal),
                               ],
                             ),
                             Text(
                               Helperfunctions.formatDoubleAmountForDisplay(_totalLoadedAmount),
-                              style: TextStyle(fontSize: 15.5, color: Colors.teal.shade800, fontWeight: FontWeight.bold),
+                              style: TextStyle(fontSize: 15, color: Colors.teal.shade800, fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ],
                         ),
@@ -2098,27 +3017,71 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 ),
               ),
             ),
-            const SizedBox(width: 10),
-            if (isDraft && _isDealer)
+            const SizedBox(width: 8),
+            if (_isEditingExisting && _isDealer)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isCreatingNew = false;
+                        _isEditingExisting = false;
+                        _editingOriginalLoad = null;
+                        _proofImage = null;
+                        _networkImagePath = '';
+                      });
+                    },
+                    child: const Text('Cancel', style: TextStyle(fontSize: 12.5)),
+                  ),
+                  const SizedBox(width: 6),
+                  AsyncFilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: Colors.teal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.save_rounded, size: 16),
+                    label: const Text('Save', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                    loadingLabel: 'Saving...',
+                    onPressed: _saveEditedVanLoad,
+                  ),
+                ],
+              )
+            else if (isDraft && _isDealer)
               AsyncFilledButton.icon(
                 style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
                   backgroundColor: Colors.teal,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                icon: const Icon(Icons.local_shipping, size: 18),
-                label: const Text('Confirm Load', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                loadingLabel: 'Loading Van...',
+                icon: const Icon(Icons.local_shipping, size: 16),
+                label: const Text('Confirm Load', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                loadingLabel: 'Loading...',
                 onPressed: _confirmAndDeductWarehouseStock,
               )
             else
               OutlinedButton(
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                onPressed: () => setState(() => _isCreatingNew = false),
-                child: const Text('Close View'),
+                onPressed: () => setState(() {
+                  _isCreatingNew = false;
+                  _isEditingExisting = false;
+                  _editingOriginalLoad = null;
+                  _proofImage = null;
+                  _networkImagePath = '';
+                }),
+                child: const Text('Close View', style: TextStyle(fontSize: 12.5)),
               ),
           ],
         ),

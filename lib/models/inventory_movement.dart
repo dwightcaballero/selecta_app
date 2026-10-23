@@ -152,6 +152,9 @@ class InventoryItem {
 
   double get marginPercent => buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
+  /// Physical on-hand stock in the warehouse.
+  int get onHandQuantity => stockQuantity;
+
   /// Physical unreserved stock in the warehouse (Current Stock - Reserved Stock).
   int get netPhysicalStock => stockQuantity - reservedQuantity;
 

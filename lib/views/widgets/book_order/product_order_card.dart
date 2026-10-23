@@ -24,6 +24,8 @@ class ProductOrderCard extends StatelessWidget {
   final VoidCallback? onIncrement;
   final VoidCallback? onDecrement;
   final bool isFutureDelivery;
+  final String? customStockLabel;
+  final String? customOutOfStockLabel;
 
   const ProductOrderCard({
     super.key,
@@ -40,6 +42,8 @@ class ProductOrderCard extends StatelessWidget {
     this.onIncrement,
     this.onDecrement,
     this.isFutureDelivery = false,
+    this.customStockLabel,
+    this.customOutOfStockLabel,
   });
 
   @override
@@ -287,8 +291,13 @@ class ProductOrderCard extends StatelessWidget {
                           ),
                           if (isOutOfStock)
                             Text(
-                              'Out of stock',
+                              customOutOfStockLabel ?? 'Out of stock',
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: stockColor),
+                            )
+                          else if (customStockLabel != null)
+                            Text(
+                              customStockLabel!,
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
                             )
                           else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
                             Container(
@@ -328,7 +337,7 @@ class ProductOrderCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Text(
-                        '0 stock',
+                        customOutOfStockLabel != null ? customOutOfStockLabel! : '0 stock',
                         style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colorScheme.outline),
                       ),
                     )

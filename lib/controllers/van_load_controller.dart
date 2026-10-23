@@ -37,7 +37,11 @@ class VanLoadController {
 
   /// Gets current user display name.
   String getCurrentUserDisplayName() {
-    return authService.value.currentUser?.displayName ?? 'Dealer';
+    try {
+      return authService.value.currentUser?.displayName ?? 'Dealer';
+    } catch (_) {
+      return 'Dealer';
+    }
   }
 
   /// Create and save a new draft Van Load manifest.
@@ -51,13 +55,18 @@ class VanLoadController {
   }
 
   /// Confirms and loads the van:
-  /// 1. Deducts loaded items from warehouse inventory with 'Van Load' movement logs.
-  /// 2. Sets status = 'loaded', isStockDeducted = true.
+  /// 1. Validates proof of van load photo is attached.
+  /// 2. Deducts loaded items from warehouse inventory with 'Van Load' movement logs.
+  /// 3. Sets status = 'loaded', isStockDeducted = true.
   Future<void> confirmAndLoadVan({
     required VanLoad vanLoad,
   }) async {
     if (vanLoad.id == null || vanLoad.id!.isEmpty) {
       throw ArgumentError('VanLoad must have a valid ID before confirming.');
+    }
+
+    if (vanLoad.imagePath.trim().isEmpty) {
+      throw ArgumentError('Proof of van load photo is required before confirming.');
     }
 
     if (vanLoad.isStockDeducted) {
@@ -79,6 +88,100 @@ class VanLoadController {
     );
 
     await _vanLoadService.updateVanLoad(vanLoad.id!, updated);
+  }
+
+  /// Allows dealer to edit an existing van load record:
+  /// - Draft: updates items, remarks, imagePath, totalLoadedAmount without inventory movements.
+  /// - Loaded / In-Route: adjusts warehouse inventory for any item differences, preserves sales, updates items, remarks, imagePath.
+  /// - Completed: updates remarks and imagePath (items remain locked to protect settled inventory).
+  Future<void> editVanLoadRecord({
+    required VanLoad originalVanLoad,
+    required List<VanLoadItem> newItems,
+    required String remarks,
+    required String imagePath,
+  }) async {
+    final isDealer = await checkIsDealer();
+    if (!isDealer) {
+      throw StateError('Only dealers are authorized to edit van load records.');
+    }
+
+    if (originalVanLoad.id == null || originalVanLoad.id!.isEmpty) {
+      throw ArgumentError('VanLoad must have a valid ID.');
+    }
+
+    if (imagePath.trim().isEmpty) {
+      throw ArgumentError('Proof of van load photo is required.');
+    }
+
+    final now = Timestamp.now();
+    final user = getCurrentUserDisplayName();
+
+    // If load is completed (stock already settled), protect settled stock and update remarks/proof
+    if (originalVanLoad.isStockSettled) {
+      final updated = originalVanLoad.copyWith(
+        remarks: remarks.trim(),
+        imagePath: imagePath.trim(),
+        lastUpdatedDate: now,
+        lastUpdatedBy: user,
+      );
+      await _vanLoadService.updateVanLoad(originalVanLoad.id!, updated);
+      return;
+    }
+
+    final oldMap = {for (final item in originalVanLoad.items) item.productId: item};
+
+    // Validate that loadedQuantity is not reduced below soldQuantity
+    for (final newItem in newItems) {
+      final old = oldMap[newItem.productId];
+      if (old != null && newItem.loadedQuantity < old.soldQuantity) {
+        throw ArgumentError(
+          'Cannot reduce loaded quantity for ${newItem.productName} below ${old.soldQuantity} (already sold on the van).',
+        );
+      }
+    }
+
+    // Check removed items: if an old item had soldQuantity > 0, it cannot be removed
+    final newIds = newItems.map((i) => i.productId).toSet();
+    for (final old in originalVanLoad.items) {
+      if (!newIds.contains(old.productId) && old.soldQuantity > 0) {
+        throw ArgumentError(
+          'Cannot remove ${old.productName} because ${old.soldQuantity} units have already been sold.',
+        );
+      }
+    }
+
+    // Preserve sold and returned quantities on matching items
+    final preservedItems = newItems.map((item) {
+      final old = oldMap[item.productId];
+      return item.copyWith(
+        soldQuantity: old?.soldQuantity ?? 0,
+        returnedQuantity: old?.returnedQuantity ?? 0,
+      );
+    }).toList();
+
+    // If stock was already deducted and not settled, atomically adjust warehouse inventory
+    if (originalVanLoad.isStockDeducted) {
+      await _inventoryService.adjustVanLoadInventory(
+        vanLoadId: originalVanLoad.id!,
+        oldItems: originalVanLoad.items,
+        newItems: preservedItems,
+      );
+    }
+
+    final totalLoadedAmount = preservedItems.fold<double>(0.0, (acc, i) => acc + i.lineTotalLoaded);
+    final totalSoldAmount = preservedItems.fold<double>(0.0, (acc, i) => acc + i.lineTotalSold);
+
+    final updated = originalVanLoad.copyWith(
+      items: preservedItems,
+      remarks: remarks.trim(),
+      imagePath: imagePath.trim(),
+      totalLoadedAmount: totalLoadedAmount,
+      totalSoldAmount: totalSoldAmount,
+      lastUpdatedDate: now,
+      lastUpdatedBy: user,
+    );
+
+    await _vanLoadService.updateVanLoad(originalVanLoad.id!, updated);
   }
 
   /// Completes the Van Load at End of Day:

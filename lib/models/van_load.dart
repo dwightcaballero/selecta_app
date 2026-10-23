@@ -156,6 +156,7 @@ class VanLoad {
   String status; // 'draft' | 'loaded' | 'in-route' | 'completed'
   List<VanLoadItem> items;
   String remarks;
+  String imagePath;
   double totalLoadedAmount;
   double totalSoldAmount;
   double totalReturnedAmount;
@@ -174,6 +175,7 @@ class VanLoad {
     this.status = VanLoadStatus.draft,
     this.items = const [],
     this.remarks = '',
+    this.imagePath = '',
     this.totalLoadedAmount = 0.0,
     this.totalSoldAmount = 0.0,
     this.totalReturnedAmount = 0.0,
@@ -186,6 +188,9 @@ class VanLoad {
     this.completedDate,
     this.completedBy,
   });
+
+  /// True if proof of van load image is attached.
+  bool get hasProofOfLoad => imagePath.trim().isNotEmpty;
 
   /// Total units loaded across all products.
   int get totalLoadedUnits => items.fold<int>(0, (acc, i) => acc + i.loadedQuantity);
@@ -239,6 +244,7 @@ class VanLoad {
       status: json['status'] as String? ?? VanLoadStatus.draft,
       items: _parseItems(json['items']),
       remarks: json['remarks'] as String? ?? '',
+      imagePath: (json['imagePath'] as String? ?? json['proofImageUrl'] as String? ?? '').trim(),
       totalLoadedAmount: _parseDouble(json['totalLoadedAmount']),
       totalSoldAmount: _parseDouble(json['totalSoldAmount']),
       totalReturnedAmount: _parseDouble(json['totalReturnedAmount']),
@@ -266,6 +272,7 @@ class VanLoad {
     status: VanLoadStatus.draft,
     items: const [],
     remarks: '',
+    imagePath: '',
     totalLoadedAmount: 0.0,
     totalSoldAmount: 0.0,
     totalReturnedAmount: 0.0,
@@ -285,6 +292,7 @@ class VanLoad {
     String? status,
     List<VanLoadItem>? items,
     String? remarks,
+    String? imagePath,
     double? totalLoadedAmount,
     double? totalSoldAmount,
     double? totalReturnedAmount,
@@ -303,6 +311,7 @@ class VanLoad {
       status: status ?? this.status,
       items: items ?? this.items,
       remarks: remarks ?? this.remarks,
+      imagePath: imagePath ?? this.imagePath,
       totalLoadedAmount: totalLoadedAmount ?? this.totalLoadedAmount,
       totalSoldAmount: totalSoldAmount ?? this.totalSoldAmount,
       totalReturnedAmount: totalReturnedAmount ?? this.totalReturnedAmount,
@@ -323,6 +332,7 @@ class VanLoad {
       'status': status,
       'items': items.map((e) => e.toJson()).toList(),
       'remarks': remarks,
+      'imagePath': imagePath,
       'totalLoadedAmount': totalLoadedAmount,
       'totalSoldAmount': totalSoldAmount,
       'totalReturnedAmount': totalReturnedAmount,
@@ -343,6 +353,7 @@ class VanLoadModelString {
   static const String status = 'status';
   static const String items = 'items';
   static const String remarks = 'remarks';
+  static const String imagePath = 'imagePath';
   static const String totalLoadedAmount = 'totalLoadedAmount';
   static const String totalSoldAmount = 'totalSoldAmount';
   static const String totalReturnedAmount = 'totalReturnedAmount';

@@ -1319,6 +1319,113 @@ class InventoryService {
     }
   }
 
+  /// Adjusts warehouse inventory when a dealer edits an active [VanLoad] manifest:
+  /// - For items with increased quantity (diff > 0): deducts difference from warehouse stock with 'Van Load (Adjusted)'.
+  /// - For items with decreased quantity (diff < 0): returns difference back to warehouse stock with 'Van Return (Adjusted)'.
+  /// All movements are logged with idempotency and audit metadata.
+  Future<void> adjustVanLoadInventory({
+    required String vanLoadId,
+    required List<VanLoadItem> oldItems,
+    required List<VanLoadItem> newItems,
+    String? driverName,
+  }) async {
+    final oldMap = {for (final item in oldItems) item.productId: item};
+    final newMap = {for (final item in newItems) item.productId: item};
+    final allProductIds = {...oldMap.keys, ...newMap.keys};
+
+    final List<MapEntry<VanLoadItem, int>> adjustments = [];
+    for (final pid in allProductIds) {
+      final oldItem = oldMap[pid];
+      final newItem = newMap[pid];
+      final oldQty = oldItem?.loadedQuantity ?? 0;
+      final newQty = newItem?.loadedQuantity ?? 0;
+      final diff = newQty - oldQty;
+      if (diff != 0) {
+        final refItem = newItem ?? oldItem!;
+        adjustments.add(MapEntry(refItem, diff));
+      }
+    }
+
+    if (adjustments.isEmpty) return;
+
+    final now = Timestamp.now();
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final List<StockChangeRecord> clampedRecords = [];
+
+    for (final chunk in _chunk(adjustments, 100)) {
+      await _runInventoryTransaction('adjustVanLoadInventory', (transaction) async {
+        final productRefs = chunk.map((entry) {
+          final item = entry.key;
+          final collectionName = _collectionForSource(item.productSource);
+          return _firestore.collection(collectionName).doc(item.productId);
+        }).toList();
+
+        final movRefs = chunk.map((entry) {
+          final item = entry.key;
+          final idKey = 'van_load_adj_${vanLoadId}_${item.productId}_${now.millisecondsSinceEpoch}'.replaceAll('/', '_');
+          return _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc(idKey);
+        }).toList();
+
+        final productSnaps = await Future.wait(productRefs.map((r) => transaction.get(r)));
+
+        for (int i = 0; i < chunk.length; i++) {
+          final snap = productSnaps[i];
+          if (!snap.exists) continue;
+
+          final diff = chunk[i].value;
+
+          final stockDelta = -diff;
+          final isDeduction = diff > 0;
+          final movementType = isDeduction ? MovementType.van_load : MovementType.van_return;
+          final reason = isDeduction ? 'Van Load (Adjusted)' : 'Van Return (Adjusted)';
+          final notes = isDeduction
+              ? 'Van Load #$vanLoadId adjusted (+$diff loaded)'
+              : 'Van Load #$vanLoadId adjusted (-${-diff} loaded)';
+
+          final change = _computeStockChange(
+            productRef: snap.reference,
+            productSnap: snap,
+            stockDelta: stockDelta,
+            movementType: movementType,
+            referenceType: ReferenceType.van_load,
+            referenceId: vanLoadId,
+            referenceLabel: driverName != null ? 'Van Load: $driverName' : 'Van Load #$vanLoadId',
+            idempotencyKey: movRefs[i].id,
+            reason: reason,
+            notes: notes,
+            allowClamping: isDeduction,
+            actorUid: actor.uid,
+            actorRole: actor.role,
+            actorName: actor.name,
+            appVersion: appVersion,
+            timestamp: now,
+          );
+
+          transaction.update(snap.reference, change.productUpdates);
+          transaction.set(movRefs[i], change.movement.toJson());
+
+          if (change.clamped) {
+            clampedRecords.add(change);
+          }
+        }
+      });
+    }
+
+    for (final rec in clampedRecords) {
+      _recordDiscrepancy(
+        productId: rec.movement.productId,
+        productName: rec.movement.productName,
+        productSource: rec.movement.productSource,
+        type: 'clamped_negative_stock',
+        expected: rec.movement.previousStock,
+        actual: 0,
+        details: 'Van load adjustment clamped to 0. Requested: ${rec.movement.requestedQuantity}, available: ${rec.movement.previousStock}. Van Load: $vanLoadId',
+        movementId: rec.movement.id,
+      );
+    }
+  }
+
   /// Atomically completes a picklist inside a Firestore transaction:
   /// 1. Idempotency Check: Verifies the delivery record is still in `picklist` status and `isInventoryDeducted == false`.
   ///    If already processed or deducted, throws an Exception to prevent double-processing.
