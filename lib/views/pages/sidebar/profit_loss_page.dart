@@ -581,7 +581,8 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
     final maxY = maxVal <= 0 ? 1000.0 : maxVal * 1.25;
     final maxX = (points.length - 1).toDouble().clamp(1.0, double.infinity);
 
-    return LineChart(
+    return RepaintBoundary(
+      child: LineChart(
       LineChartData(
         minX: 0,
         maxX: maxX,
@@ -680,7 +681,8 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   String _formatAxisAmount(double value) {

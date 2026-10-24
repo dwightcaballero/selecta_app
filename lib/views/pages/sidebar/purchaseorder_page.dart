@@ -55,6 +55,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   final SupplierMappingService _mappingService = SupplierMappingService();
   final NumberFormat _currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
   final ImagePicker _picker = ImagePicker();
+  late final Stream<List<InventoryItem>> _inventoryStream;
 
   final TextEditingController invoiceAmountController = TextEditingController();
   final TextEditingController orderAmountController = TextEditingController();
@@ -127,6 +128,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
   @override
   void initState() {
     super.initState();
+    _inventoryStream = _inventoryController.getActiveInventoryStream();
     isNewRecord = widget.purchaseorderID.isEmpty;
     if (!isNewRecord) {
       orderNumberController.text = widget.purchaseorder.poNumber.isNotEmpty ? widget.purchaseorder.poNumber : widget.purchaseorder.invoiceNumber;
@@ -759,6 +761,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                                       final item = searchResults[i];
                                       final isPicked = replacementProduct?.id == item.id;
                                       return ListTile(
+                                        key: ValueKey('rep_prod_${item.id}'),
                                         dense: true,
                                         leading: CachedProductImage(imageUrl: item.imageUrl, size: 32),
                                         title: Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
@@ -943,6 +946,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                             final item = searchResults[i];
                             final isPicked = selectedProduct?.id == item.id;
                             return ListTile(
+                              key: ValueKey('sel_prod_${item.id}'),
                               dense: true,
                               leading: CachedProductImage(imageUrl: item.imageUrl, size: 36),
                               title: Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -2447,6 +2451,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     }
 
     return PoDocumentLineCard(
+      key: ValueKey('doc_line_${line.productId}_$index'),
       index: index,
       line: line,
       inventoryItem: matchedItem,
@@ -2757,7 +2762,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         }
       },
       child: StreamBuilder<List<InventoryItem>>(
-        stream: _inventoryController.getActiveInventoryStream(),
+        stream: _inventoryStream,
         builder: (context, snapshot) {
           // Purchase Orders are strictly exclusive to Selecta products.
           // Other products are completely excluded from PO catalog matching, suggestions, and discrepancy analysis.

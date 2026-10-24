@@ -96,8 +96,8 @@ class DeliveryService {
     });
   }
 
-  Stream<QuerySnapshot> getListDelivery() {
-    return _ordersRef.orderBy(DeliveryModelString.createdDate).snapshots();
+  Stream<QuerySnapshot> getListDelivery({int limit = 150}) {
+    return _ordersRef.orderBy(DeliveryModelString.createdDate, descending: true).limit(limit).snapshots();
   }
 
   Stream<QuerySnapshot<Delivery>> getListDeliveryByDate(DateTime deliveryDate) {

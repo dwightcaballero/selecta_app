@@ -18,8 +18,8 @@ class BadOrderService {
         );
   }
 
-  Stream<QuerySnapshot<BadOrder>> getListBadOrder() {
-    return _badorderRef.orderBy('badorderDate', descending: true).snapshots();
+  Stream<QuerySnapshot<BadOrder>> getListBadOrder({int limit = 100}) {
+    return _badorderRef.orderBy('badorderDate', descending: true).limit(limit).snapshots();
   }
 
   Future<String> addBadOrder(BadOrder badorder) async {

@@ -25,8 +25,8 @@ class TasksService {
         );
   }
 
-  Stream<QuerySnapshot> getListTasks() {
-    return _tasksRef.orderBy('taskDeadline', descending: true).snapshots();
+  Stream<QuerySnapshot> getListTasks({int limit = 100}) {
+    return _tasksRef.orderBy('taskDeadline', descending: true).limit(limit).snapshots();
   }
 
   Future<List<Tasks>> getTasksByStoreName(String storeName) async {
@@ -35,16 +35,7 @@ class TasksService {
   }
 
   Stream<int> getPendingAndOverdueCountStream() {
-    return getListTasks().map((snapshot) {
-      int count = 0;
-      for (var doc in snapshot.docs) {
-        final task = doc.data() as Tasks;
-        if (!task.isTaskDone) {
-          count++;
-        }
-      }
-      return count;
-    });
+    return _tasksRef.where('isTaskDone', isEqualTo: false).snapshots().map((snapshot) => snapshot.docs.length);
   }
 
   Future<DocumentReference> addTasks(Tasks tasks) async {

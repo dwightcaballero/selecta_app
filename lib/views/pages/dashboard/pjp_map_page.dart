@@ -369,7 +369,8 @@ class _PjpMapPageState extends State<PjpMapPage> {
     return Stack(
       children: [
         // ── FlutterMap ──────────────────────────────────────────────────
-        FlutterMap(
+        RepaintBoundary(
+          child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
             initialCenter: _mappedStores.isNotEmpty
@@ -497,6 +498,7 @@ class _PjpMapPageState extends State<PjpMapPage> {
             ),
           ],
         ),
+      ),
 
         // ── Day Selector Chips at Top ──────────────────────────────────
         Positioned(

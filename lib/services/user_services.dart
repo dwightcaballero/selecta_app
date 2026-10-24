@@ -60,8 +60,12 @@ class UserService {
     }
   }
 
-  Stream<List<Users>> getAllUsersStream() {
-    return _usersRef.snapshots().map(
+  Stream<List<Users>> getAllUsersStream({int? limit}) {
+    Query query = _usersRef;
+    if (limit != null && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.snapshots().map(
           (snapshot) => snapshot.docs.map((doc) => doc.data() as Users).toList(),
         );
   }

@@ -53,9 +53,15 @@ class SelectaProductService {
   // Dealers read from their own collection and only toggle `isActive`.
   // ═══════════════════════════════════════════════════════════════════════════
 
+  static bool _isCatalogSeeded = false;
+
   /// Real-time stream of dealer's Selecta products stored in local Firestore.
-  Stream<QuerySnapshot<Map<String, dynamic>>> getProductsStream() {
-    return _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).orderBy('productName').snapshots();
+  Stream<QuerySnapshot<Map<String, dynamic>>> getProductsStream({int? limit}) {
+    Query<Map<String, dynamic>> query = _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).orderBy('productName');
+    if (limit != null && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.snapshots();
   }
 
   /// One-time list of dealer's Selecta products.
@@ -88,17 +94,36 @@ class SelectaProductService {
   /// Real-time stream of Admin Selecta products.
   /// Falls back to reading `selecta_products` if `admin_selecta_products` is empty
   /// so existing products are seamlessly migrated.
-  Stream<QuerySnapshot<Map<String, dynamic>>> getAdminProductsStream() {
-    return _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).orderBy('productName').snapshots();
+  Stream<QuerySnapshot<Map<String, dynamic>>> getAdminProductsStream({int? limit}) {
+    Query<Map<String, dynamic>> query = _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).orderBy('productName');
+    if (limit != null && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.snapshots();
   }
 
   /// Ensures `admin_selecta_products` is populated from existing `selecta_products`
   /// and vice-versa so no products are dropped.
   Future<void> ensureAdminCatalogSeededFromExisting() async {
+    if (_isCatalogSeeded) return;
+
+    try {
+      final adminCountSnap = await _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).count().get();
+      if ((adminCountSnap.count ?? 0) > 0) {
+        _isCatalogSeeded = true;
+        return;
+      }
+    } catch (_) {
+      // If count aggregation fails, fallback to doc fetch
+    }
+
     final adminSnap = await _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).get();
     final existingSnap = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
 
-    if (existingSnap.docs.isEmpty && adminSnap.docs.isEmpty) return;
+    if (existingSnap.docs.isEmpty && adminSnap.docs.isEmpty) {
+      _isCatalogSeeded = true;
+      return;
+    }
 
     final existingAdminNames = <String>{};
     for (final doc in adminSnap.docs) {
@@ -129,6 +154,7 @@ class SelectaProductService {
     if (hasBatched) {
       await batch.commit();
     }
+    _isCatalogSeeded = true;
   }
 
   /// Returns all Admin Selecta products.

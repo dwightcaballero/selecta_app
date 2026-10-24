@@ -408,7 +408,8 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             const SizedBox(height: 24),
             SizedBox(
               height: 200,
-              child: LineChart(
+              child: RepaintBoundary(
+                child: LineChart(
                 LineChartData(
                   gridData: FlGridData(
                     show: true,
@@ -488,6 +489,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                 ),
               ),
             ),
+          ),
           ],
         ),
       ),
@@ -551,7 +553,8 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             const SizedBox(height: 20),
             SizedBox(
               height: 180,
-              child: BarChart(
+              child: RepaintBoundary(
+                child: BarChart(
                 BarChartData(
                   gridData: FlGridData(
                     show: true,
@@ -606,6 +609,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                   maxY: maxY,
                 ),
               ),
+            ),
             ),
           ],
         ),

@@ -364,11 +364,15 @@ class ErrorLogService {
       final snapshot = await FirebaseFirestore.instance.collection(collectionRef).get();
       if (snapshot.docs.isEmpty) return 0;
 
-      final batch = FirebaseFirestore.instance.batch();
-      for (final doc in snapshot.docs) {
-        batch.delete(doc.reference);
+      const batchSize = 400;
+      for (var i = 0; i < snapshot.docs.length; i += batchSize) {
+        final chunk = snapshot.docs.skip(i).take(batchSize);
+        final batch = FirebaseFirestore.instance.batch();
+        for (final doc in chunk) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
       }
-      await batch.commit();
       return snapshot.docs.length;
     } catch (e) {
       debugPrint('[ErrorLogService] Failed to clear all Firestore logs: $e');

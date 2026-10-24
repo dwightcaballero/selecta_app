@@ -586,6 +586,8 @@ class _PjpHistoryPageState extends State<PjpHistoryPage> with SingleTickerProvid
                               visit.imageUrl,
                               width: 74,
                               height: 74,
+                              cacheWidth: 200,
+                              cacheHeight: 200,
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) => _buildNoPhotoPlaceholder(colorScheme, size: 74),
                             ),
@@ -833,6 +835,7 @@ class _PjpHistoryPageState extends State<PjpHistoryPage> with SingleTickerProvid
                           visit.imageUrl,
                           width: double.infinity,
                           height: 220,
+                          cacheHeight: 500,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) => Container(
                             height: 140,

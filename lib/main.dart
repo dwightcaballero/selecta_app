@@ -1,6 +1,9 @@
 import 'dart:async';
-import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_performance/firebase_performance.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:selecta_ops/data/constants.dart';
@@ -26,14 +29,29 @@ void main() async {
   // 2. Initialize Firebase with platform-specific options
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  // 2.1 Configure Firestore offline persistence with a bounded cache (100MB)
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: 100 * 1024 * 1024,
+  );
+
+  // 2.2 Configure Firebase Performance and Crashlytics
+  if (!kIsWeb) {
+    await FirebasePerformance.instance.setPerformanceCollectionEnabled(!kDebugMode);
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);
+  }
+
   // 3. Initialize Push Notification Service (FCM) asynchronously without blocking startup
   unawaited(PushNotificationService().initialize().catchError((e, s) {
     debugPrint('PushNotificationService init error: $e');
   }));
 
-  // 3. Register global error interceptors for unhandled exceptions
+  // 4. Register global error interceptors for unhandled exceptions
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
+    if (!kIsWeb) {
+      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+    }
     ErrorLogService.logError(
       action: 'Unhandled Flutter Framework Error',
       error: details.exceptionAsString(),
@@ -43,6 +61,9 @@ void main() async {
   };
 
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    if (!kIsWeb) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    }
     ErrorLogService.logError(
       action: 'Unhandled Platform / Async Error',
       error: error.toString(),

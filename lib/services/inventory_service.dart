@@ -343,6 +343,7 @@ class InventoryService {
 
         poSub = _firestore
             .collection(PURCHASEORDER_COLLECTION_REF)
+            .where('isInventoryReplenished', isEqualTo: false)
             .snapshots()
             .listen(
           (snap) {

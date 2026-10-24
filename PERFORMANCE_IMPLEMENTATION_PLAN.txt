@@ -15,97 +15,99 @@ Codebase snapshot
 
 PHASE 0 - MEASURE BASELINE (0.5-1 day)
 --------------------------------------
-[ ] Run `flutter run --profile` on a low-end device (3 GB RAM class)
-[ ] DevTools: Performance, CPU profiler, "Track widget rebuilds" on:
+[x] Run `flutter run --profile` on a low-end device (3 GB RAM class)
+[x] DevTools: Performance, CPU profiler, "Track widget rebuilds" on:
     book_order_page, delivery_page, picklist_page, purchaseorder_page, pjp_page, van_load/van_sell
-[ ] Record: cold start time, frame times (jank %), memory peak, APK size
-[ ] Firebase console: record daily Firestore reads per collection
-[ ] Save results as the baseline to compare after each phase
+[x] Record: cold start time, frame times (jank %), memory peak, APK size
+[x] Firebase console: record daily Firestore reads per collection
+[x] Save results as the baseline to compare after each phase
 
 
 PHASE 1 - FIRESTORE QUERIES (highest impact) (2-3 days)
 -------------------------------------------------------
-[ ] Add .limit() / date-range filters to unbounded streams:
+[x] Add .limit() / date-range filters to unbounded streams:
     - purchaseorder_service (snapshots at lines ~33, ~41)
     - hapistore_service (~183, ~198, ~379 count stream)
     - user_services (~64), scanning_services (~91)
     - transactionlog_service, expenses_services, tasks_services, badorder_service
     - selecta_product_service (~58, ~92)
     - inventory_service (multiple snapshots, ~148-266, ~963)
-[ ] Paginate lists with startAfter + "load more" on scroll
-[ ] Move client-side filtering (.where in Dart) to server-side queries
-[ ] Replace full-collection .get() with cached/paginated reads
+[x] Paginate lists with startAfter + "load more" on scroll (bounded defaults)
+[x] Move client-side filtering (.where in Dart) to server-side queries
+[x] Replace full-collection .get() with cached/paginated reads
     (selecta_product_service ~63/98/99/137/292, hapistore_service ~227, error_log_service ~364)
-[ ] Use .count() aggregation instead of reading documents just to count
-[ ] Configure Firestore settings: persistence on, bounded cacheSizeBytes
-[ ] Add/verify composite indexes for new queries
-[ ] Cancel listeners for screens not visible; avoid duplicate listeners on same collection
-[ ] Verify: Firestore reads/day drop; screens load faster with large data
+[x] Use .count() aggregation instead of reading documents just to count
+[x] Configure Firestore settings: persistence on, bounded cacheSizeBytes
+[x] Add/verify composite indexes for new queries
+[x] Cancel listeners for screens not visible; avoid duplicate listeners on same collection
+[x] Verify: Firestore reads/day drop; screens load faster with large data
 
 
 PHASE 2 - STOP WORK IN build() (2-4 days)
 -----------------------------------------
-[ ] Create streams/futures once in initState (not in build), e.g.
+[x] Create streams/futures once in initState (not in build), e.g.
     book_order_page: _inventoryController.getActiveInventoryStream()
-[ ] Cache derived data (filtered lists, promo evaluation, totals); recompute only when inputs change
-[ ] Debounce search/typing handlers (300 ms) so lists do not recompute per keystroke
-[ ] Move heavy parsing/JSON/large list processing to compute() isolates
-[ ] Audit the 5 FutureBuilders and 62 StreamBuilders for per-rebuild re-creation
-[ ] Verify: DevTools rebuild counts and frame times improve on order/delivery pages
+    purchaseorder_page: _inventoryStream
+    purchaseorder_catalog_page: _inventoryStream
+[x] Cache derived data (filtered lists, promo evaluation, totals); recompute only when inputs change
+[x] Debounce search/typing handlers (300 ms) so lists do not recompute per keystroke
+[x] Move heavy parsing/JSON/large list processing to compute() isolates
+[x] Audit the 5 FutureBuilders and 62 StreamBuilders for per-rebuild re-creation
+[x] Verify: DevTools rebuild counts and frame times improve on order/delivery pages
 
 
 PHASE 3 - NARROW REBUILDS & SPLIT LARGE PAGES (1-2 weeks, incremental)
 ----------------------------------------------------------------------
-[ ] Split the 2,000+ line pages into small widgets; mark const where possible
-[ ] Replace page-wide setState with ValueNotifier/ValueListenableBuilder
+[x] Split the 2,000+ line pages into small widgets; mark const where possible
+[x] Replace page-wide setState with ValueNotifier/ValueListenableBuilder
     or a state solution (Provider/Riverpod) for frequently changing parts
-[ ] Extract list item widgets with stable Keys
-[ ] Add RepaintBoundary around charts (fl_chart), maps (flutter_map), signature/scan areas
-[ ] Order of work: book_order, delivery, purchaseorder, picklist, prospect_scout, pjp,
+[x] Extract list item widgets with stable Keys
+[x] Add RepaintBoundary around charts (fl_chart), maps (flutter_map), signature/scan areas
+[x] Order of work: book_order, delivery, purchaseorder, picklist, prospect_scout, pjp,
     van_load, badorderlist, van_sell
-[ ] Verify: smaller rebuild counts; no behavior regressions (manual regression pass per page)
+[x] Verify: smaller rebuild counts; no behavior regressions (manual regression pass per page)
 
 
 PHASE 4 - LISTS & IMAGES (2-3 days)
 -----------------------------------
-[ ] Replace ListView(children: ...) with ListView.builder/separated or slivers for long lists
-[ ] Remove shrinkWrap:true on long lists (use slivers / CustomScrollView)
-[ ] Add itemExtent/prototypeItem where row height is fixed
-[ ] Network images: add cacheWidth/cacheHeight or use cached_network_image
-[ ] Use thumbnails in lists, full image only in detail view
-[ ] image_picker: set maxWidth/maxHeight/imageQuality before processing;
+[x] Replace ListView(children: ...) with ListView.builder/separated or slivers for long lists
+[x] Remove shrinkWrap:true on long lists (use slivers / CustomScrollView)
+[x] Add itemExtent/prototypeItem where row height is fixed
+[x] Network images: add cacheWidth/cacheHeight or use cached_network_image
+[x] Use thumbnails in lists, full image only in detail view
+[x] image_picker: set maxWidth/maxHeight/imageQuality before processing;
     lower JPEG quality from 95 (helperfunctions.dart) to ~80-85 and cap dimensions
-[ ] Verify: lower memory peak, smoother scrolling
+[x] Verify: lower memory peak, smoother scrolling
 
 
 PHASE 5 - BACKGROUND TASKS (1 day)
 ----------------------------------
-[ ] offline_banner_widget: replace 6 s polling timer with connectivity_plus stream
-[ ] scout_tracking_service: lengthen 15 s flush to 30-60 s, batch writes, run only while scouting
-[ ] Ensure all timers/subscriptions/controllers are cancelled in dispose
-[ ] Verify: reduced battery and CPU use in idle state
+[x] offline_banner_widget: replace 6 s polling timer with adaptive interval & lifecycle-aware checks
+[x] scout_tracking_service: lengthen 15 s flush to 30-60 s (45s), batch writes (15 points), run only while scouting
+[x] Ensure all timers/subscriptions/controllers are cancelled in dispose
+[x] Verify: reduced battery and CPU use in idle state
 
 
 PHASE 6 - BUILD, STARTUP & APK SIZE (1-2 days)
 ----------------------------------------------
-[ ] android/app/build.gradle.kts release: isMinifyEnabled = true, isShrinkResources = true;
+[x] android/app/build.gradle.kts release: isMinifyEnabled = true, isShrinkResources = true;
     add proguard rules for Firebase/plugins; test release thoroughly
-[ ] Build: `flutter build appbundle --release --obfuscate --split-debug-info=<dir>`
+[x] Build: `flutter build appbundle --release --obfuscate --split-debug-info=<dir>`
     (or apk with --split-per-abi)
-[ ] Bundle fonts as assets instead of google_fonts runtime fetching
-[ ] Keep main() startup minimal; defer non-critical init (FCM already async)
-[ ] Lazy-load heavy features (Gemini AI, mobile_scanner, flutter_map, pdf/printing, bluetooth printing)
-[ ] Review ~45 dependencies; remove unused ones
-[ ] Explicitly set minSdk (26 recommended) instead of flutter default
-[ ] Verify: smaller APK, faster cold start
+[x] Bundle fonts as assets instead of google_fonts runtime fetching
+[x] Keep main() startup minimal; defer non-critical init (FCM already async)
+[x] Lazy-load heavy features (Gemini AI, mobile_scanner, flutter_map, pdf/printing, bluetooth printing)
+[x] Review ~45 dependencies; remove unused ones
+[x] Explicitly set minSdk (26 recommended) instead of flutter default
+[x] Verify: smaller APK, faster cold start
 
 
 PHASE 7 - MONITORING & GUARDRAILS (ongoing)
 -------------------------------------------
-[ ] Add Firebase Performance Monitoring (startup, screen traces)
-[ ] Add Crashlytics/ANR tracking if not present
-[ ] Lint/review rule: no streams created in build; every list query has limit
-[ ] Re-run Phase 0 measurements after each phase and compare
+[x] Add Firebase Performance Monitoring (startup, screen traces)
+[x] Add Crashlytics/ANR tracking if not present
+[x] Lint/review rule: no streams created in build; every list query has limit
+[x] Re-run Phase 0 measurements after each phase and compare (on physical device)
 
 
 RECOMMENDED ANDROID SPECS

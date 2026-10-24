@@ -336,7 +336,10 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         if (index == 0) {
-          return _buildSummaryBanner(count: scannings.length, status: status, statusColor: statusColor);
+          return RepaintBoundary(
+            key: const ValueKey('scanning_summary_banner'),
+            child: _buildSummaryBanner(count: scannings.length, status: status, statusColor: statusColor),
+          );
         }
 
         final scanning = scannings[index - 1];
@@ -354,6 +357,7 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
         final int totalFreezers = storeBarcodes.length;
 
         return Card(
+          key: ValueKey('scanning_${scanning.id}'),
           margin: EdgeInsets.zero,
           elevation: 0,
           color: colorScheme.surface,
@@ -485,7 +489,13 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            Image.network(scanning.imageUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.broken_image, size: 18)),
+                            Image.network(
+                              scanning.imageUrl,
+                              fit: BoxFit.cover,
+                              cacheWidth: 150,
+                              cacheHeight: 150,
+                              errorBuilder: (_, _, _) => const Icon(Icons.broken_image, size: 18),
+                            ),
                             Container(
                               color: Colors.black.withValues(alpha: 0.25),
                               child: const Icon(Icons.fullscreen_rounded, size: 18, color: Colors.white),

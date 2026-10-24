@@ -86,11 +86,15 @@ class ScanningServices {
     }).toList();
   }
 
-  /// Real-time stream of all scanning documents, normalized for current month.
-  Stream<List<Scanning>> getScanningsStream() {
-    return _scanningRef.snapshots().map((querySnapshot) {
+  /// Real-time stream of scanning documents, normalized for current month.
+  Stream<List<Scanning>> getScanningsStream({int? limit}) {
+    Query query = _scanningRef;
+    if (limit != null && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.snapshots().map((querySnapshot) {
       return querySnapshot.docs.map((doc) {
-        Scanning scanning = doc.data();
+        Scanning scanning = doc.data() as Scanning;
         scanning = scanning.copyWith(id: doc.id);
         return normalizeMonthlyScanning(scanning);
       }).toList();

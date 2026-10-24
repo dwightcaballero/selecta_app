@@ -1,0 +1,38 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "purchaseorders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isSettled", "order": "ASCENDING" },
+        { "fieldPath": "orderDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "storeName", "order": "ASCENDING" },
+        { "fieldPath": "transactionStatus", "order": "ASCENDING" },
+        { "fieldPath": "deliveryDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "creditStatus", "order": "ASCENDING" },
+        { "fieldPath": "creditAmount", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "promos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "startDate", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

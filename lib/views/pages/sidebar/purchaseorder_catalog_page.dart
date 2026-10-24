@@ -58,12 +58,14 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
   List<QueryDocumentSnapshot<Purchaseorder>> _unsettledOverpayments = [];
   String _selectedCategory = 'all';
   String _searchQuery = '';
+  Stream<List<InventoryItem>>? _inventoryStream;
 
   @override
   void initState() {
     super.initState();
     if (widget.allInventory == null) {
       _inventoryController = widget.inventoryController ?? InventoryController();
+      _inventoryStream = _inventoryController?.getActiveInventoryStream();
     } else {
       _inventoryController = widget.inventoryController;
     }
@@ -472,6 +474,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                                 final line = lines[index];
                                 final lineTotal = line.buyingPrice * line.quantity;
                                 return Padding(
+                                  key: ValueKey('po_line_${line.productId}_$index'),
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                   child: Row(
                                     children: [
@@ -747,7 +750,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
     }
 
     return StreamBuilder<List<InventoryItem>>(
-      stream: _inventoryController?.getActiveInventoryStream(),
+      stream: _inventoryStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return Scaffold(
@@ -1054,6 +1057,7 @@ class _PurchaseOrderCatalogPageState extends State<PurchaseOrderCatalogPage> {
                       final itemTotal = item.buyingPrice * qty;
 
                       return Container(
+                        key: ValueKey('cart_item_$id'),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           color: colorScheme.surface,

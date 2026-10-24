@@ -1477,7 +1477,8 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
 
     return Stack(
       children: [
-        FlutterMap(
+        RepaintBoundary(
+          child: FlutterMap(
           mapController: _mapController,
           options: MapOptions(
             initialCenter: _allProspects.isNotEmpty
@@ -1557,6 +1558,7 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
             ),
           ],
         ),
+      ),
 
         // Floating Filter Chips Header
         Positioned(

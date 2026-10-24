@@ -179,8 +179,12 @@ class HapiStoreService {
     _hapistoresRef.doc(hapiStoreID).delete();
   }
 
-  Stream<QuerySnapshot> getListHapiStoresAsStream() {
-    return _hapistoresRef.orderBy('storeName').snapshots().map((snapshot) {
+  Stream<QuerySnapshot> getListHapiStoresAsStream({int? limit}) {
+    Query query = _hapistoresRef.orderBy('storeName');
+    if (limit != null && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.snapshots().map((snapshot) {
       cachedStores = snapshot.docs.map((doc) {
         final data = doc.data();
         if (data is Hapistore) return data;
@@ -190,12 +194,15 @@ class HapiStoreService {
     });
   }
 
-  Stream<QuerySnapshot> getListHapiStoreSearch(String searchKeyword) {
-    return _hapistoresRef
+  Stream<QuerySnapshot> getListHapiStoreSearch(String searchKeyword, {int? limit}) {
+    Query query = _hapistoresRef
         .orderBy('storeName')
         .where('storeName', isGreaterThanOrEqualTo: searchKeyword)
-        .where('storeName', isLessThanOrEqualTo: '$searchKeyword\uf8ff')
-        .snapshots();
+        .where('storeName', isLessThanOrEqualTo: '$searchKeyword\uf8ff');
+    if (limit != null && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.snapshots();
   }
 
   static Future<String> getContactByStoreName(String storeName) async {

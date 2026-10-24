@@ -19,8 +19,8 @@ class TransactionLogService {
         );
   }
 
-  Stream<QuerySnapshot> getListLogs() {
-    return _logRef.orderBy('loggedDate', descending: true).snapshots();
+  Stream<QuerySnapshot> getListLogs({int limit = 100}) {
+    return _logRef.orderBy('loggedDate', descending: true).limit(limit).snapshots();
   }
 
   Stream<QuerySnapshot> getLogsLastSevenDays() {

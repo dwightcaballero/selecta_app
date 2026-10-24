@@ -87,8 +87,8 @@ class ScoutTrackingService {
         );
       });
 
-      // Periodic flush timer every 15 seconds
-      _flushTimer = Timer.periodic(const Duration(seconds: 15), (_) => _flushPointsToFirestore());
+      // Periodic flush timer every 45 seconds (reduces Firestore writes and battery use)
+      _flushTimer = Timer.periodic(const Duration(seconds: 45), (_) => _flushPointsToFirestore());
 
       return true;
     } catch (e, stack) {
@@ -127,8 +127,8 @@ class ScoutTrackingService {
     _sessionPoints.add(pt);
     recordedPointsNotifier.value = _sessionPoints.length;
 
-    // Flush immediately if buffer reaches 5 points
-    if (_sessionPoints.length % 5 == 0) {
+    // Flush when buffer reaches 15 points to batch writes efficiently
+    if (_sessionPoints.length % 15 == 0) {
       _flushPointsToFirestore();
     }
   }

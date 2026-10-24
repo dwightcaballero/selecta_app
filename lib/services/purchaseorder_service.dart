@@ -29,16 +29,24 @@ class PurchaseOrderService {
     return _purchaseordersRef.doc(purchaseorderID).delete();
   }
 
-  Stream<QuerySnapshot> getListPurchaseordersAsStream() {
-    return _purchaseordersRef.orderBy('orderDate', descending: true).snapshots();
+  Stream<QuerySnapshot> getListPurchaseordersAsStream({int? limit}) {
+    Query query = _purchaseordersRef.orderBy('orderDate', descending: true);
+    if (limit != null && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.snapshots();
   }
 
-  Stream<QuerySnapshot> getListPurchaseOrdersNotYetSettled() {
-    return _purchaseordersRef.where('isSettled', isEqualTo: false).orderBy('orderDate', descending: true).snapshots();
+  Stream<QuerySnapshot> getListPurchaseOrdersNotYetSettled({int? limit}) {
+    Query query = _purchaseordersRef.where('isSettled', isEqualTo: false).orderBy('orderDate', descending: true);
+    if (limit != null && limit > 0) {
+      query = query.limit(limit);
+    }
+    return query.snapshots();
   }
 
   Stream<int> getAwaitingInvoiceCountStream() {
-    return _purchaseordersRef.snapshots().map((snapshot) {
+    return _purchaseordersRef.where('isSettled', isEqualTo: false).snapshots().map((snapshot) {
       int count = 0;
       for (var doc in snapshot.docs) {
         final order = doc.data() as Purchaseorder;
@@ -52,10 +60,10 @@ class PurchaseOrderService {
   }
 
   Future<List<QueryDocumentSnapshot<Purchaseorder>>> getUnsettledOverpayments() async {
-    final snapshot = await _purchaseordersRef.get();
+    final snapshot = await _purchaseordersRef.where('isSettled', isEqualTo: false).get();
     final docs = snapshot.docs.cast<QueryDocumentSnapshot<Purchaseorder>>().where((doc) {
       final order = doc.data();
-      return order.overpayment > 0 && order.isSettled != true;
+      return order.overpayment > 0;
     }).toList();
     docs.sort((a, b) => b.data().orderDate.compareTo(a.data().orderDate));
     return docs;

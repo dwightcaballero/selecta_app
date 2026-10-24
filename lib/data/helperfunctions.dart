@@ -60,7 +60,7 @@ Uint8List _injectTimestampWorker(Map<String, dynamic> params) {
       decoded.exif.exifIfd['OffsetTimeOriginal'] = offsetStr;
       decoded.exif.exifIfd['OffsetTimeDigitized'] = offsetStr;
 
-      return Uint8List.fromList(img.encodeJpg(decoded, quality: 95));
+      return Uint8List.fromList(img.encodeJpg(decoded, quality: 82));
     }
   } catch (_) {}
 

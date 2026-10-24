@@ -25,14 +25,23 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with Widget
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkConnectivity();
-    // Poll every 6 seconds for connectivity changes
-    _pollingTimer = Timer.periodic(const Duration(seconds: 6), (_) => _checkConnectivity());
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    final interval = _isOffline ? const Duration(seconds: 10) : const Duration(seconds: 30);
+    _pollingTimer = Timer.periodic(interval, (_) => _checkConnectivity());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkConnectivity();
+      _startPolling();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pollingTimer?.cancel();
+      _pollingTimer = null;
     }
   }
 
@@ -54,6 +63,7 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with Widget
             _isOffline = false;
             _showBackOnlineBanner = true;
           });
+          _startPolling();
           // Process any pending offline operations now that connectivity is back
           unawaited(OfflineSyncService.instance.processQueue());
           dashboardNeedsRefreshNotifier.value = true;
@@ -82,6 +92,7 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with Widget
         _isOffline = true;
         _showBackOnlineBanner = false;
       });
+      _startPolling();
     }
   }
 

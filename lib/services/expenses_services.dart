@@ -17,8 +17,8 @@ class ExpensesService {
         );
   }
 
-  Stream<QuerySnapshot> getListExpenses() {
-    return _expensesRef.orderBy('expenseDate', descending: true).snapshots();
+  Stream<QuerySnapshot> getListExpenses({int limit = 100}) {
+    return _expensesRef.orderBy('expenseDate', descending: true).limit(limit).snapshots();
   }
 
   Future<List<Expenses>> getExpensesForEndOfDay(DateTime expenseDate) async {

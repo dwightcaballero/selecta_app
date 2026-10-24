@@ -108,6 +108,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
   Map<String, int> _storePromoUsage = const {};
 
   StreamSubscription<List<Promo>>? _promosSub;
+  late final Stream<List<InventoryItem>> _inventoryStream;
 
   bool get _isEditing => widget.deliveryID.isNotEmpty && widget.existingDelivery != null;
 
@@ -137,6 +138,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
   @override
   void initState() {
     super.initState();
+    _inventoryStream = _inventoryController.getActiveInventoryStream();
     _selectedDate = widget.initialDate ?? DateTime.now();
 
     _promosSub = _deliveryController.promoService.streamActivePromos().listen((promos) {
@@ -929,6 +931,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                             final isItemCorrected = _correctedReceiptKeys.contains(itemKey);
 
                             return Container(
+                              key: ValueKey('cart_sheet_$itemKey'),
                               padding: const EdgeInsets.symmetric(vertical: 4),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1823,6 +1826,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                       final item = searchResults[i];
                                       final isPicked = replacementProduct?.id == item.id;
                                       return ListTile(
+                                        key: ValueKey('rep_prod_${item.id}'),
                                         dense: true,
                                         leading: CachedProductImage(imageUrl: item.imageUrl, size: 32),
                                         title: Text(item.productName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
@@ -1957,7 +1961,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     final hasSelectedStore = selectedStoreName.isNotEmpty;
 
     return StreamBuilder<List<InventoryItem>>(
-      stream: _inventoryController.getActiveInventoryStream(),
+      stream: _inventoryStream,
       builder: (context, snapshot) {
         final allInventory = (snapshot.data ?? []).where((item) => item.isActive).toList();
         _latestInventory = allInventory;
@@ -2068,8 +2072,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
   }
 
   Widget _buildSearchAndFiltersHeader(ColorScheme colorScheme, int selectedCount, int unplacedCount) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+    return RepaintBoundary(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2289,7 +2294,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildTabletLandscapeView({
@@ -2495,6 +2501,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                       final itemTotal = item.sellingPrice * item.pickedQuantity;
 
                       return Container(
+                        key: ValueKey('tablet_cart_$itemKey'),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           color: isReward ? const Color(0xFFF0FDF4) : colorScheme.surface,
@@ -3047,6 +3054,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
   }
 
   Widget _buildCategorySectionHeader({
+    Key? key,
     required String title,
     required int count,
     required IconData icon,
@@ -3054,6 +3062,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     required ColorScheme colorScheme,
   }) {
     return Container(
+      key: key,
       margin: const EdgeInsets.only(top: 10, bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -3352,6 +3361,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
         final entry = entries[index];
         if (entry is _BookOrderPromoSectionEntry) {
           return PromoCardsSection(
+            key: const ValueKey('promo_section'),
             promos: entry.promos,
             usedCounts: _storePromoUsage,
             appliedPromos: entry.promoEval.appliedPromos,
@@ -3363,6 +3373,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
           );
         } else if (entry is _BookOrderHeaderEntry) {
           return _buildCategorySectionHeader(
+            key: ValueKey('header_${entry.title}'),
             title: entry.title,
             count: entry.count,
             icon: entry.icon,
@@ -3370,7 +3381,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
             colorScheme: colorScheme,
           );
         } else if (entry is _BookOrderCardEntry) {
-          return Padding(padding: const EdgeInsets.only(bottom: 8), child: _buildProductOrderCard(entry.item, colorScheme, allInventory));
+          final itemKey = _itemKey(entry.item);
+          return Padding(
+            key: ValueKey('card_padding_$itemKey'),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _buildProductOrderCard(entry.item, colorScheme, allInventory),
+          );
         }
         return const SizedBox.shrink();
       },
@@ -3384,6 +3400,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     final rawText = _scannedRawTexts[key];
 
     return ProductOrderCard(
+      key: ValueKey(key),
       item: item,
       selectedQty: _getSelectedQty(item),
       maxOrderable: _getMaxOrderableQty(item),
@@ -3417,16 +3434,18 @@ class _BookOrderPageState extends State<BookOrderPage> {
     required double grossAmount,
     required double discountAmount,
   }) {
-    return StickyOrderSummaryBar(
-      skuCount: skuCount,
-      totalUnits: totalUnits,
-      totalAmount: totalAmount,
-      grossAmount: grossAmount,
-      discountAmount: discountAmount,
-      currencyFormat: _currencyFormat,
-      isSaving: _isSaving || _isScanning,
-      onTapCartSummary: () => _showCartSummarySheet(allInventory),
-      onSaveOrder: () => _onSaveOrder(allInventory),
+    return RepaintBoundary(
+      child: StickyOrderSummaryBar(
+        skuCount: skuCount,
+        totalUnits: totalUnits,
+        totalAmount: totalAmount,
+        grossAmount: grossAmount,
+        discountAmount: discountAmount,
+        currencyFormat: _currencyFormat,
+        isSaving: _isSaving || _isScanning,
+        onTapCartSummary: () => _showCartSummarySheet(allInventory),
+        onSaveOrder: () => _onSaveOrder(allInventory),
+      ),
     );
   }
 }
