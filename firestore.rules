@@ -16,8 +16,9 @@ service cloud.firestore {
       return isAuthenticated() && (
         (request.auth.token.keys().hasAll(['email']) && 
          request.auth.token.email in ['admin@selecta.ph', 'superadmin@selecta.ph', 'dwightseu@gmail.com']) ||
+        (request.auth.token.keys().hasAll(['role']) && request.auth.token.role in ['admin', 'Admin', 'superadmin', 'Superadmin']) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'Admin', 'superadmin', 'Superadmin'])
       );
     }
 
@@ -25,9 +26,32 @@ service cloud.firestore {
     function isDealerOrAdmin() {
       return isAuthenticated() && (
         isAdmin() ||
+        (request.auth.token.keys().hasAll(['role']) && request.auth.token.role in ['dealer', 'Dealer']) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['dealer', 'Dealer', 'superadmin', 'Superadmin'])
       );
+    }
+
+    // Store user role check
+    function isStoreUser() {
+      return isAuthenticated() && (
+        (request.auth.token.keys().hasAll(['role']) && request.auth.token.role == 'Hapi Store') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Hapi Store')
+      );
+    }
+
+    // Store ID helper
+    function myStoreId() {
+      return request.auth.token.keys().hasAll(['storeId']) ? request.auth.token.storeId :
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAll(['storeId']) ?
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.storeId : '');
+    }
+
+    // Staff check: Authenticated users who are NOT store users (Salesmen, Dealers, Admins)
+    function isStaff() {
+      return isAuthenticated() && !isStoreUser();
     }
 
     // Ledger Movement Validation Helper
@@ -68,15 +92,16 @@ service cloud.firestore {
     // User management
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // Allow user creation on signup; prevent setting role to superadmin unless caller is admin
+      // Allow user creation on signup; prevent setting role to superadmin or store without permissions
       allow create: if isAuthenticated() && (
-        request.resource.data.role != 'superadmin' || isAdmin()
+        (request.resource.data.role != 'superadmin' && request.resource.data.role != 'Hapi Store') || isDealerOrAdmin()
       );
-      // Allow user to update their own profile, but prevent modifying role or admin flags
+      // Allow user to update their own profile, but prevent modifying role, storeId, or admin flags
       allow update: if isAuthenticated() && (
         isAdmin() || (
           isOwner(userId) && 
-          request.resource.data.role == resource.data.role
+          request.resource.data.role == resource.data.role &&
+          (!request.resource.data.keys().hasAny(['storeId']) || request.resource.data.storeId == resource.data.storeId)
         )
       );
       allow delete: if isAdmin();
@@ -87,7 +112,7 @@ service cloud.firestore {
     match /selecta_products/{productId} {
       allow read: if isAuthenticated();
       allow create: if isDealerOrAdmin();
-      allow update: if isAuthenticated() && (
+      allow update: if isStaff() && (
         isDealerOrAdmin() ||
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['stockQuantity', 'reservedQuantity', 'incomingQuantity'])
       );
@@ -100,9 +125,9 @@ service cloud.firestore {
     }
 
     match /other_products/{productId} {
-      allow read: if isAuthenticated();
+      allow read: if isStaff();
       allow create: if isDealerOrAdmin();
-      allow update: if isAuthenticated() && (
+      allow update: if isStaff() && (
         isDealerOrAdmin() ||
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['stockQuantity', 'reservedQuantity', 'incomingQuantity'])
       );
@@ -110,19 +135,19 @@ service cloud.firestore {
     }
 
     match /supplier_product_mappings/{mappingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     match /booking_receipt_mappings/{mappingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     // Stores (HapiStores) & Dealers
     match /hapistores/{storeId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isDealerOrAdmin() || isStaff() || (isStoreUser() && storeId == myStoreId());
+      allow write: if isStaff();
     }
 
     match /dealers/{dealerId} {
@@ -130,65 +155,101 @@ service cloud.firestore {
       allow write: if isDealerOrAdmin();
     }
 
-    // Deliveries & Purchase Orders
-    match /delivery/{deliveryId} {
+    // Store Self-Ordering: store_orders
+    match /store_orders/{orderId} {
+      allow read: if isDealerOrAdmin() || isStaff() || (isStoreUser() && resource.data.storeId == myStoreId());
+      allow create: if isDealerOrAdmin() || (
+        isStoreUser() &&
+        request.resource.data.storeId == myStoreId() &&
+        request.resource.data.status == 'Submitted' &&
+        request.resource.data.createdBy == request.auth.uid
+      );
+      allow update: if isDealerOrAdmin() || (
+        isStoreUser() &&
+        resource.data.storeId == myStoreId() &&
+        resource.data.status == 'Submitted' &&
+        request.resource.data.status == 'Cancelled' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'statusHistory'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Store Usernames collection (uniqueness tracking)
+    match /store_usernames/{username} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow write: if isDealerOrAdmin();
+    }
+
+    // Store login attempt tracking
+    match /store_login_attempts/{username} {
+      allow read, write: if true;
+    }
+
+    // Store catalog summary docs (availability only, no stock quantities)
+    match /store_catalog/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isDealerOrAdmin();
+    }
+
+    // Deliveries & Purchase Orders (Staff only)
+    match /delivery/{deliveryId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     match /purchaseorders/{poId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
-    // Proof of Visit (Photos & Field Notes)
+    // Proof of Visit (Photos & Field Notes - Staff only)
     match /proof_of_visit/{visitId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() &&
+      allow read: if isStaff();
+      allow create: if isStaff() &&
         request.resource.data.storeName is string &&
         request.resource.data.storeName.size() > 0 &&
         request.resource.data.imageUrl is string &&
         request.resource.data.imageUrl.size() > 0;
-      allow update: if isAuthenticated();
+      allow update: if isStaff();
       allow delete: if isDealerOrAdmin();
     }
 
     // PJP Order Decisions
     match /pjp_order_decisions/{decisionId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     // Tasks & Scanning
     match /tasks/{taskId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     match /scanning/{scanId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     // Operational Logs & Transactions
     match /placement/{placementId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     match /expenses/{expenseId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     match /badorder/{badOrderId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     match /breakdown/{breakdownId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read: if isStaff();
+      allow write: if isStaff();
     }
 
     match /transactionlogs/{logId} {
@@ -199,7 +260,7 @@ service cloud.firestore {
 
     // Inventory Movement Audit Ledger (Append-only: immutable historical records)
     match /inventory_movements/{movementId} {
-      allow read: if isAuthenticated();
+      allow read: if isStaff();
       allow create: if validMovement(request.resource.data) && (
         (
           // Manual adjustment types: restricted to Dealer/Admin; above-threshold adjustments require reference to pending doc
@@ -217,7 +278,7 @@ service cloud.firestore {
             'reserve', 'release', 'incoming_added', 'incoming_adjusted',
             'incoming_removed', 'reversal', 'settlement'
           ] &&
-          isAuthenticated()
+          isStaff()
         )
       );
       allow update, delete: if false; // Strict audit immutability: movements cannot be modified or deleted
@@ -225,7 +286,7 @@ service cloud.firestore {
 
     // Pending Inventory Adjustments for Threshold Approval
     match /inventory_pending_adjustments/{adjustmentId} {
-      allow read: if isAuthenticated();
+      allow read: if isStaff();
       allow create: if isDealerOrAdmin() &&
         request.resource.data.status == 'pending' &&
         request.resource.data.requestedByUid == request.auth.uid;
@@ -236,8 +297,8 @@ service cloud.firestore {
 
     // Inventory Discrepancies and Audit Runs
     match /inventory_discrepancies/{discrepancyId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() &&
+      allow read: if isStaff();
+      allow create: if isStaff() &&
         request.resource.data.status == 'open' &&
         request.resource.data.keys().hasAll(['productId', 'productName', 'discrepancyType', 'message', 'status']);
       allow update: if isDealerOrAdmin() &&
@@ -246,19 +307,19 @@ service cloud.firestore {
     }
 
     match /inventory_audit_runs/{runId} {
-      allow read: if isAuthenticated();
+      allow read: if isStaff();
       allow create: if isDealerOrAdmin();
       allow update, delete: if false;
     }
 
     // Daily Stock Snapshots (End of Day Reconciliation)
     match /inventory_snapshots/{snapshotId} {
-      allow read: if isAuthenticated();
+      allow read: if isStaff();
       allow create: if isDealerOrAdmin();
       allow update, delete: if false;
 
       match /items/{productId} {
-        allow read: if isAuthenticated();
+        allow read: if isStaff();
         allow create: if isDealerOrAdmin();
         allow update, delete: if false;
       }
@@ -266,8 +327,8 @@ service cloud.firestore {
 
     // In-App Inventory Anomaly Alerts
     match /inventory_alerts/{alertId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
+      allow read: if isStaff();
+      allow create: if isStaff();
       allow update: if isDealerOrAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acknowledgedBy', 'acknowledgedAt', 'acknowledgmentNote']);
       allow delete: if false;

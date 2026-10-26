@@ -10,6 +10,8 @@ A Flutter mobile application for **Selecta field sales operations**, serving two
 ## Features
 
 ### Operations
+- 🏪 **Hapi Store Self-Ordering** — Dedicated store portal for Hapi Stores to order directly from their assigned dealer, view available products with stock-safety badges, track order lifecycle progress, and reorder past deliveries with 1-click
+- 📋 **Dealer Store Orders Inbox** — Dealer review screen with line-by-line quantity adjustments, mandatory delivery date assignment, real-time price synchronization, and automated pre-sell delivery doc creation with inventory reservations
 - 📦 **Book Order / Picklist / Delivery** — Full order-to-delivery workflow
 - 🔄 **Returns & Bad Orders** — Capture and track returned goods
 - 💳 **Credit Management** — Track unpaid accounts per store

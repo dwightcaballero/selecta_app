@@ -16,12 +16,14 @@ import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
+import 'package:selecta_ops/services/store_order_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/dealer_store_orders_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -110,6 +112,18 @@ class DashboardDrawer extends StatelessWidget {
 
           // 1. Operations
           _buildDrawerSectionHeader(context, 'Operations'),
+          StreamBuilder<int>(
+            stream: StoreOrderService().getSubmittedStoreOrdersCountStream(),
+            builder: (context, snapshot) {
+              return _buildDrawerItem(
+                context,
+                Icons.storefront_outlined,
+                'Store Orders',
+                const DealerStoreOrdersPage(),
+                badgeCount: snapshot.data ?? 0,
+              );
+            },
+          ),
           StreamBuilder<int>(
             stream: merchBlitzCountStream,
             builder: (context, snapshot) {

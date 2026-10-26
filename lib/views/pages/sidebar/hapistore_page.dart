@@ -404,39 +404,76 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Card(
-      elevation: 0,
-      color: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: colorScheme.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                  child: Icon(icon, size: 18, color: colorScheme.primary),
-                ),
-                const SizedBox(width: 10),
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const Divider(height: 24),
-            child,
-          ],
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.55),
+          width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isDark
+                        ? [colorScheme.primary.withValues(alpha: 0.35), colorScheme.primary.withValues(alpha: 0.15)]
+                        : [colorScheme.primary.withValues(alpha: 0.18), colorScheme.primary.withValues(alpha: 0.06)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: colorScheme.primary.withValues(alpha: 0.25),
+                    width: 1,
+                  ),
+                ),
+                child: Center(
+                  child: Icon(icon, size: 19, color: colorScheme.primary),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+          Divider(
+            height: 24,
+            thickness: 0.8,
+            color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.4),
+          ),
+          child,
+        ],
       ),
     );
   }
 
   Widget _buildStoreDetailsCard() {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return _buildSectionCard(
       title: 'Store Information',
@@ -513,7 +550,7 @@ class _HapiStorePageState extends State<HapiStorePage> {
             initialValue: _selectedPjpSchedule,
             decoration: InputDecoration(
               labelText: 'PJP Schedule',
-              prefixIcon: Icon(Icons.calendar_view_week_outlined, size: 20, color: colorScheme.primary),
+              prefixIcon: Icon(Icons.calendar_today_outlined, size: 20, color: colorScheme.primary),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             ),
@@ -525,37 +562,58 @@ class _HapiStorePageState extends State<HapiStorePage> {
             },
           ),
           if (widget.hapiStoreID.isNotEmpty) ...[
-            const Divider(height: 8),
-            InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: _isSaving ? null : _showRelinkPastRecordsDialog,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                child: Row(
-                  children: [
-                    Icon(Icons.link_outlined, size: 18, color: colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Missing records from a previous store name?',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.primary,
-                            ),
+            Container(
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withValues(alpha: isDark ? 0.15 : 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: colorScheme.primary.withValues(alpha: isDark ? 0.3 : 0.18),
+                  width: 1,
+                ),
+              ),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: _isSaving ? null : _showRelinkPastRecordsDialog,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          Text(
-                            'Re-link deliveries, scans, and tasks from an old name to this store',
-                            style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                          child: Icon(Icons.link_outlined, size: 18, color: colorScheme.primary),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Missing records from an old name?',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Re-link deliveries, scans, and tasks to this store',
+                                style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        Icon(Icons.chevron_right, size: 20, color: colorScheme.primary),
+                      ],
                     ),
-                    Icon(Icons.chevron_right, size: 18, color: colorScheme.onSurfaceVariant),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -567,40 +625,31 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   Widget _buildDatePickerField({required String label, required DateTime? selectedDate, required VoidCallback onTap, VoidCallback? onClear}) {
     final colorScheme = Theme.of(context).colorScheme;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.black54),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(Icons.calendar_month_outlined, size: 20, color: colorScheme.primary),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          suffixIcon: selectedDate != null && onClear != null
+              ? IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: onClear,
+                  tooltip: 'Clear Date',
+                )
+              : Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.onSurfaceVariant),
         ),
-        child: Row(
-          children: [
-            Icon(Icons.calendar_month_outlined, size: 20, color: colorScheme.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
-                  Text(
-                    selectedDate != null ? Helperfunctions.formatDateForDisplay(selectedDate) : 'Select Date',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: selectedDate != null ? FontWeight.w600 : FontWeight.normal,
-                      color: selectedDate != null ? null : colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (selectedDate != null && onClear != null)
-              IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: onClear, padding: EdgeInsets.zero, constraints: const BoxConstraints())
-            else
-              Icon(Icons.edit_calendar_outlined, size: 18, color: colorScheme.primary),
-          ],
+        child: Text(
+          selectedDate != null ? Helperfunctions.formatDateForDisplay(selectedDate) : 'Select Date',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: selectedDate != null ? FontWeight.w600 : FontWeight.normal,
+            color: selectedDate != null ? null : colorScheme.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -608,21 +657,34 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   Widget _buildStickyBottomBar() {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     bool isUpdating = widget.hapiStoreID.isNotEmpty;
 
-    return SafeArea(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          top: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
+            width: 1.0,
+          ),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+            offset: const Offset(0, -2),
+            blurRadius: 8,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+      child: SafeArea(
+        top: false,
         child: isUpdating
             ? Row(
                 children: [
                   Expanded(
-                    flex: 1,
+                    flex: 2,
                     child: AsyncOutlinedButton.icon(
                       onPressed: () async {
                         final confirmed = await ShowMessage.confirm(
@@ -635,20 +697,28 @@ class _HapiStorePageState extends State<HapiStorePage> {
                         );
                         if (confirmed) await onDelete();
                       },
-                      loadingLabel: 'Deleting...',
+                      loadingLabel: '...',
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
                         foregroundColor: Colors.red.shade700,
                         side: BorderSide(color: Colors.red.shade300, width: 1.2),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
                       ),
-                      icon: const Icon(Icons.delete_outline, size: 20),
-                      label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                      icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                      label: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Delete',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          maxLines: 1,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    flex: 2,
+                    flex: 3,
                     child: AsyncFilledButton.icon(
                       onPressed: () async {
                         final newName = txtName.text.trim().toUpperCase();
@@ -670,10 +740,20 @@ class _HapiStorePageState extends State<HapiStorePage> {
                       loadingLabel: 'Updating...',
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(0, 50.0),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        backgroundColor: colorScheme.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                       ),
                       icon: const Icon(Icons.check_circle_outline, size: 20),
-                      label: const Text('Update Store', style: TextStyle(fontWeight: FontWeight.bold)),
+                      label: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Update Store',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          maxLines: 1,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -692,10 +772,12 @@ class _HapiStorePageState extends State<HapiStorePage> {
                 loadingLabel: 'Saving...',
                 style: FilledButton.styleFrom(
                   minimumSize: const Size(double.infinity, 50.0),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('Save Store', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.save_outlined, size: 20),
+                label: const Text('Save Store', style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold)),
               ),
       ),
     );
@@ -871,6 +953,8 @@ class _HapiStorePageState extends State<HapiStorePage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -894,19 +978,37 @@ class _HapiStorePageState extends State<HapiStorePage> {
         }
       },
       child: Scaffold(
-      appBar: CustomAppbar(
-        title: 'Hapi Store',
-        subtitle: widget.hapiStoreID.isEmpty ? 'New Store Record' : widget.hapistore.storeName,
-        actions: widget.hapiStoreID.isNotEmpty
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.link_outlined),
-                  tooltip: 'Re-link Past Records',
-                  onPressed: _isSaving ? null : _showRelinkPastRecordsDialog,
-                ),
-              ]
-            : null,
-      ),
+        appBar: CustomAppbar(
+          title: 'Hapi Store',
+          subtitle: widget.hapiStoreID.isEmpty ? 'New Store Record' : widget.hapistore.storeName,
+          actions: widget.hapiStoreID.isNotEmpty
+              ? [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Center(
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF28303F) : Colors.white.withValues(alpha: 0.18),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF384152) : Colors.white.withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.link_outlined, color: Colors.white, size: 20),
+                          tooltip: 'Re-link Past Records',
+                          padding: EdgeInsets.zero,
+                          onPressed: _isSaving ? null : _showRelinkPastRecordsDialog,
+                        ),
+                      ),
+                    ),
+                  ),
+                ]
+              : null,
+        ),
       bottomNavigationBar: _buildStickyBottomBar(),
       body: Form(
         key: _formKey,

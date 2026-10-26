@@ -22,6 +22,7 @@ import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/controllers/placement_controller.dart';
 import 'package:selecta_ops/models/promo.dart';
 import 'package:selecta_ops/services/promo_service.dart';
+import 'package:selecta_ops/services/store_order_service.dart';
 import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 import 'package:intl/intl.dart';
 
@@ -1253,6 +1254,16 @@ class DeliveryController {
 
     // Persist via Service
     await _deliveryService.updateDelivery(deliveryId, updatedDelivery);
+
+    // Sync delivery milestone to Store Order if this delivery originated from a store order
+    try {
+      await StoreOrderService().syncDeliveryStatusToStoreOrder(
+        deliveryId: deliveryId,
+        newDeliveryStatus: status,
+        byUid: currentUserName,
+        byName: currentUserName,
+      );
+    } catch (_) {}
 
     if (status == DeliveryStatus.delivered) {
       await reflectBestSellerPlacementsForDelivery(updatedDelivery);

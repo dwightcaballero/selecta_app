@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build functions",
+			"type": "shell",
+			"command": "cd functions && npm run build",
+			"group": "build"
+		},
+		{
+			"label": "analyze store profile",
+			"type": "shell",
+			"command": "flutter analyze lib/views/pages/sidebar/store_profile_page.dart",
+			"group": "build"
+		}
+	]
+}

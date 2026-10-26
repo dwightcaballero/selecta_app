@@ -17,7 +17,13 @@ import 'package:selecta_ops/views/pages/dashboard/pjphistory_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
+import 'package:flutter/services.dart';
+import 'package:selecta_ops/services/store_auth_service.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/models/scanning.dart';
+import 'package:selecta_ops/services/scanning_services.dart';
+import 'package:selecta_ops/views/pages/dashboard/scanning_page.dart';
+import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Comprehensive Per-Store 360° Profile Screen.
@@ -218,10 +224,28 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
           title: _store.storeName,
           subtitle: _store.storeAddress.isNotEmpty ? _store.storeAddress : 'Store 360° Profile',
           actions: [
-            AsyncIconButton(
-              icon: const Icon(Icons.edit_outlined),
-              tooltip: 'Edit Store',
-              onPressed: _editStore,
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Center(
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF28303F) : Colors.white.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF384152) : Colors.white.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.edit_outlined, color: Colors.white, size: 19),
+                    tooltip: 'Edit Store',
+                    padding: EdgeInsets.zero,
+                    onPressed: _editStore,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -244,11 +268,56 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
                     labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                     tabs: const [
-                      Tab(text: 'Overview', icon: Icon(Icons.dashboard_outlined, size: 20)),
-                      Tab(text: 'Orders', icon: Icon(Icons.shopping_bag_outlined, size: 20)),
-                      Tab(text: 'Credit / AR', icon: Icon(Icons.credit_card_outlined, size: 20)),
-                      Tab(text: 'Assets', icon: Icon(Icons.kitchen_outlined, size: 20)),
-                      Tab(text: 'Visit Photos', icon: Icon(Icons.photo_library_outlined, size: 20)),
+                      Tab(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.dashboard_outlined, size: 17),
+                            SizedBox(width: 6),
+                            Text('Overview'),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.shopping_bag_outlined, size: 17),
+                            SizedBox(width: 6),
+                            Text('Orders'),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.credit_card_outlined, size: 17),
+                            SizedBox(width: 6),
+                            Text('Credit / AR'),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.kitchen_outlined, size: 17),
+                            SizedBox(width: 6),
+                            Text('Assets'),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.photo_library_outlined, size: 17),
+                            SizedBox(width: 6),
+                            Text('Visit Photos'),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                   colorScheme.surface,
@@ -277,31 +346,72 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
   // TOP PROFILE HEADER & QUICK CONTACT BAR
   // ═══════════════════════════════════════════════════════════════════════════
 
+  String _getStoreInitials(String name) {
+    final clean = name.trim();
+    if (clean.isEmpty) return 'ST';
+    final parts = clean.split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return clean.substring(0, clean.length >= 2 ? 2 : 1).toUpperCase();
+  }
+
   Widget _buildProfileHeader(ColorScheme colorScheme, bool isDark) {
     final hasContact = _store.storeContact.trim().isNotEmpty;
-    final hasPjp = _store.pjpSchedule != null && _store.pjpSchedule!.isNotEmpty && _store.pjpSchedule != 'None';
-    final hasGps = _store.latitude != null && _store.longitude != null;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.5),
+            width: 0.8,
+          ),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Store Name + Icon Card
+          // Store Name + Squircle Initials Card
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 52,
-                height: 52,
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: isDark ? 0.25 : 0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isDark
+                        ? [colorScheme.primary.withValues(alpha: 0.4), colorScheme.primary.withValues(alpha: 0.18)]
+                        : [colorScheme.primary.withValues(alpha: 0.18), colorScheme.primary.withValues(alpha: 0.06)],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: isDark ? colorScheme.primary.withValues(alpha: 0.4) : colorScheme.primary.withValues(alpha: 0.2),
+                    color: colorScheme.primary.withValues(alpha: isDark ? 0.45 : 0.25),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colorScheme.primary.withValues(alpha: 0.08),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    _getStoreInitials(_store.storeName),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.primary,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-                child: Icon(Icons.storefront_rounded, size: 28, color: colorScheme.primary),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -310,17 +420,25 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
                   children: [
                     Text(
                       _store.storeName,
-                      style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, letterSpacing: -0.3),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                      ),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.location_on_outlined, size: 14, color: colorScheme.onSurfaceVariant),
+                        Icon(Icons.place_outlined, size: 15, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             _store.storeAddress.isNotEmpty ? _store.storeAddress : 'No street address specified',
-                            style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -333,43 +451,21 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
             ],
           ),
 
+          // Operational Status Badges (Opening Date)
+          if (_store.openingDate != null) ...[
+            const SizedBox(height: 10),
+            _buildBadge(
+              icon: Icons.event_available_rounded,
+              label: 'Opened ${DateFormat('MMM yyyy').format(_store.openingDate!.toDate())}',
+              color: colorScheme.onSurfaceVariant,
+              bgColor: isDark ? const Color(0xFF28303F) : const Color(0xFFF1F5F9),
+              borderColor: isDark ? const Color(0xFF384152) : const Color(0xFFCBD5E1),
+            ),
+          ],
+
           const SizedBox(height: 12),
 
-          // Operational Status Badges (PJP Day, GPS, Opening Date)
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              if (hasPjp)
-                _buildBadge(
-                  icon: Icons.calendar_today_rounded,
-                  label: 'PJP: ${_store.pjpSchedule}',
-                  color: isDark ? Colors.blue.shade400 : Colors.blue.shade700,
-                  bgColor: isDark ? Colors.blue.shade900.withValues(alpha: 0.4) : Colors.blue.shade50,
-                  borderColor: isDark ? Colors.blue.shade700 : Colors.blue.shade200,
-                ),
-              if (hasGps)
-                _buildBadge(
-                  icon: Icons.gps_fixed_rounded,
-                  label: 'GPS Tagged',
-                  color: isDark ? Colors.green.shade400 : Colors.green.shade700,
-                  bgColor: isDark ? Colors.green.shade900.withValues(alpha: 0.4) : Colors.green.shade50,
-                  borderColor: isDark ? Colors.green.shade700 : Colors.green.shade200,
-                ),
-              if (_store.openingDate != null)
-                _buildBadge(
-                  icon: Icons.event_available_rounded,
-                  label: 'Opened ${DateFormat('MMM yyyy').format(_store.openingDate!.toDate())}',
-                  color: colorScheme.onSurfaceVariant,
-                  bgColor: isDark ? const Color(0xFF28303F) : const Color(0xFFE2E8F0),
-                  borderColor: isDark ? const Color(0xFF384152) : const Color(0xFFCBD5E1),
-                ),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-
-          // 1-Tap Field Action Row (Call, SMS, Directions, Book)
+          // 1-Tap Field Action Row (Call, SMS, Navigate)
           Row(
             children: [
               Expanded(
@@ -392,23 +488,12 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
               const SizedBox(width: 8),
               Expanded(
                 child: _buildActionPill(
-                  icon: Icons.navigation_rounded,
+                  icon: Icons.near_me_outlined,
                   label: 'Navigate',
                   color: Colors.orange.shade800,
                   onTap: _openDirections,
                 ),
               ),
-              if (_isDealer) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildActionPill(
-                    icon: Icons.edit_outlined,
-                    label: 'Edit',
-                    color: Colors.purple,
-                    onTap: _editStore,
-                  ),
-                ),
-              ],
             ],
           ),
         ],
@@ -435,7 +520,14 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
         children: [
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: color)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
@@ -454,14 +546,19 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 9),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
           decoration: BoxDecoration(
-            color: isEnabled ? color.withValues(alpha: isDark ? 0.22 : 0.1) : Colors.grey.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
+            color: isEnabled
+                ? color.withValues(alpha: isDark ? 0.22 : 0.08)
+                : Colors.grey.withValues(alpha: isDark ? 0.15 : 0.06),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isEnabled ? color.withValues(alpha: isDark ? 0.45 : 0.25) : Colors.grey.withValues(alpha: 0.2),
+              color: isEnabled
+                  ? color.withValues(alpha: isDark ? 0.45 : 0.25)
+                  : Colors.grey.withValues(alpha: 0.2),
+              width: 1,
             ),
           ),
           child: Row(
@@ -469,12 +566,16 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
             children: [
               Icon(icon, size: 16, color: isEnabled ? color : Colors.grey),
               const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: isEnabled ? color : Colors.grey,
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: isEnabled ? color : Colors.grey,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -524,7 +625,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
         final avgOrder = totalOrders > 0 ? lifetimeSales / totalOrders : 0.0;
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -538,6 +639,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
                       icon: Icons.payments_rounded,
                       accentColor: Colors.green,
                       isDark: isDark,
+                      badgeText: 'Revenue',
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -548,6 +650,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
                       icon: Icons.credit_card_rounded,
                       accentColor: outstandingCredit > 0 ? Colors.red : Colors.grey,
                       isDark: isDark,
+                      badgeText: outstandingCredit > 0 ? 'Overdue' : 'No Overdue',
                     ),
                   ),
                 ],
@@ -562,6 +665,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
                       icon: Icons.receipt_long_rounded,
                       accentColor: colorScheme.primary,
                       isDark: isDark,
+                      badgeText: 'Delivered',
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -572,6 +676,7 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
                       icon: Icons.analytics_outlined,
                       accentColor: Colors.purple,
                       isDark: isDark,
+                      badgeText: 'Per Order',
                     ),
                   ),
                 ],
@@ -580,42 +685,469 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
               const SizedBox(height: 18),
 
               // Store Information Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Store & Operational Details',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 14),
-                      _buildDetailRow('Store Code / ID', _effectiveStoreId.isNotEmpty ? _effectiveStoreId : 'Pending Sync', Icons.tag),
-                      const Divider(height: 16),
-                      _buildDetailRow('Contact Number', _store.storeContact.isNotEmpty ? _store.storeContact : 'Not specified', Icons.phone_outlined),
-                      const Divider(height: 16),
-                      _buildDetailRow('PJP Schedule', _store.pjpSchedule ?? 'Unassigned', Icons.calendar_today_outlined),
-                      const Divider(height: 16),
-                      _buildDetailRow(
-                        'Last Visit Date',
-                        _store.lastPjpVisit != null ? DateFormat('EEEE, d MMM yyyy').format(_store.lastPjpVisit!.toDate()) : 'No visits recorded yet',
-                        Icons.history_rounded,
-                      ),
-                      const Divider(height: 16),
-                      _buildDetailRow(
-                        'Last Order Date',
-                        lastOrderDate != null ? DateFormat('EEEE, d MMM yyyy').format(lastOrderDate) : 'No orders recorded yet',
-                        Icons.local_shipping_outlined,
-                      ),
-                    ],
+              Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.55),
+                    width: 1,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Store & Operational Details',
+                      style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 14),
+                    _buildDetailRow(
+                      'Store Code / ID',
+                      _effectiveStoreId.isNotEmpty ? _effectiveStoreId : 'Pending Sync',
+                      Icons.tag,
+                      isCopyable: _effectiveStoreId.isNotEmpty,
+                      isMonospace: true,
+                    ),
+                    Divider(height: 20, color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.4)),
+                    _buildDetailRow(
+                      'Contact Number',
+                      _store.storeContact.isNotEmpty ? _store.storeContact : 'Not specified',
+                      Icons.phone_outlined,
+                      isCopyable: _store.storeContact.isNotEmpty,
+                    ),
+                    Divider(height: 20, color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.4)),
+                    _buildDetailRow(
+                      'PJP Schedule',
+                      _store.pjpSchedule ?? 'Unassigned',
+                      Icons.calendar_today_outlined,
+                    ),
+                    Divider(height: 20, color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.4)),
+                    _buildDetailRow(
+                      'Last Visit Date',
+                      _store.lastPjpVisit != null ? DateFormat('EEEE, d MMM yyyy').format(_store.lastPjpVisit!.toDate()) : 'No visits recorded yet',
+                      Icons.history_rounded,
+                    ),
+                    Divider(height: 20, color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.4)),
+                    _buildDetailRow(
+                      'Last Order Date',
+                      lastOrderDate != null ? DateFormat('EEEE, d MMM yyyy').format(lastOrderDate) : 'No orders recorded yet',
+                      Icons.local_shipping_outlined,
+                    ),
+                  ],
                 ),
               ),
+
+              const SizedBox(height: 18),
+              _buildStoreAccountCard(colorScheme, isDark),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildStoreAccountCard(ColorScheme colorScheme, bool isDark) {
+    final hasAccount = _store.username != null && _store.username!.trim().isNotEmpty;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.storefront_rounded, size: 20, color: colorScheme.primary),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Online Ordering & Login',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (hasAccount) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: (_store.orderingEnabled ? Colors.green : Colors.orange)
+                          .withValues(alpha: isDark ? 0.25 : 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: (_store.orderingEnabled ? Colors.green : Colors.orange)
+                            .withValues(alpha: isDark ? 0.45 : 0.25),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Text(
+                      _store.orderingEnabled ? 'Active' : 'Disabled',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: _store.orderingEnabled ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (!hasAccount) ...[
+              Text(
+                'This store does not have an online ordering login yet. Create a store username to allow the store owner to browse products and submit orders directly.',
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 14),
+              ElevatedButton.icon(
+                onPressed: _effectiveStoreId.isEmpty ? null : _showCreateStoreLoginDialog,
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                label: const Text('Create Store Login'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                ),
+              ),
+            ] else ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Store Username',
+                          style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '@${_store.username}',
+                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () {
+                                Clipboard.setData(ClipboardData(text: _store.username!));
+                                ShowMessage.info(context, 'Username copied to clipboard.');
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: Icon(Icons.copy_rounded, size: 15, color: colorScheme.onSurfaceVariant),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_isDealer) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _showResetPasswordDialog,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(Icons.lock_reset_rounded, size: 16),
+                      label: const Text('Reset Password', style: TextStyle(fontSize: 12.5)),
+                    ),
+                  ],
+                ],
+              ),
+              const Divider(height: 20),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Enable Store Self-Ordering', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  _store.orderingEnabled
+                      ? 'Store can place orders through their portal.'
+                      : 'Ordering is temporarily paused for this store.',
+                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                ),
+                value: _store.orderingEnabled,
+                onChanged: _toggleOrderingEnabled,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleOrderingEnabled(bool value) async {
+    try {
+      await StoreAuthService().setOrderingEnabled(storeId: _effectiveStoreId, enabled: value);
+      if (mounted) {
+        setState(() {
+          _store = _store.copyWith(orderingEnabled: value);
+        });
+        ShowMessage.success(context, value ? 'Store ordering enabled.' : 'Store ordering disabled.');
+      }
+    } catch (e) {
+      if (mounted) ShowMessage.error(context, 'Failed to update ordering status: $e');
+    }
+  }
+
+  Future<void> _showCreateStoreLoginDialog() async {
+    final cleaned = _store.storeName
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9._-]'), '')
+        .trim();
+    final initialSuggestion = cleaned.length >= 4 ? cleaned : 'store_${_effectiveStoreId.substring(0, _effectiveStoreId.length.clamp(0, 6))}';
+
+    final usernameController = TextEditingController(text: initialSuggestion);
+    final formKey = GlobalKey<FormState>();
+    bool isSubmitting = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogInnerContext, setDialogState) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.person_add_alt_1_rounded),
+                  SizedBox(width: 8),
+                  Text('Create Store Login'),
+                ],
+              ),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Provide a unique username for "${_store.storeName}". The store owner will use this to sign in.',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: usernameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Username',
+                        prefixText: '@',
+                        border: OutlineInputBorder(),
+                        helperText: '4-20 chars: lowercase letters, numbers, ., _, -',
+                      ),
+                      validator: (val) => StoreAuthService.validateUsername(val),
+                      autovalidateMode: AutovalidateMode.onUserInteraction,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+                          setDialogState(() => isSubmitting = true);
+                          try {
+                            final currentUser = await KVariables.getUser();
+                            final currentDealer = currentUser?.dealerName ?? '';
+                            final result = await StoreAuthService().createStoreAccount(
+                              storeId: _effectiveStoreId,
+                              storeName: _store.storeName,
+                              username: usernameController.text.trim().toLowerCase(),
+                              dealerName: currentDealer,
+                            );
+
+                            if (mounted) {
+                              setState(() {
+                                _store = _store.copyWith(
+                                  username: result.user.username,
+                                  storeUserUid: result.uid,
+                                  orderingEnabled: true,
+                                );
+                              });
+                            }
+
+                            if (dialogContext.mounted) {
+                              Navigator.pop(dialogContext);
+                            }
+
+                            if (mounted) {
+                              _showPasswordCredentialsDialog(
+                                username: result.user.username,
+                                temporaryPassword: result.temporaryPassword,
+                              );
+                            }
+                          } catch (e) {
+                            setDialogState(() => isSubmitting = false);
+                            if (mounted) {
+                              ShowMessage.error(context, 'Failed to create login: $e');
+                            }
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Create Account'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showResetPasswordDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset Store Password?'),
+        content: Text(
+          'This will generate a new temporary password for "@${_store.username}". '
+          'The store owner will be required to change their password upon their next login.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Reset Password'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: const AlertDialog(
+          content: Row(
+            children: [
+              SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
+              SizedBox(width: 20),
+              Expanded(child: Text('Resetting password...')),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    String? tempPassword;
+    Object? error;
+    try {
+      tempPassword = await StoreAuthService().resetStorePassword(
+        storeId: _effectiveStoreId,
+        storeName: _store.storeName,
+        username: _store.username!,
+      );
+    } catch (e) {
+      error = e;
+    }
+
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (error != null) {
+      ShowMessage.error(context, 'Failed to reset password: $error');
+      return;
+    }
+
+    _showPasswordCredentialsDialog(
+      username: _store.username!,
+      temporaryPassword: tempPassword!,
+      isReset: true,
+    );
+  }
+
+  void _showPasswordCredentialsDialog({
+    required String username,
+    required String temporaryPassword,
+    bool isReset = false,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(isReset ? Icons.lock_reset_rounded : Icons.check_circle_rounded, color: Colors.green),
+            const SizedBox(width: 8),
+            Text(isReset ? 'Password Reset' : 'Store Account Created'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isReset
+                  ? 'A temporary password has been generated. Please provide these credentials to the store owner:'
+                  : 'The store account is ready. Please share these credentials with the store owner:',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Username: @$username', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 6),
+                  Text('Temporary Password: $temporaryPassword', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.blue)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Important: The store will be prompted to create their own secure password immediately upon logging in.',
+              style: TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        actions: [
+          OutlinedButton.icon(
+            icon: const Icon(Icons.copy_rounded, size: 16),
+            label: const Text('Copy Credentials'),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(
+                text: 'Selecta Ops Store Login:\nUsername: $username\nTemporary Password: $temporaryPassword',
+              ));
+              ShowMessage.info(context, 'Credentials copied to clipboard.');
+            },
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -625,45 +1157,188 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
     required IconData icon,
     required Color accentColor,
     required bool isDark,
+    String? badgeText,
   }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: accentColor.withValues(alpha: isDark ? 0.25 : 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 20, color: accentColor),
-            ),
-            const SizedBox(height: 10),
-            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          ],
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.55),
+          width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: isDark ? 0.25 : 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, size: 20, color: accentColor),
+              ),
+              if (badgeText != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: isDark ? 0.22 : 0.08),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: accentColor.withValues(alpha: isDark ? 0.45 : 0.25),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: accentColor,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildDetailRow(String label, String value, IconData icon) {
+  Widget _buildDetailRow(
+    String label,
+    String value,
+    IconData icon, {
+    bool isCopyable = false,
+    bool isMonospace = false,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(icon, size: 18, color: colorScheme.onSurfaceVariant),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.08),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 16, color: colorScheme.primary),
+        ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 1),
-              Text(value, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              if (isMonospace)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF28303F) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF384152) : const Color(0xFFCBD5E1),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          '# $value',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    if (isCopyable) ...[
+                      const SizedBox(width: 6),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: value));
+                          ShowMessage.info(context, 'Copied $label to clipboard');
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(2),
+                          child: Icon(Icons.copy_rounded, size: 13, color: colorScheme.primary),
+                        ),
+                      ),
+                    ],
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value,
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    if (isCopyable)
+                      InkWell(
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: value));
+                          ShowMessage.info(context, 'Copied $label to clipboard');
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Icon(Icons.copy_rounded, size: 14, color: colorScheme.primary),
+                        ),
+                      ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -925,92 +1600,304 @@ class _StoreProfilePageState extends State<StoreProfilePage> with SingleTickerPr
   Widget _buildAssetsTab(ColorScheme colorScheme, bool isDark) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection(DELIVERY_COLLECTION_REF)
+          .collection(SCANNING_COLLECTION_REF)
           .where('storeName', isEqualTo: _store.storeName)
-          .where('placement', isNull: false)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final docs = snapshot.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return _buildEmptyState('No Freezer Registered', 'No freezer or asset placement record was found for this store.');
+        final rawDocs = snapshot.data?.docs ?? [];
+        final scannings = rawDocs.map((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final s = Scanning.fromJson(data).copyWith(id: doc.id);
+          return ScanningServices.normalizeMonthlyScanning(s);
+        }).where((s) => s.barcode.isNotEmpty && s.status != ScanningStatus.pullout).toList();
+
+        if (scannings.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.cyan.withValues(alpha: isDark ? 0.2 : 0.08),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.kitchen_rounded, size: 48, color: Colors.cyan),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('No Freezer Registered', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text(
+                    'No active Selecta freezer asset is registered to ${_store.storeName}.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                    label: const Text('Scan & Register Freezer'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colorScheme.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ScanningPage(
+                            initialBarcode: '',
+                            initialStoreName: _store.storeName,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
-        return ListView.separated(
-          padding: const EdgeInsets.all(14),
-          itemCount: docs.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final doc = docs[index];
-            final data = doc.data() as Map<String, dynamic>;
-            final delivery = Delivery.fromJson(data);
-            final placement = delivery.placement;
-
-            if (placement == null) return const SizedBox.shrink();
-
-            return Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.cyan.withValues(alpha: isDark ? 0.25 : 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(Icons.kitchen_rounded, size: 24, color: Colors.cyan),
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${scannings.length} ${scannings.length == 1 ? 'Freezer Registered' : 'Freezers Registered'}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Add Freezer', style: TextStyle(fontSize: 12.5)),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ScanningPage(
+                          initialBarcode: '',
+                          initialStoreName: _store.storeName,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                placement.isFinished ? 'Selecta Cabinet (12/12 Completed)' : 'Selecta Cabinet Placement',
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...scannings.map((freezer) {
+              final isScannedThisMonth = freezer.status == ScanningStatus.scanned;
+              final hasImage = freezer.imageUrl.isNotEmpty;
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(9),
+                            decoration: BoxDecoration(
+                              color: Colors.cyan.withValues(alpha: isDark ? 0.25 : 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.kitchen_rounded, size: 22, color: Colors.cyan),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Text('Barcode: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                                    Flexible(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isDark ? const Color(0xFF28303F) : const Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: isDark ? const Color(0xFF384152) : const Color(0xFFCBD5E1),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          freezer.barcode,
+                                          style: const TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w800,
+                                            fontFamily: 'monospace',
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'Assigned to ${_store.storeName}',
+                                  style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isScannedThisMonth
+                                  ? (isDark ? Colors.green.shade900.withValues(alpha: 0.35) : Colors.green.shade50)
+                                  : (isDark ? Colors.orange.shade900.withValues(alpha: 0.35) : Colors.orange.shade50),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isScannedThisMonth
+                                    ? (isDark ? Colors.green.shade700 : Colors.green.shade300)
+                                    : (isDark ? Colors.orange.shade700 : Colors.orange.shade300),
+                                width: 0.9,
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Progress: ${placement.progressCount}/12 Items Assigned',
-                                style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isScannedThisMonth ? Icons.check_circle_rounded : Icons.pending_actions_rounded,
+                                  size: 12,
+                                  color: isScannedThisMonth
+                                      ? (isDark ? Colors.green.shade300 : Colors.green.shade700)
+                                      : (isDark ? Colors.orange.shade300 : Colors.orange.shade800),
+                                ),
+                                const SizedBox(width: 3.5),
+                                Text(
+                                  isScannedThisMonth ? 'Scanned' : 'Needs Scan',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: isScannedThisMonth
+                                        ? (isDark ? Colors.green.shade300 : Colors.green.shade700)
+                                        : (isDark ? Colors.orange.shade300 : Colors.orange.shade800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 20),
+                      _buildDetailRow(
+                        'Monthly Audit Status',
+                        isScannedThisMonth ? 'Verified for this month' : 'Pending monthly verification scan',
+                        Icons.fact_check_outlined,
+                      ),
+                      const SizedBox(height: 8),
+                      _buildDetailRow(
+                        'Last Verified Date',
+                        freezer.scannedDate != null
+                            ? DateFormat('EEEE, d MMM yyyy • h:mm a').format(freezer.scannedDate!.toDate())
+                            : 'No recent scan recorded',
+                        Icons.history_rounded,
+                      ),
+                      if (freezer.scannedBy.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        _buildDetailRow(
+                          'Verified By',
+                          freezer.scannedBy,
+                          Icons.person_outline,
+                        ),
+                      ],
+                      if (hasImage) ...[
+                        const SizedBox(height: 12),
+                        InkWell(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ImageViewerPage(
+                                  image: null,
+                                  networkImagePath: freezer.imageUrl,
+                                ),
                               ),
-                            ],
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Stack(
+                              alignment: Alignment.bottomRight,
+                              children: [
+                                Image.network(
+                                  freezer.imageUrl,
+                                  height: 140,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                                ),
+                                Container(
+                                  margin: const EdgeInsets.all(8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.6),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.zoom_in_rounded, size: 14, color: Colors.white),
+                                      SizedBox(width: 4),
+                                      Text('View Photo', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
-                    ),
-                    const Divider(height: 20),
-                    _buildDetailRow(
-                      'Placement Status',
-                      placement.isFinished ? 'Completed (All 12 Slots Placed)' : 'In Progress (${placement.progressCount}/12)',
-                      Icons.verified_outlined,
-                    ),
-                    const SizedBox(height: 8),
-                    _buildDetailRow(
-                      'Placement Date',
-                      delivery.deliveryDate != null ? DateFormat('d MMMM yyyy').format(delivery.deliveryDate!.toDate()) : 'N/A',
-                      Icons.calendar_month_outlined,
-                    ),
-                    if (placement.placedProductNames.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      _buildDetailRow(
-                        'Assigned SKUs',
-                        placement.placedProductNames.join(', '),
-                        Icons.inventory_2_outlined,
+                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.edit_note_rounded, size: 16),
+                          label: const Text('Manage / Re-scan Freezer'),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ScanningPage(
+                                  initialBarcode: freezer.barcode,
+                                  initialStoreName: _store.storeName,
+                                  isEditing: true,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            }),
+          ],
         );
       },
     );

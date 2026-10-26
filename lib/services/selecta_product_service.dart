@@ -1084,4 +1084,13 @@ class SelectaProductService {
 
     return products;
   }
+
+  /// Fetches all active products from local dealer catalog.
+  Future<List<SelectaProduct>> getAllSelectaProductList() async {
+    final docs = await getAllProducts();
+    return docs
+        .map((doc) => SelectaProduct.fromJson(doc.id, doc.data()))
+        .where((p) => p.isActive)
+        .toList();
+  }
 }

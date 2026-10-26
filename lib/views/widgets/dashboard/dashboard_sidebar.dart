@@ -12,10 +12,12 @@ import 'package:selecta_ops/views/pages/dashboard/merchblitzlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/pjplist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
+import 'package:selecta_ops/services/store_order_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/dealer_store_orders_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistorelist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
@@ -174,6 +176,16 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
                     ],
 
                     _buildSection(context, 'Operations'),
+                    StreamBuilder<int>(
+                      stream: StoreOrderService().getSubmittedStoreOrdersCountStream(),
+                      builder: (ctx, snap) => _buildItem(
+                        ctx,
+                        Icons.storefront_outlined,
+                        'Store Orders',
+                        const DealerStoreOrdersPage(),
+                        badge: snap.data ?? 0,
+                      ),
+                    ),
                     StreamBuilder<int>(
                       stream: widget.merchBlitzCountStream,
                       builder: (ctx, snap) =>

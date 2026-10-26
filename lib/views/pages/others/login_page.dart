@@ -1,10 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/login_controller.dart';
 import 'package:selecta_ops/views/dashboard_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:selecta_ops/views/pages/others/register_page.dart';
 import 'package:selecta_ops/views/pages/others/selecta_catalog_sync_gate_page.dart';
+import 'package:selecta_ops/views/pages/store/store_login_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
@@ -28,6 +30,7 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _savePassword = false;
 
   @override
   void dispose() {
@@ -48,18 +51,15 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      final result = await _controller.login(
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
+      final result = await _controller.login(email: _emailController.text, password: _passwordController.text);
+
+      TextInput.finishAutofillContext(shouldSave: _savePassword);
 
       if (mounted) {
         ShowMessage.success(context, 'Successfully logged in!');
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (context) => SelectaCatalogSyncGatePage(
-              child: result.isDealer ? const DashboardPage() : const SalesmanDashboardPage(),
-            ),
+            builder: (context) => SelectaCatalogSyncGatePage(child: result.isDealer ? const DashboardPage() : const SalesmanDashboardPage()),
           ),
           (Route<dynamic> route) => false,
         );
@@ -118,10 +118,7 @@ class _LoginPageState extends State<LoginPage> {
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
                 final email = resetController.text.trim();
@@ -182,23 +179,14 @@ class _LoginPageState extends State<LoginPage> {
                         decoration: BoxDecoration(
                           color: colorScheme.primary,
                           shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: colorScheme.primary.withValues(alpha: 0.28),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
+                          boxShadow: [BoxShadow(color: colorScheme.primary.withValues(alpha: 0.28), blurRadius: 20, offset: const Offset(0, 8))],
                         ),
                         child: Icon(Icons.lock_outline_rounded, size: 38, color: colorScheme.onPrimary),
                       ),
                       const SizedBox(height: 20),
                       Text(
                         'Welcome back',
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.onSurface,
-                        ),
+                        style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, color: colorScheme.onSurface),
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -213,61 +201,68 @@ class _LoginPageState extends State<LoginPage> {
                           color: colorScheme.surface,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))],
                         ),
                         child: Column(
                           children: [
-                            TextFormField(
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              textInputAction: TextInputAction.next,
-                              autofillHints: const [AutofillHints.username, AutofillHints.email],
-                              decoration: InputDecoration(
-                                labelText: 'Email address',
-                                prefixIcon: const Icon(Icons.email_outlined),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            AutofillGroup(
+                              child: Column(
+                                children: [
+                                  TextFormField(
+                                    controller: _emailController,
+                                    keyboardType: TextInputType.emailAddress,
+                                    textInputAction: TextInputAction.next,
+                                    autofillHints: const [AutofillHints.username, AutofillHints.email],
+                                    decoration: InputDecoration(
+                                      labelText: 'Email address',
+                                      prefixIcon: const Icon(Icons.email_outlined),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    validator: (value) {
+                                      final email = value?.trim() ?? '';
+                                      if (email.isEmpty) return 'Enter your email address';
+                                      if (!email.contains('@')) return 'Enter a valid email address';
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextFormField(
+                                    controller: _passwordController,
+                                    obscureText: _obscurePassword,
+                                    textInputAction: TextInputAction.done,
+                                    autofillHints: const [AutofillHints.password],
+                                    onFieldSubmitted: (_) => _login(),
+                                    decoration: InputDecoration(
+                                      labelText: 'Password',
+                                      prefixIcon: const Icon(Icons.lock_outline),
+                                      suffixIcon: IconButton(
+                                        tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                        icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                                      ),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) return 'Enter your password';
+                                      return null;
+                                    },
+                                  ),
+                                ],
                               ),
-                              validator: (value) {
-                                final email = value?.trim() ?? '';
-                                if (email.isEmpty) return 'Enter your email address';
-                                if (!email.contains('@')) return 'Enter a valid email address';
-                                return null;
-                              },
                             ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _passwordController,
-                              obscureText: _obscurePassword,
-                              textInputAction: TextInputAction.done,
-                              autofillHints: const [AutofillHints.password],
-                              onFieldSubmitted: (_) => _login(),
-                              decoration: InputDecoration(
-                                labelText: 'Password',
-                                prefixIcon: const Icon(Icons.lock_outline),
-                                suffixIcon: IconButton(
-                                  tooltip: _obscurePassword ? 'Show password' : 'Hide password',
-                                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                                  icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                                ),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            Material(
+                              color: Colors.transparent,
+                              child: CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                title: const Text('Save password on this device'),
+                                value: _savePassword,
+                                onChanged: _isLoading ? null : (value) => setState(() => _savePassword = value ?? false),
                               ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) return 'Enter your password';
-                                return null;
-                              },
                             ),
                             Align(
                               alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: _handleForgotPassword,
-                                child: const Text('Forgot password?'),
-                              ),
+                              child: TextButton(onPressed: _handleForgotPassword, child: const Text('Forgot password?')),
                             ),
                             const SizedBox(height: 6),
                             SizedBox(
@@ -285,7 +280,33 @@ class _LoginPageState extends State<LoginPage> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(child: Divider(color: colorScheme.outlineVariant)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'OR',
+                              style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: colorScheme.outlineVariant)),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.storefront_rounded),
+                        label: const Text('Login as Hapi Store', style: TextStyle(fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const StoreLoginPage()));
+                        },
+                      ),
+                      const SizedBox(height: 16),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [

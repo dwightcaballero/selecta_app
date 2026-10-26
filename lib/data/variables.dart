@@ -18,6 +18,11 @@ class KVariables {
     return user?.role == BusinessRole.admin;
   }
 
+  static Future<bool> getIsStore() async {
+    final user = await getUser();
+    return user?.role == BusinessRole.hapiStore;
+  }
+
   static Future<Users?> getUser() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
@@ -31,11 +36,14 @@ class KVariables {
     }
 
     // 2. Fallback: Query Firestore if not cached locally
-    final currentEmail = FirebaseAuth.instance.currentUser?.email;
-    if (currentEmail != null && currentEmail.isNotEmpty) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
       try {
         final db = UserService();
-        final user = await db.getUserByEmail(currentEmail);
+        var user = await db.getUserByUid(currentUser.uid);
+        if (user == null && currentUser.email != null && currentUser.email!.isNotEmpty) {
+          user = await db.getUserByEmail(currentUser.email!);
+        }
         if (user != null) {
           await prefs.setString('user_data', jsonEncode(user.toJson()));
           return user;

@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 
 /// Controller responsible for managing user authentication state streams
@@ -11,5 +12,15 @@ class AuthController {
   /// Checks whether the currently logged-in user is a Dealer or a Salesman.
   Future<bool> checkIsDealer() async {
     return await KVariables.getIsDealer();
+  }
+
+  /// Checks whether the currently logged-in user is a Hapi Store account.
+  Future<bool> checkIsStore() async {
+    return await KVariables.getIsStore();
+  }
+
+  /// Returns the current loaded user profile.
+  Future<Users?> getCurrentUser() async {
+    return await KVariables.getUser();
   }
 }

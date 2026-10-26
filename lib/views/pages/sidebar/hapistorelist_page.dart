@@ -5,10 +5,12 @@ import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/hapistore_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/responsive.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistore_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/store_profile_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Presentation page for displaying, filtering, and navigating Hapi Stores.
 class HapiStoreListPage extends StatefulWidget {
@@ -101,58 +103,132 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
     );
   }
 
-  /// Builds the top search bar
+  /// 1-tap phone dialer action
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final clean = phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (clean.isEmpty) {
+      if (mounted) ShowMessage.error(context, 'No valid phone number to call.');
+      return;
+    }
+    final uri = Uri.parse('tel:$clean');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      if (mounted) ShowMessage.error(context, 'Could not open phone dialer.');
+    }
+  }
+
+  /// 1-tap SMS messaging action
+  Future<void> _sendSms(String phoneNumber) async {
+    final clean = phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (clean.isEmpty) {
+      if (mounted) ShowMessage.error(context, 'No valid phone number to message.');
+      return;
+    }
+    final uri = Uri.parse('sms:$clean');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      if (mounted) ShowMessage.error(context, 'Could not open messaging app.');
+    }
+  }
+
+  /// 1-tap Google Maps directions action
+  Future<void> _openDirections(Hapistore store) async {
+    if (store.latitude != null && store.longitude != null) {
+      final lat = store.latitude!;
+      final lng = store.longitude!;
+      final uri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+
+    if (store.storeAddress.isNotEmpty) {
+      final query = Uri.encodeComponent('${store.storeName}, ${store.storeAddress}');
+      final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+
+    if (mounted) {
+      ShowMessage.alert(
+        context,
+        title: 'Location Unavailable',
+        message: 'No GPS coordinates or valid address registered for this store.',
+        icon: Icons.location_off_outlined,
+      );
+    }
+  }
+
+  /// Builds the top search bar with sleek rounded design
   Widget _buildSearchBar() {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-      child: TextField(
-        controller: _searchController,
-        focusNode: _searchFocusNode,
-        onChanged: _onSearchChanged,
-        decoration: InputDecoration(
-          hintText: 'Search by store name, address, or contact...',
-          hintStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.primary),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 18),
-                  tooltip: 'Clear search',
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {
-                      _searchQuery = '';
-                    });
-                  },
-                )
-              : null,
-          filled: true,
-          fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E2430) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+            width: 1,
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: TextField(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          onChanged: _onSearchChanged,
+          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            hintText: 'Search by store name, address, or contact...',
+            hintStyle: TextStyle(
+              fontSize: 13,
+              color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+            ),
+            prefixIcon: Icon(Icons.search_rounded, size: 21, color: colorScheme.primary),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear_rounded, size: 18),
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() {
+                        _searchQuery = '';
+                      });
+                    },
+                  )
+                : null,
+            filled: false,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
           ),
         ),
       ),
     );
   }
 
-  /// Builds the horizontal PJP filter day chips
+  /// Builds the horizontal PJP filter day chips with clear active pills
   Widget _buildPjpFilterChips() {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SizedBox(
-      height: 42,
+      height: 40,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -167,22 +243,25 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
             label: Text(
               filter['label']!,
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+                fontSize: 12.5,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                color: isSelected ? Colors.white : (isDark ? Colors.white70 : const Color(0xFF334155)),
               ),
             ),
             selectedColor: colorScheme.primary,
-            backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            checkmarkColor: colorScheme.onPrimary,
+            backgroundColor: isDark ? const Color(0xFF1E2430) : Colors.white,
+            checkmarkColor: Colors.white,
             showCheckmark: false,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
               side: BorderSide(
-                color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                color: isSelected ? colorScheme.primary : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                width: isSelected ? 1.5 : 1.0,
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+            elevation: isSelected ? 2 : 0,
+            pressElevation: 1,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             onSelected: (selected) {
               setState(() {
                 _selectedPjpDay = selected ? filter['key']! : 'All';
@@ -200,33 +279,51 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
     final isFiltered = _searchQuery.isNotEmpty || _selectedPjpDay != 'All';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            isFiltered ? 'Showing $filteredCount of $totalCount stores' : '$totalCount stores registered',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurfaceVariant,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isFiltered ? 'Showing $filteredCount of $totalCount stores' : '$totalCount stores registered',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurfaceVariant,
+                  letterSpacing: -0.1,
+                ),
+              ),
+            ],
           ),
           if (isFiltered)
             InkWell(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(6),
               onTap: _resetFilters,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.filter_alt_off_outlined, size: 14, color: colorScheme.primary),
+                    Icon(Icons.filter_alt_off_rounded, size: 13, color: colorScheme.primary),
                     const SizedBox(width: 4),
                     Text(
-                      'Reset',
+                      'Clear Filter',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.bold,
                         color: colorScheme.primary,
                       ),
@@ -322,7 +419,17 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
     );
   }
 
-  /// Store item card with details, PJP chip, and action buttons
+  String _getStoreInitials(String name) {
+    final clean = name.trim();
+    if (clean.isEmpty) return 'ST';
+    final parts = clean.split(RegExp(r'\s+'));
+    if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return clean.substring(0, clean.length >= 2 ? 2 : 1).toUpperCase();
+  }
+
+  /// Store item card with details and 1-tap action buttons (Message, Call, Directions)
   Widget _buildStoreCard({
     required String hapistoreID,
     required Hapistore hapistore,
@@ -332,66 +439,147 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasGps = hapistore.latitude != null && hapistore.longitude != null;
-    final hasPjp = hapistore.pjpSchedule != null && hapistore.pjpSchedule!.trim().isNotEmpty;
+    final hasUsername = hapistore.username != null && hapistore.username!.trim().isNotEmpty;
+    final hasContact = hapistore.storeContact.trim().isNotEmpty;
 
-    return Card(
-      elevation: 0,
-      color: isSelected
-          ? colorScheme.primaryContainer.withValues(alpha: isDark ? 0.25 : 0.12)
-          : colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: isSelected
-            ? BorderSide(color: colorScheme.primary, width: 2)
-            : BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? colorScheme.primaryContainer.withValues(alpha: isDark ? 0.3 : 0.15)
+            : colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isSelected
+              ? colorScheme.primary
+              : colorScheme.outlineVariant.withValues(alpha: isDark ? 0.35 : 0.55),
+          width: isSelected ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap ??
-            () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => StoreProfilePage(hapiStoreID: hapistoreID, hapistore: hapistore),
-                ),
-              );
-            },
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Store Header: Name + Status chips
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(Icons.storefront_outlined, size: 20, color: colorScheme.primary),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap ??
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => StoreProfilePage(hapiStoreID: hapistoreID, hapistore: hapistore),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          hapistore.storeName,
-                          style: const TextStyle(
+                );
+              },
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top Row: Avatar + Store Name + Trailing icon
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Brand squircle avatar
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: isDark
+                              ? [colorScheme.primary.withValues(alpha: 0.35), colorScheme.primary.withValues(alpha: 0.15)]
+                              : [colorScheme.primary.withValues(alpha: 0.18), colorScheme.primary.withValues(alpha: 0.06)],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: colorScheme.primary.withValues(alpha: 0.25),
+                          width: 1,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          _getStoreInitials(hapistore.storeName),
+                          style: TextStyle(
                             fontSize: 15,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.primary,
+                            letterSpacing: 0.5,
                           ),
                         ),
-                        if (hasPjp) ...[
-                          const SizedBox(height: 3),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Store Title & Optional Plain Username
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            hapistore.storeName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.2,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (hasUsername) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              '@${hapistore.username}',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    if (isSelected)
+                      Icon(Icons.check_circle, size: 22, color: colorScheme.primary)
+                    else if (_isDealer)
+                      Icon(Icons.chevron_right, size: 22, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Divider line
+                Divider(
+                  height: 1,
+                  thickness: 0.6,
+                  color: colorScheme.outlineVariant.withValues(alpha: isDark ? 0.3 : 0.4),
+                ),
+                const SizedBox(height: 10),
+
+                // Bottom Row: 1-Tap Action Buttons (Message, Call, Directions)
+                Row(
+                  children: [
+                    // 1-Tap Action: Message
+                    if (hasContact)
+                      Tooltip(
+                        message: 'Send SMS to ${hapistore.storeName}',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () => _sendSms(hapistore.storeContact),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.blue.shade900.withValues(alpha: 0.4) : Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(6),
+                              color: isDark ? Colors.blue.shade900.withValues(alpha: 0.3) : Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: isDark ? Colors.blue.shade700 : Colors.blue.shade200,
                                 width: 0.8,
@@ -400,12 +588,12 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.calendar_today_outlined, size: 10, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700),
-                                const SizedBox(width: 4),
+                                Icon(Icons.sms_outlined, size: 13, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700),
+                                const SizedBox(width: 5),
                                 Text(
-                                  hapistore.pjpSchedule!,
+                                  'Message',
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 11.5,
                                     fontWeight: FontWeight.w600,
                                     color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
                                   ),
@@ -413,77 +601,85 @@ class _HapiStoreListPageState extends State<HapiStoreListPage> {
                               ],
                             ),
                           ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (hasGps)
-                    Tooltip(
-                      message: 'GPS Coordinates set',
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.location_on, size: 16, color: Colors.green),
                       ),
-                    ),
-                  if (isSelected) ...[
-                    const SizedBox(width: 4),
-                    Icon(Icons.check_circle, size: 20, color: colorScheme.primary),
-                  ] else if (_isDealer) ...[
-                    const SizedBox(width: 4),
-                    Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                    if (hasContact) ...[
+                      const SizedBox(width: 8),
+                      // 1-Tap Action: Call
+                      Tooltip(
+                        message: 'Call ${hapistore.storeName}',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () => _makePhoneCall(hapistore.storeContact),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.green.shade900.withValues(alpha: 0.3) : Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDark ? Colors.green.shade700 : Colors.green.shade200,
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.phone, size: 13, color: isDark ? Colors.green.shade300 : Colors.green.shade700),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Call',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.green.shade300 : Colors.green.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const Spacer(),
+                    // 1-Tap Action: Directions
+                    if (hasGps)
+                      Tooltip(
+                        message: 'Navigate to ${hapistore.storeName}',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () => _openDirections(hapistore),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.orange.shade900.withValues(alpha: 0.3) : Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDark ? Colors.orange.shade700 : Colors.orange.shade200,
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.directions, size: 13, color: isDark ? Colors.orange.shade300 : Colors.orange.shade800),
+                                const SizedBox(width: 5),
+                                Text(
+                                  'Directions',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.orange.shade300 : Colors.orange.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              // Address Row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.place_outlined, size: 15, color: colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      hapistore.storeAddress,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-
-              // Contact Number Row with quick copy
-              Row(
-                children: [
-                  Icon(Icons.phone_outlined, size: 15, color: colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Text(
-                    hapistore.storeContact,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: colorScheme.onSurfaceVariant,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  InkWell(
-                    borderRadius: BorderRadius.circular(4),
-                    onTap: () => _copyToClipboard(hapistore.storeContact, 'contact number'),
-                    child: Padding(
-                      padding: const EdgeInsets.all(2.0),
-                      child: Icon(Icons.copy_outlined, size: 13, color: colorScheme.primary),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

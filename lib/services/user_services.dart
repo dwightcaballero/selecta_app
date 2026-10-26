@@ -38,6 +38,18 @@ class UserService {
     }
   }
 
+  Future<Users?> getUserByUid(String uid) async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (doc.exists && doc.data() != null) {
+        return Users.fromJson(doc.data()!);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void addUser(Users user) {
     _usersRef.add(user);
   }

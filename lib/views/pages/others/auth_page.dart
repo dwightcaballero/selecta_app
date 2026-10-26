@@ -1,15 +1,18 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/auth_controller.dart';
+import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/push_notification_service.dart';
 import 'package:selecta_ops/views/dashboard_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/salesman_dashboard_page.dart';
 import 'package:selecta_ops/views/pages/others/loading_page.dart';
 import 'package:selecta_ops/views/pages/others/selecta_catalog_sync_gate_page.dart';
 import 'package:selecta_ops/views/pages/others/welcome_page.dart';
+import 'package:selecta_ops/views/pages/store/store_change_password_page.dart';
+import 'package:selecta_ops/views/pages/store/store_shell.dart';
 
 /// Top-level authentication gateway that listens to auth state changes
-/// and routes the user to WelcomePage, DashboardPage, or SalesmanDashboardPage.
+/// and routes the user to WelcomePage, StoreShell, DashboardPage, or SalesmanDashboardPage.
 class AuthPage extends StatelessWidget {
   const AuthPage({super.key});
 
@@ -39,13 +42,21 @@ class _RoleBasedDashboardRouter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: controller.checkIsDealer(),
+    return FutureBuilder<Users?>(
+      future: controller.getCurrentUser(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const LoadingPage();
         }
-        final isDealer = snapshot.data ?? true;
+        final userProfile = snapshot.data;
+        if (userProfile != null && userProfile.isStore) {
+          if (userProfile.mustChangePassword) {
+            return const StoreChangePasswordPage(isForced: true);
+          }
+          return const StoreShell();
+        }
+
+        final isDealer = userProfile?.isDealer ?? true;
 
         // Auto-register FCM device token and sync topic subscriptions for current user role
         final user = FirebaseAuth.instance.currentUser;

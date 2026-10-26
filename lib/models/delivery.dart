@@ -226,6 +226,9 @@ class Delivery {
   Timestamp? voidedDate;
   String? voidedBy;
 
+  String? source;
+  String? storeOrderId;
+
   String createdBy;
   String lastUpdatedBy;
   Timestamp createdDate;
@@ -282,6 +285,8 @@ class Delivery {
     this.voidReason,
     this.voidedDate,
     this.voidedBy,
+    this.source,
+    this.storeOrderId,
   });
 
   /// True if this order/delivery has been voided.
@@ -352,6 +357,8 @@ class Delivery {
     voidReason: null,
     voidedDate: null,
     voidedBy: null,
+    source: null,
+    storeOrderId: null,
   );
 
   static List<OrderItem> _parseItems(Object? raw) {
@@ -423,6 +430,8 @@ class Delivery {
         voidReason: json['voidReason'] as String?,
         voidedDate: _parseTimestamp(json['voidedDate']),
         voidedBy: json['voidedBy'] as String?,
+        source: json['source'] as String?,
+        storeOrderId: json['storeOrderId'] as String?,
       );
 
   factory Delivery.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -483,6 +492,8 @@ class Delivery {
     Timestamp? lastupdatedDate,
     String? createdPage,
     String? lastUpdatedPage,
+    String? source,
+    String? storeOrderId,
   }) {
     return Delivery(
       storeName: storeName ?? this.storeName,
@@ -531,6 +542,8 @@ class Delivery {
       lastupdatedDate: lastupdatedDate ?? this.lastupdatedDate,
       createdPage: createdPage ?? this.createdPage,
       lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
+      source: source ?? this.source,
+      storeOrderId: storeOrderId ?? this.storeOrderId,
     );
   }
 
@@ -582,6 +595,8 @@ class Delivery {
       'lastupdatedDate': lastupdatedDate,
       'createdPage': createdPage,
       'lastUpdatedPage': lastUpdatedPage,
+      if (source != null) 'source': source,
+      if (storeOrderId != null) 'storeOrderId': storeOrderId,
     };
   }
 }
@@ -625,6 +640,8 @@ class DeliveryModelString {
   static String voidReason = 'voidReason';
   static String voidedDate = 'voidedDate';
   static String voidedBy = 'voidedBy';
+  static String source = 'source';
+  static String storeOrderId = 'storeOrderId';
 
   static String createdBy = 'createdBy';
   static String lastUpdatedBy = 'lastUpdatedBy';

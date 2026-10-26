@@ -50,6 +50,10 @@ class Configuration {
   String productSortMode; // 'srp' | 'custom'
   List<SubCategory> subCategories;
 
+  // Hapi Store Self-Ordering Settings (Optional)
+  double? storeMinimumOrderValue;
+  String? storeCutoffTime; // "HH:mm" 24h format e.g. "17:00"
+
   Configuration({
     required this.merchBlitzStartDate,
     required this.merchBlitzEndDate,
@@ -76,7 +80,27 @@ class Configuration {
     this.lastStockAuditAt,
     this.productSortMode = 'srp',
     this.subCategories = const [],
+    this.storeMinimumOrderValue,
+    this.storeCutoffTime,
   });
+
+  bool get hasStoreMinimumOrderValue => storeMinimumOrderValue != null && storeMinimumOrderValue! > 0;
+  bool get hasStoreCutoffTime => storeCutoffTime != null && storeCutoffTime!.trim().isNotEmpty;
+
+  /// Returns true if [time] is after the configured daily cut-off time.
+  bool isAfterCutoff(DateTime time) {
+    if (!hasStoreCutoffTime) return false;
+    try {
+      final parts = storeCutoffTime!.trim().split(':');
+      if (parts.length >= 2) {
+        final cutoffHour = int.parse(parts[0]);
+        final cutoffMinute = int.parse(parts[1]);
+        final cutoffToday = DateTime(time.year, time.month, time.day, cutoffHour, cutoffMinute);
+        return time.isAfter(cutoffToday);
+      }
+    } catch (_) {}
+    return false;
+  }
 
   /// Returns true if [plainTextPassword] matches the stored SHA-256 hash.
   bool verifyAdminPassword(String plainTextPassword) {
@@ -169,6 +193,8 @@ class Configuration {
                   .map((m) => SubCategory.fromJson(Map<String, dynamic>.from(m)))
                   .toList()
               : const [],
+          storeMinimumOrderValue: (json['storeMinimumOrderValue'] as num?)?.toDouble(),
+          storeCutoffTime: json['storeCutoffTime'] as String?,
         );
 
   Configuration copyWith({
@@ -197,6 +223,10 @@ class Configuration {
     Timestamp? lastStockAuditAt,
     String? productSortMode,
     List<SubCategory>? subCategories,
+    double? storeMinimumOrderValue,
+    bool clearStoreMinimumOrderValue = false,
+    String? storeCutoffTime,
+    bool clearStoreCutoffTime = false,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -224,6 +254,8 @@ class Configuration {
       lastStockAuditAt: lastStockAuditAt ?? this.lastStockAuditAt,
       productSortMode: productSortMode ?? this.productSortMode,
       subCategories: subCategories ?? List.from(this.subCategories),
+      storeMinimumOrderValue: clearStoreMinimumOrderValue ? null : (storeMinimumOrderValue ?? this.storeMinimumOrderValue),
+      storeCutoffTime: clearStoreCutoffTime ? null : (storeCutoffTime ?? this.storeCutoffTime),
     );
   }
 
@@ -255,6 +287,8 @@ class Configuration {
       if (lastStockAuditAt != null) 'lastStockAuditAt': lastStockAuditAt,
       'productSortMode': productSortMode,
       'subCategories': subCategories.map((s) => s.toJson()).toList(),
+      if (storeMinimumOrderValue != null) 'storeMinimumOrderValue': storeMinimumOrderValue,
+      if (storeCutoffTime != null) 'storeCutoffTime': storeCutoffTime,
     };
   }
 }

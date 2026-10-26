@@ -102,6 +102,7 @@ class BusinessRole {
   static const dealer = "Dealer";
   static const salesman = "Salesman";
   static const admin = "Admin";
+  static const hapiStore = "Hapi Store";
 }
 
 class ExpenseType {
@@ -169,6 +170,7 @@ class AppPages {
   static const vanSell = "Van Sell";
   static const payslip = "Payslip";
   static const superAdmin = "Super Admin";
+  static const storeOrders = "Store Orders";
 }
 
 class PayslipStatus {

@@ -191,7 +191,7 @@ class ReturnController {
           : item.pickedQuantity;
       return item.copyWith(
         orderedQuantity: qty,
-        pickedQuantity: 0,
+        pickedQuantity: qty,
         returnedQuantity: 0,
         isPicked: false,
       );

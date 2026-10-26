@@ -7,6 +7,9 @@ class Users {
   String email;
   String dealerName;
   double dailyRate;
+  String storeId;
+  String storeName;
+  bool mustChangePassword;
 
   Users({
     required this.username,
@@ -14,6 +17,9 @@ class Users {
     required this.email,
     required this.dealerName,
     this.dailyRate = 0.0,
+    this.storeId = '',
+    this.storeName = '',
+    this.mustChangePassword = false,
   });
 
   /// True if the user is an Admin.
@@ -22,16 +28,34 @@ class Users {
   /// True if the user is either a Dealer or an Admin (inheriting Dealer rights).
   bool get isDealerOrAdmin => role == BusinessRole.dealer || role == BusinessRole.admin;
 
+  /// True if the user is a Hapi Store self-ordering account.
+  bool get isStore => role == BusinessRole.hapiStore;
+
+  /// True if the user is a Dealer.
+  bool get isDealer => role == 'Dealer' || role == BusinessRole.dealer;
+
   static Users empty() =>
-      Users(username: '', role: '', email: '', dealerName: '', dailyRate: 0.0);
+      Users(
+        username: '',
+        role: '',
+        email: '',
+        dealerName: '',
+        dailyRate: 0.0,
+        storeId: '',
+        storeName: '',
+        mustChangePassword: false,
+      );
 
   Users.fromJson(Map<String, Object?> json)
     : this(
-        username: json['username']! as String,
-        role: json['role']! as String,
-        email: json['email']! as String,
-        dealerName: json['dealerName']! as String,
+        username: (json['username'] as String?) ?? '',
+        role: (json['role'] as String?) ?? '',
+        email: (json['email'] as String?) ?? '',
+        dealerName: (json['dealerName'] as String?) ?? '',
         dailyRate: (json['dailyRate'] as num?)?.toDouble() ?? 0.0,
+        storeId: (json['storeId'] as String?) ?? '',
+        storeName: (json['storeName'] as String?) ?? '',
+        mustChangePassword: (json['mustChangePassword'] as bool?) ?? false,
       );
 
   factory Users.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -43,6 +67,9 @@ class Users {
         email: data?['email'] ?? '',
         dealerName: data?['dealerName'] ?? '',
         dailyRate: (data?['dailyRate'] as num?)?.toDouble() ?? 0.0,
+        storeId: data?['storeId'] ?? '',
+        storeName: data?['storeName'] ?? '',
+        mustChangePassword: data?['mustChangePassword'] ?? false,
       );
     } else {
       return Users.empty();
@@ -55,6 +82,9 @@ class Users {
     String? email,
     String? dealerName,
     double? dailyRate,
+    String? storeId,
+    String? storeName,
+    bool? mustChangePassword,
   }) {
     return Users(
       username: username ?? this.username,
@@ -62,6 +92,9 @@ class Users {
       email: email ?? this.email,
       dealerName: dealerName ?? this.dealerName,
       dailyRate: dailyRate ?? this.dailyRate,
+      storeId: storeId ?? this.storeId,
+      storeName: storeName ?? this.storeName,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
     );
   }
 
@@ -72,6 +105,9 @@ class Users {
       'email': email,
       'dealerName': dealerName,
       'dailyRate': dailyRate,
+      'storeId': storeId,
+      'storeName': storeName,
+      'mustChangePassword': mustChangePassword,
     };
   }
 }

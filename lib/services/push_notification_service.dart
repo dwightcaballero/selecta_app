@@ -221,6 +221,28 @@ class PushNotificationService {
     }
   }
 
+  /// Sends a push notification to users belonging to a specific business role.
+  Future<void> sendNotificationToRole({
+    required String role,
+    required String title,
+    required String body,
+    Map<String, dynamic>? data,
+  }) async {
+    try {
+      await _firestore.collection('notifications').add({
+        'role': role,
+        'title': title,
+        'body': body,
+        'data': data ?? {},
+        'createdAt': FieldValue.serverTimestamp(),
+        'read': false,
+      });
+      debugPrint('Notification queued for role $role: $title - $body');
+    } catch (e) {
+      debugPrint('Error sending notification to role $role: $e');
+    }
+  }
+
   /// Cleans up resources.
   void dispose() {
     _foregroundMessageController.close();

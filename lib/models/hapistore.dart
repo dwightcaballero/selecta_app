@@ -18,6 +18,9 @@ class Hapistore {
   double? longitude;
   Timestamp? lastMerchBlitzDate;
   String? merchBlitzStatus;
+  String? storeUserUid;
+  bool orderingEnabled;
+  String? username;
 
   Hapistore({
     required this.storeName,
@@ -31,6 +34,9 @@ class Hapistore {
     this.longitude,
     this.lastMerchBlitzDate,
     this.merchBlitzStatus,
+    this.storeUserUid,
+    this.orderingEnabled = true,
+    this.username,
   });
 
   static Hapistore empty() =>
@@ -46,6 +52,9 @@ class Hapistore {
         longitude: null,
         lastMerchBlitzDate: null,
         merchBlitzStatus: null,
+        storeUserUid: null,
+        orderingEnabled: true,
+        username: null,
       );
 
   factory Hapistore.fromJson(Map<String, Object?> json) {
@@ -73,6 +82,9 @@ class Hapistore {
       longitude: lng,
       lastMerchBlitzDate: json['lastMerchBlitzDate'] as Timestamp?,
       merchBlitzStatus: json['merchBlitzStatus'] as String?,
+      storeUserUid: json['storeUserUid'] as String?,
+      orderingEnabled: (json['orderingEnabled'] as bool?) ?? true,
+      username: json['username'] as String?,
     );
   }
 
@@ -103,6 +115,9 @@ class Hapistore {
         longitude: lng,
         lastMerchBlitzDate: data['lastMerchBlitzDate'] as Timestamp?,
         merchBlitzStatus: data['merchBlitzStatus'] as String?,
+        storeUserUid: data['storeUserUid'] as String?,
+        orderingEnabled: (data['orderingEnabled'] as bool?) ?? true,
+        username: data['username'] as String?,
       );
     } else {
       return Hapistore.empty();
@@ -126,6 +141,11 @@ class Hapistore {
     bool clearLastMerchBlitzDate = false,
     String? merchBlitzStatus,
     bool clearMerchBlitzStatus = false,
+    String? storeUserUid,
+    bool clearStoreUserUid = false,
+    bool? orderingEnabled,
+    String? username,
+    bool clearUsername = false,
   }) {
     return Hapistore(
       storeName: storeName ?? this.storeName,
@@ -139,6 +159,9 @@ class Hapistore {
       longitude: clearLocation ? null : (longitude ?? this.longitude),
       lastMerchBlitzDate: clearLastMerchBlitzDate ? null : (lastMerchBlitzDate ?? this.lastMerchBlitzDate),
       merchBlitzStatus: clearMerchBlitzStatus ? null : (merchBlitzStatus ?? this.merchBlitzStatus),
+      storeUserUid: clearStoreUserUid ? null : (storeUserUid ?? this.storeUserUid),
+      orderingEnabled: orderingEnabled ?? this.orderingEnabled,
+      username: clearUsername ? null : (username ?? this.username),
     );
   }
 
@@ -174,6 +197,9 @@ class Hapistore {
       'longitude': longitude,
       'lastMerchBlitzDate': lastMerchBlitzDate,
       'merchBlitzStatus': merchBlitzStatus,
+      'storeUserUid': storeUserUid,
+      'orderingEnabled': orderingEnabled,
+      'username': username,
       'location': (latitude != null && longitude != null)
           ? GeoPoint(latitude!, longitude!)
           : null,

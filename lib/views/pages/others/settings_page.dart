@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
+import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/app_version_info.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
@@ -22,12 +23,19 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   String _appVersion = '1.0.0';
   int _pendingLogCount = 0;
+  bool _isStore = false;
 
   @override
   void initState() {
     super.initState();
     _loadAppInfo();
     _loadPendingLogCount();
+    _checkStoreRole();
+  }
+
+  Future<void> _checkStoreRole() async {
+    final isStore = await KVariables.getIsStore();
+    if (mounted) setState(() => _isStore = isStore);
   }
 
   Future<void> _loadPendingLogCount() async {
@@ -385,26 +393,28 @@ class _SettingsPageState extends State<SettingsPage> {
                       MaterialPageRoute(builder: (context) => const ChangePasswordPage()),
                     ),
                   ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withAlpha(25),
-                        shape: BoxShape.circle,
+                  if (!_isStore) ...[
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(25),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
                       ),
-                      child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+                      title: const Text(
+                        'Delete Account',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5, color: Colors.red),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded, color: Colors.red),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const DeleteAccountPage()),
+                      ),
                     ),
-                    title: const Text(
-                      'Delete Account',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5, color: Colors.red),
-                    ),
-                    trailing: const Icon(Icons.chevron_right_rounded, color: Colors.red),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const DeleteAccountPage()),
-                    ),
-                  ),
+                  ],
                 ],
               ),
             ),

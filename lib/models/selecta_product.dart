@@ -47,6 +47,12 @@ class SelectaProduct {
   /// Backward-compatible price accessor (selling price).
   double get price => sellingPrice;
 
+  /// Flavor or variant description.
+  String get flavor => '';
+
+  /// Pieces per case for case packaging.
+  int? get piecesPerCase => null;
+
   /// Gross margin amount (sellingPrice - buyingPrice).
   double get margin => sellingPrice - buyingPrice;
 
