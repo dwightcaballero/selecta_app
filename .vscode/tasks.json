@@ -12,6 +12,12 @@
 			"type": "shell",
 			"command": "flutter analyze lib/views/pages/sidebar/store_profile_page.dart",
 			"group": "build"
+		},
+		{
+			"label": "analyze store fix",
+			"type": "shell",
+			"command": "flutter analyze lib/data/variables.dart lib/services/store_auth_service.dart lib/views/pages/store/store_orders_page.dart",
+			"group": "build"
 		}
 	]
 }

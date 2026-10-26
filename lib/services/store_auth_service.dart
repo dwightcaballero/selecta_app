@@ -1,5 +1,7 @@
 // ignore_for_file: constant_identifier_names
 
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,6 +11,7 @@ import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
 import 'package:selecta_ops/services/user_services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const String STORE_USERNAMES_COLLECTION = 'store_usernames';
 const String STORE_LOGIN_ATTEMPTS_COLLECTION = 'store_login_attempts';
@@ -195,6 +198,12 @@ class StoreAuthService {
     if (profile == null) {
       throw const FormatException('Account profile could not be loaded. Please contact your dealer.');
     }
+
+    // Refresh the local profile cache so a previous account's data is never reused
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_data', jsonEncode(profile.toJson()));
+    } catch (_) {}
 
     return StoreAuthResult(user: user, userProfile: profile, mustChangePassword: profile.mustChangePassword);
   }

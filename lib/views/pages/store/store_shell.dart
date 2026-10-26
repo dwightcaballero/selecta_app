@@ -40,36 +40,60 @@ class _StoreShellState extends State<StoreShell> {
       const StoreAccountPage(),
     ];
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
         children: pages,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: _onTabSelected,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
-            label: 'Home',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E2430) : Colors.white,
+          border: Border(
+            top: BorderSide(
+              color: isDark ? const Color(0xFF2E3644) : const Color(0xFFE2E8F0),
+              width: 1,
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.icecream_outlined),
-            selectedIcon: Icon(Icons.icecream_rounded),
-            label: 'Catalog',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long_rounded),
-            label: 'Orders',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.storefront_outlined),
-            selectedIcon: Icon(Icons.storefront_rounded),
-            label: 'Account',
-          ),
-        ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+              offset: const Offset(0, -2),
+              blurRadius: 8,
+            ),
+          ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: _onTabSelected,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          indicatorColor: theme.colorScheme.primary.withValues(alpha: isDark ? 0.22 : 0.12),
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_rounded, color: theme.colorScheme.primary),
+              label: 'Home',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.icecream_outlined),
+              selectedIcon: Icon(Icons.icecream_rounded, color: theme.colorScheme.primary),
+              label: 'Catalog',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.receipt_long_outlined),
+              selectedIcon: Icon(Icons.receipt_long_rounded, color: theme.colorScheme.primary),
+              label: 'Orders',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.storefront_outlined),
+              selectedIcon: Icon(Icons.storefront_rounded, color: theme.colorScheme.primary),
+              label: 'Account',
+            ),
+          ],
+        ),
       ),
     );
   }

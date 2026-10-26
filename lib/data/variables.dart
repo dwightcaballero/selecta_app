@@ -26,17 +26,22 @@ class KVariables {
   static Future<Users?> getUser() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    // 1. Read from SharedPreferences
+    // 1. Read from SharedPreferences (only if it belongs to the signed-in account)
+    final currentUser = FirebaseAuth.instance.currentUser;
     String? jsonString = prefs.getString('user_data');
     if (jsonString != null && jsonString.isNotEmpty) {
       try {
         Map<String, dynamic> userMap = jsonDecode(jsonString) as Map<String, dynamic>;
-        return Users.fromJson(userMap);
+        final cached = Users.fromJson(userMap);
+        final authEmail = currentUser?.email?.trim().toLowerCase();
+        final isStale = authEmail != null &&
+            authEmail.isNotEmpty &&
+            cached.email.trim().toLowerCase() != authEmail;
+        if (!isStale) return cached;
       } catch (_) {}
     }
 
     // 2. Fallback: Query Firestore if not cached locally
-    final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
       try {
         final db = UserService();

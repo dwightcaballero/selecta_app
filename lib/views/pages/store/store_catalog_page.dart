@@ -5,11 +5,12 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:selecta_ops/views/pages/store/store_cart_page.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
 
 /// Store Catalog View for browsing and adding products to order.
-/// Strictly enforces stock badge visibility ('Available' / 'Out of stock')
-/// without exposing any inventory quantities to store users.
+/// Stores can order all products regardless of warehouse inventory stock.
+/// Inactive products are automatically hidden from the catalog.
 class StoreCatalogPage extends StatefulWidget {
   const StoreCatalogPage({super.key});
 
@@ -53,7 +54,8 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
   Future<void> _loadProducts() async {
     setState(() => _isLoading = true);
     try {
-      final list = await _productService.getAllSelectaProductList();
+      final rawList = await _productService.getAllSelectaProductList();
+      final list = rawList.where((p) => p.isActive).toList();
       list.sort((a, b) => Helperfunctions.compareProducts(
             nameA: a.productName,
             priceA: a.sellingPrice,
@@ -109,11 +111,13 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Product Catalog'),
+      appBar: CustomAppbar(
+        title: 'Product Catalog',
+        subtitle: 'Browse & Add to Order',
+        showBackButton: false,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
             onPressed: _loadProducts,
             tooltip: 'Refresh Products',
           ),
@@ -121,36 +125,60 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
       ),
       body: Column(
         children: [
-          // Search Bar
+          // Sleek Floating Search Bar
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search products or flavors...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                isDense: true,
-                filled: true,
-                fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E2430) : Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              onChanged: (val) => setState(() => _searchQuery = val.trim()),
+              child: TextField(
+                controller: _searchController,
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500),
+                decoration: InputDecoration(
+                  hintText: 'Search products or flavors...',
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                  ),
+                  prefixIcon: Icon(Icons.search_rounded, size: 21, color: colorScheme.primary),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 18),
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  filled: false,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                ),
+                onChanged: (val) => setState(() => _searchQuery = val.trim()),
+              ),
             ),
           ),
 
           // Categories Filter Chips
           if (_categories.length > 1)
             SizedBox(
-              height: 44,
+              height: 40,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -163,11 +191,24 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                     label: Text(cat),
                     selected: isSelected,
                     onSelected: (_) => setState(() => _selectedCategory = cat),
+                    labelStyle: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                      color: isSelected ? Colors.white : (isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569)),
+                    ),
+                    backgroundColor: isDark ? const Color(0xFF1E2430) : Colors.white,
+                    selectedColor: colorScheme.primary,
+                    side: BorderSide(
+                      color: isSelected
+                          ? colorScheme.primary
+                          : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   );
                 },
               ),
             ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
 
           // Products List
           Expanded(
@@ -175,22 +216,40 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredProducts.isEmpty
                     ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.inventory_2_outlined, size: 54, color: colorScheme.outlineVariant),
-                            const SizedBox(height: 12),
-                            Text(
-                              _searchQuery.isNotEmpty ? 'No products match "$_searchQuery"' : 'No products available.',
-                              style: TextStyle(color: colorScheme.onSurfaceVariant),
-                            ),
-                          ],
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 72,
+                                height: 72,
+                                decoration: BoxDecoration(
+                                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(Icons.inventory_2_outlined, size: 36, color: colorScheme.outline),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchQuery.isNotEmpty ? 'No products match "$_searchQuery"' : 'No products available',
+                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Try checking your search spelling or change category filter.',
+                                style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                         ),
                       )
                     : RefreshIndicator(
                         onRefresh: _loadProducts,
                         child: ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
                           itemCount: _filteredProducts.length,
                           separatorBuilder: (context, index) => const SizedBox(height: 12),
                           itemBuilder: (context, idx) {
@@ -204,28 +263,40 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                                 ? product.sellingPrice
                                 : product.sellingPrice * (product.piecesPerCase ?? 1);
 
-                            final isOutOfStock = product.isOutOfStock;
                             final currentQtyInCart = _cart.getQuantity(prodId, selectedPkg);
+                            final isInCart = currentQtyInCart > 0;
 
-                            return Card(
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
+                            final cardBorderColor = isInCart
+                                ? colorScheme.primary
+                                : (isDark ? const Color(0xFF384152) : const Color(0xFFE2E8F0));
+                            final cardBgColor = isInCart
+                                ? colorScheme.primary.withValues(alpha: isDark ? 0.12 : 0.04)
+                                : (isDark ? const Color(0xFF1E2430) : Colors.white);
+
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: cardBgColor,
                                 borderRadius: BorderRadius.circular(16),
-                                side: BorderSide(
-                                  color: currentQtyInCart > 0
-                                      ? colorScheme.primary.withValues(alpha: 0.6)
-                                      : colorScheme.outlineVariant.withValues(alpha: 0.5),
-                                  width: currentQtyInCart > 0 ? 1.5 : 1,
+                                border: Border.all(
+                                  color: cardBorderColor,
+                                  width: isInCart ? 1.6 : 1,
                                 ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                               ),
                               child: Padding(
                                 padding: const EdgeInsets.all(12),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // Image
+                                    // Product Image
                                     ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(12),
                                       child: CachedProductImage(
                                         imageUrl: product.imageUrl,
                                         size: 72,
@@ -233,40 +304,17 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                                     ),
                                     const SizedBox(width: 12),
 
-                                    // Info
+                                    // Info & Actions
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  product.productName,
-                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                                  maxLines: 2,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                              // Stock availability badge (NO numeric quantity!)
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: isOutOfStock
-                                                      ? Colors.red.withValues(alpha: isDark ? 0.25 : 0.12)
-                                                      : Colors.green.withValues(alpha: isDark ? 0.25 : 0.12),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: Text(
-                                                  isOutOfStock ? 'Out of stock' : 'Available',
-                                                  style: TextStyle(
-                                                    fontSize: 10.5,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: isOutOfStock ? Colors.red : Colors.green,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
+                                          Text(
+                                            product.productName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 14.5,
+                                            ),
                                           ),
                                           if (product.flavor.isNotEmpty) ...[
                                             const SizedBox(height: 2),
@@ -285,7 +333,7 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                                                   onTap: () => setState(() => _selectedPackaging[prodId] = 'Piece'),
                                                   borderRadius: BorderRadius.circular(6),
                                                   child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
                                                     decoration: BoxDecoration(
                                                       color: isPiece
                                                           ? colorScheme.primary
@@ -296,7 +344,7 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                                                       'Piece',
                                                       style: TextStyle(
                                                         fontSize: 11,
-                                                        fontWeight: FontWeight.bold,
+                                                        fontWeight: FontWeight.w700,
                                                         color: isPiece ? colorScheme.onPrimary : colorScheme.onSurface,
                                                       ),
                                                     ),
@@ -307,7 +355,7 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                                                   onTap: () => setState(() => _selectedPackaging[prodId] = 'Case'),
                                                   borderRadius: BorderRadius.circular(6),
                                                   child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
                                                     decoration: BoxDecoration(
                                                       color: !isPiece
                                                           ? colorScheme.primary
@@ -318,7 +366,7 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                                                       'Case (${product.piecesPerCase} pcs)',
                                                       style: TextStyle(
                                                         fontSize: 11,
-                                                        fontWeight: FontWeight.bold,
+                                                        fontWeight: FontWeight.w700,
                                                         color: !isPiece ? colorScheme.onPrimary : colorScheme.onSurface,
                                                       ),
                                                     ),
@@ -336,55 +384,62 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                                               Text(
                                                 _currency.format(unitPrice),
                                                 style: TextStyle(
-                                                  fontSize: 15,
+                                                  fontSize: 16,
                                                   fontWeight: FontWeight.w800,
                                                   color: colorScheme.primary,
                                                 ),
                                               ),
 
                                               // Add / Stepper
-                                              if (isOutOfStock)
-                                                const Text(
-                                                  'Temporarily Unavailable',
-                                                  style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
-                                                )
-                                              else if (currentQtyInCart > 0)
-                                                Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    IconButton(
-                                                      icon: const Icon(Icons.remove_circle_outline, size: 22),
-                                                      padding: EdgeInsets.zero,
-                                                      constraints: const BoxConstraints(),
-                                                      onPressed: () {
-                                                        _cart.setQuantity(prodId, selectedPkg, currentQtyInCart - 1);
-                                                      },
+                                              if (isInCart)
+                                                Container(
+                                                  decoration: BoxDecoration(
+                                                    color: colorScheme.surfaceContainerHighest,
+                                                    borderRadius: BorderRadius.circular(20),
+                                                    border: Border.all(
+                                                      color: isDark ? const Color(0xFF384152) : const Color(0xFFCBD5E1),
                                                     ),
-                                                    Padding(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                      child: Text(
-                                                        '$currentQtyInCart',
-                                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                                  ),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      IconButton(
+                                                        icon: const Icon(Icons.remove_rounded, size: 18),
+                                                        padding: EdgeInsets.zero,
+                                                        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                                        onPressed: () {
+                                                          _cart.setQuantity(prodId, selectedPkg, currentQtyInCart - 1);
+                                                        },
                                                       ),
-                                                    ),
-                                                    IconButton(
-                                                      icon: const Icon(Icons.add_circle, size: 22),
-                                                      padding: EdgeInsets.zero,
-                                                      constraints: const BoxConstraints(),
-                                                      onPressed: () {
-                                                        _cart.setQuantity(prodId, selectedPkg, currentQtyInCart + 1);
-                                                      },
-                                                    ),
-                                                  ],
+                                                      Padding(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                        child: Text(
+                                                          '$currentQtyInCart',
+                                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                                        ),
+                                                      ),
+                                                      IconButton(
+                                                        icon: const Icon(Icons.add_rounded, size: 18),
+                                                        padding: EdgeInsets.zero,
+                                                        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                                                        onPressed: () {
+                                                          _cart.setQuantity(prodId, selectedPkg, currentQtyInCart + 1);
+                                                        },
+                                                      ),
+                                                    ],
+                                                  ),
                                                 )
                                               else
-                                                ElevatedButton.icon(
-                                                  icon: const Icon(Icons.add_shopping_cart, size: 16),
-                                                  label: const Text('Add'),
-                                                  style: ElevatedButton.styleFrom(
+                                                FilledButton.icon(
+                                                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 16),
+                                                  label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700)),
+                                                  style: FilledButton.styleFrom(
+                                                    backgroundColor: colorScheme.primary,
+                                                    foregroundColor: Colors.white,
                                                     visualDensity: VisualDensity.compact,
-                                                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                                   ),
                                                   onPressed: () {
                                                     _cart.addItem(product, selectedPkg, quantity: 1);
@@ -411,12 +466,18 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
           ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: colorScheme.primary,
+                color: isDark ? const Color(0xFF1E2430) : colorScheme.primary,
+                border: Border(
+                  top: BorderSide(
+                    color: isDark ? const Color(0xFF384152) : colorScheme.primary.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 10,
-                    offset: const Offset(0, -3),
+                    color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.18),
+                    blurRadius: 14,
+                    offset: const Offset(0, -4),
                   ),
                 ],
               ),
@@ -424,28 +485,36 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                 top: false,
                 child: Row(
                   children: [
-                    Icon(Icons.shopping_bag_outlined, color: colorScheme.onPrimary),
-                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 22),
+                    ),
+                    const SizedBox(width: 12),
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           '${_cart.totalItemCount} items (${_cart.lineCount} products)',
-                          style: TextStyle(color: colorScheme.onPrimary, fontWeight: FontWeight.bold, fontSize: 13),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5),
                         ),
                         Text(
                           'Est. ${_currency.format(_cart.subtotal)}',
-                          style: TextStyle(color: colorScheme.onPrimary.withValues(alpha: 0.9), fontSize: 12),
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12.5, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
                     const Spacer(),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colorScheme.onPrimary,
-                        foregroundColor: colorScheme.primary,
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: isDark ? const Color(0xFF0F172A) : colorScheme.primary,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       ),
                       onPressed: () {
                         Navigator.push(
@@ -454,8 +523,9 @@ class _StoreCatalogPageState extends State<StoreCatalogPage> {
                         );
                       },
                       child: const Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('View Cart', style: TextStyle(fontWeight: FontWeight.bold)),
+                          Text('View Cart', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
                           SizedBox(width: 4),
                           Icon(Icons.arrow_forward_rounded, size: 16),
                         ],

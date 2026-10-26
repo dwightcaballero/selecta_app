@@ -3,6 +3,7 @@ import 'package:selecta_ops/services/store_auth_service.dart';
 import 'package:selecta_ops/views/pages/store/store_change_password_page.dart';
 import 'package:selecta_ops/views/pages/store/store_shell.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Store Owner Login Page for self-ordering portal.
@@ -47,7 +48,10 @@ class _StoreLoginPageState extends State<StoreLoginPage> {
 
       if (!mounted) return;
 
-      ShowMessage.success(context, 'Welcome back, ${result.userProfile.storeName.isNotEmpty ? result.userProfile.storeName : username}!');
+      ShowMessage.success(
+        context,
+        'Welcome back, ${result.userProfile.storeName.isNotEmpty ? result.userProfile.storeName : username}!',
+      );
 
       if (result.mustChangePassword) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -76,17 +80,22 @@ class _StoreLoginPageState extends State<StoreLoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBorder = isDark ? const Color(0xFF384152) : const Color(0xFFE2E8F0);
+    final cardBg = isDark ? const Color(0xFF1E2430) : Colors.white;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Store Portal'),
-        elevation: 0,
+      appBar: const CustomAppbar(
+        title: 'Store Portal',
+        subtitle: 'Self-ordering portal sign in',
+        showBackButton: true,
       ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Form(
@@ -96,44 +105,64 @@ class _StoreLoginPageState extends State<StoreLoginPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // Brand / Logo Icon
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
+                    Center(
+                      child: Container(
+                        width: 84,
+                        height: 84,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              colorScheme.primary,
+                              colorScheme.primary.withValues(alpha: 0.75),
+                            ],
+                          ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: colorScheme.primary.withValues(alpha: 0.3),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.storefront_rounded, size: 44, color: Colors.white),
                       ),
-                      child: Icon(Icons.storefront_rounded, size: 44, color: colorScheme.primary),
                     ),
                     const SizedBox(height: 20),
 
                     Text(
                       'Hapi Store Ordering',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
-                          ),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -0.3,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Sign in with your store username to place orders with your dealer',
+                      'Sign in with your store username to place and track ice cream orders with your dealer',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13.5),
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
                     ),
                     const SizedBox(height: 28),
 
                     // Inputs Card
                     Container(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(22),
                       decoration: BoxDecoration(
-                        color: colorScheme.surface,
+                        color: cardBg,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+                        border: Border.all(color: cardBorder),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 12,
+                            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.05),
+                            blurRadius: 16,
                             offset: const Offset(0, 4),
                           ),
                         ],
@@ -148,8 +177,15 @@ class _StoreLoginPageState extends State<StoreLoginPage> {
                             autofillHints: const [AutofillHints.username],
                             decoration: InputDecoration(
                               labelText: 'Store Username',
-                              prefixIcon: const Icon(Icons.alternate_email_rounded),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              prefixIcon: const Icon(Icons.alternate_email_rounded, size: 20),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
                               hintText: 'e.g. storename',
                             ),
                             validator: (val) {
@@ -168,13 +204,23 @@ class _StoreLoginPageState extends State<StoreLoginPage> {
                             onFieldSubmitted: (_) => _login(),
                             decoration: InputDecoration(
                               labelText: 'Password',
-                              prefixIcon: const Icon(Icons.lock_outline),
+                              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
                               suffixIcon: IconButton(
                                 tooltip: _obscurePassword ? 'Show password' : 'Hide password',
                                 onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                                icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                                icon: Icon(
+                                  _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                  size: 20,
+                                ),
                               ),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
                             ),
                             validator: (val) {
                               if (val == null || val.isEmpty) {
@@ -183,7 +229,7 @@ class _StoreLoginPageState extends State<StoreLoginPage> {
                               return null;
                             },
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 22),
                           AsyncFilledButton(
                             onPressed: _isLoading ? null : _login,
                             loadingLabel: 'Signing In...',
@@ -191,7 +237,10 @@ class _StoreLoginPageState extends State<StoreLoginPage> {
                               minimumSize: const Size.fromHeight(50),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                            child: const Text('Sign In as Store', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                            child: const Text(
+                              'Sign In to Portal',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
                           ),
                         ],
                       ),

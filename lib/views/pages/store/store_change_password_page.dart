@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/services/store_auth_service.dart';
 import 'package:selecta_ops/views/pages/store/store_shell.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 
 /// Password change screen for store accounts.
@@ -79,18 +80,23 @@ class _StoreChangePasswordPageState extends State<StoreChangePasswordPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBorder = isDark ? const Color(0xFF384152) : const Color(0xFFE2E8F0);
+    final cardBg = isDark ? const Color(0xFF1E2430) : Colors.white;
 
     return PopScope(
       canPop: !widget.isForced,
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.isForced ? 'Set New Password' : 'Change Password'),
-          automaticallyImplyLeading: !widget.isForced,
+        appBar: CustomAppbar(
+          title: widget.isForced ? 'Set New Password' : 'Change Password',
+          subtitle: widget.isForced ? 'First-time setup' : 'Account security',
+          showBackButton: !widget.isForced,
         ),
         body: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Form(
@@ -98,118 +104,182 @@ class _StoreChangePasswordPageState extends State<StoreChangePasswordPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Security Information Alert
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: widget.isForced
-                            ? colorScheme.primaryContainer.withValues(alpha: 0.4)
-                            : colorScheme.surfaceContainerHighest,
+                            ? const Color(0xFF3B82F6).withValues(alpha: 0.08)
+                            : (isDark ? const Color(0xFF1E2430) : const Color(0xFFF8FAFC)),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: widget.isForced ? colorScheme.primary : colorScheme.outlineVariant,
+                          color: widget.isForced ? const Color(0xFF3B82F6).withValues(alpha: 0.3) : cardBorder,
                         ),
                       ),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            widget.isForced ? Icons.security_rounded : Icons.lock_outline_rounded,
-                            size: 28,
-                            color: widget.isForced ? colorScheme.primary : colorScheme.onSurfaceVariant,
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: (widget.isForced ? const Color(0xFF3B82F6) : colorScheme.primary).withValues(alpha: 0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              widget.isForced ? Icons.security_rounded : Icons.lock_outline_rounded,
+                              size: 20,
+                              color: widget.isForced ? const Color(0xFF3B82F6) : colorScheme.primary,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              widget.isForced
-                                  ? 'For your security, you must create a new password before accessing your store portal.'
-                                  : 'Enter your current password and choose a new password of at least 8 characters.',
-                              style: const TextStyle(fontSize: 13, height: 1.4),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.isForced ? 'First-Time Setup Required' : 'Password Requirements',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  widget.isForced
+                                      ? 'For your security, please update your temporary password before accessing your store portal.'
+                                      : 'Enter your current password and choose a secure new password of at least 8 characters.',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: colorScheme.onSurfaceVariant,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
 
-                    // Current Password
-                    TextFormField(
-                      controller: _currentPasswordController,
-                      obscureText: _obscureCurrent,
-                      decoration: InputDecoration(
-                        labelText: widget.isForced ? 'Temporary Password' : 'Current Password',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureCurrent ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                          onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent),
-                        ),
+                    // Inputs Card
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: cardBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
-                      validator: (val) {
-                        if (val == null || val.isEmpty) {
-                          return 'Please enter your ${widget.isForced ? "temporary" : "current"} password';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
+                      child: Column(
+                        children: [
+                          // Current Password
+                          TextFormField(
+                            controller: _currentPasswordController,
+                            obscureText: _obscureCurrent,
+                            decoration: InputDecoration(
+                              labelText: widget.isForced ? 'Temporary Password' : 'Current Password',
+                              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(_obscureCurrent ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 20),
+                                onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent),
+                              ),
+                            ),
+                            validator: (val) {
+                              if (val == null || val.isEmpty) {
+                                return 'Please enter your ${widget.isForced ? "temporary" : "current"} password';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
 
-                    // New Password
-                    TextFormField(
-                      controller: _newPasswordController,
-                      obscureText: _obscureNew,
-                      decoration: InputDecoration(
-                        labelText: 'New Password',
-                        helperText: 'Must be at least 8 characters long',
-                        prefixIcon: const Icon(Icons.key_rounded),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                          onPressed: () => setState(() => _obscureNew = !_obscureNew),
-                        ),
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Please enter a new password';
-                        }
-                        if (val.trim().length < 8) {
-                          return 'Password must be at least 8 characters long';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
+                          // New Password
+                          TextFormField(
+                            controller: _newPasswordController,
+                            obscureText: _obscureNew,
+                            decoration: InputDecoration(
+                              labelText: 'New Password',
+                              helperText: 'Must be at least 8 characters long',
+                              prefixIcon: const Icon(Icons.key_rounded, size: 20),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(_obscureNew ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 20),
+                                onPressed: () => setState(() => _obscureNew = !_obscureNew),
+                              ),
+                            ),
+                            validator: (val) {
+                              if (val == null || val.trim().isEmpty) {
+                                return 'Please enter a new password';
+                              }
+                              if (val.trim().length < 8) {
+                                return 'Password must be at least 8 characters long';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
 
-                    // Confirm New Password
-                    TextFormField(
-                      controller: _confirmPasswordController,
-                      obscureText: _obscureConfirm,
-                      decoration: InputDecoration(
-                        labelText: 'Confirm New Password',
-                        prefixIcon: const Icon(Icons.check_circle_outline_rounded),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                          onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                        ),
-                      ),
-                      validator: (val) {
-                        if (val != _newPasswordController.text) {
-                          return 'Passwords do not match';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 28),
+                          // Confirm New Password
+                          TextFormField(
+                            controller: _confirmPasswordController,
+                            obscureText: _obscureConfirm,
+                            decoration: InputDecoration(
+                              labelText: 'Confirm New Password',
+                              prefixIcon: const Icon(Icons.check_circle_outline_rounded, size: 20),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cardBorder),
+                              ),
+                              suffixIcon: IconButton(
+                                icon: Icon(_obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 20),
+                                onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                              ),
+                            ),
+                            validator: (val) {
+                              if (val != _newPasswordController.text) {
+                                return 'Passwords do not match';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 24),
 
-                    AsyncFilledButton(
-                      onPressed: _isLoading ? null : _submit,
-                      loadingLabel: 'Updating Password...',
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(50),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Text(
-                        widget.isForced ? 'Set Password & Continue' : 'Update Password',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          AsyncFilledButton(
+                            onPressed: _isLoading ? null : _submit,
+                            loadingLabel: 'Updating Password...',
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(50),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: Text(
+                              widget.isForced ? 'Set Password & Continue' : 'Update Password',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
