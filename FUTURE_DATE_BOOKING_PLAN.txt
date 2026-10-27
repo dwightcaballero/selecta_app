@@ -1,0 +1,261 @@
+FUTURE-DATE BOOKING WITHOUT STOCK LIMIT - IMPLEMENTATION PLAN (FOR REVIEW)
+==========================================================================
+
+GOAL
+----
+When the delivery date of a Book Order transaction is TOMORROW OR LATER
+(strictly after today), the user can book ANY active product at ANY quantity,
+regardless of current stock. For TODAY (or past dates) the current stock-capped
+behavior stays exactly as is.
+
+CURRENT STATE (verified in code)
+--------------------------------
+Not implemented. Stock cap applies to every date.
+
+- lib/views/pages/dashboard/book_order_page.dart
+  * _isFutureDeliveryDate (L115) exists but is only passed to the card.
+  * _getMaxOrderableQty (L363) = availableQuantity + qty already in this order.
+    Its comment says the date is intentionally ignored.
+  * _setSelectedQty (L369) clamps to max and shows "Only N available...".
+  * _clampQuantitiesToAvailableStock (L389) trims the cart; called after the
+    date changes in _showStoreAndDateModal (L2979-3001).
+  * Other users of _getMaxOrderableQty: _evaluatePromos (L298),
+    _addPromoBundleToCart (L315), _promptQuantityDialog (L500, presets/clamp),
+    cart summary stepper (L927), receipt scan cap (L1503), correction dialog
+    (L1919/L1925), second stepper (L2497), Hide Out of Stock filter (L3143),
+    card maxOrderable (L3406).
+  * _onSaveOrder (L1233) blocks save when promoEval.isOOSBlocked (L1249).
+- lib/views/widgets/book_order/product_order_card.dart
+  * isFutureDelivery (L26) is declared but never read.
+  * isOutOfStock = maxOrderable <= 0 (L53) disables tap, greys image, hides
+    the Add button, shows "Out of stock" / "0 stock", and caps the "+" at
+    maxOrderable (L399, L406).
+- lib/services/promo_service.dart
+  * evaluate(...availableStock) marks bundles OOS-blocked (L155-160, L199-202).
+- Existing tests that assert the OLD behavior:
+  test/advance_delivery_and_manual_po_test.dart L78-100:
+  "For tomorrow/future (isFutureDelivery=true) with 0 stock: renders Out of
+  stock and disables ordering". This test must be changed.
+
+BACKEND CHECK (verified - no blocker)
+-------------------------------------
+- DeliveryController.createBookedOrder (L563) / updateBookedOrder (L622) call
+  InventoryService.reserveStockForOrder (L759) /
+  adjustReservedStockForOrderUpdate (L853).
+- reserveStockForOrder does NOT reject short stock. It still reserves,
+  records a "short_allocation" discrepancy (L797-843), and reservedQuantity can
+  exceed stock; availableQuantity is clamped to 0 in the models.
+- Picklist already handles shortage (picklist_page.dart "CANNOT PICK -
+  INSUFFICIENT STOCK", pick available units or 0, shortage printed on receipt).
+- functions/src/index.ts only affects the store-facing catalog badge; unrelated.
+So no server/Firestore rule change is required for the core feature.
+
+DECISIONS (CONFIRMED BY USER)
+-----------------------------
+D1. Cap for future dates: high sentinel 99999 (user: value doesn't matter).
+D2. Reservation: future orders KEEP reserving stock (unified pool). NO change
+    to reserveStockForOrder / adjustReservedStockForOrderUpdate /
+    releaseReservedStockForOrder accounting. Accepted side effect: a large
+    future booking can make TODAY's available stock show 0 for those products.
+D3. Short-allocation discrepancy: SKIP logging "short_allocation" for orders
+    whose delivery date is after today (over-booking is expected). Today's
+    orders keep logging it.
+D4. Promos: LIFT the out-of-stock block on promo bundles for future dates.
+    Today's orders keep the Q1 rule (blocked when OOS).
+D5. "Hide Out of Stock" chip: IGNORED for future dates (items with 0 stock are
+    always shown). Today's behavior unchanged.
+D6. (Default, not contested) Cards show an informational pre-order label when
+    a future-date item has no stock; real stock is shown when it has some.
+
+IMPLEMENTATION STEPS
+--------------------
+Step 1 - Core rule (book_order_page.dart)
+  - Add constant: static const int _futureBookingCap = 99999;
+  - Change _getMaxOrderableQty:
+      if (_isFutureDeliveryDate) return _futureBookingCap;
+      (else existing formula unchanged)
+  - Update its doc comment (remove "Regardless of delivery date...").
+  - _setSelectedQty: error message "Only N available..." only triggers for
+    today/past automatically (max is now huge for future). No further change.
+
+Step 2 - Date change handling
+  - _showStoreAndDateModal (L2996-3002): after the date changes, behavior must
+    work in BOTH directions:
+      * today -> future: nothing to clamp (cap is huge). Fine.
+      * future -> today: _clampQuantitiesToAvailableStock must trim the cart to
+        available stock, as today. Already the case, but it must use
+        _getMaxOrderableQty-equivalent logic. Refactor its inline formula
+        (L398-399) to call _getMaxOrderableQty(item) so both paths stay in sync.
+      * Keep the existing warning "Item quantities adjusted to available stock."
+        so the user knows why quantities dropped when moving to today.
+  - Edit mode (L154-155 sets _selectedDate from existing delivery): same rule
+    applies. Existing orders with a future date become editable above stock.
+  - Initial default date (_initDefaultDeliveryDateByRole, L337): no change, but
+    verify the cart/inventory first render uses the final date (see Risks).
+
+Step 3 - Product card (product_order_card.dart)
+  - Compute: final bool isOutOfStock = !isFutureDelivery && maxOrderable <= 0;
+    (so future-date items are never disabled).
+  - Make the stock label future-aware. Because maxOrderable is now the cap for
+    future dates, the label must NOT print "99999 available". Add a new
+    optional param, e.g. `int? stockOnHand` / or use item.availableQuantity:
+      * future + available > 0:  "• N available" (real stock, from item)
+      * future + available <= 0: "No stock yet - pre-order" (amber chip)
+      * today: unchanged.
+  - Low-stock color (L59-61) must use item.availableQuantity for future dates,
+    not maxOrderable.
+  - Stepper "+" enabled condition (L399/L406) works unchanged with the cap.
+  - Do not touch Van Load / Van Sell usage (they never pass isFutureDelivery,
+    default false => unchanged behavior). Add a regression test for that.
+
+Step 4 - Hide Out of Stock filter (L3143, L2245-2263)  [D5: ignore for future]
+  - In the filter: `if (_hideOutOfStock && !_isFutureDeliveryDate &&
+    item.availableQuantity-based check <= 0) return false;` i.e. the chip is
+    ignored whenever the date is after today. Keep today's formula
+    (_getMaxOrderableQty(item) <= 0, which still includes qty already in this
+    order) unchanged for today/past.
+  - Leave the chip visible and its state untouched (not auto-reset), so
+    switching back to today re-applies the filter the user had on.
+  - Empty-state message (L3196-3197) and the "clear filters" button (L3215-3221)
+    only count _hideOutOfStock as an active filter when NOT future, so the
+    empty state does not blame a filter that is being ignored.
+
+Step 5 - Quantity dialog (_promptQuantityDialog, L494+)
+  - maxAllowed becomes the cap automatically. Verify:
+      * defaultQty uses maxAllowed >= 1 -> now 1 even with 0 stock. Good.
+      * Preset buttons clamp to maxAllowed; any "Max"/"All available" preset
+        must not set 99999. Replace with item.availableQuantity (hide the
+        preset if it is 0) when future.
+      * Info lines (L640 incoming PO, L660 reserved in picklists) stay.
+      * Add a note when typed qty > available: "Exceeds current stock
+        (N). This will be a pre-order for <date>."
+
+Step 6 - Promos  [D4: lifted for future dates]
+  - _evaluatePromos (L298): when _isFutureDeliveryDate pass availableStock:
+    null (promo_service already treats null as "no OOS enforcement", L76/L155).
+  - _addPromoBundleToCart (L315): uses _getMaxOrderableQty -> passes
+    automatically with the cap (no more "Insufficient stock" toast for future).
+  - _onSaveOrder (L1249): isOOSBlocked will be false because stock is not
+    passed, so Q1 rule is skipped for future dates. Q1 stays for today/past.
+  - Verify promo free-reward items (promo_service L199-202) are also not
+    blocked/trimmed when availableStock is null.
+
+Step 7 - Receipt scan (_onScanReceipt, L1421; cap note L1503)
+  - Cap becomes high for future dates, so scanned quantities are no longer
+    trimmed. No "capped" notes appear. Verify ReceiptCapNote path is simply not
+    hit. Update doc comment at L1420.
+  - Correction dialog (L1919/L1925) works with new max.
+
+Step 8 - Cart summary sheet (L840+, stepper L927)
+  - Uses _getMaxOrderableQty; with allInventory-less fallback 9999 at L927 and
+    L2497. Align those fallbacks to the same cap constant.
+
+Step 9 - Save path (delivery_controller.dart + inventory_service.dart)
+  - D2: NO change to reservation accounting; future orders still reserve.
+  - D3: add optional parameter `bool logShortAllocation = true` to
+    InventoryService.reserveStockForOrder. When false, the
+    "[Short Allocation: Avail N]" movement note and the _recordDiscrepancy
+    call are skipped (the reservation itself is unchanged).
+  - DeliveryController.createBookedOrder (L563) passes
+    logShortAllocation: !(selectedDate is after today) using a date-only
+    comparison (same logic as _isFutureDeliveryDate).
+  - DeliveryController.updateBookedOrder (L622): its fallback branch
+    `!isInventoryReserved && !isInventoryDeducted` (L646) also calls
+    reserveStockForOrder; pass the same flag based on the new selectedDate.
+    adjustReservedStockForOrderUpdate never logs short allocations, so no
+    change there.
+  - Other callers (store_order_service.dart L337, reReserveForRescheduledOrder
+    L3107) keep the default (true): out of scope.
+  - Add a small shared helper (e.g. in DeliveryController or a util) such as
+    `bool isFutureDate(DateTime d)` to avoid duplicating the date-only logic
+    in the page and controller; the page getter delegates to it.
+  - Confirm that reserving above stock does not throw anywhere (checked:
+    only a discrepancy is logged). Confirm _computeStockChange does not clamp
+    or assert on reserved > stock (verify while implementing).
+
+Step 10 - Reschedule / day-of consequences
+  - When the delivery day arrives, the order is in Pending Picklist with
+    quantities > stock. Picklist already supports partial pick + shortage
+    receipt. No change, but include a manual verification in the test plan.
+  - inventory_service.reReserveForRescheduledOrder (L3107) should still work.
+  - Other consumers of availableQuantity, e.g. pjp_controller.dart
+    (L1195-1233), will show 0 available when over-reserved. Acceptable;
+    note in release notes.
+
+TESTS
+-----
+Update:
+  - test/advance_delivery_and_manual_po_test.dart
+    * Replace "tomorrow/future with 0 stock: renders Out of stock and disables
+      ordering" with: future + 0 stock => card is tappable, Add button shown,
+      pre-order label shown, no "Out of stock".
+    * Keep "today with 0 stock => disabled".
+    * Keep "future with positive stock" test (label shows real stock).
+Add:
+  - Card tests: future + qty above available => "+" still enabled; low-stock
+    color uses real availableQuantity.
+  - Van Load / Van Sell card regression: default isFutureDelivery=false still
+    disables 0-stock items.
+  - Page-level logic (extract a small pure helper if needed, e.g.
+    `int maxOrderableFor({required bool isFuture, required int available,
+    required int alreadyInOrder})` for testability):
+      * today: available + alreadyInOrder, clamped >= 0.
+      * tomorrow / +7 days: cap value.
+      * today vs midnight boundary (23:59 / 00:00) classifies correctly.
+  - Date switch: future qty 50 with stock 10 -> switch to today => cart trimmed
+    to 10 and warning shown; today -> future => untouched.
+  - Promo: future date with OOS rule item => not blocked; today => blocked.
+  - Save: createBookedOrder for tomorrow with qty > stock succeeds, reserves,
+    and (D3) does not write a short_allocation discrepancy.
+Run: flutter analyze; flutter test (at minimum test/advance_delivery_and_manual_po_test.dart,
+test/book_order_*.dart, test/promo_service_test.dart, test/store_order_test.dart).
+
+MANUAL QA CHECKLIST
+-------------------
+1. New order, date = today, 0-stock item: disabled, "Out of stock" (unchanged).
+2. Change date to tomorrow: item enabled, can add 100 pcs, no error toast.
+3. Add item with 5 stock x 50 qty for tomorrow, save: order created, status
+   Pending Picklist, reservedQuantity increased by 50.
+4. Edit that order (tomorrow): can raise/lower qty above stock; save works.
+5. Edit and change date to today: cart trimmed to available with warning.
+6. Promo bundle containing a 0-stock item: addable/savable for tomorrow,
+   blocked for today.
+7. Scan receipt for tomorrow: quantities not capped.
+8. Hide Out of Stock chip ON + tomorrow: 0-stock items still shown; switch back
+   to today: filter applies again.
+9. Open the order on the delivery day in Picklist: shortage flow works.
+10. Van Load / Van Sell screens unchanged.
+
+RISKS / EDGE CASES
+------------------
+- Over-reservation makes today's availability 0 for those products (D2).
+  Accepted by the user; mention in release notes.
+- Date comparison uses device local date; midnight rollover while the page is
+  open could leave a stale classification. Mitigation: getter is evaluated on
+  each build, so it self-corrects; the clamp only runs on date change, so add
+  a clamp when the order is saved (final guard): on save, if date is not
+  future, re-run clamp and abort with message if quantities changed.
+- Edit mode for an order whose date moves from future to today by the passage
+  of time: the cap drops to available + alreadyInOrder on next edit. Good.
+- Promo usage limits and totals are unaffected.
+- Offline/duplicate-sync paths (offline_sync_deduplication_test) use the same
+  controller; no signature break since the new param is optional.
+
+FILES EXPECTED TO CHANGE
+------------------------
+- lib/views/pages/dashboard/book_order_page.dart   (core, filter, promo, dialog)
+- lib/views/widgets/book_order/product_order_card.dart (out-of-stock + labels)
+- lib/services/inventory_service.dart              (logShortAllocation flag, D3)
+- lib/controllers/delivery_controller.dart         (pass flag; date helper)
+- test/advance_delivery_and_manual_po_test.dart    (update + new tests)
+- test/book_order_*.dart / promo tests             (new cases)
+
+OUT OF SCOPE
+------------
+- Changing reservation accounting (decided: keep as is, D2).
+- Van Load / Van Sell / Store ordering (HAPI) flows.
+- Cloud Functions and Firestore rules.
+
+ESTIMATED EFFORT
+----------------
+~0.5-1 day including tests.

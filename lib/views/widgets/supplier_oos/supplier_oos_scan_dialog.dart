@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
@@ -104,10 +103,10 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
           picked = scanned.images.map((p) => File(p.replaceFirst('file://', ''))).toList();
         }
       } else if (fromCamera) {
-        final photo = await _picker.pickImage(source: ImageSource.camera, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+        final photo = await _picker.pickImage(source: ImageSource.camera, maxWidth: 1600, maxHeight: 1600, imageQuality: 80);
         if (photo != null) picked = [File(photo.path)];
       } else {
-        final galleryImages = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+        final galleryImages = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 80);
         if (galleryImages.isNotEmpty) {
           picked = galleryImages.map((x) => File(x.path)).toList();
         }
@@ -155,18 +154,20 @@ class _SupplierOosScanDialogState extends State<SupplierOosScanDialog> {
     );
 
     try {
-      final List<Uint8List> bytesList = [];
-      final List<String> mimeTypes = [];
+      statusNotifier.value =
+          'Step 1/2: Preparing ${_images.length} image${_images.length == 1 ? '' : 's'}...';
+      final preparedImages = await Future.wait(
+        _images.map((file) async {
+          final rawBytes = await file.readAsBytes();
+          final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
+          final ext = file.path.split('.').last.toLowerCase();
+          final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+          return (bytes: preparedBytes, mime: mime);
+        }),
+      );
 
-      for (int i = 0; i < _images.length; i++) {
-        final file = _images[i];
-        statusNotifier.value = 'Step 1/2: Preparing image ${i + 1} of ${_images.length}...';
-        final rawBytes = await file.readAsBytes();
-        final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
-        bytesList.add(preparedBytes);
-        final ext = file.path.split('.').last.toLowerCase();
-        mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
-      }
+      final bytesList = preparedImages.map((i) => i.bytes).toList();
+      final mimeTypes = preparedImages.map((i) => i.mime).toList();
 
       // Convert Selecta products to InventoryItem list for extraction
       final selectaCatalog = widget.products.map((p) => InventoryItem(

@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -104,7 +103,7 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
         final List<XFile> pickedList = await _picker.pickMultiImage(
           maxWidth: 1600,
           maxHeight: 1600,
-          imageQuality: 85,
+          imageQuality: 80,
         );
         if (pickedList.isNotEmpty) {
           setState(() {
@@ -116,7 +115,7 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
           source: ImageSource.camera,
           maxWidth: 1600,
           maxHeight: 1600,
-          imageQuality: 85,
+          imageQuality: 80,
         );
         if (file != null) {
           setState(() {
@@ -153,16 +152,20 @@ class _AutomatedPoSuggestionDialogState extends State<AutomatedPoSuggestionDialo
     setState(() => _isAnalyzing = true);
 
     try {
-      final knownMappings = await _mappingService.getAllMappings();
-      final List<Uint8List> bytesList = [];
-      final List<String> mimeTypes = [];
-      for (final file in _pickedImages) {
-        final rawBytes = await file.readAsBytes();
-        final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
-        bytesList.add(preparedBytes);
-        final ext = file.path.split('.').last.toLowerCase();
-        mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
-      }
+      final mappingsFuture = _mappingService.getAllMappings();
+      final imagesFuture = Future.wait(
+        _pickedImages.map((file) async {
+          final rawBytes = await file.readAsBytes();
+          final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
+          final ext = file.path.split('.').last.toLowerCase();
+          final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+          return (bytes: preparedBytes, mime: mime);
+        }),
+      );
+
+      final (knownMappings, preparedImages) = await (mappingsFuture, imagesFuture).wait;
+      final bytesList = preparedImages.map((i) => i.bytes).toList();
+      final mimeTypes = preparedImages.map((i) => i.mime).toList();
 
       // Step 1: Filter exclusively to Selecta products (active & inactive)
       final selectaCatalog = widget.allInventory

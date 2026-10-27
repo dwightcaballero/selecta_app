@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_doc_scanner/flutter_doc_scanner.dart';
@@ -127,14 +126,14 @@ class ReceiptScanFlow {
     try {
       switch (source) {
         case 'gallery':
-          final picked = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+          final picked = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 80);
           return picked.map((x) => File(x.path)).toList();
         case 'scan':
           final scanned = await FlutterDocScanner().getScannedDocumentAsImages(page: 4);
           if (scanned == null || scanned.images.isEmpty) return null;
           return scanned.images.map((p) => File(p.replaceFirst('file://', ''))).toList();
         case 'camera':
-          final picked = await _picker.pickImage(source: ImageSource.camera, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+          final picked = await _picker.pickImage(source: ImageSource.camera, maxWidth: 1600, maxHeight: 1600, imageQuality: 80);
           return picked == null ? null : [File(picked.path)];
       }
     } catch (e) {
@@ -175,18 +174,21 @@ class ReceiptScanFlow {
     required List<InventoryItem> allInventory,
     void Function(String status)? onProgress,
   }) async {
-    final knownMappings = await mappingService.getAllMappings();
-    final List<Uint8List> bytesList = [];
-    final List<String> mimeTypes = [];
-    for (int i = 0; i < files.length; i++) {
-      final file = files[i];
-      onProgress?.call('Step 1/3: Preparing receipt image ${i + 1} of ${files.length}...');
+    onProgress?.call('Step 1/3: Preparing ${files.length} receipt image${files.length == 1 ? '' : 's'}...');
+
+    // Fetch mappings and prepare all image bytes concurrently
+    final mappingsFuture = mappingService.getAllMappings();
+    final imagesFuture = Future.wait(files.map((file) async {
       final rawBytes = await file.readAsBytes();
       final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
-      bytesList.add(preparedBytes);
       final ext = file.path.split('.').last.toLowerCase();
-      mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
-    }
+      return (preparedBytes, ext == 'png' ? 'image/png' : 'image/jpeg');
+    }));
+
+    final (knownMappings, preparedImages) = await (mappingsFuture, imagesFuture).wait;
+    final bytesList = preparedImages.map((e) => e.$1).toList();
+    final mimeTypes = preparedImages.map((e) => e.$2).toList();
+
     onProgress?.call('Step 2/3: Sedy AI reading receipt products...');
     final result = await GeminiAiService().extractStoreOrderFromImages(
       imagesBytesList: bytesList,

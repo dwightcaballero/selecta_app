@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/inventory_controller.dart';
 import 'package:selecta_ops/controllers/purchaseorder_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
@@ -1110,7 +1109,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     List<File> newFiles = [];
     try {
       if (fromGalleryMulti) {
-        final pickedList = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+        final pickedList = await _picker.pickMultiImage(maxWidth: 1600, maxHeight: 1600, imageQuality: 80);
         if (pickedList.isNotEmpty) {
           newFiles = pickedList.map((x) => File(x.path)).toList();
         }
@@ -1120,7 +1119,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
           newFiles = scanned.images.map((p) => File(p.replaceFirst('file://', ''))).toList();
         }
       } else {
-        final picked = await _picker.pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 85);
+        final picked = await _picker.pickImage(source: source, maxWidth: 1600, maxHeight: 1600, imageQuality: 80);
         if (picked != null) {
           newFiles = [File(picked.path)];
         }
@@ -1178,21 +1177,24 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
     );
 
     try {
-      final knownMappings = await _mappingService.getAllMappings();
+      statusNotifier.value =
+          'Step 1/3: Preparing ${_officialInvoiceImages.length} invoice image${_officialInvoiceImages.length == 1 ? '' : 's'}...';
+      final mappingsFuture = _mappingService.getAllMappings();
+      final imagesFuture = Future.wait(
+        _officialInvoiceImages.map((file) async {
+          final rawBytes = await file.readAsBytes();
+          final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
+          final ext = file.path.split('.').last.toLowerCase();
+          final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+          return (bytes: preparedBytes, mime: mime);
+        }),
+      );
+
+      final (knownMappings, preparedImages) = await (mappingsFuture, imagesFuture).wait;
       if (isCancelled) return;
 
-      final List<Uint8List> bytesList = [];
-      final List<String> mimeTypes = [];
-      for (int i = 0; i < _officialInvoiceImages.length; i++) {
-        if (isCancelled) return;
-        final file = _officialInvoiceImages[i];
-        statusNotifier.value = 'Step 1/3: Preparing invoice image ${i + 1} of ${_officialInvoiceImages.length}...';
-        final rawBytes = await file.readAsBytes();
-        final preparedBytes = await Helperfunctions.prepareImageBytesForAi(rawBytes);
-        bytesList.add(preparedBytes);
-        final ext = file.path.split('.').last.toLowerCase();
-        mimeTypes.add(ext == 'png' ? 'image/png' : 'image/jpeg');
-      }
+      final bytesList = preparedImages.map((item) => item.bytes).toList();
+      final mimeTypes = preparedImages.map((item) => item.mime).toList();
 
       if (isCancelled) return;
       statusNotifier.value = 'Step 2/3: Sedy AI reading invoice items...';

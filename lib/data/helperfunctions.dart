@@ -76,6 +76,11 @@ Uint8List _compressImageWorker(Map<String, dynamic> params) {
   final decoded = img.decodeImage(rawBytes);
   if (decoded == null) return rawBytes;
 
+  // If image already fits within maxDimension and is under 350KB, skip re-encoding
+  if (decoded.width <= maxDimension && decoded.height <= maxDimension && rawBytes.lengthInBytes <= 350 * 1024) {
+    return rawBytes;
+  }
+
   img.Image processed = decoded;
   if (decoded.width > maxDimension || decoded.height > maxDimension) {
     if (decoded.width >= decoded.height) {
@@ -229,26 +234,18 @@ class Helperfunctions {
 
   /// Prepares image bytes for multimodal AI document extraction (OCR).
   ///
-  /// Since document images analyzed by the AI (such as receipts and purchase orders)
-  /// are ephemeral and not saved to the database or storage, they are kept
-  /// uncompressed at full native resolution to maximize text and digit recognition accuracy.
-  ///
-  /// A gentle compression ceiling is applied if an individual image
-  /// exceeds [maxSizeBytes] (default 2MB) to ensure the total Gemini request
-  /// stays small and uploads swiftly over mobile networks.
+  /// Always bounds images to [maxDimension] (default 1600 px) and JPEG quality [quality] (default 80)
+  /// regardless of initial file size, drastically reducing upload bandwidth and latency
+  /// while preserving razor-sharp digit and text clarity.
   static Future<Uint8List> prepareImageBytesForAi(
     Uint8List rawBytes, {
-    int maxSizeBytes = 2 * 1024 * 1024,
-    int maxDimensionIfOversized = 2200,
-    int qualityIfOversized = 85,
+    int maxDimension = 1600,
+    int quality = 80,
   }) async {
-    if (rawBytes.lengthInBytes <= maxSizeBytes) {
-      return rawBytes;
-    }
     return await compressImageBytes(
       rawBytes,
-      maxDimension: maxDimensionIfOversized,
-      quality: qualityIfOversized,
+      maxDimension: maxDimension,
+      quality: quality,
     );
   }
 
@@ -545,6 +542,42 @@ class Helperfunctions {
                             decoration: TextDecoration.none,
                           ),
                           textAlign: TextAlign.center,
+                        ),
+                        StreamBuilder<int>(
+                          stream: Stream.periodic(const Duration(seconds: 1), (i) => i + 1),
+                          initialData: 0,
+                          builder: (context, snapshot) {
+                            final elapsed = snapshot.data ?? 0;
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (elapsed >= 30) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Taking a little longer than usual...',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w500,
+                                      color: theme.colorScheme.error.withValues(alpha: 0.85),
+                                      decoration: TextDecoration.none,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                                if (elapsed > 0) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Elapsed: ${elapsed}s',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.65),
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                       ],
                       if (canCancel) ...[

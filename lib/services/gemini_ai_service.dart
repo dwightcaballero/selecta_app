@@ -172,18 +172,101 @@ class AiStatusCheck {
   });
 }
 
+/// Debug-only timing and telemetry logger for Gemini document scanning operations.
+class AiScanTimingTracker {
+  final String flowName;
+  final Stopwatch _totalWatch = Stopwatch()..start();
+  Stopwatch? _preAiWatch;
+  Stopwatch? _aiWatch;
+  int imageCount = 0;
+  List<int> imageBytes = [];
+  int catalogCount = 0;
+  int promptCharCount = 0;
+  String modelName = '';
+  int attemptNumber = 1;
+  bool modelSwitched = false;
+  int responseCharCount = 0;
+
+  AiScanTimingTracker(this.flowName);
+
+  void startPreAi() => _preAiWatch = Stopwatch()..start();
+  void stopPreAi() => _preAiWatch?.stop();
+
+  void startAiCall({
+    required String model,
+    required int attempt,
+    required int promptChars,
+    required int images,
+    required List<int> bytes,
+    required int catalog,
+  }) {
+    modelName = model;
+    attemptNumber = attempt;
+    promptCharCount = promptChars;
+    imageCount = images;
+    imageBytes = bytes;
+    catalogCount = catalog;
+    _aiWatch = Stopwatch()..start();
+  }
+
+  void recordSuccess({required int responseChars, bool switched = false}) {
+    _aiWatch?.stop();
+    _totalWatch.stop();
+    responseCharCount = responseChars;
+    modelSwitched = switched;
+    _logSummary(success: true);
+  }
+
+  void recordFailure(dynamic error) {
+    _aiWatch?.stop();
+    _totalWatch.stop();
+    _logSummary(success: false, error: error);
+  }
+
+  void _logSummary({required bool success, dynamic error}) {
+    if (!kDebugMode) return;
+    final totalBytes = imageBytes.fold(0, (a, b) => a + b);
+    final preAiMs = _preAiWatch?.elapsedMilliseconds ?? 0;
+    final aiMs = _aiWatch?.elapsedMilliseconds ?? 0;
+    final totalMs = _totalWatch.elapsedMilliseconds;
+    debugPrint(
+      '------------------------------------------------------------\n'
+      '⚡ [AI SCAN TIMING] $flowName -> ${success ? "SUCCESS" : "FAILED"}\n'
+      '  • Model: $modelName (Attempt #$attemptNumber, Switched: $modelSwitched)\n'
+      '  • Pre-AI Prep Duration: ${preAiMs}ms\n'
+      '  • Images: $imageCount (Total: ${(totalBytes / 1024).toStringAsFixed(1)} KB, per image: ${imageBytes.map((b) => "${(b / 1024).toStringAsFixed(0)}KB").join(", ")})\n'
+      '  • Catalog Size: $catalogCount items | Prompt chars: $promptCharCount\n'
+      '  • AI generateContent Duration: ${aiMs}ms\n'
+      '  • Response chars: $responseCharCount\n'
+      '  • Total Wall Time: ${totalMs}ms\n'
+      '${error != null ? "  • Error: $error\n" : ""}'
+      '------------------------------------------------------------',
+    );
+  }
+}
+
 /// Service managing communication with the Google Gemini API for Selecta operations,
 /// including remote key fetching, master enable/disable, and quota tracking/enforcement.
 class GeminiAiService {
   static const List<String> _candidateModels = [
-    'gemini-3.8-flash',
-    'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
   ];
+  @visibleForTesting
+  static List<String> get candidateModels => List.unmodifiable(_candidateModels);
   static const Duration requestTimeout = Duration(seconds: 35);
-  static const Duration visionTimeout = Duration(seconds: 120);
+  static const Duration visionTimeout = Duration(seconds: 45);
   static const String _usageCollection = 'ai_usage_metrics';
   static const String defaultApiKey = '';
+
+  /// Shared GenerationConfig for multimodal document vision extraction.
+  /// Enforces direct JSON response, temperature 0 for deterministic OCR, and 8192 token ceiling.
+  static final GenerationConfig visionGenerationConfig = GenerationConfig(
+    responseMimeType: 'application/json',
+    temperature: 0.0,
+    maxOutputTokens: 8192,
+  );
 
   ConfigurationService? _configServiceInstance;
   ConfigurationService get _configService => _configServiceInstance ??= ConfigurationService();
@@ -196,6 +279,8 @@ class GeminiAiService {
   ChatSession? _chatSession;
   String? _cachedApiKey;
   String? _cachedContextPrompt;
+  AiStatusCheck? _cachedStatusCheck;
+  DateTime? _lastStatusCheckTime;
 
   static final GeminiAiService _instance = GeminiAiService._internal();
   factory GeminiAiService() => _instance;
@@ -205,24 +290,38 @@ class GeminiAiService {
   String get _currentMonthKey => DateFormat('yyyy-MM').format(DateTime.now());
 
   /// Checks if AI is enabled and whether quota has not been exceeded.
-  Future<AiStatusCheck> checkAiAvailability() async {
+  /// Caches the availability result for 60 seconds to avoid redundant Firestore round-trips.
+  Future<AiStatusCheck> checkAiAvailability({bool forceRefresh = false}) async {
+    final now = DateTime.now();
+    if (!forceRefresh && _cachedStatusCheck != null && _lastStatusCheckTime != null) {
+      if (now.difference(_lastStatusCheckTime!).inSeconds < 60) {
+        return _cachedStatusCheck!;
+      }
+    }
+
     final config = await _configService.getConfiguration();
 
     // 1. Check if disabled globally
     if (!config.aiEnabled) {
-      return AiStatusCheck(
+      final res = AiStatusCheck(
         isAllowed: false,
         message: 'The AI Assistant is currently disabled by your Administrator.',
       );
+      _cachedStatusCheck = res;
+      _lastStatusCheckTime = now;
+      return res;
     }
 
     // 2. Check if API key is configured
     final apiKey = await getEffectiveApiKey();
     if (apiKey == null || apiKey.isEmpty) {
-      return AiStatusCheck(
+      final res = AiStatusCheck(
         isAllowed: false,
         message: 'AI Assistant is not configured yet. Please configure the Gemini Key in Configurations.',
       );
+      _cachedStatusCheck = res;
+      _lastStatusCheckTime = now;
+      return res;
     }
 
     // 3. Check monthly quota usage in Firestore
@@ -230,30 +329,39 @@ class GeminiAiService {
     final limit = config.aiMonthlyRequestLimit;
 
     if (limit > 0 && currentUsage >= limit) {
-      return AiStatusCheck(
+      final res = AiStatusCheck(
         isAllowed: false,
         currentUsage: currentUsage,
         limit: limit,
         message: 'Monthly AI quota limit reached ($currentUsage / $limit calls). '
             'The AI Assistant is paused to prevent unexpected costs.',
       );
+      _cachedStatusCheck = res;
+      _lastStatusCheckTime = now;
+      return res;
     }
 
     // Warning zone: 90% quota reached
     if (limit > 0 && currentUsage >= (limit * 0.90).floor()) {
-      return AiStatusCheck(
+      final res = AiStatusCheck(
         isAllowed: true,
         currentUsage: currentUsage,
         limit: limit,
         message: '⚠️ Quota Alert: $currentUsage of $limit monthly requests used (~${((currentUsage / limit) * 100).toStringAsFixed(0)}%).',
       );
+      _cachedStatusCheck = res;
+      _lastStatusCheckTime = now;
+      return res;
     }
 
-    return AiStatusCheck(
+    final res = AiStatusCheck(
       isAllowed: true,
       currentUsage: currentUsage,
       limit: limit,
     );
+    _cachedStatusCheck = res;
+    _lastStatusCheckTime = now;
+    return res;
   }
 
   /// Returns the current monthly usage count.
@@ -315,53 +423,68 @@ class GeminiAiService {
     _model = null;
     _chatSession = null;
     _activeModelIndex = 0;
+    _cachedStatusCheck = null;
+    _lastStatusCheckTime = null;
   }
 
   /// Initializes or re-initializes the generative model with system instructions.
-  Future<GenerativeModel?> getModel({String? contextPrompt, int? modelIndex}) async {
+  /// For vision OCR calls ([isVision] = true or [generationConfig] provided), skips the
+  /// verbose Sedy chat persona to save token budget and focus extraction directly.
+  Future<GenerativeModel?> getModel({
+    String? contextPrompt,
+    int? modelIndex,
+    GenerationConfig? generationConfig,
+    bool isVision = false,
+  }) async {
     final key = await getEffectiveApiKey();
     if (key == null || key.isEmpty) return null;
 
     final targetIndex = modelIndex ?? _activeModelIndex;
     final modelName = _candidateModels[targetIndex % _candidateModels.length];
 
-    final systemInstruction = Content.system(
-      'You are Sedy, an intelligent operations AI assistant embedded directly inside the Selecta Distribution & Sales mobile app. '
-      'Your role is to assist Selecta dealers and salesmen with daily sales, delivery tracking, store visits (PJP - Permanent Journey Plan), '
-      'bad order inspections, Merch Blitz campaigns, throughput goals, and expenses.\n\n'
-      'Formatting and readability rules for mobile screens:\n'
-      '- Make generous use of newlines, empty lines, and indents to keep responses airy and effortless to read.\n'
-      '- NEVER cram multiple metrics or distinct ideas into one long sentence or dense paragraph.\n'
-      '- NEVER cram multiple attributes onto the same line separated by pipes (do NOT do: "Target: X | Actual: Y"). Put each attribute on its own indented line.\n'
-      '- NEVER use Markdown tables (e.g. | Col 1 | Col 2 |). Mobile screens are narrow, and tables cause horizontal scrolling and confusion.\n'
-      '- Use bold text for key figures, metrics, and amounts (e.g. **₱12,500.00**, **4 Pending Deliveries**).\n'
-      '- When presenting lists of stores, products, or breakdowns, format each as a clean vertical card with indented attributes (using Markdown list bullets "- ") and an empty line between cards:\n'
-      '  Example format:\n'
-      '  🏪 **7-Eleven Bayanihan**\n'
-      '  - **Target**: ₱15,000\n'
-      '  - **Actual Sales**: ₱16,200 (+8%)\n'
-      '  - **Status**: ✅ Hit Target\n'
-      '    - **PJP Visit**: Visited\n\n'
-      '  🏪 **Mini Stop Poblacion**\n'
-      '  - **Target**: ₱12,000\n'
-      '  - **Actual Sales**: ₱9,500 (-21%)\n'
-      '  - **Status**: ⚠️ Needs Follow-up\n\n'
-      '- For KPI summaries or operational updates, group by topic with a short bold header and separate each metric on its own indented line:\n'
-      '  📊 **Sales Overview**\n'
-      '  - **Total Buying Sales**: ₱125,000\n'
-      '  - **Buying Throughput**: 82%\n\n'
-      '  🚚 **Deliveries**\n'
-      '  - **Pending Deliveries**: 4 orders\n'
-      '  - **Returned**: 1 order\n\n'
-      '- Separate paragraphs, sections, and card blocks with a full blank line.\n'
-      '- At the end of every helpful response, provide 2 or 3 quick suggested follow-up questions under a line starting with: "💡 Suggested questions:" with bullet points so the user can easily tap to explore further.'
-      '${contextPrompt != null ? "\n\nCurrent operational context:\n$contextPrompt" : ""}',
-    );
+    final Content systemInstruction = (isVision || generationConfig != null)
+        ? Content.system(
+            'You are an expert OCR and inventory data extraction engine for Selecta operations in the Philippines. '
+            'Extract structured data accurately in strict JSON format matching the requested schema.',
+          )
+        : Content.system(
+            'You are Sedy, an intelligent operations AI assistant embedded directly inside the Selecta Distribution & Sales mobile app. '
+            'Your role is to assist Selecta dealers and salesmen with daily sales, delivery tracking, store visits (PJP - Permanent Journey Plan), '
+            'bad order inspections, Merch Blitz campaigns, throughput goals, and expenses.\n\n'
+            'Formatting and readability rules for mobile screens:\n'
+            '- Make generous use of newlines, empty lines, and indents to keep responses airy and effortless to read.\n'
+            '- NEVER cram multiple metrics or distinct ideas into one long sentence or dense paragraph.\n'
+            '- NEVER cram multiple attributes onto the same line separated by pipes (do NOT do: "Target: X | Actual: Y"). Put each attribute on its own indented line.\n'
+            '- NEVER use Markdown tables (e.g. | Col 1 | Col 2 |). Mobile screens are narrow, and tables cause horizontal scrolling and confusion.\n'
+            '- Use bold text for key figures, metrics, and amounts (e.g. **₱12,500.00**, **4 Pending Deliveries**).\n'
+            '- When presenting lists of stores, products, or breakdowns, format each as a clean vertical card with indented attributes (using Markdown list bullets "- ") and an empty line between cards:\n'
+            '  Example format:\n'
+            '  🏪 **7-Eleven Bayanihan**\n'
+            '  - **Target**: ₱15,000\n'
+            '  - **Actual Sales**: ₱16,200 (+8%)\n'
+            '  - **Status**: ✅ Hit Target\n'
+            '    - **PJP Visit**: Visited\n\n'
+            '  🏪 **Mini Stop Poblacion**\n'
+            '  - **Target**: ₱12,000\n'
+            '  - **Actual Sales**: ₱9,500 (-21%)\n'
+            '  - **Status**: ⚠️ Needs Follow-up\n\n'
+            '- For KPI summaries or operational updates, group by topic with a short bold header and separate each metric on its own indented line:\n'
+            '  📊 **Sales Overview**\n'
+            '  - **Total Buying Sales**: ₱125,000\n'
+            '  - **Buying Throughput**: 82%\n\n'
+            '  🚚 **Deliveries**\n'
+            '  - **Pending Deliveries**: 4 orders\n'
+            '  - **Returned**: 1 order\n\n'
+            '- Separate paragraphs, sections, and card blocks with a full blank line.\n'
+            '- At the end of every helpful response, provide 2 or 3 quick suggested follow-up questions under a line starting with: "💡 Suggested questions:" with bullet points so the user can easily tap to explore further.'
+            '${contextPrompt != null ? "\n\nCurrent operational context:\n$contextPrompt" : ""}',
+          );
 
     _model = GenerativeModel(
       model: modelName,
       apiKey: key,
       systemInstruction: systemInstruction,
+      generationConfig: generationConfig,
     );
 
     return _model;
@@ -379,10 +502,17 @@ class GeminiAiService {
   /// Optional listener/callback for retry events across the app.
   static void Function(String message)? onRetryNotification;
 
-  void _notifyRetry(int attemptNumber, int totalAttempts, {bool isModelSwitch = false}) {
-    final message = isModelSwitch
-        ? 'Switching AI model — retrying (attempt $attemptNumber of $totalAttempts)...'
-        : 'Network slowed down — retrying (attempt $attemptNumber of $totalAttempts)...';
+  void _notifyRetry(
+    int attemptNumber,
+    int totalAttempts, {
+    bool isModelSwitch = false,
+    bool isTimeout = false,
+  }) {
+    final message = isTimeout
+        ? 'AI processing timed out — retrying on backup model (attempt $attemptNumber of $totalAttempts)...'
+        : isModelSwitch
+            ? 'Switching AI model — retrying (attempt $attemptNumber of $totalAttempts)...'
+            : 'Network slowed down — retrying (attempt $attemptNumber of $totalAttempts)...';
     SnackBarWidget.showRetryToast(message);
     onRetryNotification?.call(message);
   }
@@ -404,12 +534,15 @@ class GeminiAiService {
 
   Future<void> _handleRetry({
     required int attempt,
+    int? totalAttempts,
     Future<void> Function()? onBeforeRetry,
     bool isModelNotFound = false,
+    bool isTimeout = false,
   }) async {
     _activeModelIndex = (_activeModelIndex + 1) % _candidateModels.length;
-    _notifyRetry(attempt + 2, _candidateModels.length, isModelSwitch: isModelNotFound);
-    final delayMs = isModelNotFound ? 100 : 1000 * (1 << attempt);
+    final total = totalAttempts ?? _candidateModels.length;
+    _notifyRetry(attempt + 2, total, isModelSwitch: isModelNotFound, isTimeout: isTimeout);
+    final delayMs = (isModelNotFound || isTimeout) ? 150 : 1000 * (1 << attempt);
     await Future.delayed(Duration(milliseconds: delayMs));
     if (onBeforeRetry != null) {
       await onBeforeRetry();
@@ -517,7 +650,6 @@ class GeminiAiService {
             .sendMessage(Content.text(userMessage))
             .timeout(requestTimeout);
         await recordAiUsage();
-        _activeModelIndex = 0;
         return response.text ?? 'No response received from Gemini.';
       } catch (e) {
         lastError = e;
@@ -557,7 +689,6 @@ class GeminiAiService {
             .generateContent([Content.text(prompt)])
             .timeout(requestTimeout);
         await recordAiUsage();
-        _activeModelIndex = 0;
         return response.text ?? 'No response generated.';
       } catch (e) {
         lastError = e;
@@ -591,19 +722,32 @@ class GeminiAiService {
       throw Exception('No document images provided for analysis.');
     }
 
+    final tracker = AiScanTimingTracker('Supplier PO / Invoice Scan');
+    tracker.startPreAi();
+
     final catalogLines = catalog.map((item) {
       final codePart = item.itemCode.isNotEmpty ? ' | Code: "${item.itemCode}"' : '';
-      return '- ID: "${item.id}"$codePart | Name: "${item.productName}" | Source: "${item.source.key}" | Cost: ₱${item.buyingPrice.toStringAsFixed(2)} | Category: "${item.category}"';
+      return '- ID: "${item.id}"$codePart | Name: "${item.productName}" | Cost: ₱${item.buyingPrice.toStringAsFixed(2)}';
     }).join('\n');
 
-    final singleMappings = (knownMappings ?? []).where((m) => !m.isMultiMatch).toList();
-    final multiMappings = (knownMappings ?? []).where((m) => m.isMultiMatch).toList();
+    final singleMappings = (knownMappings ?? []).where((m) => !m.isMultiMatch).toList()
+      ..sort((a, b) {
+        final u = b.usageCount.compareTo(a.usageCount);
+        if (u != 0) return u;
+        return (b.updatedAt?.millisecondsSinceEpoch ?? 0).compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0);
+      });
+    final multiMappings = (knownMappings ?? []).where((m) => m.isMultiMatch).toList()
+      ..sort((a, b) {
+        final u = b.usageCount.compareTo(a.usageCount);
+        if (u != 0) return u;
+        return (b.updatedAt?.millisecondsSinceEpoch ?? 0).compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0);
+      });
 
     final buffer = StringBuffer();
     if (singleMappings.isNotEmpty) {
       buffer.writeln('CONFIRMED SINGLE-PRODUCT SUPPLIER ALIASES (Learned & Verified by Dealer):');
       buffer.writeln('If the invoice description matches or starts with any of these, use the corresponding product ID immediately:');
-      for (final m in singleMappings.take(30)) {
+      for (final m in singleMappings.take(25)) {
         buffer.writeln('• "${m.rawSupplierText}" -> ID: "${m.productId}" (${m.productName})');
       }
       buffer.writeln();
@@ -613,7 +757,7 @@ class GeminiAiService {
       final Map<String, InventoryItem> catalogById = {for (final item in catalog) item.id: item};
       buffer.writeln('KNOWN MULTI-VARIANT SUPPLIER ALIASES (Truncated descriptions with multiple Selecta flavors):');
       buffer.writeln('The following raw invoice texts are known to represent more than one distinct Selecta product:');
-      for (final m in multiMappings.take(20)) {
+      for (final m in multiMappings.take(15)) {
         final variantNames = m.candidateProductIds
             .map((cid) => catalogById[cid]?.productName ?? cid)
             .join(' OR ');
@@ -646,6 +790,7 @@ class GeminiAiService {
         processedMimeTypes.add(mime);
       }
     }
+    tracker.stopPreAi();
 
     final isMulti = processedBytesList.length > 1;
 
@@ -748,10 +893,26 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
 }
 ''';
 
+    const int maxVisionAttempts = 2; // Bounded retry: at most 1 retry on backup model
     dynamic lastError;
-    for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
+
+    tracker.startAiCall(
+      model: _candidateModels[_activeModelIndex % _candidateModels.length],
+      attempt: 1,
+      promptChars: prompt.length,
+      images: processedBytesList.length,
+      bytes: processedBytesList.map((b) => b.lengthInBytes).toList(),
+      catalog: catalog.length,
+    );
+
+    for (int attempt = 0; attempt < maxVisionAttempts; attempt++) {
       try {
-        final model = await getModel(modelIndex: _activeModelIndex);
+        final currentModelIndex = _activeModelIndex;
+        final model = await getModel(
+          modelIndex: currentModelIndex,
+          generationConfig: visionGenerationConfig,
+          isVision: true,
+        );
         if (model == null) {
           throw Exception('Failed to initialize AI model session.');
         }
@@ -762,24 +923,45 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
         }
 
         final content = [Content.multi(parts)];
-
-        final response = await model.generateContent(content).timeout(visionTimeout);
+        final currentTimeout = attempt == 0 ? visionTimeout : const Duration(seconds: 30);
+        final response = await model.generateContent(content).timeout(currentTimeout);
         await recordAiUsage();
-        _activeModelIndex = 0;
         final rawText = response.text ?? '';
+        tracker.recordSuccess(
+          responseChars: rawText.length,
+          switched: attempt > 0,
+        );
         return _parseExtractedPurchaseOrderData(rawText, catalog, knownMappings);
       } catch (e) {
         lastError = e;
         final isNotFound = _isModelNotFoundError(e);
-        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
+        final isTimeout = e.toString().toLowerCase().contains('timeoutexception') || e.toString().toLowerCase().contains('timed out');
+        final isOverloaded = _isOverloadedError(e);
+
+        if ((isOverloaded || isNotFound || isTimeout) && attempt < maxVisionAttempts - 1) {
+          await _handleRetry(
+            attempt: attempt,
+            totalAttempts: maxVisionAttempts,
+            isModelNotFound: isNotFound,
+            isTimeout: isTimeout,
+          );
+          tracker.startAiCall(
+            model: _candidateModels[_activeModelIndex % _candidateModels.length],
+            attempt: attempt + 2,
+            promptChars: prompt.length,
+            images: processedBytesList.length,
+            bytes: processedBytesList.map((b) => b.lengthInBytes).toList(),
+            catalog: catalog.length,
+          );
           continue;
         }
 
+        tracker.recordFailure(e);
         throw Exception(formatAiError(e));
       }
     }
 
+    tracker.recordFailure(lastError);
     throw Exception(formatAiError(lastError ?? 'Failed to process invoice images.'));
   }
 
@@ -816,27 +998,41 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
       throw Exception('No receipt images provided for analysis.');
     }
 
+    final tracker = AiScanTimingTracker('Store Order Receipt Scan');
+    tracker.startPreAi();
+
     final catalogLines = catalog.map((item) {
       final codePart = item.itemCode.isNotEmpty ? ' | Code: "${item.itemCode}"' : '';
-      return '- ID: "${item.id}"$codePart | Name: "${item.productName}" | Source: "${item.source.key}" | SRP: ₱${item.sellingPrice.toStringAsFixed(2)} | Category: "${item.category}"';
+      return '- ID: "${item.id}"$codePart | Name: "${item.productName}" | SRP: ₱${item.sellingPrice.toStringAsFixed(2)}';
     }).join('\n');
 
     final Map<String, InventoryItem> catalogById = {for (final item in catalog) item.id: item};
     final aliasBuffer = StringBuffer();
     final mappings = knownMappings ?? [];
-    final singleMappings = mappings.where((m) => !m.isMultiMatch).toList();
-    final multiMappings = mappings.where((m) => m.isMultiMatch).toList();
+    final singleMappings = mappings.where((m) => !m.isMultiMatch).toList()
+      ..sort((a, b) {
+        final u = b.usageCount.compareTo(a.usageCount);
+        if (u != 0) return u;
+        return (b.updatedAt?.millisecondsSinceEpoch ?? 0).compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0);
+      });
+    final multiMappings = mappings.where((m) => m.isMultiMatch).toList()
+      ..sort((a, b) {
+        final u = b.usageCount.compareTo(a.usageCount);
+        if (u != 0) return u;
+        return (b.updatedAt?.millisecondsSinceEpoch ?? 0).compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0);
+      });
+
     if (singleMappings.isNotEmpty) {
       aliasBuffer.writeln('CONFIRMED BOOKING-APP ALIASES (Learned & Verified by the user):');
       aliasBuffer.writeln('If a receipt line matches or starts with any of these, use the corresponding product ID immediately:');
-      for (final m in singleMappings.take(40)) {
+      for (final m in singleMappings.take(25)) {
         aliasBuffer.writeln('• "${m.rawSupplierText}" -> ID: "${m.productId}" (${m.productName})');
       }
       aliasBuffer.writeln();
     }
     if (multiMappings.isNotEmpty) {
       aliasBuffer.writeln('KNOWN MULTI-VARIANT BOOKING-APP ALIASES (one receipt name maps to several catalog products):');
-      for (final m in multiMappings.take(20)) {
+      for (final m in multiMappings.take(15)) {
         final variantNames = m.candidateProductIds.map((cid) => catalogById[cid]?.productName ?? cid).join(' OR ');
         aliasBuffer.writeln('• "${m.rawSupplierText}" -> $variantNames | Candidate IDs: ${jsonEncode(m.candidateProductIds)}');
         aliasBuffer.writeln('   - Unless the receipt clearly identifies the variant, place it in "ambiguous_items" with these candidate IDs.');
@@ -853,13 +1049,14 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
       if (slices.length > 1) {
         for (final slice in slices) {
           processedBytesList.add(slice);
-          processedMimeTypes.add('image/png');
+          processedMimeTypes.add('image/jpeg');
         }
       } else {
         processedBytesList.add(originalBytes);
         processedMimeTypes.add((mimeTypes != null && i < mimeTypes.length) ? mimeTypes[i] : 'image/jpeg');
       }
     }
+    tracker.stopPreAi();
 
     final isMulti = processedBytesList.length > 1;
 
@@ -924,10 +1121,26 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
 }
 ''';
 
+    const int maxVisionAttempts = 2; // Bounded retry: at most 1 retry on backup model
     dynamic lastError;
-    for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
+
+    tracker.startAiCall(
+      model: _candidateModels[_activeModelIndex % _candidateModels.length],
+      attempt: 1,
+      promptChars: prompt.length,
+      images: processedBytesList.length,
+      bytes: processedBytesList.map((b) => b.lengthInBytes).toList(),
+      catalog: catalog.length,
+    );
+
+    for (int attempt = 0; attempt < maxVisionAttempts; attempt++) {
       try {
-        final model = await getModel(modelIndex: _activeModelIndex);
+        final currentModelIndex = _activeModelIndex;
+        final model = await getModel(
+          modelIndex: currentModelIndex,
+          generationConfig: visionGenerationConfig,
+          isVision: true,
+        );
         if (model == null) {
           throw Exception('Failed to initialize AI model session.');
         }
@@ -937,24 +1150,47 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
           parts.add(DataPart(processedMimeTypes[i], processedBytesList[i]));
         }
 
+        final currentTimeout = attempt == 0 ? visionTimeout : const Duration(seconds: 30);
         final response = await model
             .generateContent([Content.multi(parts)])
-            .timeout(visionTimeout);
+            .timeout(currentTimeout);
         await recordAiUsage();
-        _activeModelIndex = 0;
-        return _parseExtractedPurchaseOrderData(response.text ?? '', catalog, knownMappings);
+        final rawText = response.text ?? '';
+        tracker.recordSuccess(
+          responseChars: rawText.length,
+          switched: attempt > 0,
+        );
+        return _parseExtractedPurchaseOrderData(rawText, catalog, knownMappings);
       } catch (e) {
         lastError = e;
         final isNotFound = _isModelNotFoundError(e);
-        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
+        final isTimeout = e.toString().toLowerCase().contains('timeoutexception') || e.toString().toLowerCase().contains('timed out');
+        final isOverloaded = _isOverloadedError(e);
+
+        if ((isOverloaded || isNotFound || isTimeout) && attempt < maxVisionAttempts - 1) {
+          await _handleRetry(
+            attempt: attempt,
+            totalAttempts: maxVisionAttempts,
+            isModelNotFound: isNotFound,
+            isTimeout: isTimeout,
+          );
+          tracker.startAiCall(
+            model: _candidateModels[_activeModelIndex % _candidateModels.length],
+            attempt: attempt + 2,
+            promptChars: prompt.length,
+            images: processedBytesList.length,
+            bytes: processedBytesList.map((b) => b.lengthInBytes).toList(),
+            catalog: catalog.length,
+          );
           continue;
         }
 
+        tracker.recordFailure(e);
         throw Exception(formatAiError(e));
       }
     }
 
+    tracker.recordFailure(lastError);
     throw Exception(formatAiError(lastError ?? 'Failed to process receipt images.'));
   }
 
@@ -972,6 +1208,9 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
       throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
     }
 
+    final tracker = AiScanTimingTracker('Invoice vs PO Reconciliation');
+    tracker.startPreAi();
+
     // Pre-process images: Automatically slice long scrolling screenshots or receipts
     final List<Uint8List> processedBytesList = [];
     final List<String> processedMimeTypes = [];
@@ -982,7 +1221,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
       if (slices.length > 1) {
         for (final slice in slices) {
           processedBytesList.add(slice);
-          processedMimeTypes.add('image/png');
+          processedMimeTypes.add('image/jpeg');
         }
       } else {
         processedBytesList.add(originalBytes);
@@ -990,6 +1229,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
         processedMimeTypes.add(mime);
       }
     }
+    tracker.stopPreAi();
 
     // Build the original PO manifest for the prompt
     final poLines = originalPoItems.map((item) {
@@ -1033,10 +1273,26 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
 }
 ''';
 
+    const int maxVisionAttempts = 2; // Bounded retry: at most 1 retry on backup model
     dynamic lastError;
-    for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
+
+    tracker.startAiCall(
+      model: _candidateModels[_activeModelIndex % _candidateModels.length],
+      attempt: 1,
+      promptChars: prompt.length,
+      images: processedBytesList.length,
+      bytes: processedBytesList.map((b) => b.lengthInBytes).toList(),
+      catalog: originalPoItems.length,
+    );
+
+    for (int attempt = 0; attempt < maxVisionAttempts; attempt++) {
       try {
-        final model = await getModel(modelIndex: _activeModelIndex);
+        final currentModelIndex = _activeModelIndex;
+        final model = await getModel(
+          modelIndex: currentModelIndex,
+          generationConfig: visionGenerationConfig,
+          isVision: true,
+        );
         if (model == null) throw Exception('Failed to initialize AI model session.');
 
         // Build multipart content with all invoice images
@@ -1045,25 +1301,47 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
           parts.add(DataPart(processedMimeTypes[i], processedBytesList[i]));
         }
 
+        final currentTimeout = attempt == 0 ? visionTimeout : const Duration(seconds: 30);
         final response = await model
             .generateContent([Content.multi(parts)])
-            .timeout(visionTimeout);
+            .timeout(currentTimeout);
         await recordAiUsage();
-        _activeModelIndex = 0;
         final rawText = response.text ?? '';
+        tracker.recordSuccess(
+          responseChars: rawText.length,
+          switched: attempt > 0,
+        );
         return _parseInvoiceComparisonResult(rawText, originalPoItems);
       } catch (e) {
         lastError = e;
         final isNotFound = _isModelNotFoundError(e);
-        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
+        final isTimeout = e.toString().toLowerCase().contains('timeoutexception') || e.toString().toLowerCase().contains('timed out');
+        final isOverloaded = _isOverloadedError(e);
+
+        if ((isOverloaded || isNotFound || isTimeout) && attempt < maxVisionAttempts - 1) {
+          await _handleRetry(
+            attempt: attempt,
+            totalAttempts: maxVisionAttempts,
+            isModelNotFound: isNotFound,
+            isTimeout: isTimeout,
+          );
+          tracker.startAiCall(
+            model: _candidateModels[_activeModelIndex % _candidateModels.length],
+            attempt: attempt + 2,
+            promptChars: prompt.length,
+            images: processedBytesList.length,
+            bytes: processedBytesList.map((b) => b.lengthInBytes).toList(),
+            catalog: originalPoItems.length,
+          );
           continue;
         }
 
+        tracker.recordFailure(e);
         throw Exception(formatAiError(e));
       }
     }
 
+    tracker.recordFailure(lastError);
     throw Exception(formatAiError(lastError ?? 'Unable to compare official invoice with PO. Please try again.'));
   }
 
@@ -1341,6 +1619,9 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
       throw Exception('No supplier stock images provided for analysis.');
     }
 
+    final tracker = AiScanTimingTracker('Supplier OOS / Stock Scan');
+    tracker.startPreAi();
+
     // Exclude other products: this feature is strictly exclusive to Selecta products
     final selectaCatalog = dealerCatalog
         .where((item) => item.source == InventoryProductSource.selecta)
@@ -1348,14 +1629,19 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
 
     final catalogLines = selectaCatalog.map((item) {
       final codePart = item.itemCode.isNotEmpty ? ' | Code: "${item.itemCode}"' : '';
-      return '- ID: "${item.id}"$codePart | Name: "${item.productName}" | Category: "${item.category}"';
+      return '- ID: "${item.id}"$codePart | Name: "${item.productName}"';
     }).join('\n');
 
-    final singleMappings = (knownMappings ?? []).where((m) => !m.isMultiMatch).toList();
+    final singleMappings = (knownMappings ?? []).where((m) => !m.isMultiMatch).toList()
+      ..sort((a, b) {
+        final u = b.usageCount.compareTo(a.usageCount);
+        if (u != 0) return u;
+        return (b.updatedAt?.millisecondsSinceEpoch ?? 0).compareTo(a.updatedAt?.millisecondsSinceEpoch ?? 0);
+      });
     final buffer = StringBuffer();
     if (singleMappings.isNotEmpty) {
       buffer.writeln('CONFIRMED SUPPLIER ALIASES:');
-      for (final m in singleMappings.take(30)) {
+      for (final m in singleMappings.take(25)) {
         buffer.writeln('• "${m.rawSupplierText}" -> ID: "${m.productId}" (${m.productName})');
       }
       buffer.writeln();
@@ -1378,6 +1664,7 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
         processedMimeTypes.add(mime);
       }
     }
+    tracker.stopPreAi();
 
     final isMulti = processedBytesList.length > 1;
 
@@ -1419,10 +1706,26 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
 }
 ''';
 
+    const int maxVisionAttempts = 2; // Bounded retry: at most 1 retry on backup model
     dynamic lastError;
-    for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
+
+    tracker.startAiCall(
+      model: _candidateModels[_activeModelIndex % _candidateModels.length],
+      attempt: 1,
+      promptChars: prompt.length,
+      images: processedBytesList.length,
+      bytes: processedBytesList.map((b) => b.lengthInBytes).toList(),
+      catalog: selectaCatalog.length,
+    );
+
+    for (int attempt = 0; attempt < maxVisionAttempts; attempt++) {
       try {
-        final model = await getModel(modelIndex: _activeModelIndex);
+        final currentModelIndex = _activeModelIndex;
+        final model = await getModel(
+          modelIndex: currentModelIndex,
+          generationConfig: visionGenerationConfig,
+          isVision: true,
+        );
         if (model == null) {
           throw Exception('Failed to initialize AI model session.');
         }
@@ -1433,23 +1736,45 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
         }
 
         final content = [Content.multi(parts)];
-        final response = await model.generateContent(content).timeout(visionTimeout);
+        final currentTimeout = attempt == 0 ? visionTimeout : const Duration(seconds: 30);
+        final response = await model.generateContent(content).timeout(currentTimeout);
         await recordAiUsage();
-        _activeModelIndex = 0;
         final rawText = response.text ?? '';
+        tracker.recordSuccess(
+          responseChars: rawText.length,
+          switched: attempt > 0,
+        );
         return _parseExtractedSupplierStockData(rawText, selectaCatalog);
       } catch (e) {
         lastError = e;
         final isNotFound = _isModelNotFoundError(e);
-        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(attempt: attempt, isModelNotFound: isNotFound);
+        final isTimeout = e.toString().toLowerCase().contains('timeoutexception') || e.toString().toLowerCase().contains('timed out');
+        final isOverloaded = _isOverloadedError(e);
+
+        if ((isOverloaded || isNotFound || isTimeout) && attempt < maxVisionAttempts - 1) {
+          await _handleRetry(
+            attempt: attempt,
+            totalAttempts: maxVisionAttempts,
+            isModelNotFound: isNotFound,
+            isTimeout: isTimeout,
+          );
+          tracker.startAiCall(
+            model: _candidateModels[_activeModelIndex % _candidateModels.length],
+            attempt: attempt + 2,
+            promptChars: prompt.length,
+            images: processedBytesList.length,
+            bytes: processedBytesList.map((b) => b.lengthInBytes).toList(),
+            catalog: selectaCatalog.length,
+          );
           continue;
         }
 
+        tracker.recordFailure(e);
         throw Exception(formatAiError(e));
       }
     }
 
+    tracker.recordFailure(lastError);
     throw Exception(formatAiError(lastError ?? 'Failed to process supplier stock images.'));
   }
 

@@ -1,0 +1,150 @@
+SELECTA APP - AI DOCUMENT SCAN SPEED PLAN (FOR REVIEW)
+======================================================
+
+Problem: Scanning supplier invoices / purchase orders and store-order receipts
+with Sedy AI takes about 2 minutes.
+Note: Findings come from static code review. Phase 0 (timing logs) must confirm
+which cause dominates before Phases 2-4 are tuned.
+
+Scan flows affected (all go through lib/services/gemini_ai_service.dart)
+- Store order receipt   : receipt_scan_flow.dart -> extractStoreOrderFromImages
+- Supplier invoice / PO : purchaseorder_page.dart -> extractPurchaseOrderFromImages
+- Invoice reconciliation: compareOfficialInvoiceWithPoItems
+- Supplier stock / OOS  : supplier_oos_scan_dialog.dart, automated_po_suggestion_dialog.dart
+                          -> extractSupplierStockStatusFromImages
+
+Root causes found
+1. GenerativeModel is built with no generationConfig (getModel, ~line 361):
+   no responseMimeType JSON, no temperature, no maxOutputTokens. Flash models
+   "think" by default, and google_generative_ai 0.4.7 has no thinkingConfig.
+2. Whole inventory catalog (+ up to 70 alias lines) is pasted into every prompt.
+3. prepareImageBytesForAi (helperfunctions.dart ~239) only compresses images
+   over 2 MB, capped at 2200 px. Typical photos go up at full size.
+   Long screenshots are sliced into up to 6 x 2400 px chunks (PNG -> JPEG).
+4. visionTimeout = 120 s and timeouts count as "overloaded", so a slow call
+   triggers model switch + another 120 s wait (up to 3 models).
+   _activeModelIndex is reset to 0 after each success, so a bad first model
+   (e.g. 404 on 'gemini-3.8-flash') is retried first on every scan.
+5. Minor: checkAiAvailability = 2 sequential Firestore reads; getAllMappings;
+   images read/compressed one by one. Roughly 1-3 s total.
+
+
+PHASE 0 - MEASURE BASELINE (0.5 day)
+------------------------------------
+[x] Add a debug-only timing helper (Stopwatch + debugPrint) in gemini_ai_service.dart
+[x] Log per scan: model name, attempt number, image count, bytes per image,
+    prompt character count, catalog item count, generateContent duration,
+    response length, and whether a retry/model switch occurred
+[x] Log the pre-AI phase separately: checkAiAvailability, getAllMappings,
+    image read/compress/slice
+[x] Run scans per flow and record telemetry outputs
+[x] Decision gate:
+    - generateContent alone ~60-110 s -> thinking/prompt size (Phases 1-3) matter most
+    - total much larger than one call  -> retries/timeouts (Phase 4) matter most
+    - upload slow                      -> image sizing (Phase 2) matters most
+
+
+PHASE 1 - GENERATION CONFIG (highest impact, low risk) (0.5 day)
+----------------------------------------------------------------
+[x] Add a shared const GenerationConfig for vision extraction:
+    responseMimeType: 'application/json', temperature: 0, maxOutputTokens sized
+    to the largest expected receipt (start 8192, verify not truncated)
+[x] Extend getModel({..., GenerationConfig? generationConfig}) and pass it in the
+    4 vision methods only; keep chat (sendMessage/generateText) unchanged
+[x] Skip the long Sedy chat system instruction for vision calls
+    (it is irrelevant to OCR and adds input tokens)
+[x] Keep _parseExtractedPurchaseOrderData tolerant of code fences as a fallback
+[x] Verify: JSON parses cleanly, results unchanged, call time reduced
+
+
+PHASE 2 - IMAGE PREPARATION (0.5-1 day)
+---------------------------------------
+[x] Change prepareImageBytesForAi to always downscale: longest side 1600-2000 px,
+    JPEG quality ~80, regardless of file size (skip only if already smaller)
+[x] Verify digit accuracy on sample invoices
+[x] Prepare images in parallel (Future.wait) in the 4 call sites
+[x] Slicing service: encode slices straight to JPEG (avoid PNG intermediate)
+    and cap slice count at 4
+[x] Apply the same 1600 px / q80 pickers settings in purchase order and OOS flows
+    (receipt_scan_flow.dart already uses 1600 / 80)
+[x] Verify: bytes sent per scan drops; accuracy unchanged
+
+
+PHASE 3 - PROMPT SIZE / MODEL THINKING (1-2 days)
+-------------------------------------------------
+[x] Trim catalog lines: drop unused fields (category, source, price where not
+    needed for matching); keep ID, code, name
+[x] Pre-filter the catalog by supplier/source when known (e.g. only products
+    from the selected supplier) before building the prompt
+[x] Cap and prioritise alias lines (most recently used first)
+[x] Enforce temperature 0.0 + JSON responseMimeType in visionGenerationConfig
+[x] Verify: input token count and latency drop; match accuracy equal or better
+
+
+PHASE 4 - TIMEOUTS, RETRIES, MODEL SELECTION (0.5 day)
+------------------------------------------------------
+[x] Lower visionTimeout from 120 s to ~45-60 s (set to 45 s)
+[x] Do not blindly retry a timeout on the next model with a full wait;
+    use one retry with a shorter timeout (30 s), then show a clear error
+[x] Remember the last working model (do not reset _activeModelIndex to 0 after
+    success); reset only on key change or after N minutes
+[x] Confirm _candidateModels names are valid for the production key;
+    remove invalid ones so no 404 round-trip happens first ('gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash')
+[x] Retry toast should state the reason (timeout vs overloaded)
+[x] Verify: worst-case wait is bounded (~60-90 s), normal case unaffected
+
+
+PHASE 5 - PRE-AI STEPS (optional, 0.5 day)
+------------------------------------------
+[x] Run checkAiAvailability, getAllMappings and image prep concurrently
+[x] Cache aiEnabled/config for the session (60-second TTL); read monthly usage without blocking
+    the request
+[x] Verify: ~1-3 s saved before the AI call starts
+
+
+PHASE 6 - UX (optional, 0.5 day)
+--------------------------------
+[x] Show elapsed time and image count on the loading dialog
+[x] Keep the "Step 2/3" status but add a "taking longer than usual" hint at 30 s
+[x] Keep the existing cancel button working during the AI call
+
+
+TARGETS
+-------
+- Typical single receipt/invoice: under 15-20 s (from ~120 s)
+- Multi-image (3-4 pages): under 30-40 s
+- Worst case with one retry: under ~90 s
+- No drop in quantity/product match accuracy
+
+
+FILES TO CHANGE
+---------------
+- lib/services/gemini_ai_service.dart   (config, timing, catalog trimming, retries)
+- lib/data/helperfunctions.dart         (prepareImageBytesForAi)
+- lib/services/image_slicing_service.dart (JPEG slices, slice cap)
+- lib/views/widgets/book_order/receipt_scan_flow.dart
+- lib/views/pages/sidebar/purchaseorder_page.dart
+- lib/views/widgets/supplier_oos/supplier_oos_scan_dialog.dart
+- lib/views/widgets/purchaseorder/automated_po_suggestion_dialog.dart
+- pubspec.yaml (only if migrating SDK in Phase 3)
+- test/ : parsing tests for JSON responses, image prep sizing tests
+
+
+RISKS
+-----
+- Lower resolution may misread similar digits -> keep accuracy checks per phase
+- maxOutputTokens too low truncates JSON -> test with the longest known receipt
+- Catalog pre-filtering may hide the correct product -> fall back to full catalog
+  when no confident match is found
+- SDK migration (Phase 3A/B) touches all AI calls -> do last, behind a flag
+
+
+RECOMMENDED ORDER
+-----------------
+Phase 0 -> Phase 1 -> Phase 2 -> Phase 4 -> Phase 3 -> Phase 5 -> Phase 6
+(Phases 0-2 and 4 are small and should give most of the gain.)
+
+
+BASELINE / AFTER RESULTS
+------------------------
+(fill in during Phase 0 and after each phase)
