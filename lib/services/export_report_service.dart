@@ -4,15 +4,12 @@ import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:selecta_ops/models/delivery.dart';
-import 'package:selecta_ops/models/other_product.dart';
 import 'package:selecta_ops/models/proof_of_visit.dart';
 import 'package:selecta_ops/models/purchaseorder.dart';
-import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
-import 'package:selecta_ops/services/other_product_service.dart';
 import 'package:selecta_ops/services/proof_of_visit_service.dart';
 import 'package:selecta_ops/services/purchaseorder_service.dart';
-import 'package:selecta_ops/services/selecta_product_service.dart';
+import 'package:selecta_ops/services/product_catalog_cache.dart';
 
 enum ExportReportType {
   sales('Sales & Orders Report', 'Daily/weekly customer order amounts, payment methods, and status.'),
@@ -382,7 +379,13 @@ class ExportReportService {
           'Remarks',
         ];
 
-        final snapshot = await _firestore.collection(DELIVERY_COLLECTION_REF).get();
+        // Phase 2.3: Date-filtered and bounded delivery query for AR aging
+        final snapshot = await _firestore
+            .collection(DELIVERY_COLLECTION_REF)
+            .where('createdDate', isGreaterThanOrEqualTo: Timestamp.fromDate(effectiveStartDate))
+            .where('createdDate', isLessThanOrEqualTo: Timestamp.fromDate(effectiveEndDate))
+            .limit(500)
+            .get();
         final now = DateTime.now();
 
         double totalOverdue = 0.0;
@@ -466,15 +469,15 @@ class ExportReportService {
           'Stock Status',
         ];
 
-        final selectaSnap = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
-        final otherSnap = await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).get();
+        // Phase 2.2: Use in-memory ProductCatalogCache (5-min TTL) instead of raw collection reads
+        final selectaProducts = await ProductCatalogCache().getSelectaProducts();
+        final otherProducts = await ProductCatalogCache().getOtherProducts();
 
         int totalUnits = 0;
         double totalCostValuation = 0.0;
         double totalRetailValuation = 0.0;
 
-        for (final doc in selectaSnap.docs) {
-          final p = SelectaProduct.fromSnapshot(doc);
+        for (final p in selectaProducts) {
           if (!p.isActive) continue;
 
           totalUnits += p.stockQuantity;
@@ -498,8 +501,7 @@ class ExportReportService {
           ]);
         }
 
-        for (final doc in otherSnap.docs) {
-          final p = OtherProduct.fromJson(doc.data());
+        for (final p in otherProducts) {
           if (!p.isActive) continue;
 
           final costVal = p.stockQuantity * p.buyingPrice;
@@ -512,7 +514,7 @@ class ExportReportService {
 
           rows.add([
             'Other Product',
-            doc.id,
+            p.productName,
             p.productName,
             'Other',
             p.stockQuantity,

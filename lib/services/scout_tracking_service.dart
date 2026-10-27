@@ -26,9 +26,12 @@ class ScoutTrackingService {
   final ValueNotifier<int> recordedPointsNotifier = ValueNotifier<int>(0);
   final ValueNotifier<double> distanceTraveledNotifier = ValueNotifier<double>(0.0); // in meters
 
+  static const int maxPointsPerSession = 500;
+
   String? _currentSessionId;
   String _currentSalesmanName = 'Salesman';
   final List<ScoutTrackPoint> _sessionPoints = [];
+  int _lastFlushedIndex = 0;
   Position? _lastRecordedPos;
 
   bool get isTracking => isTrackingNotifier.value;
@@ -52,6 +55,7 @@ class ScoutTrackingService {
 
       _currentSalesmanName = salesmanName;
       _sessionPoints.clear();
+      _lastFlushedIndex = 0;
       recordedPointsNotifier.value = 0;
       distanceTraveledNotifier.value = 0.0;
       _lastRecordedPos = null;
@@ -59,23 +63,25 @@ class ScoutTrackingService {
       final now = DateTime.now();
       final dateStr = DateFormat('yyyy-MM-dd').format(now);
 
-      // Create new session in Firestore
+      // Create new session in Firestore with 30-day TTL for transient GPS logs
       final docRef = await _collectionRef.add({
         'salesmanName': salesmanName,
         'dateString': dateStr,
         'startedAt': FieldValue.serverTimestamp(),
+        'expireAt': Timestamp.fromDate(now.add(const Duration(days: 30))),
         'endedAt': null,
         'isActive': true,
         'points': [],
+        'pointsCount': 0,
       });
 
       _currentSessionId = docRef.id;
       isTrackingNotifier.value = true;
 
-      // Start GPS location stream
+      // Start GPS location stream (Cost Optimization: 20m distance filter reduces redundant samples)
       const locationSettings = LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 12, // Record point every 12 meters
+        distanceFilter: 20,
       );
 
       _positionSub = Geolocator.getPositionStream(locationSettings: locationSettings)
@@ -106,6 +112,11 @@ class ScoutTrackingService {
   void _onPositionUpdate(Position pos) {
     if (!isTracking) return;
 
+    // Cap points per session to prevent document bloat and exceeding Firestore 1MB limits
+    if (_sessionPoints.length >= maxPointsPerSession) {
+      return;
+    }
+
     // Calculate incremental distance if previous point exists
     if (_lastRecordedPos != null) {
       final d = Geolocator.distanceBetween(
@@ -127,19 +138,27 @@ class ScoutTrackingService {
     _sessionPoints.add(pt);
     recordedPointsNotifier.value = _sessionPoints.length;
 
-    // Flush when buffer reaches 15 points to batch writes efficiently
-    if (_sessionPoints.length % 15 == 0) {
+    // Flush when buffer reaches 15 new un-flushed points to batch writes efficiently
+    if ((_sessionPoints.length - _lastFlushedIndex) >= 15) {
       _flushPointsToFirestore();
     }
   }
 
+  /// Cost Optimization: Flush only newly recorded points via FieldValue.arrayUnion()
+  /// rather than rewriting the full cumulative array every flush cycle.
   Future<void> _flushPointsToFirestore() async {
-    if (_currentSessionId == null || _sessionPoints.isEmpty) return;
+    if (_currentSessionId == null) return;
+    if (_lastFlushedIndex >= _sessionPoints.length) return;
+
     try {
+      final newPoints = _sessionPoints.sublist(_lastFlushedIndex);
+      final countToFlush = newPoints.length;
       await _collectionRef.doc(_currentSessionId).update({
-        'points': _sessionPoints.map((p) => p.toJson()).toList(),
+        'points': FieldValue.arrayUnion(newPoints.map((p) => p.toJson()).toList()),
         'distanceMeters': distanceTraveledNotifier.value,
+        'pointsCount': _sessionPoints.length,
       });
+      _lastFlushedIndex += countToFlush;
     } catch (_) {}
   }
 
@@ -159,12 +178,18 @@ class ScoutTrackingService {
 
     if (sessionId != null) {
       try {
-        await _collectionRef.doc(sessionId).update({
-          'points': _sessionPoints.map((p) => p.toJson()).toList(),
+        final Map<String, dynamic> updateData = {
           'endedAt': FieldValue.serverTimestamp(),
           'distanceMeters': finalDistance,
           'isActive': false,
-        });
+          'pointsCount': _sessionPoints.length,
+        };
+        if (_lastFlushedIndex < _sessionPoints.length) {
+          final remaining = _sessionPoints.sublist(_lastFlushedIndex);
+          updateData['points'] = FieldValue.arrayUnion(remaining.map((p) => p.toJson()).toList());
+          _lastFlushedIndex = _sessionPoints.length;
+        }
+        await _collectionRef.doc(sessionId).update(updateData);
       } catch (e) {
         ErrorLogService.logError(
           action: 'stopTracking',
@@ -227,9 +252,20 @@ class ScoutTrackingService {
     DateTime? endDate,
     bool onlyDueForRescout = false,
   }) {
-    return _collectionRef
-        .orderBy('startedAt', descending: true)
-        .limit(150)
+    Query<Map<String, dynamic>> query = _collectionRef;
+    if (startDate != null && endDate != null) {
+      final start = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
+      final end = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59);
+      query = query
+          .where('startedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('startedAt', isLessThanOrEqualTo: Timestamp.fromDate(end))
+          .orderBy('startedAt', descending: true);
+    } else {
+      query = query.orderBy('startedAt', descending: true);
+    }
+
+    return query
+        .limit(100)
         .snapshots()
         .map((snapshot) {
       var list = snapshot.docs
@@ -238,10 +274,6 @@ class ScoutTrackingService {
 
       if (onlyDueForRescout) {
         list = list.where((r) => r.recencyTier == RecencyTier.stale || r.needsRescout).toList();
-      } else if (startDate != null && endDate != null) {
-        final start = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
-        final end = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59);
-        list = list.where((r) => r.startedAt.isAfter(start) && r.startedAt.isBefore(end)).toList();
       }
       return list;
     }).handleError((err) {

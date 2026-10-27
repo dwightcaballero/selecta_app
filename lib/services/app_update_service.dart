@@ -12,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:selecta_ops/models/app_version_info.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/widgets/app_update_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum UpdateDownloadStatus {
   idle,
@@ -56,7 +57,8 @@ class AppUpdateService {
 
   static AppVersionInfo? _cachedVersionInfo;
   static DateTime? _lastCheckTime;
-  static const Duration _cacheDuration = Duration(minutes: 5);
+  static const Duration _cacheDuration = Duration(hours: 6);
+  static const String _prefLastUpdateCheckEpoch = 'last_app_update_check_epoch';
 
   /// Global notifier for tracking background APK download progress and state.
   static final ValueNotifier<UpdateDownloadState> downloadStateNotifier =
@@ -435,11 +437,20 @@ class AppUpdateService {
   /// Fetches the latest published version information from GitHub Releases and Firestore.
   /// Prefers whichever source provides a newer version.
   Future<AppVersionInfo> getLatestVersionInfo({bool forceRefresh = false}) async {
-    if (!forceRefresh &&
-        _cachedVersionInfo != null &&
-        _lastCheckTime != null &&
-        DateTime.now().difference(_lastCheckTime!) < _cacheDuration) {
-      return _cachedVersionInfo!;
+    if (!forceRefresh) {
+      if (_cachedVersionInfo != null &&
+          _lastCheckTime != null &&
+          DateTime.now().difference(_lastCheckTime!) < _cacheDuration) {
+        return _cachedVersionInfo!;
+      }
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final lastEpoch = prefs.getInt(_prefLastUpdateCheckEpoch) ?? 0;
+        final elapsed = DateTime.now().millisecondsSinceEpoch - lastEpoch;
+        if (elapsed < _cacheDuration.inMilliseconds && _cachedVersionInfo != null) {
+          return _cachedVersionInfo!;
+        }
+      } catch (_) {}
     }
 
     AppVersionInfo latestInfo = AppVersionInfo.empty();
@@ -459,30 +470,39 @@ class AppUpdateService {
       );
     }
 
-    // 2. Fetch directly from Firebase Storage (releases/)
-    try {
-      final storageInfo = await _fetchFromFirebaseStorage();
-      if (storageInfo != null && storageInfo.apkUrl.isNotEmpty) {
-        latestInfo = _pickNewer(latestInfo, storageInfo);
+    // 2. Cost Optimization: Only fetch directly from Firebase Storage (releases/)
+    // if Firestore does not already provide a valid APK URL. This saves Storage metadata & download URL reads.
+    if (latestInfo.apkUrl.isEmpty) {
+      try {
+        final storageInfo = await _fetchFromFirebaseStorage();
+        if (storageInfo != null && storageInfo.apkUrl.isNotEmpty) {
+          latestInfo = _pickNewer(latestInfo, storageInfo);
+        }
+      } catch (e, stack) {
+        ErrorLogService.logError(
+          action: 'AppUpdateService.getLatestVersionInfo (FirebaseStorage)',
+          error: e.toString(),
+          stackTrace: stack,
+          page: 'AppUpdateService',
+        );
       }
-    } catch (e, stack) {
-      ErrorLogService.logError(
-        action: 'AppUpdateService.getLatestVersionInfo (FirebaseStorage)',
-        error: e.toString(),
-        stackTrace: stack,
-        page: 'AppUpdateService',
-      );
     }
 
-    // 3. Fetch from GitHub Releases (as fallback)
-    final githubInfo = await fetchFromGitHub();
-    if (githubInfo != null && githubInfo.apkUrl.isNotEmpty) {
-      latestInfo = _pickNewer(latestInfo, githubInfo);
+    // 3. Fetch from GitHub Releases (as fallback) only if still empty
+    if (latestInfo.apkUrl.isEmpty) {
+      final githubInfo = await fetchFromGitHub();
+      if (githubInfo != null && githubInfo.apkUrl.isNotEmpty) {
+        latestInfo = _pickNewer(latestInfo, githubInfo);
+      }
     }
 
     if (latestInfo.apkUrl.isNotEmpty) {
       _cachedVersionInfo = latestInfo;
       _lastCheckTime = DateTime.now();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt(_prefLastUpdateCheckEpoch, _lastCheckTime!.millisecondsSinceEpoch);
+      } catch (_) {}
     }
 
     return latestInfo;

@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/admin_selecta_product.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
+import 'package:selecta_ops/services/product_catalog_cache.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -72,6 +73,7 @@ class SelectaProductService {
 
   /// Toggles the [isActive] flag for a single dealer Selecta product.
   Future<void> toggleProductActive(String productId, bool isActive) async {
+    ProductCatalogCache().invalidateSelecta();
     await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).update({
       'isActive': isActive,
       'updatedAt': Timestamp.now(),
@@ -80,6 +82,7 @@ class SelectaProductService {
 
   /// Updates dealer's configured bad order price per piece for a 'By Case' product.
   Future<void> updateBadOrderPricePerPiece(String productId, double price) async {
+    ProductCatalogCache().invalidateSelecta();
     await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).update({
       'badOrderPricePerPiece': price,
       'updatedAt': Timestamp.now(),
@@ -836,14 +839,57 @@ class SelectaProductService {
     return '${sorted.length}_${hash.toRadixString(16)}';
   }
 
-  /// Checks whether the local dealer database needs to sync with the master Admin catalog
-  /// (either first-time load with empty local catalog, or changes detected in the Admin API).
+  /// Checks whether the local dealer database needs to sync with the master Admin catalog.
+  /// Phase 2.1: Reads ONLY the tiny `catalog_meta/version` document (1 read).
+  /// Full collection queries only execute if the remote signature differs from the local signature.
   Future<({bool needsSync, List<AdminSelectaProduct> remoteProducts, String reason})> checkSyncNeeded() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastSyncSignature = prefs.getString(_prefKeyLastSyncSignature);
+
+      // 1. Fast Path: Check catalog_meta/version doc (1 Firestore read)
+      try {
+        final metaDoc = await _firestore.collection('catalog_meta').doc('version').get();
+        if (metaDoc.exists && metaDoc.data() != null) {
+          final remoteSignature = (metaDoc.data()!['signature'] as String? ?? '').trim();
+          if (remoteSignature.isNotEmpty && lastSyncSignature == remoteSignature) {
+            // Completely up to date with 1 read!
+            return (needsSync: false, remoteProducts: <AdminSelectaProduct>[], reason: '');
+          }
+
+          if (remoteSignature.isNotEmpty) {
+            // Signature has changed, fetch remote products to resync
+            final remoteProducts = await fetchMasterAdminCatalogFromApi();
+            if (remoteProducts.isEmpty) {
+              return (needsSync: false, remoteProducts: <AdminSelectaProduct>[], reason: '');
+            }
+            return (
+              needsSync: true,
+              remoteProducts: remoteProducts,
+              reason: 'Updating Selecta products with the latest catalog changes...',
+            );
+          }
+        }
+      } catch (_) {
+        // Fallback to direct check if catalog_meta read fails
+      }
+
+      // 2. Backfill Path: catalog_meta/version doc does not exist yet
       final remoteProducts = await fetchMasterAdminCatalogFromApi();
       if (remoteProducts.isEmpty) {
         return (needsSync: false, remoteProducts: <AdminSelectaProduct>[], reason: '');
       }
+
+      final remoteSignature = computeCatalogSignature(remoteProducts);
+
+      // Backfill the version doc so all subsequent launches use the fast 1-read path
+      try {
+        await _firestore.collection('catalog_meta').doc('version').set({
+          'signature': remoteSignature,
+          'count': remoteProducts.length,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (_) {}
 
       final localSnapshot = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
       if (localSnapshot.docs.isEmpty) {
@@ -854,24 +900,16 @@ class SelectaProductService {
         );
       }
 
-      final remoteSignature = computeCatalogSignature(remoteProducts);
-      final prefs = await SharedPreferences.getInstance();
-      final lastSyncSignature = prefs.getString(_prefKeyLastSyncSignature);
-
-      // Fast check: if the recorded sync signature matches the remote signature
-      // and local product count matches the remote product count, we are fully up-to-date!
       if (lastSyncSignature == remoteSignature && localSnapshot.docs.length == remoteProducts.length) {
         return (needsSync: false, remoteProducts: remoteProducts, reason: '');
       }
 
-      // Check whether the local catalog content matches the remote catalog signature
       final localAsAdmin = localSnapshot.docs
           .map((d) => AdminSelectaProduct.fromJson(d.id, d.data().cast<String, Object?>()))
           .toList();
       final localSignature = computeCatalogSignature(localAsAdmin);
 
       if (localSignature == remoteSignature) {
-        // Local database already matches remote catalog; update the stored pref so future checks are instant
         if (lastSyncSignature != remoteSignature) {
           await prefs.setString(_prefKeyLastSyncSignature, remoteSignature);
         }
@@ -1040,6 +1078,15 @@ class SelectaProductService {
     final signature = computeCatalogSignature(masterList);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefKeyLastSyncSignature, signature);
+
+    // Update catalog_meta/version doc for all clients (Phase 2.1)
+    try {
+      await _firestore.collection('catalog_meta').doc('version').set({
+        'signature': signature,
+        'count': masterList.length,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
 
     return SelectaCatalogSyncResult(
       totalFetched: total,

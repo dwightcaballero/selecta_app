@@ -1,0 +1,348 @@
+================================================================================
+BAD ORDER REFUND PRICING - IMPLEMENTATION PLAN (FOR REVIEW)
+================================================================================
+Status : DRAFT - awaiting approval. No code has been changed.
+Scope  : Pieces-per-case configuration for "By Case" products, removal of manual
+         By Case bad order (B.O.) pricing, and two separate refund computations
+         (store refund vs. supplier refund).
+
+
+--------------------------------------------------------------------------------
+1. BACKGROUND / GOAL
+--------------------------------------------------------------------------------
+Products sold "By Case" can have one or more pieces melted/damaged inside a case.
+Stores always return bad orders to the dealer BY PIECE. To compute the refund
+amounts correctly, each By Case product must know how many pieces are inside a
+case. Today the dealer types a manual "B.O. price per piece" for each By Case
+product, and By Piece products use the BUYING price - both are to be replaced.
+
+There are two different refund amounts:
+
+  A) Store refund   (dealer -> store)    = based on SELLING price
+  B) Supplier refund (supplier -> dealer) = based on BUYING price
+
+For By Case products, each is the case price divided by pieces per case.
+
+
+--------------------------------------------------------------------------------
+2. CONFIRMED DECISIONS
+--------------------------------------------------------------------------------
+ 1. By Case Buying/Selling Price are stored PER CASE. All modules (ordering,
+    delivery, inventory, purchase orders, store app) keep selling/buying by case.
+ 2. Pieces per case is used ONLY for bad order computation. No other module
+    reads it (see section 6.7 - isolation).
+ 3. Bad orders are always recorded in PIECES.
+ 4. Pieces per case is configured in the ADMIN product form and in CSV/JSON
+    import/export, then synced to dealers. Required for By Case products,
+    whole number from 2 to 999.
+ 5. The manual per-product By Case B.O. price is REMOVED (UI, service,
+    controller, model usage).
+ 6. Store refund   = selling price per piece.
+    Supplier refund = buying price per piece.
+    By Case: price / pieces per case.
+ 7. A By Case product with no valid pieces per case BLOCKS bad order creation
+    with a clear message.
+ 8. Existing bad orders and batches are left UNTOUCHED (no recompute).
+ 9. Both unit prices are SNAPSHOTTED on each B.O. item at creation, so later
+    price changes never alter historical refunds.
+10. Profit & Loss (accrual):
+      - Net loss = store refund - expected supplier refund, recognised in the
+        period of the B.O. date.
+      - Supplier credit memo variance (actual - expected) is recognised in the
+        period of the batch settlement (supplier refund) date.
+11. Rounding: each LINE subtotal is rounded to 2 decimals; unit price is kept at
+    full precision internally.
+12. SALESMAN visibility: salesmen see the STORE refund (price per piece, line
+    subtotal, total - labelled "Refund to store") so they can tell the store the
+    expected refund. Salesmen must NOT see buying price or supplier refund
+    anywhere (UI, previews, printed/shared output).
+
+
+--------------------------------------------------------------------------------
+3. FORMULAS (SINGLE SOURCE OF TRUTH)
+--------------------------------------------------------------------------------
+  storeRefundPerPiece    = By Piece ? sellingPrice : sellingPrice / boPiecesPerCase
+  supplierRefundPerPiece = By Piece ? buyingPrice  : buyingPrice  / boPiecesPerCase
+  lineStoreSubtotal      = round2(qty * storeRefundPerPiece)
+  lineSupplierSubtotal   = round2(qty * supplierRefundPerPiece)
+
+Worked example
+  Product : Selecta Super Thick Vanilla 1.4L, By Case
+  Buying 180.00 / case, Selling 210.00 / case, 12 pieces per case
+  Bad order: 3 melted pieces
+    Store refund    = 3 x 17.50 = 52.50
+    Supplier refund = 3 x 15.00 = 45.00
+    Dealer net loss = 7.50
+
+Rounding example
+  Case price 100.00, 12 pieces/case -> 8.3333.../pc; 5 pieces -> 41.67
+  (rounded on the line, not on the unit price)
+
+By Piece product: store refund = selling price x qty; supplier refund = buying
+price x qty.
+
+
+--------------------------------------------------------------------------------
+4. CURRENT-STATE FINDINGS (WHAT EXISTS TODAY)
+--------------------------------------------------------------------------------
+Product model        lib/models/selecta_product.dart
+                     - badOrderPricePerPiece (manual dealer value)
+                     - boPricePerPiece: By Piece = BUYING price; By Case = manual
+                     - isBoPriceConfigured
+                     - piecesPerCase is a stub getter that always returns null
+Admin model          lib/models/admin_selecta_product.dart
+                     - fromJson, REST parser (~L120), toJson, copyWith, portable
+                       JSON; no pieces-per-case
+Product service      lib/services/selecta_product_service.dart
+                     - updateBadOrderPricePerPiece (L84)
+                     - addAdminProduct (L171), updateAdminProduct (L204)
+                     - CSV export (L284), CSV parse (L643+), import write (~L345)
+                     - syncDealerProductsWithAdminCatalog (~L985-1060)
+                     - best-seller fallback (~L1120)
+                     - computeCatalogSignature (~L815)
+Product controller   lib/controllers/selecta_product_controller.dart
+                     - updateBadOrderPricePerPiece (L28), validateAdminProduct (L110)
+Product form         lib/views/pages/sidebar/selecta_product_form_page.dart
+                     - category toggle (L471+), _save (L211), dirty check (L316+)
+Products page        lib/views/pages/sidebar/products_page.dart
+                     - By Case section (L907), sample CSV (L233)
+B.O. models          lib/models/badorder.dart
+                     - BadOrderItem has ONE price (pricePerPiece) and subtotal
+                     - BadOrder.totalAmount = sum of subtotals
+B.O. creation        lib/views/pages/sidebar/badorder_form_page.dart
+                       (L139, 180, 216, 337-350, 692, 1252-1268)
+                     lib/views/pages/dashboard/delivery_page.dart
+                       (L2715-2740, 3044-3130)
+                     - use boPricePerPiece; block By Case when unconfigured
+Manual config UI     lib/views/pages/sidebar/badorderlist_page.dart
+                     - opener (L77-81), toolbar button (L1699),
+                       _ByCaseConfigBottomSheet (L1868+)
+Warehouse batch      lib/controllers/badorder_controller.dart
+                       createWarehouseBatch (L300-335)
+                     - totalBatchAmount = sum of STORE totals (wrong basis for
+                       supplier)
+Batch pages          badorder_batch_create_page.dart (L74, 389)
+                     badorder_batch_detail_page.dart (L60-116, 239, 429-583, 703)
+                     badorderlist_page.dart (L891-892, 1077-1098, 1473-1508)
+B.O. detail          lib/views/pages/sidebar/badorder_page.dart (L168, 701, 768-790)
+Profit & Loss        lib/controllers/profit_loss_controller.dart
+                       (L161, 349, 428, 503, 579)
+                     lib/dto/profit_loss_dto.dart,
+                     lib/views/pages/sidebar/profit_loss_page.dart
+                     - subtracts the full badorderAmount as loss
+Store app (must stay lib/controllers/store_cart_controller.dart (L24-26, 43)
+unaffected)          lib/views/pages/store/store_catalog_page.dart (L258-366)
+                     lib/models/store_order.dart, functions/src/index.ts (L433)
+                     - read SelectaProduct.piecesPerCase (currently always null)
+Existing tests       test/bad_order_test.dart, selecta_product_csv_test.dart,
+                     selecta_product_category_test.dart, store_order_test.dart
+
+
+--------------------------------------------------------------------------------
+5. DESIGN
+--------------------------------------------------------------------------------
+
+5.1 NEW FIELD AND NAMING
+  - New product field: boPiecesPerCase (int?), Firestore key "boPiecesPerCase".
+    UI label: "Pieces per case".
+  - The existing stub SelectaProduct.piecesPerCase (returns null) is NOT touched,
+    so the store ordering app and Cloud Functions behave exactly as today.
+  - For By Piece products the value is stored as null.
+
+5.2 MODELS
+  SelectaProduct
+    + final int? boPiecesPerCase (constructor, empty(), fromJson, toJson,
+      copyWith, fromAdminProduct)
+    - remove badOrderPricePerPiece, boPricePerPiece, isBoPriceConfigured
+      (legacy Firestore field is ignored on read and no longer written)
+    + isCaseProduct
+    + hasValidBoPiecesPerCase  (2 <= value <= 999)
+    + isBoPricingReady         (!isCaseProduct || hasValidBoPiecesPerCase)
+    + storeRefundPerPiece, supplierRefundPerPiece (0 when not ready)
+
+  AdminSelectaProduct
+    + int? boPiecesPerCase in constructor, empty(), fromJson, REST parser,
+      toJson, portable JSON, copyWith
+
+  BadOrderItem (backward compatible)
+    - pricePerPiece (existing) = STORE refund price per piece
+    - subtotal (existing)      = STORE line subtotal
+    + supplierPricePerPiece, supplierSubtotal
+    + snapshots: piecesPerCase, case selling price, case buying price (audit)
+    - fromJson legacy fallback: missing supplier fields -> supplier values equal
+      store values; item treated as legacy (derived from absence of
+      supplierPricePerPiece)
+    + factory BadOrderItem.fromProduct(product, qty): does all computation and
+      rounding; used by both creation screens
+
+  BadOrder
+    + supplierAmount = sum of item supplierSubtotal; persisted next to
+      badorderAmount (derived from items when absent)
+    - schemaVersion -> 3 for new records
+
+  BadOrderBatch
+    - New batches: totalBatchAmount = sum of supplierAmount (EXPECTED supplier
+      refund)
+    + totalStoreRefundAmount (informational)
+    + pricingBasis = 'supplier_buying_v1' (distinguishes new vs legacy batches;
+      legacy batches labelled "Expected (legacy basis)")
+    - varianceAmount formula unchanged (actual - expected)
+
+5.3 ADMIN FORM, CSV, JSON, SYNC
+  - Product form: when "By Case" is selected, show required integer field
+    "Pieces per case (for bad order refunds)", range 2-999, digits only.
+    Live preview: "Store refund/pc P.. | Supplier refund/pc P..".
+    Hidden/cleared for By Piece. Included in dirty check and _save.
+  - validateAdminProduct: By Case requires 2-999 (error message shown).
+  - Service writes: addAdminProduct, updateAdminProduct (admin + dealer docs;
+    delete the field for By Piece), import batch write, fromAdminProduct sync
+    call, best-seller fallback.
+  - Sync: value added to change detection and dealer payload (stock fields still
+    preserved as today).
+  - Catalog signature: append value so dealers detect the change and re-sync.
+  - CSV export header:
+      Product Name,Buying Price,Selling Price,Category,Pieces Per Case,Tag,Image URL,ID
+  - CSV parse: header-based aliases (piecespercase, pcspercase, casesize,
+    unitspercase). Old CSVs without the column still import. Sample CSV in
+    products_page.dart updated (Vanilla 1.4L row = 12).
+  - Import summary: By Case rows missing/invalid are imported but listed as
+    "needs pieces per case".
+  - JSON export/import includes the field.
+
+5.4 PRODUCTS PAGE
+  - By Case rows: chip "12 pcs/case (for bad orders)".
+  - Red "Set pieces/case" badge when missing/invalid.
+  - Admin filter/count "Needs setup" (By Case missing value).
+  - Dealers: read-only note ("Ask admin to set").
+  - Product view shows pieces per case and computed refund per piece; the
+    supplier/buying figure is hidden for the salesman role.
+
+5.5 BAD ORDER CREATION (badorder_form_page.dart AND delivery_page.dart)
+  - Use isBoPricingReady and storeRefundPerPiece.
+  - By Case row shows e.g. "P17.50 / pc (P210.00 / 12)"; live subtotal uses the
+    rounded line total; footer total = expected STORE refund.
+  - Not-ready By Case rows: quantity input disabled with message "No pieces per
+    case set - contact admin"; _submit re-validates (defense in depth).
+  - Items built via BadOrderItem.fromProduct (store + supplier values saved).
+  - Role visibility:
+      Salesman : store refund per piece, line subtotal, total ("Refund to
+                 store"). NO buying price, NO supplier price/subtotal/total.
+      Dealer/Admin : same plus expected supplier refund.
+  - Remove _ByCaseConfigBottomSheet, its opener, toolbar button,
+    updateBadOrderPricePerPiece (service + controller), unused imports.
+
+5.6 BATCHES
+  - createWarehouseBatch: totalBatchAmount = sum of supplierAmount (legacy B.O.
+    use their stored totalAmount); also store totalStoreRefundAmount.
+  - Batch create page: per-B.O. store vs supplier amounts; footer "Stores
+    refunded P.. | Expected supplier credit P.. | Difference P..".
+  - Batch detail/list: label "Expected supplier refund (buying price)";
+    settlement dialog prefilled with the expected amount; variance logic as is.
+  - Batch pages are dealer-only; confirm no salesman access to them.
+
+5.7 PROFIT & LOSS
+  - New B.O.: loss = badorderAmount - supplierAmount, in the B.O. date period.
+  - Legacy B.O. (no supplier snapshot): full badorderAmount (unchanged).
+  - Settlement variance (supplierRefundAmount - totalBatchAmount) recognised in
+    the period of supplierRefundDate, new-basis batches only (requires a batch
+    query by supplierRefundDate range).
+  - DTO adds storeRefundTotal, supplierRecoveryTotal, settlementVariance;
+    totalBadOrders becomes the net loss; trend points use the same figures;
+    page labels updated ("Bad Order Net Loss" with breakdown).
+  - Applies to all 5 places in profit_loss_controller.dart.
+
+5.8 DATA MIGRATION / COMPATIBILITY
+  - No Firestore migration for B.O. or batches.
+  - Existing By Case products need pieces per case entered once (admin form or
+    CSV re-import). Until then B.O. for them is blocked.
+  - Optional helper script in scripts/ to list By Case products missing the
+    value; optional cleanup script for legacy badOrderPricePerPiece.
+  - Verify firestore.rules has no field whitelists affecting selecta_products,
+    admin_selecta_products, badorder, or batch collections (not expected).
+
+5.9 ISOLATION FROM OTHER MODULES (DECISION #2)
+  - Because the new field is named boPiecesPerCase and the old stub getter stays
+    null, NO changes are needed in: store_cart_controller.dart,
+    store_catalog_page.dart, store_order.dart, functions/src/index.ts, book
+    order, delivery pricing, inventory, purchase orders, picklist, van load.
+  - Cloud Functions will not forward the new field.
+  - Regression test: store cart case/piece pricing is unchanged for a By Case
+    product with boPiecesPerCase = 12.
+
+
+--------------------------------------------------------------------------------
+6. IMPLEMENTATION PHASES
+--------------------------------------------------------------------------------
+Each phase ends with `flutter analyze` and the related tests passing.
+
+ Phase 1 - Models and helpers
+   SelectaProduct, AdminSelectaProduct, BadOrderItem/BadOrder/BadOrderBatch,
+   pricing helpers, rounding helper, unit tests.
+ Phase 2 - Catalog plumbing
+   Service writes, sync, catalog signature, CSV/JSON import/export, validation.
+ Phase 3 - Admin form and Products page
+   Pieces-per-case field + preview, chips/badges/filter, sample CSV, import
+   summary warnings.
+ Phase 4 - Bad order creation
+   badorder_form_page + delivery_page (dealer and salesman views), blocking
+   rules, delete manual config UI/service/controller.
+ Phase 5 - Batches
+   Creation totals, create/detail/list pages with expected supplier refund.
+ Phase 6 - Profit & Loss
+   Controller, DTO, page, settlement variance.
+ Phase 7 - Verification
+   Full `flutter analyze`, `flutter test`, manual walkthrough (section 7).
+
+
+--------------------------------------------------------------------------------
+7. TEST PLAN
+--------------------------------------------------------------------------------
+Unit
+  - By Piece: store = selling, supplier = buying.
+  - By Case: price / pieces per case; 2-999 enforcement; not-ready is blocked.
+  - Rounding: 100 / 12 x 5 = 41.67.
+  - BadOrderItem JSON: legacy fallback; new item round-trip.
+  - Product parse/serialize (Firestore + REST), copyWith, By Piece clears value.
+  - CSV: new column export/import, aliases, missing-value warning, old CSV
+    still imports.
+  - Sync: admin -> dealer carries value; catalog signature changes.
+  - Batch: new total = sum of supplier amounts; legacy fallback; variance.
+  - P&L: new net loss; legacy full loss; settlement variance lands in the
+    settlement period; period boundaries.
+  - Store regression: cart pricing unchanged (section 5.9).
+Widget
+  - Admin form shows/hides/validates field (2-999).
+  - B.O. form blocks not-ready By Case product.
+  - Salesman B.O. screen shows store refund only; no buying/supplier amount
+    anywhere in the widget tree.
+Manual
+  1. Create By Case product, 12 pcs/case, buy 180, sell 210.
+  2. Create B.O. for 3 pieces -> store refund 52.50 (salesman sees only this).
+  3. Dealer view shows supplier expected 45.00.
+  4. Create warehouse batch -> expected supplier refund 45.00.
+  5. Settle with a different credit memo amount -> variance shown; P&L variance
+     appears in the settlement period; B.O. net loss 7.50 in the B.O. period.
+  6. Product with missing pieces per case -> B.O. blocked with message.
+  7. Old B.O./batches display and compute as before.
+
+
+--------------------------------------------------------------------------------
+8. RISKS AND MITIGATIONS
+--------------------------------------------------------------------------------
+  - Existing By Case products lack the value -> B.O. blocked until set.
+    Mitigation: "Needs setup" filter, CSV re-import, announce before release.
+  - Dual price meaning in BadOrderItem (pricePerPiece = store). Mitigation:
+    documented in model comments; legacy fallback tested.
+  - Legacy vs new basis in P&L. Mitigation: handled explicitly and tested.
+  - Rounding differences. Mitigation: single helper, tested.
+  - Salesman data exposure. Mitigation: supplier values stored but never
+    rendered in salesman views; widget test.
+  - Accidental use of pieces per case in other modules. Mitigation: separate
+    field name + regression test.
+
+
+--------------------------------------------------------------------------------
+9. OPEN ITEMS
+--------------------------------------------------------------------------------
+  None. All previous questions are answered. Awaiting approval to begin Phase 1.
+================================================================================

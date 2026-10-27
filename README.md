@@ -90,8 +90,32 @@ flutter run
 After first launch, tap the welcome banner **5 times** to access the Super Admin panel.
 Set your admin password immediately from the **Admin Password** card.
 
+## Firebase Cost Optimization & Zero-Tier Quota Guards
+
+To guarantee the app operates completely within the Firebase Blaze free tier limits:
+
+1. **Storage Security & Caching**:
+   - `storage.rules` enforce authenticated user ownership on uploads, `< 2MB` image size, and `image/*` MIME type checks.
+   - All uploaded images specify `cacheControl: 'public, max-age=31536000'`.
+   - Update APK checks are cached for 6 hours in `SharedPreferences` to prevent redundant Storage metadata requests.
+2. **Catalog Caching & Version Signatures**:
+   - `catalog_meta/version` is checked on launch (1 read) rather than re-reading all products (~400 reads).
+   - In-memory `ProductCatalogCache` provides 5-minute TTL caching across inventory, picklists, and reporting workflows.
+3. **Bounded Realtime Streams**:
+   - All high-frequency streams (`tasks`, `scout_routes`, `proof_of_visit`, `badorder_batch`, `error_logs`) use `.limit(...)` and server-side date range constraints.
+   - Store order and inventory queries filter on `isInventoryReplenished: false` to avoid re-billing historical records.
+4. **GPS Tracking Efficiency**:
+   - Scout tracking records points at a 20m distance threshold and flushes incrementally using `FieldValue.arrayUnion()`.
+   - Hard cap of 500 GPS points per route session prevents oversized document downloads.
+5. **Automated Regression Guard**:
+   ```bash
+   ./scripts/cost_regression_check.sh
+   ```
+   Run this script in CI or before committing to verify no unbounded `.snapshots()` or raw collection reads have been introduced.
+
 ---
 
 ## Version
 
 Current: 1.0.0+52
+

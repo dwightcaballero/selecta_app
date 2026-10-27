@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getStoreCatalog = exports.resetStorePassword = exports.storeChangePassword = exports.storeLogin = exports.createStoreAccount = void 0;
+exports.migrateAllUserClaims = exports.setUserClaims = exports.getStoreCatalog = exports.resetStorePassword = exports.storeChangePassword = exports.storeLogin = exports.createStoreAccount = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
@@ -8,16 +8,25 @@ const db = admin.firestore();
 const auth = admin.auth();
 const SYNTHETIC_EMAIL_DOMAIN = "store.selecta.invalid";
 const USERNAME_REGEX = /^[a-z0-9._-]{4,20}$/;
+// Cloud Functions Configuration: explicit asia-east1 region & resource limits (Phase 0, 1.3)
+const regionalFunctions = functions.region("asia-east1");
+const FUNCTION_OPTS = {
+    maxInstances: 5,
+    timeoutSeconds: 30,
+    memory: "256MB",
+};
 /**
  * Staff profiles are not always stored under their auth uid (the app adds them
  * with auto-generated ids), so fall back to a lookup by the token's email.
  */
 async function getCallerProfile(context) {
-    const uid = context.auth.uid;
+    const uid = context.auth?.uid;
+    if (!uid)
+        return undefined;
     const byUid = await db.collection("users").doc(uid).get();
     if (byUid.exists)
         return byUid.data();
-    const email = context.auth.token.email;
+    const email = context.auth?.token.email;
     if (!email)
         return undefined;
     const byEmail = await db.collection("users").where("email", "==", email).limit(1).get();
@@ -26,15 +35,18 @@ async function getCallerProfile(context) {
 /**
  * 1. createStoreAccount
  * Callable Cloud Function: Dealer or Admin provisions credentials for a Hapi Store.
+ * Sets custom user claims for role and storeId (Phase 5).
  */
-exports.createStoreAccount = functions.https.onCall(async (data, context) => {
+exports.createStoreAccount = regionalFunctions
+    .runWith(FUNCTION_OPTS)
+    .https.onCall(async (data, context) => {
     // Authentication check
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Must be authenticated to create a store account.");
     }
     // Caller role verification
     const callerData = await getCallerProfile(context);
-    const callerRole = callerData?.role;
+    const callerRole = callerData?.role || context.auth.token.role;
     if (callerRole !== "Dealer" && callerRole !== "Super Admin" && callerRole !== "Admin") {
         throw new functions.https.HttpsError("permission-denied", "Only Dealers and Admins can provision store accounts.");
     }
@@ -64,6 +76,11 @@ exports.createStoreAccount = functions.https.onCall(async (data, context) => {
             displayName: storeName,
         });
         const uid = userRecord.uid;
+        // Set custom claims for store user (Phase 5)
+        await auth.setCustomUserClaims(uid, {
+            role: "Hapi Store",
+            storeId: storeId,
+        });
         const now = admin.firestore.FieldValue.serverTimestamp();
         const batch = db.batch();
         // 1. Reserve username mapping
@@ -107,8 +124,11 @@ exports.createStoreAccount = functions.https.onCall(async (data, context) => {
 /**
  * 2. storeLogin
  * Verifies credentials, enforces 5-attempt/15-minute lockout and orderingEnabled flag.
+ * Adds expireAt (30-day TTL) for transient lockout records (Phase 1.1, Phase 2.5).
  */
-exports.storeLogin = functions.https.onCall(async (data, _context) => {
+exports.storeLogin = regionalFunctions
+    .runWith(FUNCTION_OPTS)
+    .https.onCall(async (data, _context) => {
     const { username, password } = data;
     if (!username || !password) {
         throw new functions.https.HttpsError("invalid-argument", "Username and password are required.");
@@ -120,6 +140,7 @@ exports.storeLogin = functions.https.onCall(async (data, _context) => {
     const nowMs = Date.now();
     const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
     const MAX_ATTEMPTS = 5;
+    const TTL_30_DAYS = admin.firestore.Timestamp.fromDate(new Date(nowMs + 30 * 24 * 60 * 60 * 1000));
     if (attemptDoc.exists) {
         const attemptData = attemptDoc.data();
         const count = attemptData?.count || 0;
@@ -136,6 +157,7 @@ exports.storeLogin = functions.https.onCall(async (data, _context) => {
         await attemptDocRef.set({
             count: admin.firestore.FieldValue.increment(1),
             lastAttempt: admin.firestore.FieldValue.serverTimestamp(),
+            expireAt: TTL_30_DAYS,
         }, { merge: true });
         throw new functions.https.HttpsError("not-found", "Invalid username or password.");
     }
@@ -145,7 +167,36 @@ exports.storeLogin = functions.https.onCall(async (data, _context) => {
     if (storeDoc.exists && storeDoc.data()?.orderingEnabled === false) {
         throw new functions.https.HttpsError("permission-denied", "Online ordering is currently disabled for this store. Please contact your dealer.");
     }
-    // 4. Generate custom auth token for client sign-in
+    // 4. Verify password against Firebase Auth Identity Toolkit REST API
+    const syntheticEmail = `${cleanUsername}@${SYNTHETIC_EMAIL_DOMAIN}`;
+    const apiKey = process.env.FIREBASE_WEB_API_KEY || "AIzaSyBANsl70LvRJ4jTemR-O9nUK1yBM7HIoSg";
+    try {
+        const authResp = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                email: syntheticEmail,
+                password: password,
+                returnSecureToken: true,
+            }),
+        });
+        if (!authResp.ok) {
+            // Password invalid: increment failed attempt
+            await attemptDocRef.set({
+                count: admin.firestore.FieldValue.increment(1),
+                lastAttempt: admin.firestore.FieldValue.serverTimestamp(),
+                expireAt: TTL_30_DAYS,
+            }, { merge: true });
+            throw new functions.https.HttpsError("unauthenticated", "Invalid username or password.");
+        }
+    }
+    catch (err) {
+        if (err instanceof functions.https.HttpsError)
+            throw err;
+        // Network or API failure fallback: throw internal
+        throw new functions.https.HttpsError("internal", "Authentication verification failed.");
+    }
+    // 5. Successful password verification: Generate custom auth token for client sign-in
     try {
         const customToken = await auth.createCustomToken(uid);
         // Reset failed attempts on success
@@ -174,7 +225,9 @@ exports.storeLogin = functions.https.onCall(async (data, _context) => {
  * 3. storeChangePassword
  * Updates password and clears mustChangePassword flag.
  */
-exports.storeChangePassword = functions.https.onCall(async (data, context) => {
+exports.storeChangePassword = regionalFunctions
+    .runWith(FUNCTION_OPTS)
+    .https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Must be authenticated to change password.");
     }
@@ -202,12 +255,14 @@ exports.storeChangePassword = functions.https.onCall(async (data, context) => {
  * 4. resetStorePassword
  * Dealer or Admin resets store user's password and sets mustChangePassword to true.
  */
-exports.resetStorePassword = functions.https.onCall(async (data, context) => {
+exports.resetStorePassword = regionalFunctions
+    .runWith(FUNCTION_OPTS)
+    .https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Must be authenticated to reset store password.");
     }
     const callerData = await getCallerProfile(context);
-    const callerRole = callerData?.role;
+    const callerRole = callerData?.role || context.auth.token.role;
     if (callerRole !== "Dealer" && callerRole !== "Super Admin" && callerRole !== "Admin") {
         throw new functions.https.HttpsError("permission-denied", "Only Dealers and Admins can reset store passwords.");
     }
@@ -235,7 +290,9 @@ exports.resetStorePassword = functions.https.onCall(async (data, context) => {
  * Returns active catalog products with available/out-of-stock badge.
  * CRITICAL RULE: NEVER returns numeric inventory stock counts or dealer cost prices to stores.
  */
-exports.getStoreCatalog = functions.https.onCall(async (_data, context) => {
+exports.getStoreCatalog = regionalFunctions
+    .runWith(FUNCTION_OPTS)
+    .https.onCall(async (_data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Must be authenticated to view catalog.");
     }
@@ -264,6 +321,83 @@ exports.getStoreCatalog = functions.https.onCall(async (_data, context) => {
     }
     catch (error) {
         throw new functions.https.HttpsError("internal", error?.message || "Failed to fetch catalog.");
+    }
+});
+/**
+ * 6. setUserClaims (Phase 5)
+ * Sets custom user claims for role and storeId to eliminate Firestore rule get() reads.
+ */
+exports.setUserClaims = regionalFunctions
+    .runWith(FUNCTION_OPTS)
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be authenticated to set user claims.");
+    }
+    const callerData = await getCallerProfile(context);
+    const callerRole = callerData?.role || context.auth.token.role;
+    if (callerRole !== "Super Admin" && callerRole !== "Admin") {
+        throw new functions.https.HttpsError("permission-denied", "Only Admins can set custom user claims.");
+    }
+    const { targetUid, role, storeId } = data;
+    if (!targetUid || !role) {
+        throw new functions.https.HttpsError("invalid-argument", "targetUid and role are required fields.");
+    }
+    const claims = { role };
+    if (storeId) {
+        claims.storeId = storeId;
+    }
+    try {
+        await auth.setCustomUserClaims(targetUid, claims);
+        return {
+            success: true,
+            message: `Custom claims set for UID ${targetUid}`,
+        };
+    }
+    catch (error) {
+        throw new functions.https.HttpsError("internal", error?.message || "Failed to set custom claims.");
+    }
+});
+/**
+ * 7. migrateAllUserClaims (Phase 5)
+ * One-off or maintenance callable function to backfill custom claims for existing users.
+ */
+exports.migrateAllUserClaims = regionalFunctions
+    .runWith(FUNCTION_OPTS)
+    .https.onCall(async (_data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be authenticated to migrate claims.");
+    }
+    const callerData = await getCallerProfile(context);
+    const callerRole = callerData?.role || context.auth.token.role;
+    if (callerRole !== "Super Admin" && callerRole !== "Admin") {
+        throw new functions.https.HttpsError("permission-denied", "Only Admins can execute claims migration.");
+    }
+    try {
+        const usersSnap = await db.collection("users").get();
+        let migrated = 0;
+        for (const doc of usersSnap.docs) {
+            const u = doc.data();
+            const uid = doc.id;
+            const role = u.role;
+            const storeId = u.storeId;
+            if (role) {
+                const claims = { role };
+                if (storeId)
+                    claims.storeId = storeId;
+                try {
+                    await auth.setCustomUserClaims(uid, claims);
+                    migrated++;
+                }
+                catch (_) { }
+            }
+        }
+        return {
+            success: true,
+            migratedCount: migrated,
+        };
+    }
+    catch (error) {
+        throw new functions.https.HttpsError("internal", error?.message || "Migration failed.");
     }
 });
 //# sourceMappingURL=index.js.map

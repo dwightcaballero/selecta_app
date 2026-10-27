@@ -25,6 +25,7 @@ import 'package:selecta_ops/services/selecta_product_service.dart';
 import 'package:selecta_ops/models/inventory_pending_adjustment.dart';
 import 'package:selecta_ops/models/inventory_snapshot.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/services/product_catalog_cache.dart';
 import 'package:intl/intl.dart';
 
 // ignore: constant_identifier_names
@@ -3171,16 +3172,16 @@ class InventoryService {
     );
   }
 
-  /// Fetches all active inventory items across Selecta and Other products.
+  /// Fetches all active inventory items across Selecta and Other products using ProductCatalogCache (Phase 2.2).
   Future<List<InventoryItem>> getAllInventoryItems() async {
     final List<InventoryItem> items = [];
-    final selectaSnaps = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
-    for (final doc in selectaSnaps.docs) {
-      items.add(InventoryItem.fromSelectaProduct(SelectaProduct.fromSnapshot(doc)));
+    final selectaList = await ProductCatalogCache().getSelectaProducts();
+    for (final p in selectaList) {
+      items.add(InventoryItem.fromSelectaProduct(p));
     }
-    final otherSnaps = await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).get();
-    for (final doc in otherSnaps.docs) {
-      items.add(InventoryItem.fromOtherProduct(doc.id, OtherProduct.fromJson(doc.data())));
+    final otherList = await ProductCatalogCache().getOtherProducts();
+    for (final p in otherList) {
+      items.add(InventoryItem.fromOtherProduct(p.productName, p));
     }
     return items;
   }
@@ -3287,13 +3288,13 @@ class InventoryService {
         }
       }
     } else {
-      final selectaSnaps = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
-      for (final doc in selectaSnaps.docs) {
-        items.add(InventoryItem.fromSelectaProduct(SelectaProduct.fromSnapshot(doc)));
+      final selectaList = await ProductCatalogCache().getSelectaProducts();
+      for (final p in selectaList) {
+        items.add(InventoryItem.fromSelectaProduct(p));
       }
-      final otherSnaps = await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).get();
-      for (final doc in otherSnaps.docs) {
-        items.add(InventoryItem.fromOtherProduct(doc.id, OtherProduct.fromJson(doc.data())));
+      final otherList = await ProductCatalogCache().getOtherProducts();
+      for (final p in otherList) {
+        items.add(InventoryItem.fromOtherProduct(p.productName, p));
       }
     }
 
@@ -3484,12 +3485,12 @@ class InventoryService {
     final startOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day, 0, 0, 0);
     final endOfDay = DateTime(targetDate.year, targetDate.month, targetDate.day, 23, 59, 59, 999);
 
-    final selectaSnaps = await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).get();
-    final otherSnaps = await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).get();
+    final selectaList = await ProductCatalogCache().getSelectaProducts();
+    final otherList = await ProductCatalogCache().getOtherProducts();
 
     final List<InventoryItem> items = [
-      ...selectaSnaps.docs.map((d) => InventoryItem.fromSelectaProduct(SelectaProduct.fromSnapshot(d))),
-      ...otherSnaps.docs.map((d) => InventoryItem.fromOtherProduct(d.id, OtherProduct.fromJson(d.data()))),
+      ...selectaList.map((p) => InventoryItem.fromSelectaProduct(p)),
+      ...otherList.map((p) => InventoryItem.fromOtherProduct(p.productName, p)),
     ];
 
     final movementsSnap = await _firestore
@@ -3599,14 +3600,19 @@ class InventoryService {
     }
   }
 
-  /// Reconciles daily stock snapshots over a date range.
+  /// Reconciles daily stock snapshots over a date range (capped at 31 days to bound read cost - Phase 2.4).
   Future<List<InventorySnapshot>> reconcileDailySnapshots({
     required DateTime startDate,
     required DateTime endDate,
   }) async {
     final List<InventorySnapshot> snapshots = [];
-    DateTime current = DateTime(startDate.year, startDate.month, startDate.day);
     final end = DateTime(endDate.year, endDate.month, endDate.day);
+    DateTime current = DateTime(startDate.year, startDate.month, startDate.day);
+
+    // Bound maximum reconciliation window to 31 days to prevent runaway reads
+    if (end.difference(current).inDays > 31) {
+      current = end.subtract(const Duration(days: 31));
+    }
 
     while (!current.isAfter(end)) {
       final dateId = DateFormat('yyyy-MM-dd').format(current);
@@ -3804,7 +3810,11 @@ class InventoryService {
           if (!controller.isClosed) controller.addError(e, s);
         });
 
-        poSub = _firestore.collection(PURCHASEORDER_COLLECTION_REF).snapshots().listen((snap) {
+        poSub = _firestore
+            .collection(PURCHASEORDER_COLLECTION_REF)
+            .where('isInventoryReplenished', isEqualTo: false)
+            .snapshots()
+            .listen((snap) {
           final List<FloatingTransaction> incoming = [];
           for (final doc in snap.docs) {
             final data = doc.data();

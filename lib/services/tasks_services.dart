@@ -29,13 +29,23 @@ class TasksService {
     return _tasksRef.orderBy('taskDeadline', descending: true).limit(limit).snapshots();
   }
 
-  Future<List<Tasks>> getTasksByStoreName(String storeName) async {
-    final snapshot = await _tasksRef.where('storeName', isEqualTo: storeName).get();
+  Future<List<Tasks>> getTasksByStoreName(String storeName, {int limit = 50}) async {
+    final snapshot = await _tasksRef.where('storeName', isEqualTo: storeName).limit(limit).get();
     return snapshot.docs.map((doc) => doc.data() as Tasks).toList();
   }
 
-  Stream<int> getPendingAndOverdueCountStream() {
-    return _tasksRef.where('isTaskDone', isEqualTo: false).snapshots().map((snapshot) => snapshot.docs.length);
+  /// Cost Optimization: Server-side aggregation count without downloading documents.
+  Future<int> getPendingAndOverdueCount() async {
+    final agg = await _tasksRef.where('isTaskDone', isEqualTo: false).count().get();
+    return agg.count ?? 0;
+  }
+
+  Stream<int> getPendingAndOverdueCountStream({int limit = 100}) {
+    return _tasksRef
+        .where('isTaskDone', isEqualTo: false)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.length);
   }
 
   Future<DocumentReference> addTasks(Tasks tasks) async {

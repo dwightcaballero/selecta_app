@@ -324,17 +324,17 @@ class GeminiAiService {
       return res;
     }
 
-    // 3. Check monthly quota usage in Firestore
+    // 3. Check monthly quota usage in Firestore (Enforce hard limit - Phase 1.5)
     final currentUsage = await getCurrentMonthUsage();
-    final limit = config.aiMonthlyRequestLimit;
+    final effectiveLimit = config.aiMonthlyRequestLimit > 0 ? config.aiMonthlyRequestLimit : 1000;
 
-    if (limit > 0 && currentUsage >= limit) {
+    if (currentUsage >= effectiveLimit) {
       final res = AiStatusCheck(
         isAllowed: false,
         currentUsage: currentUsage,
-        limit: limit,
-        message: 'Monthly AI quota limit reached ($currentUsage / $limit calls). '
-            'The AI Assistant is paused to prevent unexpected costs.',
+        limit: effectiveLimit,
+        message: 'Monthly AI quota limit reached ($currentUsage / $effectiveLimit calls). '
+            'The AI Assistant is paused to prevent unexpected costs. You may increase the limit in Configurations.',
       );
       _cachedStatusCheck = res;
       _lastStatusCheckTime = now;
@@ -342,12 +342,12 @@ class GeminiAiService {
     }
 
     // Warning zone: 90% quota reached
-    if (limit > 0 && currentUsage >= (limit * 0.90).floor()) {
+    if (currentUsage >= (effectiveLimit * 0.90).floor()) {
       final res = AiStatusCheck(
         isAllowed: true,
         currentUsage: currentUsage,
-        limit: limit,
-        message: '⚠️ Quota Alert: $currentUsage of $limit monthly requests used (~${((currentUsage / limit) * 100).toStringAsFixed(0)}%).',
+        limit: effectiveLimit,
+        message: '⚠️ Quota Alert: $currentUsage of $effectiveLimit monthly requests used (~${((currentUsage / effectiveLimit) * 100).toStringAsFixed(0)}%).',
       );
       _cachedStatusCheck = res;
       _lastStatusCheckTime = now;
@@ -357,7 +357,7 @@ class GeminiAiService {
     final res = AiStatusCheck(
       isAllowed: true,
       currentUsage: currentUsage,
-      limit: limit,
+      limit: effectiveLimit,
     );
     _cachedStatusCheck = res;
     _lastStatusCheckTime = now;
@@ -375,13 +375,14 @@ class GeminiAiService {
     return 0;
   }
 
-  /// Increments the monthly AI usage counter in Firestore.
+  /// Increments the monthly AI usage counter in Firestore with TTL expiration (Phase 2.5).
   Future<void> recordAiUsage() async {
     try {
       final docRef = _firestore.collection(_usageCollection).doc(_currentMonthKey);
       await docRef.set({
         'requestCount': FieldValue.increment(1),
         'lastUsed': FieldValue.serverTimestamp(),
+        'expireAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 90))),
       }, SetOptions(merge: true));
     } catch (_) {}
   }

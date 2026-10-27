@@ -1,0 +1,44 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && (request.auth.uid == uid || uid == 'guest');
+    }
+
+    function isValidImage() {
+      return request.resource.size < 2 * 1024 * 1024 // Max 2MB
+          && request.resource.contentType.matches('image/.*');
+    }
+
+    // 1. Releases / App Updates (Public read for pre-login APK checks; write restricted to CI/Admin)
+    match /releases/{allPaths=**} {
+      allow read: if true;
+      allow write: if false; // Uploads occur via Service Account in CI
+    }
+
+    // 2. User & Operational Uploads (Scoped to user UID or guest flow)
+    match /{uid}/uploads/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(uid) && isValidImage();
+      allow delete: if isOwner(uid);
+    }
+
+    // 3. Return Proof Photos (Gated End of Day verification)
+    match /proof_of_return/{allPaths=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isValidImage();
+      allow delete: if false;
+    }
+
+    // 4. Default deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

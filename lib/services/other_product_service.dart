@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/models/other_product.dart';
+import 'package:selecta_ops/services/product_catalog_cache.dart';
 
 // ignore: constant_identifier_names
 const String OTHER_PRODUCTS_COLLECTION_REF = 'other_products';
@@ -31,11 +32,13 @@ class OtherProductService {
   }
 
   Future<void> addProduct(OtherProduct product) async {
+    ProductCatalogCache().invalidateOther();
     final now = Timestamp.now();
     await _productsRef.add(product.copyWith(createdAt: now, updatedAt: now));
   }
 
   Future<void> updateProduct(String productId, OtherProduct product) async {
+    ProductCatalogCache().invalidateOther();
     final now = Timestamp.now();
     await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).doc(productId).update({
       'productName': product.productName,
@@ -50,10 +53,12 @@ class OtherProductService {
   }
 
   Future<void> deleteProduct(String productId) async {
+    ProductCatalogCache().invalidateOther();
     await _productsRef.doc(productId).delete();
   }
 
   Future<void> toggleProductActive(String productId, bool isActive) async {
+    ProductCatalogCache().invalidateOther();
     await _firestore.collection(OTHER_PRODUCTS_COLLECTION_REF).doc(productId).update({
       'isActive': isActive,
       'updatedAt': Timestamp.now(),

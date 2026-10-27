@@ -82,7 +82,10 @@ class _SubmitReturnProofSheetState extends State<SubmitReturnProofSheet> {
     final filePath = 'proof_of_return/$dayKey/$sanitizedStore/$timestamp.jpg';
 
     final ref = FirebaseStorage.instance.ref().child(filePath);
-    final metadata = SettableMetadata(contentType: 'image/jpeg');
+    final metadata = SettableMetadata(
+      contentType: 'image/jpeg',
+      cacheControl: 'public, max-age=31536000',
+    );
 
     await ref.putData(compressedBytes, metadata).timeout(const Duration(seconds: 30));
     return await ref.getDownloadURL().timeout(const Duration(seconds: 20));

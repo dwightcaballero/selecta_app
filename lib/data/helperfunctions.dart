@@ -312,6 +312,7 @@ class Helperfunctions {
 
       final metadata = SettableMetadata(
         contentType: 'image/jpeg',
+        cacheControl: 'public, max-age=31536000',
       );
 
       await uploadRef.putData(compressedBytes, metadata).timeout(timeout);

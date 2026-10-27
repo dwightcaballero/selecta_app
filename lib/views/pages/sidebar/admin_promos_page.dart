@@ -27,6 +27,17 @@ class _AdminPromosPageState extends State<AdminPromosPage> {
   String _filter = 'all'; // 'all' | 'active' | 'inactive'
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _promosStream;
+
+  @override
+  void initState() {
+    super.initState();
+    // Cost Optimization: Limit promos stream and instantiate once rather than every build()
+    _promosStream = FirebaseFirestore.instance
+        .collection('promos')
+        .limit(100)
+        .snapshots();
+  }
 
   @override
   void dispose() {
@@ -133,7 +144,7 @@ class _AdminPromosPageState extends State<AdminPromosPage> {
           // Promos List Stream
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance.collection('promos').snapshots(),
+              stream: _promosStream,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Center(

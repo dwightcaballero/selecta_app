@@ -180,9 +180,10 @@ class HapiStoreService {
   }
 
   Stream<QuerySnapshot> getListHapiStoresAsStream({int? limit}) {
+    final effectiveLimit = limit ?? 250;
     Query query = _hapistoresRef.orderBy('storeName');
-    if (limit != null && limit > 0) {
-      query = query.limit(limit);
+    if (effectiveLimit > 0) {
+      query = query.limit(effectiveLimit);
     }
     return query.snapshots().map((snapshot) {
       cachedStores = snapshot.docs.map((doc) {
@@ -383,7 +384,7 @@ class HapiStoreService {
         currentConfig = cfg ?? Configuration.empty();
         emitCount();
       });
-      storesSub = _hapistoresRef.snapshots().listen((snap) {
+      storesSub = _hapistoresRef.limit(250).snapshots().listen((snap) {
         currentStoresSnapshot = snap;
         emitCount();
       });

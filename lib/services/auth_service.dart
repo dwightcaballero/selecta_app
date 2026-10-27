@@ -12,10 +12,20 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    return await firebaseAuth.signInWithEmailAndPassword(
+    final cred = await firebaseAuth.signInWithEmailAndPassword(
       email: email,
       password: password,
     );
+    // Cost & Security: Refresh ID token to pull fresh custom claims immediately
+    try {
+      await cred.user?.getIdToken(true);
+    } catch (_) {}
+    return cred;
+  }
+
+  /// Forces a token refresh to fetch latest custom claims from Firebase Auth.
+  Future<String?> forceRefreshToken() async {
+    return await currentUser?.getIdToken(true);
   }
 
   Future<UserCredential> createAccount({

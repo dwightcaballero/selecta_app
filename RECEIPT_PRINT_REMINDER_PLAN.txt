@@ -1,0 +1,229 @@
+RECEIPT PRINT REMINDER - IMPLEMENTATION PLAN
+============================================
+
+GOAL
+----
+Applies to TWO flows only:
+  (A) Picklist page - after a transaction is marked "For Delivery", the
+      Digital Receipt modal is shown.
+  (B) Van Sell page - after a van sale is recorded, a "Print Receipt" prompt
+      is shown.
+If the user leaves either WITHOUT having printed the receipt, remind them
+first and let them either go back and print or knowingly close anyway.
+
+Printing stays OPTIONAL (never a hard block), but the user must make a
+conscious choice. Motivation: a salesman left with the stocks but without the
+receipt.
+
+DECISIONS (confirmed by reviewer)
+---------------------------------
+1. "Copy receipt text" does NOT count as printed.
+2. Reminder applies ONLY to Picklist and Van Sell. Delivery page / Return page
+   (manual "view/reprint receipt" icon) are unchanged - no reminder.
+3. No data model / Firestore change; do not persist a "never printed" flag.
+4. Reminder wording and button labels (Phase 2.3) are approved.
+5. Van Sell: REPLACE the small "Print Receipt" prompt with the full Digital
+   Receipt modal (Phase 3B). The "smaller alternative" is rejected.
+
+CURRENT BEHAVIOR (findings)
+---------------------------
+- views/pages/dashboard/picklist_page.dart, _onCompletePicklist() (~line 1081):
+  after controller.completePicklist() succeeds it calls
+  DigitalReceiptDialog.show(..., proceedLabel: 'Close',
+  onProceed: () => Navigator.pop(context, true)).
+  The picklist is already saved as "For Delivery" at that point.
+- views/widgets/digital_receipt_dialog.dart:
+  * showDialog with barrierDismissible: false (tap-outside already blocked).
+  * THREE ways to leave the dialog today, all with no warning:
+      1. Header close "X" IconButton (~line 249)
+      2. Bottom "Close" AsyncFilledButton (~line 461)
+      3. Android system/gesture BACK button. There is no PopScope, so back
+         pops the dialog silently AND skips onProceed (the picklist page then
+         stays open instead of returning to the list).
+  * _handlePrint() already knows whether _printerService.printReceipt()
+    returned true, but nothing records it.
+- The same dialog is reused by delivery_page.dart (~2154) and return_page.dart
+  (~829) as a manual "view/reprint receipt" action. Those must NOT start
+  nagging (the user opened them on purpose).
+- views/pages/dashboard/van_sell_page.dart does NOT use the digital receipt
+  dialog. _executeSaleWithPayment() (~line 1115) awaits
+  _promptThermalPrint(result.delivery, result.deliveryId) (~line 1143), a
+  plain AlertDialog "Print Receipt" with [Later / Skip] and [Print Now]:
+    * It is barrierDismissible (default), so tapping outside or pressing
+      Android back dismisses it as "no print" with no warning.
+    * "Later / Skip" has no warning either.
+    * Print is one-shot: if printReceipt() returns false or throws (printer
+      off / not connected / Bluetooth off) the user only sees a toast and the
+      flow continues (pops back to PJP or resets the form) with no receipt.
+    * No paper-size handling and no printer picker on failure.
+    * dealerName is hardcoded to 'Selecta Ops' (the digital dialog instead
+      resolves the real dealer name from the logged-in user).
+- views/widgets/alert_widget.dart ShowMessage.confirm(): reusable, but it is
+  barrierDismissible (tap outside = "false") and has fixed Cancel/Confirm
+  semantics, so it needs a small extension or a dedicated dialog (see 2.3).
+
+DESIGN
+------
+Scope the reminder to the Picklist flow with an opt-in flag, track whether a
+print succeeded in the dialog state, and route all three exit paths through
+one guarded method.
+
+PHASE 1 - Track "printed" state (digital_receipt_dialog.dart)
+-------------------------------------------------------------
+1.1 Add field `bool _hasPrinted = false;` to _DigitalReceiptDialogState.
+1.2 In _handlePrint(), set `_hasPrinted = true` (inside setState / before the
+    success toast) ONLY when printReceipt() returns true. Failure, exception,
+    Bluetooth off, or cancelled device-picker must leave it false.
+1.3 Copy-to-clipboard does NOT count as printed.
+
+PHASE 2 - Guarded close (digital_receipt_dialog.dart)
+-----------------------------------------------------
+2.1 New constructor + show() parameter:
+      final bool remindIfNotPrinted;   // default false
+    Picklist and Van Sell pass true; delivery_page / return_page keep the
+    default, so their behavior is unchanged.
+2.2 Add one method used by every exit path:
+      Future<void> _handleClose() async {
+        if (widget.remindIfNotPrinted && !_hasPrinted) {
+          final action = await <show reminder dialog>;
+          if (!mounted) return;
+          if (action == print)  { await _handlePrint(); return; } // stay open
+          if (action != closeAnyway) return;                      // stay open
+        }
+        Navigator.pop(context);
+        widget.onProceed?.call();
+      }
+    - Header "X"    -> onPressed: _handleClose
+    - Bottom Close  -> onPressed: _handleClose
+    - Android BACK  -> wrap the Dialog's content in
+                       PopScope(canPop: false, onPopInvokedWithResult:
+                       (didPop, _) { if (!didPop) _handleClose(); })
+      Side benefit: back now also runs onProceed, so the picklist page closes
+      consistently instead of being left open.
+    - Guard against double taps / re-entry while the reminder is already open
+      or a print is in progress (reuse _isPrinting + a small _isClosing flag).
+2.3 Reminder dialog content (must be non-dismissible by tapping outside,
+    otherwise a stray tap would count as "close anyway"):
+      Icon:    Icons.print_disabled_rounded (amber/orange warning color)
+      Title:   "Receipt not printed yet"
+      Message: "This transaction has not been printed. The salesman should
+                bring the receipt together with the stocks. Print it now?"
+      Buttons: [Close Without Printing]  (TextButton, secondary)
+               [Print Now]               (FilledButton, primary/emphasized)
+    Implementation choice (recommend A):
+      A) Extend ShowMessage.confirm with `bool barrierDismissible = true`
+         (existing callers unaffected) and call it with
+         barrierDismissible: false, confirmText: 'Print Now',
+         cancelText: 'Close Without Printing', icon: Icons.print_disabled_rounded.
+         true -> print, false -> close anyway.
+      B) Private AlertDialog inside digital_receipt_dialog.dart returning an
+         enum (print / closeAnyway). Use if we want 3 outcomes
+         (e.g. also a "Back" button).
+2.4 After "Print Now": if printing succeeds the dialog stays open showing the
+    success toast; the next Close tap goes through with no reminder because
+    _hasPrinted == true. If printing fails the dialog stays open and the
+    reminder appears again on the next Close attempt.
+
+PHASE 3 - Picklist page wiring (picklist_page.dart ~line 1081)
+--------------------------------------------------------------
+3.1 Pass `remindIfNotPrinted: true` to DigitalReceiptDialog.show().
+3.2 No other changes: onProceed still does Navigator.pop(context, true).
+3.3 Optional wording tweak: success toast stays as is; the modal remains the
+    place for the reminder.
+
+PHASE 3B - Van Sell wiring (van_sell_page.dart)
+-----------------------------------------------
+Approach (confirmed): reuse the same dialog for consistency.
+3B.1 Replace the body of _promptThermalPrint() with
+       await DigitalReceiptDialog.show(
+         context,
+         delivery: delivery,
+         deliveryId: deliveryId,
+         proceedLabel: 'Done',
+         remindIfNotPrinted: true,
+       );
+     Keep the call site in _executeSaleWithPayment() unchanged: it already
+     awaits the prompt before popping back to PJP / resetting the form, so the
+     reminder naturally blocks that continuation until the user decides.
+3B.2 What this gives van sell for free: guarded X / Close / Android back,
+     Bluetooth-off handling, printer picker on connection failure, paper-size
+     selection, retry after a failed print, and the real dealer name instead of
+     the hardcoded 'Selecta Ops'.
+3B.3 Remove now-unused code/imports in van_sell_page.dart (the old AlertDialog
+     plus the page's now-unused _printerService field (line 35) and its
+     thermal_printer_service.dart import (line 15); _printerService is only
+     used inside the old prompt). Add the digital_receipt_dialog.dart import.
+     Verify with flutter analyze.
+3B.4 UX change to be aware of: van sell now shows the receipt preview modal
+     (with a Print button) instead of a small yes/no prompt. One extra tap to
+     close when the user does print; same number of taps to skip, plus the
+     reminder.
+
+PHASE 4 - Tests (test/)
+-----------------------
+New test/digital_receipt_print_reminder_test.dart (widget tests). The printer
+is a platform plugin, so printing needs to be injectable or the unit needs a
+small seam:
+4.1 Seam: allow DigitalReceiptDialog to accept an optional
+    ThermalPrinterService (default: ThermalPrinterService()) so tests can pass
+    a fake; keeps production code path identical.
+4.2 Cases:
+    a) remindIfNotPrinted=true, tap Close         -> reminder shown, dialog
+       and onProceed NOT triggered yet.
+    b) ...then "Close Without Printing"           -> dialog closed,
+       onProceed called once.
+    c) ...then "Print Now" with fake success      -> print called, dialog
+       still open, no reminder on next Close, onProceed called once.
+    d) "Print Now" with fake failure              -> dialog open, reminder
+       appears again on next Close.
+    e) header X and system back (tester.binding.handlePopRoute) behave like
+       the Close button.
+    f) remindIfNotPrinted=false (default)         -> Close exits immediately
+       with no reminder (protects delivery_page / return_page).
+    g) Tap outside the reminder does not dismiss it.
+    h) Van sell: add a small test (or extend an existing van sell test) that
+       _promptThermalPrint now opens DigitalReceiptDialog with
+       remindIfNotPrinted=true, if the page can be pumped with fakes; otherwise
+       cover via manual checklist.
+4.3 Run: flutter analyze, then flutter test
+    test/digital_receipt_print_reminder_test.dart and the existing
+    test/exit_guard_and_back_navigation_test.dart (back handling regression).
+
+PHASE 5 - Manual verification checklist
+---------------------------------------
+- Picklist -> For Delivery -> modal -> Close (no print): reminder appears.
+- Same via header X and via Android back: reminder appears.
+- "Print Now" with printer paired and on: prints, modal stays, Close then
+  exits without a reminder.
+- "Print Now" with Bluetooth off / no printer: error toast or device picker;
+  Close still reminds.
+- "Close Without Printing": returns to picklist list as before.
+- Van sell: complete a sale -> receipt modal appears; Close / X / Android back
+  without printing -> reminder; "Close Without Printing" -> continues to
+  PJP / resets the form exactly as before; Print Now with printer off ->
+  stays in modal, reminder again on next close.
+- Open an existing delivery from delivery_page / return_page -> receipt icon
+  -> Close: NO reminder.
+
+FILES TO CHANGE
+---------------
+- lib/views/widgets/digital_receipt_dialog.dart   (state, _handleClose,
+                                                   PopScope, new param)
+- lib/views/widgets/alert_widget.dart             (only if option A:
+                                                   barrierDismissible param)
+- lib/views/pages/dashboard/picklist_page.dart    (pass remindIfNotPrinted)
+- lib/views/pages/dashboard/van_sell_page.dart    (_promptThermalPrint ->
+                                                   DigitalReceiptDialog)
+- test/digital_receipt_print_reminder_test.dart   (new)
+
+RISKS / NOTES
+-------------
+- "Printed" = printReceipt() returned true (bytes sent to the printer). We
+  cannot confirm paper physically came out (e.g. paper jam / out of paper).
+- Adding PopScope changes Android back behavior of this dialog (back now
+  triggers the guarded close + onProceed). This is intended and fixes the
+  inconsistency, but should be checked on a device.
+- The state is per-dialog-session. If the app is killed or the user bypasses
+  via "Close Without Printing", nothing is stored; the receipt can still be
+  reprinted later from the Delivery page's receipt icon.
+- No Firestore / data model / rules changes. No backfill needed.

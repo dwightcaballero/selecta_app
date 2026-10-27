@@ -19,8 +19,8 @@ class BadOrderBatchService {
         );
   }
 
-  Stream<QuerySnapshot<BadOrderBatch>> getListBatches() {
-    return _batchRef.orderBy('pulloutDate', descending: true).snapshots();
+  Stream<QuerySnapshot<BadOrderBatch>> getListBatches({int limit = 50}) {
+    return _batchRef.orderBy('pulloutDate', descending: true).limit(limit).snapshots();
   }
 
   Future<DocumentSnapshot<BadOrderBatch>> getBatch(String batchId) {

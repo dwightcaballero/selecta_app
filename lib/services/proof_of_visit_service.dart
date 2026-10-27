@@ -54,15 +54,23 @@ class ProofOfVisitService {
     return null;
   }
 
-  /// Retrieves all proof of visit records for a specific store.
-  Future<List<ProofOfVisit>> getProofsOfVisitByStore(String storeName) async {
-    final snapshot = await _collection.where('storeName', isEqualTo: storeName).orderBy('visitDate', descending: true).get();
+  /// Retrieves proof of visit records for a specific store.
+  Future<List<ProofOfVisit>> getProofsOfVisitByStore(String storeName, {int limit = 50}) async {
+    final snapshot = await _collection
+        .where('storeName', isEqualTo: storeName)
+        .orderBy('visitDate', descending: true)
+        .limit(limit)
+        .get();
 
     return snapshot.docs.map((d) => d.data()).toList();
   }
 
-  /// Realtime stream of all proof of visit records, ordered by visit date descending.
-  Stream<List<ProofOfVisit>> getAllProofsOfVisitStream() {
-    return _collection.orderBy('visitDate', descending: true).snapshots().map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+  /// Realtime stream of proof of visit records, ordered by visit date descending.
+  Stream<List<ProofOfVisit>> getAllProofsOfVisitStream({int limit = 100}) {
+    return _collection
+        .orderBy('visitDate', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
 }

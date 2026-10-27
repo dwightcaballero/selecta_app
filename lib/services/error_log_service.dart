@@ -61,6 +61,8 @@ class ErrorLogItem {
   Map<String, dynamic> toFirestore() {
     final map = toJson();
     map['loggedDate'] = Timestamp.fromDate(timestamp);
+    // Cost Optimization: 30-day retention TTL for transient error logs
+    map['expireAt'] = Timestamp.fromDate(timestamp.add(const Duration(days: 30)));
     return map;
   }
 
@@ -335,6 +337,7 @@ class ErrorLogService {
   static Stream<List<ErrorLogItem>> streamFirestoreLogs({int limit = 100}) {
     return FirebaseFirestore.instance
         .collection(collectionRef)
+        .orderBy('loggedDate', descending: true)
         .limit(limit)
         .snapshots()
         .map((snapshot) {
@@ -343,7 +346,6 @@ class ErrorLogService {
         data['id'] = doc.id;
         return ErrorLogItem.fromJson(data);
       }).toList();
-      items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       return items;
     });
   }
@@ -358,24 +360,23 @@ class ErrorLogService {
     }
   }
 
-  /// Clears all error log documents from Cloud Firestore.
-  static Future<int> clearAllFirestoreLogs() async {
+  /// Clears error log documents from Cloud Firestore in bounded batches (max 500 per call).
+  static Future<int> clearAllFirestoreLogs({int limit = 500}) async {
     try {
-      final snapshot = await FirebaseFirestore.instance.collection(collectionRef).get();
+      final snapshot = await FirebaseFirestore.instance
+          .collection(collectionRef)
+          .limit(limit)
+          .get();
       if (snapshot.docs.isEmpty) return 0;
 
-      const batchSize = 400;
-      for (var i = 0; i < snapshot.docs.length; i += batchSize) {
-        final chunk = snapshot.docs.skip(i).take(batchSize);
-        final batch = FirebaseFirestore.instance.batch();
-        for (final doc in chunk) {
-          batch.delete(doc.reference);
-        }
-        await batch.commit();
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
       }
+      await batch.commit();
       return snapshot.docs.length;
     } catch (e) {
-      debugPrint('[ErrorLogService] Failed to clear all Firestore logs: $e');
+      debugPrint('[ErrorLogService] Failed to clear Firestore logs: $e');
       rethrow;
     }
   }

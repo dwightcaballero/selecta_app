@@ -7,6 +7,12 @@ Context: Project "selectaapp" is on the Blaze (pay-as-you-go) plan. Blaze has
 the same free daily/monthly quotas as Spark, but NO hard spending cap.
 Note: Findings come from static code review only. Phase 0 confirms priorities
 against real usage numbers before any code is changed.
+Scope decision: the app is Android-only. It will NOT be deployed to web, so
+Firebase Hosting and web-specific work (reCAPTCHA, web caching) are out of
+scope for this plan.
+Revision 2: added region check, Cloud Monitoring alerts, billing export, log
+retention, Firestore TTL policies (Phase 2.5), function memory/region/targeted
+deploys, Gemini key isolation, and a regression-guard script.
 
 Free quotas to stay under (Firebase pricing page)
 - Firestore: 50K reads/day, 20K writes/day, 20K deletes/day, 1 GiB stored,
@@ -14,7 +20,10 @@ Free quotas to stay under (Firebase pricing page)
 - Cloud Storage (*.firebasestorage.app bucket): 5 GB stored, 100 GB/month
   download, 5K uploads/month, 50K downloads/month
 - Cloud Functions: 2M invocations/month; Artifact Registry 500 MB
-- Hosting: 10 GB stored, 360 MB/day transfer
+- Hosting: not used (Android-only app, no web deploy)
+- Cloud Logging: 50 GiB/month ingestion free (retention beyond 30 days billed)
+- Cloud Storage free tier applies ONLY to buckets in us-central1, us-east1 or
+  us-west1; a bucket in any other region is billed from the first byte
 - Free regardless: Auth (email/password), FCM, Crashlytics, Performance
 
 Codebase snapshot (relevant to cost)
@@ -26,16 +35,72 @@ Codebase snapshot (relevant to cost)
 - Photos: resized to 1280px / JPEG q75 on upload; ~40 screens use
   Image.network (no disk cache) vs. 1 cached widget (CachedProductImage)
 
-Assumption to confirm: number of dealers/salesmen/stores and product count.
-Reads/day scale with (users x launches/day x collection sizes).
+Known scale (from owner): 2 dealers, 2 salesmen, ~100 stores, ~200 products,
+and stores will keep increasing.
+Reads/day scale with (users x launches/day x collection sizes). Stores are
+the growth driver, so every per-launch read cost is multiplied by the store
+count. Rough example: 100 stores x 2 launches x (2 x 200 products) =
+80K reads/day, already above the 50K/day free quota, from catalog sync alone
+(400K/day at 500 stores). With the Phase 2.1 version doc this drops to about
+1 read per launch (~200/day at 100 stores). This is why Phase 2.1 is the top
+read saving. Design target: still under quota at 500 stores.
 
 
 PHASE 0 - SAFETY NET AND BASELINE (0.5 day, no code changes)
 ------------------------------------------------------------
 [ ] Google Cloud Billing -> Budgets & alerts: create budgets of $1, $5, $10
     with email alerts at 50% / 90% / 100%
-[ ] Optional hard stop: budget -> Pub/Sub -> function that disables billing
-    (only if you accept the app going down at the cap; decide explicitly)
+[ ] Hard stop (decide explicitly): budgets only alert, with a delay of hours.
+    Recommended: ALERTS ONLY plus the Cloud Monitoring alerts below. A
+    budget -> Pub/Sub -> billing-disable function stops spend but takes the
+    whole app offline and can make Firestore/Storage data unavailable.
+[ ] Region (owner reported: Firestore/Functions region asia-east1, Storage
+    bucket location ASIA1, which is a Google dual-region, Tokyo + Osaka).
+    - Firestore: free quota applies to the default database in any region, so
+      asia-east1 is fine.
+    - Storage: the no-cost tier covers only us-central1 / us-east1 / us-west1.
+      An ASIA1 bucket is billed from the first byte (storage, downloads and
+      operations), and dual-region storage is priced higher than single
+      region. At 100 stores the amount is likely small (cents to low
+      dollars/month) but it is NOT $0. Verify on the Firebase pricing page and
+      confirm the bucket location in Firebase console -> Storage.
+    - Locations cannot be changed after creation. Options: (a) accept the
+      small Storage cost and rely on budget alerts plus the Phase 6 savings;
+      (b) create a new bucket in a US no-cost region and move uploads there
+      (`FirebaseStorage.instanceFor(bucket: ...)`), then migrate old files.
+      CAUTION: the Firebase no-cost tier is documented for the DEFAULT bucket
+      in a US region; the default bucket cannot be changed after creation. It
+      is not confirmed that an additional bucket qualifies, so verify on the
+      pricing page BEFORE migrating anything. Other implications of (b): mixed
+      old/new buckets (old photo URLs keep working, old bucket still billed for
+      what it holds), storage.rules and firebase.json need a second storage
+      target, the update/APK upload CI and delete-by-URL helper must handle both
+      buckets, old app versions keep uploading to the old bucket until updated,
+      and image loads from a US bucket are slower for users in Asia.
+      Current recommendation: (a), then revisit if Storage cost exceeds
+      about $1-2/month.
+      Decide after seeing the Phase 0 Storage usage numbers. Because photos
+      are the part that is billed, Phase 6 (disk cache, thumbnails) matters
+      more than usual.
+[ ] Cloud Functions region: v1 `functions.https.onCall` with no region
+    defaults to us-central1, while Firestore is in asia-east1 (cross-region
+    latency on every call). Move functions to asia-east1: set the region in
+    functions/src/index.ts and call `FirebaseFunctions.instanceFor(region:
+    'asia-east1')` in store_auth_service.dart (currently
+    FirebaseFunctions.instance). Deploy new-region functions first, ship the
+    app update, then delete the old us-central1 copies (old app versions still
+    call us-central1 until updated, so keep both until the update rolls out).
+[ ] Enable Billing export to BigQuery (standard export, small volume stays in
+    the BigQuery free tier) so cost can be seen per SKU, not as one total
+[ ] Cloud Monitoring alert policies (react faster than budgets):
+    - Firestore reads > 40K/day, writes > 15K/day, deletes > 15K/day
+    - Storage egress and download operations (50K/month limit)
+    - Cloud Functions invocations > ~50K/day
+[ ] Cloud Logging: set _Default bucket retention to 30 days, check ingestion
+    volume (Logs Storage), add an exclusion filter for noisy debug logs
+[ ] Hosting: confirm no site is deployed (Firebase console -> Hosting). Since
+    web is out of scope, optionally remove the "hosting" block from
+    firebase.json so an accidental `firebase deploy` cannot publish it
 [ ] Firebase console -> Firestore -> Usage: record reads/writes/deletes per day
     for the last 7-30 days, note the peak day
 [ ] Firebase console -> Storage -> Usage: record GB stored, GB downloaded,
@@ -68,22 +133,43 @@ traffic; a few lines of rules prevent this.
 
 1.2 App Check (free)
 [ ] Add firebase_app_check to pubspec.yaml
+[ ] Distribution today: sideloaded APK; Google Play release planned. Plan
+    around both stages:
+    - Now (sideloaded): add App Check in MONITOR mode only. Do NOT enforce
+      while users run sideloaded builds, since Play Integrity attestation
+      may fail for them. Rely on Phase 1.1/1.3/1.4 as the main protection.
+    - After the Play release: use the Play Integrity provider. Register BOTH
+      SHA-256 certificates in Firebase (your upload key and the Play App
+      Signing key from Play Console), review monitor metrics, then enforce
+      Functions/Storage first, Firestore last.
+    - Keep the sideload-to-Play migration in mind: users on old sideloaded
+      builds must update to the Play version before enforcement is turned on.
 [ ] Android: Play Integrity provider (needs the app signed/distributed so
-    the SHA-256 is registered; APKs sideloaded from GitHub may need the
-    debug provider during testing or SafetyNet/Play Integrity setup)
-[ ] Web: reCAPTCHA v3 / Enterprise provider
+    the SHA-256 is registered)
+[ ] Web provider not needed (app is not deployed to web)
 [ ] Initialize in main.dart after Firebase.initializeApp
 [ ] Roll out in MONITOR mode for 1-2 weeks, check the metrics for legitimate
     clients failing attestation, then ENFORCE for Firestore, Storage, Functions
 [ ] In functions, set `enforceAppCheck: true` on callable functions
     (requires firebase-functions v2 API or runWith({enforceAppCheck: true})
     on v4 as used today)
+[ ] Enforcement order: Functions and Storage first (easiest to abuse, and
+    storeLogin etc. are reachable by anyone), Firestore last
+[ ] Debug-provider tokens must only be used in debug builds; never ship them
 Risk: enforcing too early locks out sideloaded APK users. Monitor first.
 
 1.3 Cloud Functions limits
 [ ] functions/src/index.ts: add runWith({ maxInstances: 5, timeoutSeconds: 30 })
     to every function (or setGlobalOptions)
+[ ] Also set memory to 256MB (or 128MB) and an explicit region matching
+    Firestore (see Phase 0)
 [ ] Keep minInstances at 0 (default)
+[ ] Deploy only changed functions (`firebase deploy --only functions:<name>`)
+    to limit Cloud Build / Artifact Registry usage
+[ ] Note: all 5 callables are v1 `functions.https.onCall`; createStoreAccount,
+    storeChangePassword, resetStorePassword already check context.auth, but
+    storeLogin is intentionally pre-auth, so it relies on App Check plus the
+    lockout counter for abuse protection
 [ ] Remove getStoreCatalog if confirmed unused (no caller found in lib/);
     otherwise leave it, it costs nothing idle
 [ ] Consider upgrading firebase-functions ^4.6 to the current major (v2 API)
@@ -107,12 +193,25 @@ Risk: enforcing too early locks out sideloaded APK users. Monitor first.
 1.5 Gemini API key exposure
 [ ] geminiApiKey is stored in Firestore configurations (readable by every
     signed-in user) and in local prefs
-[ ] Confirm the key's Google Cloud project: if billing is enabled there,
-    Gemini usage is billed outside Firebase
+[ ] Owner reports the Gemini key belongs to Google Cloud project
+    gen-lang-client-0314053887 (projects/439618732808): no billing, free tier.
+    Good. Still verify two things: (1) the key currently saved in Firestore
+    configurations and local prefs is actually from THAT project (Cloud
+    Console -> APIs & Services -> Credentials), not an older key from
+    `selectaapp`; (2) Billing -> Account management shows no billing account
+    linked to it. Delete or rotate any older key from a billing-enabled
+    project.
 [ ] Restrict the key (API restriction to Generative Language API; Android app
     restriction) or use a key from a project WITHOUT billing
+[ ] Recommended: create the key in a SEPARATE Google Cloud project with no
+    billing account (AI Studio free tier). Calls then fail at the free-tier
+    limit instead of producing a charge. Never reuse a key from `selectaapp`
+    (Blaze, billing-enabled) for Gemini.
 [ ] Enforce a hard monthly cap using the existing gemini_api_usage counter
     (gemini_ai_service.dart) and show a friendly "limit reached" message
+[ ] The client counter is bypassable because the key is exposed; for a real
+    per-user daily cap, enforce it server-side (callable function that
+    proxies the call), see the longer-term item below
 [ ] Longer-term (optional): proxy Gemini calls via a Cloud Function so the key
     is never sent to clients
 
@@ -169,6 +268,21 @@ pjp_controller (~1151), product_sorting_page, placement_pairs_dialog.
 [ ] inventory_service.dart ~3615 reconcileDailySnapshots reads one doc + its
     items subcollection per day in a loop: cap the range (e.g. 31 days) and
     skip days already reconciled
+2.5 Firestore TTL policies (automatic cleanup, TTL deletes are not billed as
+    delete operations and keep storage under 1 GiB)
+[ ] Add an `expireAt` Timestamp field to the writers of: error_logs
+    (error_log_service.dart already writes `loggedDate`; add expireAt = now
+    + 30-90 days), store_login_attempts (Admin SDK write in storeLogin),
+    gemini_api_usage daily counters, and other transient docs (old
+    notifications, finished scout sessions if business rules allow)
+[ ] Create TTL policies per collection: Firestore console -> Indexes -> TTL,
+    or `gcloud firestore fields ttls update expireAt --collection-group=<name>
+    --enable-ttl`
+[ ] Existing docs: backfill expireAt with a one-off Admin SDK script
+[ ] Retention approved by owner: 30 days for logs and similar transient
+    records. Apply ONLY to log/counter/attempt collections. Do not apply TTL to
+    business records (delivery, picklists, POs, inventory audits, returns,
+    product data) or to photos. Re-confirm any collection not listed above.
 Exit criteria: reads/day on a normal workday drops measurably versus the
 Phase 0 baseline; app still shows fresh data after admin edits.
 
@@ -258,6 +372,12 @@ PHASE 6 - STORAGE DOWNLOAD AND CLEANUP (1-2 days)
     (optionally generate a ~300px thumbnail at upload time and store both)
 [ ] Quota check: 50K downloads/month is the binding free limit on the
     firebasestorage.app bucket; uncached list views can exceed it quickly
+[ ] Set `cacheControl: 'public, max-age=31536000'` in the SettableMetadata of
+    new uploads (helperfunctions.dart ~313 and
+    submit_return_proof_sheet.dart ~85). Safe only if a photo is never
+    overwritten at the same path (new uploads use new paths). Helps HTTP
+    caching in cached_network_image; low value on its own, applies to new
+    uploads only. cached_network_image is NOT yet in pubspec.yaml.
 
 6.2 Upload size
 [ ] saveImage already resizes to 1280 px / q75 (good); confirm all upload
@@ -268,9 +388,9 @@ PHASE 6 - STORAGE DOWNLOAD AND CLEANUP (1-2 days)
 6.3 Delete orphaned files
 [ ] When a record with an image is deleted/replaced, call the existing delete
     by URL helper (helperfunctions.dart ~170); audit each delete path
-[ ] Optional: set a Storage lifecycle rule (Google Cloud console) to delete
-    objects under {uid}/uploads older than N months, only if business rules
-    allow
+[ ] Storage lifecycle deletion of photos: NOT enabled. The owner approved a
+    30-day retention only for logs and similar transient records (see 2.5),
+    not for photos. Ask again before deleting any photo older than N months.
 
 6.4 APK update downloads
 [ ] app_update_service.dart: each update check reads Firestore
@@ -292,6 +412,9 @@ PHASE 7 - MONITORING AND REGRESSION GUARDS (ongoing, 0.5 day setup)
     weekly for 1 month
 [ ] Keep budget alerts; add an alert on Firestore reads via Cloud Monitoring
     (e.g. > 40K reads/day)
+[ ] Add a grep-based check script in scripts/ (run in CI or pre-commit) that
+    flags `.snapshots()` / `.get()` on growing collections with no
+    limit()/where(), so the savings from Phases 2-3 do not erode
 [ ] Add a short "cost checklist" to the repo (README) for new features:
     - every query has limit()/where
     - listeners are created once and cancelled on dispose
@@ -302,31 +425,47 @@ PHASE 7 - MONITORING AND REGRESSION GUARDS (ongoing, 0.5 day setup)
 
 ORDER OF WORK
 -------------
-1. Phase 0 (no code)
-2. Phase 1.1, 1.3, 1.4 (rules and function limits; small, safe)
-3. Phase 2 (read savings; biggest expected impact)
-4. Phase 3 (listeners)
-5. Phase 1.2 / 1.5 (App Check rollout, Gemini key) in parallel as it needs
-   monitoring time
-6. Phase 4, Phase 6
-7. Phase 5 (claims) last, since it is the riskiest change
-8. Phase 7 continuous
+1. Phase 0 (no code): region check, budgets, Monitoring alerts first
+2. Phase 1.5 Gemini key isolation (most likely source of a surprise bill;
+   config change only)
+3. Phase 1.1, 1.3, 1.4 (rules and function limits; small, safe)
+4. Phase 2.1 (catalog version doc; biggest expected read saving), then rest of
+   Phase 2 including 2.5 TTL
+5. Phase 3 (listeners)
+6. Phase 1.2 (App Check rollout) in parallel as it needs monitoring time
+7. Phase 4, Phase 6
+8. Phase 5 (claims) last, since it is the riskiest change
+9. Phase 7 continuous
 
 
-RISKS / DECISIONS NEEDED FROM YOU
----------------------------------
-1. Hard spending cap: Google has no native one. A billing-disable function
-   stops the bill but takes the whole app offline. Do you want it, or alerts
-   only?
-2. App Check on sideloaded APKs: need to decide on provider setup (Play
-   Integrity requires Play distribution or registered signing keys).
-3. Gemini: is the key tied to a billing-enabled project? Keep client-side key
-   or proxy through a function?
-4. Is deleting old photos/log data acceptable (lifecycle rules)?
-5. Do any other clients (a second Firebase project/dealer DB is referenced via
-   the REST API in selecta_product_service.dart) depend on the master
-   `selectaapp` collections staying publicly readable? Confirm before
-   tightening rules on admin_selecta_products.
+DECISIONS RECORDED (answered by owner)
+--------------------------------------
+1. Spending protection: ALERTS ONLY (no billing kill switch).
+2. Distribution: sideloaded APK now, Google Play planned. App Check stays in
+   monitor mode until the Play release (see 1.2).
+3. Gemini: use a SEPARATE Google Cloud project with NO billing and a
+   client-side key (simple approach). The Cloud Function proxy is optional
+   later hardening, not required.
+4. Retention: 30 days for logs and similar transient records only. No photo
+   deletion.
+5. Other clients: none read the master `selectaapp` collections without
+   login, so rules on admin_selecta_products can be tightened. Before
+   deploying, still test that the app's own REST fallback in
+   selecta_product_service.dart keeps working.
+6. Region: Firestore/Functions asia-east1, Storage bucket ASIA1 (dual-region,
+   not in the Storage free tier; see Phase 0 for the impact and the Functions
+   region move).
+7. Scale: 2 dealers, 2 salesmen, ~100 stores, ~200 products, growing.
+8. Gemini project: gen-lang-client-0314053887, no billing, free tier. Owner
+   confirmed no billing account is linked.
+
+STILL OPEN
+----------
+[ ] Choose the Storage option (accept the cost vs. US bucket) after the
+    Phase 0 Storage usage numbers
+[ ] Verify the key stored in the app (Firestore configurations and local prefs)
+    comes from the no-billing Gemini project (Phase 1.5). Billing check is
+    done: no billing linked.
 
 TESTING STRATEGY
 ----------------
@@ -342,9 +481,9 @@ TESTING STRATEGY
 
 ESTIMATED EFFORT
 ----------------
-Phase 0: 0.5 day | Phase 1: 1-2 | Phase 2: 2-3 | Phase 3: 1-2 |
-Phase 4: 1 | Phase 5: 2-3 | Phase 6: 1-2 | Phase 7: 0.5
-Total: about 9-14 days
+Phase 0: 0.5-1 day | Phase 1: 1-2 | Phase 2: 2.5-3.5 (incl. TTL) | Phase 3: 1-2 |
+Phase 4: 1 | Phase 5: 2-3 | Phase 6: 1-2 | Phase 7: 0.5-1
+Total: about 10-16 days
 
 Expected outcome: normal daily usage stays well under the free quotas, abuse
 paths are closed, and any unexpected spike produces an alert before it

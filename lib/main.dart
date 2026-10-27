@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
@@ -35,7 +36,20 @@ void main() async {
     cacheSizeBytes: 100 * 1024 * 1024,
   );
 
-  // 2.2 Configure Firebase Performance and Crashlytics
+  // 2.2 Configure Firebase App Check in MONITOR mode (Phase 1.2)
+  if (!kIsWeb) {
+    try {
+      await FirebaseAppCheck.instance.activate(
+        providerAndroid: kDebugMode
+            ? const AndroidDebugProvider()
+            : const AndroidPlayIntegrityProvider(),
+      );
+    } catch (e) {
+      debugPrint('FirebaseAppCheck init error: $e');
+    }
+  }
+
+  // 2.3 Configure Firebase Performance and Crashlytics
   if (!kIsWeb) {
     await FirebasePerformance.instance.setPerformanceCollectionEnabled(!kDebugMode);
     await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);

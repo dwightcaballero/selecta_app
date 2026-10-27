@@ -37,6 +37,7 @@ class StoreAccountCreationResult {
 class StoreAuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  // ignore: unused_field
   final UserService _userService;
   final FirebaseFunctions _functions;
 
@@ -44,7 +45,7 @@ class StoreAuthService {
     : _auth = auth ?? FirebaseAuth.instance,
       _firestore = firestore ?? FirebaseFirestore.instance,
       _userService = userService ?? UserService(),
-      _functions = functions ?? FirebaseFunctions.instance;
+      _functions = functions ?? FirebaseFunctions.instanceFor(region: 'asia-east1');
 
   /// Validates a username according to Phase 1.3 rules:
   /// Lowercase letters, digits, '.', '_', '-', between 4 and 20 characters.
@@ -123,101 +124,57 @@ class StoreAuthService {
     return StoreAccountCreationResult(user: storeUserProfile, temporaryPassword: password, uid: uid);
   }
 
-  /// Store login with username and password
+  /// Store login with username and password via server-side Cloud Function (Phase 1.1)
   Future<StoreAuthResult> storeLogin({required String username, required String password}) async {
     final cleanUsername = username.trim().toLowerCase();
-
-    // 1. Check lockout status
-    final attemptRef = _firestore.collection(STORE_LOGIN_ATTEMPTS_COLLECTION).doc(cleanUsername);
-    final attemptDoc = await attemptRef.get();
-
-    if (attemptDoc.exists) {
-      final data = attemptDoc.data() ?? {};
-      final failedCount = (data['failedAttempts'] as num?)?.toInt() ?? 0;
-      final lastFailedAt = (data['lastFailedAt'] as Timestamp?)?.toDate();
-
-      if (failedCount >= MAX_FAILED_LOGIN_ATTEMPTS && lastFailedAt != null) {
-        final elapsed = DateTime.now().difference(lastFailedAt);
-        if (elapsed < LOCKOUT_DURATION) {
-          final minutesLeft = (LOCKOUT_DURATION.inMinutes - elapsed.inMinutes).clamp(1, 15);
-          throw FormatException('Account is temporarily locked due to too many failed attempts. Please try again in $minutesLeft minute(s).');
-        } else {
-          // Lockout expired, reset attempts
-          await attemptRef.delete();
-        }
-      }
+    final error = validateUsername(cleanUsername);
+    if (error != null) {
+      throw FormatException(error);
     }
 
-    // 2. Resolve username -> storeId
-    final usernameDoc = await _firestore.collection(STORE_USERNAMES_COLLECTION).doc(cleanUsername).get();
-    if (!usernameDoc.exists) {
-      await _recordFailedAttempt(attemptRef);
-      throw const FormatException('Invalid username or password.');
-    }
-
-    final storeId = usernameDoc.data()?['storeId'] as String?;
-    if (storeId == null || storeId.isEmpty) {
-      await _recordFailedAttempt(attemptRef);
-      throw const FormatException('Invalid username or password.');
-    }
-
-    // 3. Confirm store has orderingEnabled == true
-    final storeDoc = await _firestore.collection(HAPISTORE_COLLECTION_REF).doc(storeId).get();
-    if (!storeDoc.exists) {
-      await _recordFailedAttempt(attemptRef);
-      throw const FormatException('Invalid username or password.');
-    }
-
-    final orderingEnabled = (storeDoc.data()?['orderingEnabled'] as bool?) ?? true;
-    if (!orderingEnabled) {
-      throw const FormatException('Online ordering access for this store has been deactivated. Please contact your dealer.');
-    }
-
-    // 4. Authenticate using synthetic email
-    final email = syntheticEmail(cleanUsername);
-    UserCredential userCredential;
     try {
-      userCredential = await authService.value.signIn(email: email, password: password);
-    } catch (e) {
-      await _recordFailedAttempt(attemptRef);
-      throw const FormatException('Invalid username or password.');
-    }
-
-    // 5. Success: clear failed attempts
-    try {
-      await attemptRef.delete();
-    } catch (_) {}
-
-    final user = userCredential.user;
-    final uid = user?.uid ?? '';
-
-    // 6. Fetch user profile
-    var profile = await _userService.getUserByUid(uid);
-    profile ??= await _userService.getUserByEmail(email);
-
-    if (profile == null) {
-      throw const FormatException('Account profile could not be loaded. Please contact your dealer.');
-    }
-
-    // Refresh the local profile cache so a previous account's data is never reused
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_data', jsonEncode(profile.toJson()));
-    } catch (_) {}
-
-    return StoreAuthResult(user: user, userProfile: profile, mustChangePassword: profile.mustChangePassword);
-  }
-
-  /// Records a failed login attempt for lockout tracking
-  Future<void> _recordFailedAttempt(DocumentReference attemptRef) async {
-    try {
-      await _firestore.runTransaction((transaction) async {
-        final doc = await transaction.get(attemptRef);
-        final currentCount = doc.exists ? ((doc.data() as Map?)?['failedAttempts'] as num? ?? 0).toInt() : 0;
-        final newCount = currentCount + 1;
-        transaction.set(attemptRef, {'failedAttempts': newCount, 'lastFailedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+      final callable = _functions.httpsCallable('storeLogin');
+      final result = await callable.call<dynamic>({
+        'username': cleanUsername,
+        'password': password,
       });
-    } catch (_) {}
+
+      final data = Map<String, dynamic>.from(result.data as Map);
+      final customToken = data['customToken'] as String? ?? '';
+      final mustChangePassword = data['mustChangePassword'] as bool? ?? false;
+      final profileMap = Map<String, dynamic>.from(data['userProfile'] as Map? ?? {});
+
+      // Authenticate with Firebase Auth using the server-verified custom token
+      final userCredential = await _auth.signInWithCustomToken(customToken);
+      final user = userCredential.user;
+
+      final profile = Users(
+        username: profileMap['username'] as String? ?? cleanUsername,
+        role: BusinessRole.hapiStore,
+        email: syntheticEmail(cleanUsername),
+        dealerName: profileMap['dealerName'] as String? ?? '',
+        storeId: profileMap['storeId'] as String? ?? '',
+        storeName: profileMap['storeName'] as String? ?? '',
+        mustChangePassword: mustChangePassword,
+      );
+
+      // Refresh the local profile cache so a previous account's data is never reused
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_data', jsonEncode(profile.toJson()));
+      } catch (_) {}
+
+      return StoreAuthResult(
+        user: user,
+        userProfile: profile,
+        mustChangePassword: mustChangePassword,
+      );
+    } on FirebaseFunctionsException catch (e) {
+      throw FormatException(_functionErrorMessage(e, 'storeLogin'));
+    } catch (e) {
+      if (e is FormatException) rethrow;
+      throw FormatException('Store login failed: $e');
+    }
   }
 
   /// Store changes their own password

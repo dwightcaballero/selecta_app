@@ -180,9 +180,15 @@ service cloud.firestore {
       allow write: if isDealerOrAdmin();
     }
 
-    // Store login attempt tracking
+    // Store login attempt tracking: server-side only via Admin SDK / Cloud Functions (Phase 1.1)
     match /store_login_attempts/{username} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // Catalog version metadata tracking (Phase 2.1)
+    match /catalog_meta/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isDealerOrAdmin();
     }
 
     // Store catalog summary docs (availability only, no stock quantities)
