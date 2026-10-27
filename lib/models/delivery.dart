@@ -229,6 +229,17 @@ class Delivery {
   String? source;
   String? storeOrderId;
 
+  String returnProofStatus;
+  String returnProofId;
+  String returnProofUrl;
+  String returnProofNotes;
+  String returnProofSubmittedBy;
+  Timestamp? returnProofSubmittedDate;
+  String returnProofConfirmedBy;
+  Timestamp? returnProofConfirmedDate;
+  String returnProofRejectReason;
+  bool returnProofRequired;
+
   String createdBy;
   String lastUpdatedBy;
   Timestamp createdDate;
@@ -287,6 +298,16 @@ class Delivery {
     this.voidedBy,
     this.source,
     this.storeOrderId,
+    this.returnProofStatus = ReturnProofStatus.none,
+    this.returnProofId = '',
+    this.returnProofUrl = '',
+    this.returnProofNotes = '',
+    this.returnProofSubmittedBy = '',
+    this.returnProofSubmittedDate,
+    this.returnProofConfirmedBy = '',
+    this.returnProofConfirmedDate,
+    this.returnProofRejectReason = '',
+    this.returnProofRequired = false,
   });
 
   /// True if this order/delivery has been voided.
@@ -359,6 +380,16 @@ class Delivery {
     voidedBy: null,
     source: null,
     storeOrderId: null,
+    returnProofStatus: ReturnProofStatus.none,
+    returnProofId: '',
+    returnProofUrl: '',
+    returnProofNotes: '',
+    returnProofSubmittedBy: '',
+    returnProofSubmittedDate: null,
+    returnProofConfirmedBy: '',
+    returnProofConfirmedDate: null,
+    returnProofRejectReason: '',
+    returnProofRequired: false,
   );
 
   static List<OrderItem> _parseItems(Object? raw) {
@@ -432,6 +463,16 @@ class Delivery {
         voidedBy: json['voidedBy'] as String?,
         source: json['source'] as String?,
         storeOrderId: json['storeOrderId'] as String?,
+        returnProofStatus: (json['returnProofStatus'] as String? ?? ReturnProofStatus.none).trim(),
+        returnProofId: (json['returnProofId'] as String? ?? '').trim(),
+        returnProofUrl: (json['returnProofUrl'] as String? ?? '').trim(),
+        returnProofNotes: (json['returnProofNotes'] as String? ?? '').trim(),
+        returnProofSubmittedBy: (json['returnProofSubmittedBy'] as String? ?? '').trim(),
+        returnProofSubmittedDate: _parseTimestamp(json['returnProofSubmittedDate']),
+        returnProofConfirmedBy: (json['returnProofConfirmedBy'] as String? ?? '').trim(),
+        returnProofConfirmedDate: _parseTimestamp(json['returnProofConfirmedDate']),
+        returnProofRejectReason: (json['returnProofRejectReason'] as String? ?? '').trim(),
+        returnProofRequired: _parseBool(json['returnProofRequired']),
       );
 
   factory Delivery.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -494,6 +535,16 @@ class Delivery {
     String? lastUpdatedPage,
     String? source,
     String? storeOrderId,
+    String? returnProofStatus,
+    String? returnProofId,
+    String? returnProofUrl,
+    String? returnProofNotes,
+    String? returnProofSubmittedBy,
+    Timestamp? returnProofSubmittedDate,
+    String? returnProofConfirmedBy,
+    Timestamp? returnProofConfirmedDate,
+    String? returnProofRejectReason,
+    bool? returnProofRequired,
   }) {
     return Delivery(
       storeName: storeName ?? this.storeName,
@@ -544,6 +595,16 @@ class Delivery {
       lastUpdatedPage: lastUpdatedPage ?? this.lastUpdatedPage,
       source: source ?? this.source,
       storeOrderId: storeOrderId ?? this.storeOrderId,
+      returnProofStatus: returnProofStatus ?? this.returnProofStatus,
+      returnProofId: returnProofId ?? this.returnProofId,
+      returnProofUrl: returnProofUrl ?? this.returnProofUrl,
+      returnProofNotes: returnProofNotes ?? this.returnProofNotes,
+      returnProofSubmittedBy: returnProofSubmittedBy ?? this.returnProofSubmittedBy,
+      returnProofSubmittedDate: returnProofSubmittedDate ?? this.returnProofSubmittedDate,
+      returnProofConfirmedBy: returnProofConfirmedBy ?? this.returnProofConfirmedBy,
+      returnProofConfirmedDate: returnProofConfirmedDate ?? this.returnProofConfirmedDate,
+      returnProofRejectReason: returnProofRejectReason ?? this.returnProofRejectReason,
+      returnProofRequired: returnProofRequired ?? this.returnProofRequired,
     );
   }
 
@@ -595,6 +656,16 @@ class Delivery {
       'lastupdatedDate': lastupdatedDate,
       'createdPage': createdPage,
       'lastUpdatedPage': lastUpdatedPage,
+      'returnProofStatus': returnProofStatus,
+      'returnProofId': returnProofId,
+      'returnProofUrl': returnProofUrl,
+      'returnProofNotes': returnProofNotes,
+      'returnProofSubmittedBy': returnProofSubmittedBy,
+      'returnProofSubmittedDate': returnProofSubmittedDate,
+      'returnProofConfirmedBy': returnProofConfirmedBy,
+      'returnProofConfirmedDate': returnProofConfirmedDate,
+      'returnProofRejectReason': returnProofRejectReason,
+      'returnProofRequired': returnProofRequired,
       if (source != null) 'source': source,
       if (storeOrderId != null) 'storeOrderId': storeOrderId,
     };
@@ -642,6 +713,17 @@ class DeliveryModelString {
   static String voidedBy = 'voidedBy';
   static String source = 'source';
   static String storeOrderId = 'storeOrderId';
+
+  static String returnProofStatus = 'returnProofStatus';
+  static String returnProofId = 'returnProofId';
+  static String returnProofUrl = 'returnProofUrl';
+  static String returnProofNotes = 'returnProofNotes';
+  static String returnProofSubmittedBy = 'returnProofSubmittedBy';
+  static String returnProofSubmittedDate = 'returnProofSubmittedDate';
+  static String returnProofConfirmedBy = 'returnProofConfirmedBy';
+  static String returnProofConfirmedDate = 'returnProofConfirmedDate';
+  static String returnProofRejectReason = 'returnProofRejectReason';
+  static String returnProofRequired = 'returnProofRequired';
 
   static String createdBy = 'createdBy';
   static String lastUpdatedBy = 'lastUpdatedBy';

@@ -1,3 +1,6 @@
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/models/delivery.dart';
+import 'package:selecta_ops/models/return_proof.dart';
 import 'package:selecta_ops/models/van_load.dart';
 
 class EndOfDayDTO {
@@ -38,6 +41,9 @@ class EndOfDayDTO {
   double discrepancy = 0;
   double bankdeposit = 0;
 
+  List<StoreReturnProofSummary> returnStores = [];
+  bool hasUnconfirmedReturnProof = false;
+
   EndOfDayDTO({
     required this.totaldelivery,
     required this.pendingstatus,
@@ -70,6 +76,8 @@ class EndOfDayDTO {
     required this.actualcashonhand,
     required this.discrepancy,
     required this.bankdeposit,
+    this.returnStores = const [],
+    this.hasUnconfirmedReturnProof = false,
   });
 
   static EndOfDayDTO empty() => EndOfDayDTO(
@@ -103,5 +111,33 @@ class EndOfDayDTO {
     actualcashonhand: 0,
     discrepancy: 0,
     bankdeposit: 0,
+    returnStores: const [],
+    hasUnconfirmedReturnProof: false,
   );
+}
+
+/// Summary of returned goods and proof-of-return status for a store on a given day.
+class StoreReturnProofSummary {
+  final String storeName;
+  final String status; // 'none' | 'submitted' | 'confirmed' | 'rejected' | 'overridden'
+  final List<MapEntry<String, Delivery>> deliveriesWithIds;
+  final int totalReturnedQty;
+  final double totalReturnedAmount;
+  final ReturnProof? proof;
+  final String? rejectReason;
+
+  const StoreReturnProofSummary({
+    required this.storeName,
+    required this.status,
+    required this.deliveriesWithIds,
+    required this.totalReturnedQty,
+    required this.totalReturnedAmount,
+    this.proof,
+    this.rejectReason,
+  });
+
+  bool get isSatisfied => ReturnProofStatus.isSatisfied(status);
+  bool get isSubmitted => status == ReturnProofStatus.submitted;
+  bool get isRejected => status == ReturnProofStatus.rejected;
+  bool get isRequired => status == ReturnProofStatus.none || status == ReturnProofStatus.rejected;
 }

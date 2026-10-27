@@ -54,6 +54,9 @@ class Configuration {
   double? storeMinimumOrderValue;
   String? storeCutoffTime; // "HH:mm" 24h format e.g. "17:00"
 
+  // Return Proof Gate Cutoff (Grandfathering)
+  Timestamp? returnProofEnabledFrom;
+
   Configuration({
     required this.merchBlitzStartDate,
     required this.merchBlitzEndDate,
@@ -82,10 +85,12 @@ class Configuration {
     this.subCategories = const [],
     this.storeMinimumOrderValue,
     this.storeCutoffTime,
+    this.returnProofEnabledFrom,
   });
 
   bool get hasStoreMinimumOrderValue => storeMinimumOrderValue != null && storeMinimumOrderValue! > 0;
   bool get hasStoreCutoffTime => storeCutoffTime != null && storeCutoffTime!.trim().isNotEmpty;
+  bool get isReturnProofGateEnabled => returnProofEnabledFrom != null;
 
   /// Returns true if [time] is after the configured daily cut-off time.
   bool isAfterCutoff(DateTime time) {
@@ -146,6 +151,7 @@ class Configuration {
         lastStockAuditAt: null,
         productSortMode: 'srp',
         subCategories: const [],
+        returnProofEnabledFrom: null,
       );
 
   Configuration.fromJson(Map<String, Object?> json)
@@ -195,6 +201,7 @@ class Configuration {
               : const [],
           storeMinimumOrderValue: (json['storeMinimumOrderValue'] as num?)?.toDouble(),
           storeCutoffTime: json['storeCutoffTime'] as String?,
+          returnProofEnabledFrom: json['returnProofEnabledFrom'] as Timestamp?,
         );
 
   Configuration copyWith({
@@ -227,6 +234,8 @@ class Configuration {
     bool clearStoreMinimumOrderValue = false,
     String? storeCutoffTime,
     bool clearStoreCutoffTime = false,
+    Timestamp? returnProofEnabledFrom,
+    bool clearReturnProofEnabledFrom = false,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -256,6 +265,7 @@ class Configuration {
       subCategories: subCategories ?? List.from(this.subCategories),
       storeMinimumOrderValue: clearStoreMinimumOrderValue ? null : (storeMinimumOrderValue ?? this.storeMinimumOrderValue),
       storeCutoffTime: clearStoreCutoffTime ? null : (storeCutoffTime ?? this.storeCutoffTime),
+      returnProofEnabledFrom: clearReturnProofEnabledFrom ? null : (returnProofEnabledFrom ?? this.returnProofEnabledFrom),
     );
   }
 
@@ -289,6 +299,7 @@ class Configuration {
       'subCategories': subCategories.map((s) => s.toJson()).toList(),
       if (storeMinimumOrderValue != null) 'storeMinimumOrderValue': storeMinimumOrderValue,
       if (storeCutoffTime != null) 'storeCutoffTime': storeCutoffTime,
+      if (returnProofEnabledFrom != null) 'returnProofEnabledFrom': returnProofEnabledFrom,
     };
   }
 }

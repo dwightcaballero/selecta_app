@@ -214,6 +214,20 @@ service cloud.firestore {
       allow delete: if isDealerOrAdmin();
     }
 
+    // Proof of Return (Gated End of Day - Staff only)
+    match /return_proofs/{proofId} {
+      allow read: if isStaff();
+      allow create: if isStaff() &&
+        request.resource.data.photoUrl is string &&
+        request.resource.data.photoUrl.size() > 0 &&
+        request.resource.data.storeId is string &&
+        request.resource.data.storeId.size() > 0;
+      allow update: if isDealerOrAdmin() || (
+        isStaff() && resource.data.status in ['submitted', 'rejected'] && request.resource.data.status == 'submitted'
+      );
+      allow delete: if isDealerOrAdmin();
+    }
+
     // PJP Order Decisions
     match /pjp_order_decisions/{decisionId} {
       allow read: if isStaff();

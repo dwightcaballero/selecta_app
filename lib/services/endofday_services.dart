@@ -4,8 +4,10 @@ import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
+import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/expenses_services.dart';
+import 'package:selecta_ops/services/return_proof_service.dart';
 import 'package:selecta_ops/services/van_load_service.dart';
 
 class EndofdayServices {
@@ -21,6 +23,8 @@ class EndofdayServices {
         .where(DeliveryModelString.deliveryDate, isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
         .where(DeliveryModelString.deliveryDate, isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
         .get();
+
+    final List<MapEntry<String, Delivery>> allDeliveries = [];
 
     // Loop through the snapshot query objects
     for (var doc in snapshot.docs) {
@@ -80,7 +84,78 @@ class EndofdayServices {
           break;
         default:
       }
+
+      try {
+        allDeliveries.add(MapEntry(doc.id, Delivery.fromJson(data)));
+      } catch (_) {}
     }
+
+    // Process return proof gate for stores with returns
+    try {
+      final config = await ConfigurationService().getConfiguration();
+      final returnProofService = ReturnProofService();
+
+      final Map<String, List<MapEntry<String, Delivery>>> returnsByStore = {};
+      for (final entry in allDeliveries) {
+        final delivery = entry.value;
+        if (ReturnProofService.deliveryHasReturns(delivery) &&
+            ReturnProofService.isDeliverySubjectToGate(delivery, config.returnProofEnabledFrom)) {
+          returnsByStore.putIfAbsent(delivery.storeName.trim(), () => []).add(entry);
+        }
+      }
+
+      if (returnsByStore.isNotEmpty) {
+        final List<StoreReturnProofSummary> summaries = [];
+        bool hasUnconfirmed = false;
+
+        for (final storeEntry in returnsByStore.entries) {
+          final storeName = storeEntry.key;
+          final deliveriesWithIds = storeEntry.value;
+
+          int storeRetQty = 0;
+          double storeRetAmt = 0;
+          for (final d in deliveriesWithIds) {
+            final del = d.value;
+            final isFull = del.transactionStatus == DeliveryStatus.returned;
+            for (final item in del.items) {
+              final q = item.returnedQuantity > 0 ? item.returnedQuantity : (isFull ? item.pickedQuantity : 0);
+              storeRetQty += q;
+              storeRetAmt += (q * item.sellingPrice);
+            }
+          }
+
+          final proof = await returnProofService.getProofForStoreAndDate(storeName, deliveryDate);
+          if (proof != null) {
+            // Re-validate if returns changed
+            await returnProofService.checkAndInvalidateIfReturnsChanged(
+              proof: proof,
+              deliveriesWithIds: deliveriesWithIds,
+            );
+          }
+
+          final refreshedProof = await returnProofService.getProofForStoreAndDate(storeName, deliveryDate);
+          final status = refreshedProof?.status ?? ReturnProofStatus.none;
+
+          final summary = StoreReturnProofSummary(
+            storeName: storeName,
+            status: status,
+            deliveriesWithIds: deliveriesWithIds,
+            totalReturnedQty: storeRetQty,
+            totalReturnedAmount: storeRetAmt,
+            proof: refreshedProof,
+            rejectReason: refreshedProof?.rejectReason,
+          );
+          summaries.add(summary);
+
+          if (!summary.isSatisfied) {
+            hasUnconfirmed = true;
+          }
+        }
+
+        endofday.returnStores = summaries;
+        endofday.hasUnconfirmedReturnProof = hasUnconfirmed;
+      }
+    } catch (_) {}
 
     ExpensesService dbXP = ExpensesService();
     final dayExpenses = await dbXP.getExpensesForEndOfDay(deliveryDate);

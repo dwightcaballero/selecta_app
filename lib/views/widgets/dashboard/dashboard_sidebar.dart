@@ -16,12 +16,14 @@ import 'package:selecta_ops/services/store_order_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorderlist_page.dart';
+import 'package:selecta_ops/services/return_proof_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/configuration_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/dealer_store_orders_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/expenselist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/hapistorelist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/return_receiving_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/others/settings_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
@@ -206,6 +208,17 @@ class _DashboardSidebarState extends State<DashboardSidebar> {
                         badge: snap.data ?? widget.dashboardDTO.returnedDeliveryCount,
                       ),
                     ),
+                    if (widget.isDealer)
+                      StreamBuilder<int>(
+                        stream: ReturnProofService().getPendingProofsStream().map((list) => list.length),
+                        builder: (ctx, snap) => _buildItem(
+                          ctx,
+                          Icons.fact_check_outlined,
+                          'Return Receiving',
+                          const ReturnReceivingPage(),
+                          badge: snap.data ?? 0,
+                        ),
+                      ),
                     _buildItem(
                       context,
                       Icons.account_balance_wallet_outlined,

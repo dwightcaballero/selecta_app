@@ -171,6 +171,21 @@ class AppPages {
   static const payslip = "Payslip";
   static const superAdmin = "Super Admin";
   static const storeOrders = "Store Orders";
+  static const returnReceiving = "Return Receiving";
+}
+
+class ReturnProofStatus {
+  static const String none = "none";
+  static const String submitted = "submitted";
+  static const String confirmed = "confirmed";
+  static const String rejected = "rejected";
+  static const String overridden = "overridden";
+
+  static const List<String> all = [none, submitted, confirmed, rejected, overridden];
+
+  static bool isSatisfied(String? status) {
+    return status == confirmed || status == overridden;
+  }
 }
 
 class PayslipStatus {

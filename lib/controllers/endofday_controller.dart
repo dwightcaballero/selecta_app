@@ -158,12 +158,21 @@ class EndOfDayController {
     required String breakdownId,
     DateTime? currentDate,
     DateTime? oldestUnverifiedDate,
+    bool isDealer = false,
   }) {
     if (endOfDayData.totaldelivery == 0 && breakdownId.isEmpty) {
       throw Exception('No deliveries recorded for this date');
     }
     if (endOfDayData.pendingstatus > 0) {
       throw Exception('There should be no transaction that is pending for delivery');
+    }
+    // Return proof gate applies to salesman role only
+    if (!isDealer && endOfDayData.hasUnconfirmedReturnProof) {
+      final unconfirmedStores = endOfDayData.returnStores
+          .where((s) => !s.isSatisfied)
+          .map((s) => s.storeName)
+          .join(', ');
+      throw Exception('Proof of return not yet confirmed by warehouse for: $unconfirmedStores');
     }
   }
 

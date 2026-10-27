@@ -23,7 +23,9 @@ import 'package:selecta_ops/views/pages/dashboard/prospect_scout_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/returnlist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_load_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
+import 'package:selecta_ops/services/return_proof_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/dealer_store_orders_page.dart';
+import 'package:selecta_ops/views/pages/sidebar/return_receiving_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/supplier_oos_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -147,6 +149,17 @@ class DashboardDrawer extends StatelessWidget {
               badgeCount: snap.data ?? dashboardDTO.returnedDeliveryCount,
             ),
           ),
+          if (isDealer)
+            StreamBuilder<int>(
+              stream: ReturnProofService().getPendingProofsStream().map((list) => list.length),
+              builder: (ctx, snap) => _buildDrawerItem(
+                context,
+                Icons.fact_check_outlined,
+                'Return Receiving',
+                const ReturnReceivingPage(),
+                badgeCount: snap.data ?? 0,
+              ),
+            ),
           _buildDrawerItem(
             context,
             Icons.account_balance_wallet_outlined,

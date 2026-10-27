@@ -1,0 +1,351 @@
+SELECTA APP - FIREBASE COST OPTIMIZATION PLAN (FOR REVIEW)
+===========================================================
+
+Goal: Keep the Firebase bill at $0 (stay inside Blaze free quotas) and make
+runaway or abusive usage impossible or at least alerted.
+Context: Project "selectaapp" is on the Blaze (pay-as-you-go) plan. Blaze has
+the same free daily/monthly quotas as Spark, but NO hard spending cap.
+Note: Findings come from static code review only. Phase 0 confirms priorities
+against real usage numbers before any code is changed.
+
+Free quotas to stay under (Firebase pricing page)
+- Firestore: 50K reads/day, 20K writes/day, 20K deletes/day, 1 GiB stored,
+  10 GiB/month egress
+- Cloud Storage (*.firebasestorage.app bucket): 5 GB stored, 100 GB/month
+  download, 5K uploads/month, 50K downloads/month
+- Cloud Functions: 2M invocations/month; Artifact Registry 500 MB
+- Hosting: 10 GB stored, 360 MB/day transfer
+- Free regardless: Auth (email/password), FCM, Crashlytics, Performance
+
+Codebase snapshot (relevant to cost)
+- Firestore settings: persistence on, 100 MB cache (main.dart)
+- ~72 .snapshots() listeners, ~160 .get() calls, most list streams have limits
+- Full-collection .get() on product catalogs, delivery, hapistores, POs
+- 5 callable Cloud Functions (functions/src/index.ts), 4 used by the app
+- No App Check, no storage.rules in repo, one public-write Firestore rule
+- Photos: resized to 1280px / JPEG q75 on upload; ~40 screens use
+  Image.network (no disk cache) vs. 1 cached widget (CachedProductImage)
+
+Assumption to confirm: number of dealers/salesmen/stores and product count.
+Reads/day scale with (users x launches/day x collection sizes).
+
+
+PHASE 0 - SAFETY NET AND BASELINE (0.5 day, no code changes)
+------------------------------------------------------------
+[ ] Google Cloud Billing -> Budgets & alerts: create budgets of $1, $5, $10
+    with email alerts at 50% / 90% / 100%
+[ ] Optional hard stop: budget -> Pub/Sub -> function that disables billing
+    (only if you accept the app going down at the cap; decide explicitly)
+[ ] Firebase console -> Firestore -> Usage: record reads/writes/deletes per day
+    for the last 7-30 days, note the peak day
+[ ] Firebase console -> Storage -> Usage: record GB stored, GB downloaded,
+    operations
+[ ] Firebase console -> Functions: confirm which functions exist and their
+    invocation counts
+[ ] Run `firebase functions:artifacts:setpolicy` so old build images are
+    cleaned up automatically (stays under 500 MB free Artifact Registry)
+[ ] Check Google Cloud -> APIs & Services -> Credentials: which API keys exist
+    and whether any billable APIs (Maps, Gemini) are enabled in this project
+[ ] Save these numbers as the baseline to compare after each phase
+Exit criteria: baseline numbers recorded, budget alerts active.
+
+
+PHASE 1 - CLOSE ABUSE AND SECURITY HOLES (1-2 days, highest risk reduction)
+---------------------------------------------------------------------------
+Why first: anyone with the public API key can generate unlimited billable
+traffic; a few lines of rules prevent this.
+
+1.1 store_login_attempts public rule
+[ ] firestore.rules: `match /store_login_attempts/{username}` currently
+    `allow read, write: if true`
+[ ] Verify storeLogin (functions/src/index.ts ~line 150) already tracks
+    attempts via Admin SDK (it does: count/lastAttempt increments)
+[ ] Check store_auth_service.dart (~line 127-140) reads attemptDoc directly
+    from the client; move the lockout check fully into the storeLogin function
+[ ] Change rule to `allow read, write: if false`
+[ ] Test: store login success, wrong password, lockout, reset after success
+[ ] Deploy functions first, then rules (order matters, avoids breaking login)
+
+1.2 App Check (free)
+[ ] Add firebase_app_check to pubspec.yaml
+[ ] Android: Play Integrity provider (needs the app signed/distributed so
+    the SHA-256 is registered; APKs sideloaded from GitHub may need the
+    debug provider during testing or SafetyNet/Play Integrity setup)
+[ ] Web: reCAPTCHA v3 / Enterprise provider
+[ ] Initialize in main.dart after Firebase.initializeApp
+[ ] Roll out in MONITOR mode for 1-2 weeks, check the metrics for legitimate
+    clients failing attestation, then ENFORCE for Firestore, Storage, Functions
+[ ] In functions, set `enforceAppCheck: true` on callable functions
+    (requires firebase-functions v2 API or runWith({enforceAppCheck: true})
+    on v4 as used today)
+Risk: enforcing too early locks out sideloaded APK users. Monitor first.
+
+1.3 Cloud Functions limits
+[ ] functions/src/index.ts: add runWith({ maxInstances: 5, timeoutSeconds: 30 })
+    to every function (or setGlobalOptions)
+[ ] Keep minInstances at 0 (default)
+[ ] Remove getStoreCatalog if confirmed unused (no caller found in lib/);
+    otherwise leave it, it costs nothing idle
+[ ] Consider upgrading firebase-functions ^4.6 to the current major (v2 API)
+    separately, not in this plan, to avoid mixing risks
+
+1.4 Storage rules (new file storage.rules, tracked in repo)
+[ ] Add "storage" section to firebase.json pointing at storage.rules
+[ ] First export current console rules so nothing existing breaks
+[ ] Rules:
+    - releases/**           read: true (update check is pre-login), write: false
+    - {uid}/uploads/**      read: auth; write: auth && request.auth.uid == uid
+                            && request.resource.size < 2 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*')
+    - everything else       deny
+[ ] Confirm every upload path in the app (Helperfunctions.saveImage uses
+    '{uid}/uploads/...' or 'guest/uploads/...') matches; handle 'guest'
+[ ] CI uploads releases via a service account, which bypasses rules, so
+    write:false for clients is safe
+[ ] Deploy: `firebase deploy --only storage`
+
+1.5 Gemini API key exposure
+[ ] geminiApiKey is stored in Firestore configurations (readable by every
+    signed-in user) and in local prefs
+[ ] Confirm the key's Google Cloud project: if billing is enabled there,
+    Gemini usage is billed outside Firebase
+[ ] Restrict the key (API restriction to Generative Language API; Android app
+    restriction) or use a key from a project WITHOUT billing
+[ ] Enforce a hard monthly cap using the existing gemini_api_usage counter
+    (gemini_ai_service.dart) and show a friendly "limit reached" message
+[ ] Longer-term (optional): proxy Gemini calls via a Cloud Function so the key
+    is never sent to clients
+
+1.6 Firestore rule read cost
+[ ] firestore.rules helper functions do get()/exists() on users/{uid} on
+    most requests (about +1-2 billed reads per request)
+[ ] Defer to Phase 5 (custom claims)
+Exit criteria: no `if true` writes remain, storage.rules deployed, App Check
+in monitor mode, functions capped.
+
+
+PHASE 2 - REMOVE THE BIGGEST FIRESTORE READ WASTE (2-3 days)
+------------------------------------------------------------
+2.1 Catalog sync on every launch (largest suspected consumer)
+Where: selecta_product_service.dart checkSyncNeeded -> fetchMasterAdminCatalogFromApi
+-> getAllAdminProducts() + ensureAdminCatalogSeededFromExisting() +
+`selecta_products.get()`; invoked by selecta_catalog_sync_gate_page.dart and
+products_page.dart. Cost today ~ 2 x productCount reads per user per launch.
+[ ] Add a tiny doc `catalog_meta/version` (fields: signature, count, updatedAt)
+    written by the admin catalog save/import path (line ~361 area)
+[ ] checkSyncNeeded: read ONLY that doc (1 read). If signature equals the
+    value saved in SharedPreferences (_prefKeyLastSyncSignature), return
+    needsSync=false with no collection reads
+[ ] Only when versions differ: do the full read and sync, then store the new
+    signature
+[ ] Keep the REST fallback and custom API URL paths unchanged
+[ ] Backfill: first run after deploy creates catalog_meta/version
+[ ] Test: first launch (full sync), second launch (1 read), admin edits a
+    product (signature changes, dealers resync once)
+
+2.2 Cache the product catalog in memory with a TTL
+Where full collections are read repeatedly: picklist_page.dart (~356/375/392),
+inventory_service getAllInventoryItems (~3177) and ~3290 / ~3487,
+pjp_controller (~1151), product_sorting_page, placement_pairs_dialog.
+[ ] Add a small shared ProductCatalogCache (in-memory, 5-10 min TTL, with
+    invalidate() called from product create/update/delete/toggle paths)
+    modelled on supplier_mapping_service (already has a 5 min cache)
+[ ] Route the listed call sites through it
+[ ] Prefer Source.cache-first reads where freshness is not critical
+    (GetOptions(source: Source.cache) then fall back to server)
+[ ] Where a full list is only needed to build a count, use .count() (1 read
+    per 1000 docs) instead
+
+2.3 export_report_service.dart
+[ ] Line ~385 reads the entire `delivery` collection; add date-range filters
+    (createdDate between start/end) and limit; export only what the report
+    covers
+[ ] Lines ~469-470 product reads: use the cache from 2.2
+[ ] Add a confirm dialog for large exports (estimates doc count)
+
+2.4 Misc one-time reads
+[ ] error_log_service.dart ~364 reads a whole collection: add a limit and/or
+    a date filter
+[ ] inventory_service.dart ~3615 reconcileDailySnapshots reads one doc + its
+    items subcollection per day in a loop: cap the range (e.g. 31 days) and
+    skip days already reconciled
+Exit criteria: reads/day on a normal workday drops measurably versus the
+Phase 0 baseline; app still shows fresh data after admin edits.
+
+
+PHASE 3 - BOUND THE REAL-TIME LISTENERS (1-2 days)
+--------------------------------------------------
+Each listener re-bills documents on every change by any client; unbounded
+ones grow with data.
+[ ] hapistore_service.dart ~205, ~280, ~386: `hapistores` full listeners.
+    Add server filters (active stores, pjpSchedule already filtered at ~280)
+    and/or use one shared stream via a broadcast controller so screens do not
+    open duplicate listeners
+[ ] inventory_service.dart ~3807: purchaseorders listener reads ALL POs and
+    filters in Dart. Add `.where('isInventoryReplenished', isEqualTo: false)`
+    (confirm field is always written; add composite index if combined with
+    other filters)
+[ ] proof_of_visit_service.dart ~66: orderBy visitDate with no limit -> add
+    limit(100) and a date window
+[ ] badorder_batch_service.dart ~23: no limit -> add limit(50) and paginate
+[ ] admin_promos_page.dart ~136 `promos` -> limit or active-only filter
+[ ] delivery_service.dart: pendingPicklist / pending streams (~63-78) are
+    status-filtered (fine), but confirm they are cancelled on page dispose and
+    are not opened twice (dashboard badge + page)
+[ ] tasks_services.dart ~38: opens a listener only to count documents with
+    isTaskDone == false: replace with .count() polled on screen focus
+[ ] scout_tracking_service.dart: getRoutesStreamByRange (limit 150) filters
+    by date in Dart; apply date filters server-side (add index
+    startedAt desc)
+[ ] Audit all 62 StreamBuilders: confirm streams are created once in
+    initState (see PERFORMANCE_IMPLEMENTATION_PLAN.txt phase 2) so rebuilds
+    do not re-subscribe
+[ ] Add/adjust composite indexes in firestore.indexes.json and deploy
+Exit criteria: no listener without limit/where on a collection that grows.
+
+
+PHASE 4 - SCOUT TRACKING WRITE AND DOWNLOAD SIZE (1 day)
+--------------------------------------------------------
+Where: scout_tracking_service.dart _flushPointsToFirestore.
+Problem: every 45 s / 15 points it rewrites the entire `points` array on the
+session doc, so the doc grows toward the 1 MiB limit and every listener
+re-downloads all points (egress + reads).
+[ ] Option A (recommended): write new points to a subcollection
+    scout_routes/{id}/chunks/{n} in batches of ~50; read only when viewing a
+    route detail
+[ ] Option B (smaller change): FieldValue.arrayUnion with only unsent points
+    and keep list views from reading `points` (use a summary doc / only
+    metadata fields)
+[ ] List streams (getRoutesStreamByRange, getAllRecentRoutesStream,
+    getRoutesStream) must not pull full point arrays
+[ ] Increase distanceFilter (12 m -> 20-25 m) and cap points per session
+[ ] Backward compatibility: keep reading legacy `points` arrays on old docs
+Exit criteria: writes/session and doc size are bounded.
+
+
+PHASE 5 - CUSTOM CLAIMS FOR ROLES (2-3 days, optional but recommended)
+----------------------------------------------------------------------
+Problem: firestore.rules (lines ~20-49) call get()/exists() on users/{uid}
+for role and storeId. Each rule evaluation can add billed reads on top of the
+request's own reads.
+[ ] Add a function setUserClaims (callable, admin only, plus an automatic
+    trigger when users/{id} role changes) that sets custom claims:
+    role, storeId
+[ ] Existing createStoreAccount already provisions the Auth user; set claims
+    there as well
+[ ] Update rules helpers to read request.auth.token.role / storeId, with a
+    temporary fallback to the existing get() so old tokens keep working
+[ ] Force token refresh (getIdToken(true)) after login/role change in
+    auth_service.dart
+[ ] Migrate existing users (one-off script using Admin SDK)
+[ ] After all users have new tokens (allow ~2 weeks), remove the fallback
+Risk: stale claims after a role change; document the refresh behavior.
+Note: the Firestore/Auth emulators can verify rules before deploying.
+
+
+PHASE 6 - STORAGE DOWNLOAD AND CLEANUP (1-2 days)
+-------------------------------------------------
+6.1 Cache images on disk
+[ ] ~40 screens use Image.network directly (list: delivery_page, van_load_page,
+    van_sell_page, pjp_page, pjphistory_page, prospect_scout_page, return_page,
+    badorder_*, scanning_*, credit_page, placement_page, picklist_page,
+    selecta/other_product_form_page, store_profile_page, imageviewer_page,
+    forms.dart, ...)
+[ ] Replace with the existing CachedProductImage or add the
+    cached_network_image package; keep cacheWidth/cacheHeight so decode size
+    is small
+[ ] Use small thumbnails in lists and load the full image only in the viewer
+    (optionally generate a ~300px thumbnail at upload time and store both)
+[ ] Quota check: 50K downloads/month is the binding free limit on the
+    firebasestorage.app bucket; uncached list views can exceed it quickly
+
+6.2 Upload size
+[ ] saveImage already resizes to 1280 px / q75 (good); confirm all upload
+    paths use it (no raw putFile elsewhere; grep showed only helperfunctions)
+[ ] Optionally drop to 1024 px for non-receipt photos
+[ ] storage.rules size limit (Phase 1.4) enforces this server-side
+
+6.3 Delete orphaned files
+[ ] When a record with an image is deleted/replaced, call the existing delete
+    by URL helper (helperfunctions.dart ~170); audit each delete path
+[ ] Optional: set a Storage lifecycle rule (Google Cloud console) to delete
+    objects under {uid}/uploads older than N months, only if business rules
+    allow
+
+6.4 APK update downloads
+[ ] app_update_service.dart: each update check reads Firestore
+    configurations/app_version (1 read) plus Storage getMetadata (1-2
+    operations) plus GitHub; cached 5 minutes in memory only
+[ ] Persist last check time in SharedPreferences and check at most once per
+    6-12 hours (and only on app start/resume)
+[ ] Skip the Storage metadata calls when the Firestore app_version doc is
+    already current (CI writes it); keep GitHub as the fallback
+[ ] APK download: the arm64-only upload is already small; keep
+    --split-per-abi. If Storage downloads ever get expensive, point
+    apkUrl at the GitHub release URL (free) instead of Storage
+Exit criteria: repeated screen visits do not re-download photos.
+
+
+PHASE 7 - MONITORING AND REGRESSION GUARDS (ongoing, 0.5 day setup)
+-------------------------------------------------------------------
+[ ] Compare Firestore reads/writes/Storage ops with the Phase 0 baseline
+    weekly for 1 month
+[ ] Keep budget alerts; add an alert on Firestore reads via Cloud Monitoring
+    (e.g. > 40K reads/day)
+[ ] Add a short "cost checklist" to the repo (README) for new features:
+    - every query has limit()/where
+    - listeners are created once and cancelled on dispose
+    - no full-collection .get() without cache/TTL
+    - images use cached widget and thumbnail sizes
+[ ] Review the App Check metrics, then switch from monitor to enforce
+
+
+ORDER OF WORK
+-------------
+1. Phase 0 (no code)
+2. Phase 1.1, 1.3, 1.4 (rules and function limits; small, safe)
+3. Phase 2 (read savings; biggest expected impact)
+4. Phase 3 (listeners)
+5. Phase 1.2 / 1.5 (App Check rollout, Gemini key) in parallel as it needs
+   monitoring time
+6. Phase 4, Phase 6
+7. Phase 5 (claims) last, since it is the riskiest change
+8. Phase 7 continuous
+
+
+RISKS / DECISIONS NEEDED FROM YOU
+---------------------------------
+1. Hard spending cap: Google has no native one. A billing-disable function
+   stops the bill but takes the whole app offline. Do you want it, or alerts
+   only?
+2. App Check on sideloaded APKs: need to decide on provider setup (Play
+   Integrity requires Play distribution or registered signing keys).
+3. Gemini: is the key tied to a billing-enabled project? Keep client-side key
+   or proxy through a function?
+4. Is deleting old photos/log data acceptable (lifecycle rules)?
+5. Do any other clients (a second Firebase project/dealer DB is referenced via
+   the REST API in selecta_product_service.dart) depend on the master
+   `selectaapp` collections staying publicly readable? Confirm before
+   tightening rules on admin_selecta_products.
+
+TESTING STRATEGY
+----------------
+- Unit tests for the catalog version check, cache TTL/invalidation, and
+  pagination helpers (existing test/ folder)
+- Firebase emulators (firestore, auth, functions) to test rules changes
+  before deploying: login lockout, store roles, storage rule limits
+- Manual regression: dealer login, salesman login, store login/change
+  password, create/reset store account, product catalog sync, PJP flow,
+  image upload/view, scout tracking, app update prompt
+- After each deploy: watch Firestore usage graph and Functions logs for
+  permission-denied errors for 24 hours
+
+ESTIMATED EFFORT
+----------------
+Phase 0: 0.5 day | Phase 1: 1-2 | Phase 2: 2-3 | Phase 3: 1-2 |
+Phase 4: 1 | Phase 5: 2-3 | Phase 6: 1-2 | Phase 7: 0.5
+Total: about 9-14 days
+
+Expected outcome: normal daily usage stays well under the free quotas, abuse
+paths are closed, and any unexpected spike produces an alert before it
+becomes a meaningful charge.

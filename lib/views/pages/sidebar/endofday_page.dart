@@ -11,6 +11,10 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/dashboard/unverified_dates_sheet.dart';
 import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
+import 'package:selecta_ops/data/constants.dart';
+import 'package:selecta_ops/services/return_proof_service.dart';
+import 'package:selecta_ops/views/widgets/return_proof/submit_return_proof_sheet.dart';
+import 'package:selecta_ops/views/widgets/return_proof/view_return_proof_dialog.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:intl/intl.dart';
 
@@ -100,6 +104,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
         breakdownId: breakdownID,
         currentDate: _selectedDate,
         oldestUnverifiedDate: _unverifiedSummary.oldest,
+        isDealer: _isDealer,
       );
     } catch (e) {
       ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
@@ -363,7 +368,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
     );
   }
 
-  Widget _buildSectionCard({required String title, required IconData icon, required Widget child}) {
+  Widget _buildSectionCard({required String title, required IconData icon, required Widget child, Widget? trailing}) {
     final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
@@ -385,7 +390,8 @@ class _EndofdayPageState extends State<EndofdayPage> {
                   child: Icon(icon, size: 18, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 10),
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                Expanded(child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
+                ?trailing,
               ],
             ),
             const Divider(height: 22),
@@ -723,6 +729,291 @@ class _EndofdayPageState extends State<EndofdayPage> {
     );
   }
 
+  Widget _buildReturnProofWarningBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade900.withAlpha(25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade700.withAlpha(80)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_clock_outlined, size: 20, color: Colors.amber.shade900),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cash Breakdown Locked: Returns Awaiting Confirmation',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.amber.shade900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Salesmen must submit photo proof of return for all affected stores, and warehouse staff must confirm receipt before you can view or record the cash breakdown.',
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReturnsProofCard() {
+    if (endOfDayData.returnStores.isEmpty) return const SizedBox.shrink();
+
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return _buildSectionCard(
+      title: 'Returns Proof Gate',
+      icon: Icons.verified_outlined,
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: endOfDayData.hasUnconfirmedReturnProof ? Colors.orange.withAlpha(30) : Colors.green.withAlpha(30),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          endOfDayData.hasUnconfirmedReturnProof ? 'Action Required' : 'All Confirmed',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: endOfDayData.hasUnconfirmedReturnProof ? Colors.orange.shade800 : Colors.green.shade800,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 12,
+        children: [
+          Text(
+            !_isDealer
+                ? 'Proof of return must be submitted for each store and confirmed by the warehouse before cash breakdown can be viewed or recorded.'
+                : 'Dealer View: Review submitted returns proofs below or override the gate if necessary.',
+            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+          ),
+          ...endOfDayData.returnStores.map((store) => _buildReturnStoreItem(store)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReturnStoreItem(StoreReturnProofSummary store) {
+    final colorScheme = Theme.of(context).colorScheme;
+    Color statusColor;
+    String statusLabel;
+    IconData statusIcon;
+
+    switch (store.status) {
+      case ReturnProofStatus.confirmed:
+        statusColor = Colors.green;
+        statusLabel = 'Warehouse Confirmed';
+        statusIcon = Icons.check_circle_rounded;
+        break;
+      case ReturnProofStatus.overridden:
+        statusColor = Colors.blue.shade700;
+        statusLabel = 'Dealer Overridden';
+        statusIcon = Icons.verified_user_rounded;
+        break;
+      case ReturnProofStatus.submitted:
+        statusColor = Colors.amber.shade800;
+        statusLabel = 'Awaiting Warehouse';
+        statusIcon = Icons.hourglass_top_rounded;
+        break;
+      case ReturnProofStatus.rejected:
+        statusColor = Colors.red;
+        statusLabel = 'Rejected: ${store.rejectReason ?? ""}';
+        statusIcon = Icons.cancel_rounded;
+        break;
+      default:
+        statusColor = Colors.orange;
+        statusLabel = 'Proof Required';
+        statusIcon = Icons.warning_amber_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withAlpha(80),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: store.isSatisfied ? Colors.green.withAlpha(80) : colorScheme.outlineVariant.withAlpha(80),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  store.storeName,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withAlpha(25),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusColor.withAlpha(80)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(statusIcon, size: 13, color: statusColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      statusLabel,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text(
+                '${store.totalReturnedQty} returned units (${Helperfunctions.formatDoubleAmountForDisplay(store.totalReturnedAmount)})',
+                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+              ),
+              const Spacer(),
+              if (store.proof != null) ...[
+                TextButton.icon(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => ViewReturnProofDialog(proof: store.proof!),
+                    );
+                  },
+                  icon: const Icon(Icons.visibility_outlined, size: 16),
+                  label: const Text('View Proof', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ],
+              if (store.isRequired) ...[
+                FilledButton.tonalIcon(
+                  onPressed: () => _openSubmitProofSheet(store),
+                  icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                  label: const Text('Submit Proof', style: TextStyle(fontSize: 12)),
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                ),
+              ],
+              if (_isDealer && !store.isSatisfied) ...[
+                const SizedBox(width: 6),
+                OutlinedButton.icon(
+                  onPressed: () => _showDealerOverrideDialog(store),
+                  icon: const Icon(Icons.lock_open_rounded, size: 15),
+                  label: const Text('Override', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: Colors.blue.shade700,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openSubmitProofSheet(StoreReturnProofSummary store) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SubmitReturnProofSheet(
+        storeSummary: store,
+        date: _selectedDate,
+        onSubmitted: () => getData(),
+      ),
+    );
+  }
+
+  Future<void> _showDealerOverrideDialog(StoreReturnProofSummary store) async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Override Return Gate'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to bypass the return proof gate for "${store.storeName}"? A reason is required for audit.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Reason for Override',
+                hintText: 'e.g. Returned goods personally inspected',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) {
+                ShowMessage.error(ctx, 'Reason is required');
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Override Gate'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && reasonController.text.trim().isNotEmpty) {
+      try {
+        final service = ReturnProofService();
+        final proof = store.proof ??
+            await service.submitProof(
+              storeName: store.storeName,
+              date: _selectedDate,
+              deliveriesWithIds: store.deliveriesWithIds,
+              imageUrl: 'override_no_photo',
+              notes: 'Dealer override before photo submission',
+              submittedBy: _controller.currentUserName,
+            );
+
+        await service.overrideProof(
+          proofId: proof.id,
+          overrideReason: reasonController.text.trim(),
+          overriddenBy: _controller.currentUserName,
+        );
+
+        if (!mounted) return;
+        ShowMessage.success(context, 'Return proof gate overridden for ${store.storeName}');
+        await getData();
+      } catch (e) {
+        if (mounted) ShowMessage.error(context, 'Failed to override gate: $e');
+      }
+    }
+  }
+
   Widget _buildCashReconciliationCard() {
     final colorScheme = Theme.of(context).colorScheme;
     bool hasBreakdown = breakdownID.isNotEmpty || endOfDayData.actualcashonhand != 0;
@@ -864,30 +1155,37 @@ class _EndofdayPageState extends State<EndofdayPage> {
   Widget _buildStickyBottomBar({bool isEmbedded = false}) {
     final colorScheme = Theme.of(context).colorScheme;
     final bool hasPending = endOfDayData.pendingstatus > 0;
+    final bool isReturnGated = !_isDealer && endOfDayData.hasUnconfirmedReturnProof;
     final bool hasBreakdown = breakdownID.isNotEmpty;
     final bool hasNoDeliveries = endOfDayData.totaldelivery == 0;
-    final bool isRecordDisabled = !hasBreakdown && hasNoDeliveries;
+    final bool isRecordDisabled = (!hasBreakdown && hasNoDeliveries) || hasPending || isReturnGated;
 
     final actionButton = AsyncFilledButton.icon(
       onPressed: isRecordDisabled ? null : validateBeforeBreakdown,
       style: FilledButton.styleFrom(
         minimumSize: const Size(double.infinity, 50.0),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        backgroundColor: hasPending ? colorScheme.surfaceContainerHighest : null,
-        foregroundColor: hasPending ? colorScheme.onSurfaceVariant : null,
+        backgroundColor: (hasPending || isReturnGated) ? colorScheme.surfaceContainerHighest : null,
+        foregroundColor: (hasPending || isReturnGated) ? colorScheme.onSurfaceVariant : null,
       ),
       icon: Icon(
-        isRecordDisabled
+        (!hasBreakdown && hasNoDeliveries)
             ? Icons.event_busy_outlined
-            : (hasPending ? Icons.lock_outline : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined)),
+            : (hasPending
+                ? Icons.lock_outline
+                : (isReturnGated
+                    ? Icons.lock_clock_outlined
+                    : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined))),
         size: 20,
       ),
       label: Text(
-        isRecordDisabled
+        (!hasBreakdown && hasNoDeliveries)
             ? 'No Deliveries Recorded'
             : (hasPending
-                  ? 'Settle ${endOfDayData.pendingstatus} ${endOfDayData.pendingstatus == 1 ? "Pending" : "Pendings"} to Continue'
-                  : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown')),
+                ? 'Settle ${endOfDayData.pendingstatus} ${endOfDayData.pendingstatus == 1 ? "Pending" : "Pendings"} to Continue'
+                : (isReturnGated
+                    ? 'Waiting for Warehouse Return Confirmation'
+                    : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown'))),
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
       ),
     );
@@ -958,6 +1256,9 @@ class _EndofdayPageState extends State<EndofdayPage> {
           // 2. Pending Status Warning (if any)
           if (endOfDayData.pendingstatus > 0) _buildPendingWarningBanner(),
 
+          // 2b. Return Proof Gate Warning (if any unconfirmed returns for salesman)
+          if (!_isDealer && endOfDayData.hasUnconfirmedReturnProof) _buildReturnProofWarningBanner(),
+
           // 2a. Empty state notice if no activity recorded
           if (endOfDayData.totaldelivery == 0) _buildEmptyStateNotice(colorScheme),
 
@@ -975,6 +1276,9 @@ class _EndofdayPageState extends State<EndofdayPage> {
 
           // 7. Deductions & Returns Card
           _buildDeductionsCard(),
+
+          // 7b. Returns Proof Gate Card (if any returns exist)
+          if (endOfDayData.returnStores.isNotEmpty) _buildReturnsProofCard(),
 
           // 8. Cash Reconciliation Summary Card
           _buildCashReconciliationCard(),
@@ -1027,6 +1331,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
               children: [
                 _buildCollectionsCard(),
                 _buildDeductionsCard(),
+                if (endOfDayData.returnStores.isNotEmpty) _buildReturnsProofCard(),
                 _buildCashReconciliationCard(),
                 _buildStickyBottomBar(isEmbedded: true),
               ],

@@ -143,6 +143,18 @@ class _BreakdownPageState extends State<BreakdownPage> {
     }
   }
 
+  void _verifyGateOrPop(bool dealer, EndOfDayDTO? data) {
+    if (!dealer && (data?.hasUnconfirmedReturnProof ?? false)) {
+      if (mounted) {
+        ShowMessage.error(
+          context,
+          'Cannot view Cash Breakdown: Pending return proofs must be confirmed by warehouse first.',
+        );
+        Navigator.pop(context);
+      }
+    }
+  }
+
   void _loadEndOfDayData() async {
     setState(() => _isLoadingEndOfDay = true);
     try {
@@ -152,6 +164,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
           _endOfDayData = snapshot.endOfDayData;
           _isLoadingEndOfDay = false;
         });
+        _verifyGateOrPop(isDealer, snapshot.endOfDayData);
       }
     } catch (_) {
       if (mounted) {
@@ -166,6 +179,7 @@ class _BreakdownPageState extends State<BreakdownPage> {
       setState(() {
         isDealer = dealer;
       });
+      _verifyGateOrPop(dealer, _endOfDayData);
     }
   }
 
@@ -235,6 +249,10 @@ class _BreakdownPageState extends State<BreakdownPage> {
   }
 
   Future<void> onSave() async {
+    if (!isDealer && (_endOfDayData?.hasUnconfirmedReturnProof ?? false)) {
+      ShowMessage.error(context, 'Cannot save Cash Breakdown: Pending return proofs must be confirmed by warehouse first.');
+      return;
+    }
     recompute();
     final newRecord = Breakdown(
       breakdownDate: widget.breakdown.breakdownDate,
