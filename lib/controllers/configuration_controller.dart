@@ -63,6 +63,11 @@ class ConfigurationController {
     required bool existsInDb,
     bool aiEnabled = true,
     String geminiApiKey = '',
+    String? groqApiKey,
+    String? aiScanMode,
+    List<String>? aiProviderOrder,
+    String? textModelGemini,
+    String? textModelGroq,
     int aiMonthlyRequestLimit = 3000,
     double? salesTarget,
     double? buyingTargetPercentage,
@@ -93,12 +98,22 @@ class ConfigurationController {
     final finalCreditSmsTemplate = creditReminderSmsTemplate ?? originalConfig?.creditReminderSmsTemplate ?? Configuration.defaultCreditReminderSmsTemplate;
     final finalProductSortMode = productSortMode ?? originalConfig?.productSortMode ?? 'srp';
     final finalSubCategories = subCategories ?? originalConfig?.subCategories ?? const [];
+    final finalGroqApiKey = (groqApiKey ?? originalConfig?.groqApiKey ?? '').trim();
+    final finalAiScanMode = aiScanMode ?? originalConfig?.aiScanMode ?? 'hybrid';
+    final finalProviderOrder = aiProviderOrder ?? originalConfig?.aiProviderOrder ?? const ['gemini', 'groq'];
+    final finalTextModelGemini = textModelGemini ?? originalConfig?.textModelGemini ?? 'gemini-2.0-flash';
+    final finalTextModelGroq = textModelGroq ?? originalConfig?.textModelGroq ?? 'llama-3.3-70b-versatile';
 
     final config = Configuration(
       merchBlitzStartDate: newStartDateTs,
       merchBlitzEndDate: newEndDateTs,
       aiEnabled: aiEnabled,
       geminiApiKey: geminiApiKey.trim(),
+      groqApiKey: finalGroqApiKey,
+      aiScanMode: finalAiScanMode,
+      aiProviderOrder: finalProviderOrder,
+      textModelGemini: finalTextModelGemini,
+      textModelGroq: finalTextModelGroq,
       aiMonthlyRequestLimit: aiMonthlyRequestLimit,
       superAdminPasswordHash: finalSuperAdminHash,
       salesTarget: finalSalesTarget,
@@ -182,6 +197,26 @@ class ConfigurationController {
       await prefs.remove('gemini_api_key');
     } else {
       await prefs.setString('gemini_api_key', apiKey.trim());
+    }
+  }
+
+  /// Retrieves the saved Groq API key from local preferences or remote Firestore config.
+  Future<String?> getGroqApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    final localKey = prefs.getString('groq_api_key');
+    if (localKey != null && localKey.isNotEmpty) return localKey;
+    final config = await _configService.getConfiguration();
+    if (config.groqApiKey.isNotEmpty) return config.groqApiKey;
+    return null;
+  }
+
+  /// Saves the Groq API key in local storage.
+  Future<void> saveGroqApiKey(String apiKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (apiKey.trim().isEmpty) {
+      await prefs.remove('groq_api_key');
+    } else {
+      await prefs.setString('groq_api_key', apiKey.trim());
     }
   }
 

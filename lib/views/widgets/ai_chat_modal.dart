@@ -487,7 +487,7 @@ class _AiChatModalState extends State<AiChatModal> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text('Sedy AI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      Text('Powered by Google Gemini', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                      Text('Powered by ${_aiService.activeProviderDisplayName}', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                     ],
                   ),
                 ),

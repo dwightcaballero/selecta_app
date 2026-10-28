@@ -6,6 +6,10 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/supplier_product_mapping.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/image_slicing_service.dart';
+import 'package:selecta_ops/services/ai/ai_provider_chain.dart';
+import 'package:selecta_ops/services/ai/gemini_text_provider.dart';
+import 'package:selecta_ops/services/ai/groq_text_provider.dart';
+import 'package:selecta_ops/services/ai_scan_pipeline.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
@@ -223,6 +227,28 @@ class AiScanTimingTracker {
     _logSummary(success: false, error: error);
   }
 
+    void recordPipelineTiming({
+    required int ocrMs,
+    required int parseMs,
+    required int matchMs,
+    required int llmMs,
+    required int unresolvedCount,
+    required String providerUsed,
+  }) {
+    _totalWatch.stop();
+    if (!kDebugMode) return;
+    debugPrint(
+      '------------------------------------------------------------\n'
+      '⚡ [ZERO-COST AI SCAN TIMING] $flowName -> SUCCESS\n'
+      '  • OCR Engine: ${ocrMs}ms\n'
+      '  • Layout Parser: ${parseMs}ms\n'
+      '  • Catalog Matcher: ${matchMs}ms\n'
+      '  • Text LLM Resolution: ${llmMs}ms (Provider: $providerUsed, Unresolved: $unresolvedCount)\n'
+      '  • Total Wall Time: ${_totalWatch.elapsedMilliseconds}ms\n'
+      '------------------------------------------------------------',
+    );
+  }
+
   void _logSummary({required bool success, dynamic error}) {
     if (!kDebugMode) return;
     final totalBytes = imageBytes.fold(0, (a, b) => a + b);
@@ -278,20 +304,57 @@ class GeminiAiService {
   GenerativeModel? _model;
   ChatSession? _chatSession;
   String? _cachedApiKey;
+  String? _cachedGroqApiKey;
   String? _cachedContextPrompt;
   AiStatusCheck? _cachedStatusCheck;
   DateTime? _lastStatusCheckTime;
+
+  final List<Map<String, String>> _chatHistory = [];
+
+  late AiProviderChain _providerChain = AiProviderChain(
+    providers: [
+      GeminiTextProvider(getApiKey: getEffectiveApiKeySync),
+      GroqTextProvider(getApiKey: getEffectiveGroqApiKeySync),
+    ],
+  );
+
+  late AiScanPipeline _pipeline = AiScanPipeline(
+    providerChain: _providerChain,
+  );
+
+  @visibleForTesting
+  AiProviderChain get providerChain => _providerChain;
+
+  @visibleForTesting
+  set providerChain(AiProviderChain chain) => _providerChain = chain;
+
+  @visibleForTesting
+  AiScanPipeline get pipeline => _pipeline;
+
+  @visibleForTesting
+  set pipeline(AiScanPipeline p) => _pipeline = p;
 
   static final GeminiAiService _instance = GeminiAiService._internal();
   factory GeminiAiService() => _instance;
   GeminiAiService._internal();
 
+  String getEffectiveApiKeySync() => _cachedApiKey ?? '';
+  String getEffectiveGroqApiKeySync() => _cachedGroqApiKey ?? '';
+
+  /// Returns user-facing name of the currently active LLM provider.
+  String get activeProviderDisplayName {
+    final active = _providerChain.resolveActiveProvider(const ['gemini', 'groq']);
+    return active?.displayName ?? 'Google Gemini';
+  }
+
   /// Gets the current month key for quota tracking (e.g. "2026-09").
   String get _currentMonthKey => DateFormat('yyyy-MM').format(DateTime.now());
 
   /// Checks if AI is enabled and whether quota has not been exceeded.
+  /// If [forScan] is true, checks whether the configured scan mode allows execution
+  /// even without a remote API key (e.g. ocr_local).
   /// Caches the availability result for 60 seconds to avoid redundant Firestore round-trips.
-  Future<AiStatusCheck> checkAiAvailability({bool forceRefresh = false}) async {
+  Future<AiStatusCheck> checkAiAvailability({bool forceRefresh = false, bool forScan = false}) async {
     final now = DateTime.now();
     if (!forceRefresh && _cachedStatusCheck != null && _lastStatusCheckTime != null) {
       if (now.difference(_lastStatusCheckTime!).inSeconds < 60) {
@@ -312,12 +375,31 @@ class GeminiAiService {
       return res;
     }
 
+    // Zero-Cost OCR Local mode needs no cloud key or network
+    if (forScan && config.aiScanMode == 'ocr_local') {
+      final res = AiStatusCheck(
+        isAllowed: true,
+        currentUsage: 0,
+        limit: 999999,
+      );
+      return res;
+    }
+
     // 2. Check if API key is configured
     final apiKey = await getEffectiveApiKey();
-    if (apiKey == null || apiKey.isEmpty) {
+    final groqKey = await getEffectiveGroqApiKey();
+    if ((apiKey == null || apiKey.isEmpty) && (groqKey == null || groqKey.isEmpty)) {
+      if (forScan && config.aiScanMode == 'hybrid') {
+        // Hybrid can still perform on-device OCR and local matching even if LLM keys are absent!
+        return AiStatusCheck(
+          isAllowed: true,
+          currentUsage: 0,
+          limit: 999999,
+        );
+      }
       final res = AiStatusCheck(
         isAllowed: false,
-        message: 'AI Assistant is not configured yet. Please configure the Gemini Key in Configurations.',
+        message: 'AI Assistant is not configured yet. Please configure the Gemini or Groq Key in Configurations.',
       );
       _cachedStatusCheck = res;
       _lastStatusCheckTime = now;
@@ -387,7 +469,7 @@ class GeminiAiService {
     } catch (_) {}
   }
 
-  /// Retrieves the active API key. First checks remote shared configuration (Firestore),
+  /// Retrieves the active Gemini API key. First checks remote shared configuration (Firestore),
   /// falling back to compile-time env (--dart-define=GEMINI_API_KEY).
   Future<String?> getEffectiveApiKey() async {
     if (_cachedApiKey != null && _cachedApiKey!.isNotEmpty) {
@@ -419,10 +501,35 @@ class GeminiAiService {
     return null;
   }
 
+  /// Retrieves the active Groq API key from Firestore configuration or compile-time env.
+  Future<String?> getEffectiveGroqApiKey() async {
+    if (_cachedGroqApiKey != null && _cachedGroqApiKey!.isNotEmpty) {
+      return _cachedGroqApiKey;
+    }
+
+    try {
+      final config = await _configService.getConfiguration();
+      if (config.groqApiKey.isNotEmpty) {
+        _cachedGroqApiKey = config.groqApiKey.trim();
+        return _cachedGroqApiKey;
+      }
+    } catch (_) {}
+
+    const envKey = String.fromEnvironment('GROQ_API_KEY');
+    if (envKey.isNotEmpty) {
+      _cachedGroqApiKey = envKey;
+      return envKey;
+    }
+
+    return null;
+  }
+
   void invalidateCachedKey() {
     _cachedApiKey = null;
+    _cachedGroqApiKey = null;
     _model = null;
     _chatSession = null;
+    _chatHistory.clear();
     _activeModelIndex = 0;
     _cachedStatusCheck = null;
     _lastStatusCheckTime = null;
@@ -494,9 +601,13 @@ class GeminiAiService {
   /// Starts a fresh multi-turn chat session with operational context.
   Future<ChatSession?> startChat({String? contextPrompt}) async {
     _cachedContextPrompt = contextPrompt;
+    _chatHistory.clear();
+    await getEffectiveApiKey();
+    await getEffectiveGroqApiKey();
     final model = await getModel(contextPrompt: contextPrompt, modelIndex: _activeModelIndex);
-    if (model == null) return null;
-    _chatSession = model.startChat();
+    if (model != null) {
+      _chatSession = model.startChat();
+    }
     return _chatSession;
   }
 
@@ -629,46 +740,49 @@ class GeminiAiService {
   }
 
   /// Sends a message in the active chat session after validating quota,
-  /// with transparent fallback and retry across candidate models on high demand.
+  /// routing through the multi-provider chain (Gemini Flash -> Groq) with failover.
   Future<String> sendMessage(String userMessage) async {
     final status = await checkAiAvailability();
     if (!status.isAllowed) {
       throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
     }
 
-    if (_chatSession == null) {
-      await startChat(contextPrompt: _cachedContextPrompt);
+    await getEffectiveApiKey();
+    await getEffectiveGroqApiKey();
+
+    final config = await _configService.getConfiguration();
+    final order = config.aiProviderOrder.isNotEmpty ? config.aiProviderOrder : const ['gemini', 'groq'];
+
+    _chatHistory.add({'role': 'user', 'content': userMessage});
+    if (_chatHistory.length > 20) {
+      _chatHistory.removeRange(0, _chatHistory.length - 20);
     }
 
-    dynamic lastError;
-    for (int attempt = 0; attempt < _candidateModels.length; attempt++) {
-      try {
-        if (_chatSession == null) {
-          throw Exception('Failed to initialize AI model session.');
-        }
-
-        final response = await _chatSession!
-            .sendMessage(Content.text(userMessage))
-            .timeout(requestTimeout);
-        await recordAiUsage();
-        return response.text ?? 'No response received from Gemini.';
-      } catch (e) {
-        lastError = e;
-        final isNotFound = _isModelNotFoundError(e);
-        if ((_isOverloadedError(e) || isNotFound) && attempt < _candidateModels.length - 1) {
-          await _handleRetry(
-            attempt: attempt,
-            isModelNotFound: isNotFound,
-            onBeforeRetry: () => startChat(contextPrompt: _cachedContextPrompt),
-          );
-          continue;
-        }
-
-        throw Exception(formatAiError(e));
+    try {
+      final reply = await _providerChain.chat(
+        _chatHistory,
+        systemPrompt: _cachedContextPrompt,
+        providerOrder: order,
+        timeout: requestTimeout,
+      );
+      _chatHistory.add({'role': 'model', 'content': reply});
+      await recordAiUsage();
+      return reply;
+    } catch (e) {
+      // Fallback to legacy chat session if present
+      if (_chatSession != null) {
+        try {
+          final res = await _chatSession!
+              .sendMessage(Content.text(userMessage))
+              .timeout(requestTimeout);
+          final text = res.text ?? 'No response received.';
+          _chatHistory.add({'role': 'model', 'content': text});
+          await recordAiUsage();
+          return text;
+        } catch (_) {}
       }
+      throw Exception(formatAiError(e));
     }
-
-    throw Exception(formatAiError(lastError ?? 'Unable to reach Google Gemini. Please try again.'));
   }
 
   /// Single-turn prompt generation with automatic failover.
@@ -715,7 +829,7 @@ class GeminiAiService {
     required List<InventoryItem> catalog,
     List<SupplierProductMapping>? knownMappings,
   }) async {
-    final status = await checkAiAvailability();
+    final status = await checkAiAvailability(forScan: true);
     if (!status.isAllowed) {
       throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
     }
@@ -725,6 +839,29 @@ class GeminiAiService {
 
     final tracker = AiScanTimingTracker('Supplier PO / Invoice Scan');
     tracker.startPreAi();
+
+    // Check configured AI scan mode
+    final config = await _configService.getConfiguration();
+    final scanMode = config.aiScanMode;
+
+    if (scanMode != 'cloud_vision' && _pipeline.ocrEngine.isSupported) {
+      try {
+        final result = await _pipeline.extractPurchaseOrder(
+          images: imagesBytesList,
+          catalog: catalog,
+          scanMode: scanMode,
+          providerOrder: config.aiProviderOrder,
+          tracker: tracker,
+        );
+        await recordAiUsage();
+        return result;
+      } catch (e) {
+        if (scanMode == 'ocr_local') {
+          rethrow;
+        }
+        debugPrint('⚠️ [AiScanPipeline] local/hybrid PO extraction failed: $e. Falling back to cloud vision.');
+      }
+    }
 
     final catalogLines = catalog.map((item) {
       final codePart = item.itemCode.isNotEmpty ? ' | Code: "${item.itemCode}"' : '';
@@ -991,7 +1128,7 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
     required List<InventoryItem> catalog,
     List<SupplierProductMapping>? knownMappings,
   }) async {
-    final status = await checkAiAvailability();
+    final status = await checkAiAvailability(forScan: true);
     if (!status.isAllowed) {
       throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
     }
@@ -1001,6 +1138,29 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (do NOT inc
 
     final tracker = AiScanTimingTracker('Store Order Receipt Scan');
     tracker.startPreAi();
+
+    // Check configured AI scan mode
+    final config = await _configService.getConfiguration();
+    final scanMode = config.aiScanMode;
+
+    if (scanMode != 'cloud_vision' && _pipeline.ocrEngine.isSupported) {
+      try {
+        final result = await _pipeline.extractStoreOrder(
+          images: imagesBytesList,
+          catalog: catalog,
+          scanMode: scanMode,
+          providerOrder: config.aiProviderOrder,
+          tracker: tracker,
+        );
+        await recordAiUsage();
+        return result;
+      } catch (e) {
+        if (scanMode == 'ocr_local') {
+          rethrow;
+        }
+        debugPrint('⚠️ [AiScanPipeline] local/hybrid store order extraction failed: $e. Falling back to cloud vision.');
+      }
+    }
 
     final catalogLines = catalog.map((item) {
       final codePart = item.itemCode.isNotEmpty ? ' | Code: "${item.itemCode}"' : '';
@@ -1204,13 +1364,37 @@ CRITICAL: Respond ONLY with a valid JSON object matching this schema (no comment
     required List<OrderItem> originalPoItems,
     required String originalPoNumber,
   }) async {
-    final status = await checkAiAvailability();
+    final status = await checkAiAvailability(forScan: true);
     if (!status.isAllowed) {
       throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
     }
 
     final tracker = AiScanTimingTracker('Invoice vs PO Reconciliation');
     tracker.startPreAi();
+
+    // Check configured AI scan mode
+    final config = await _configService.getConfiguration();
+    final scanMode = config.aiScanMode;
+
+    if (scanMode != 'cloud_vision' && _pipeline.ocrEngine.isSupported) {
+      try {
+        final result = await _pipeline.compareInvoiceWithPo(
+          images: invoiceImagesBytesList,
+          originalPoItems: originalPoItems,
+          originalPoNumber: originalPoNumber,
+          scanMode: scanMode,
+          providerOrder: config.aiProviderOrder,
+          tracker: tracker,
+        );
+        await recordAiUsage();
+        return result;
+      } catch (e) {
+        if (scanMode == 'ocr_local') {
+          rethrow;
+        }
+        debugPrint('⚠️ [AiScanPipeline] local/hybrid invoice reconciliation failed: $e. Falling back to cloud vision.');
+      }
+    }
 
     // Pre-process images: Automatically slice long scrolling screenshots or receipts
     final List<Uint8List> processedBytesList = [];
@@ -1612,7 +1796,7 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
     required List<InventoryItem> dealerCatalog,
     List<SupplierProductMapping>? knownMappings,
   }) async {
-    final status = await checkAiAvailability();
+    final status = await checkAiAvailability(forScan: true);
     if (!status.isAllowed) {
       throw Exception(status.message ?? 'AI Assistant is currently unavailable.');
     }
@@ -1622,6 +1806,29 @@ CRITICAL: Respond ONLY with a valid JSON object (no commentary outside JSON):
 
     final tracker = AiScanTimingTracker('Supplier OOS / Stock Scan');
     tracker.startPreAi();
+
+    // Check configured AI scan mode
+    final config = await _configService.getConfiguration();
+    final scanMode = config.aiScanMode;
+
+    if (scanMode != 'cloud_vision' && _pipeline.ocrEngine.isSupported) {
+      try {
+        final result = await _pipeline.extractSupplierStock(
+          images: imagesBytesList,
+          dealerCatalog: dealerCatalog,
+          scanMode: scanMode,
+          providerOrder: config.aiProviderOrder,
+          tracker: tracker,
+        );
+        await recordAiUsage();
+        return result;
+      } catch (e) {
+        if (scanMode == 'ocr_local') {
+          rethrow;
+        }
+        debugPrint('⚠️ [AiScanPipeline] local/hybrid stock extraction failed: $e. Falling back to cloud vision.');
+      }
+    }
 
     // Exclude other products: this feature is strictly exclusive to Selecta products
     final selectaCatalog = dealerCatalog

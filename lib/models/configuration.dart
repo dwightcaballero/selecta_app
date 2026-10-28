@@ -9,6 +9,11 @@ class Configuration {
   Timestamp merchBlitzEndDate;
   bool aiEnabled;
   String geminiApiKey;
+  String groqApiKey;
+  String aiScanMode; // 'hybrid' | 'ocr_local' | 'cloud_vision'
+  List<String> aiProviderOrder;
+  String textModelGemini;
+  String textModelGroq;
   int aiMonthlyRequestLimit;
   /// SHA-256 hash of the super-admin password. Never store the plain-text password here.
   String superAdminPasswordHash;
@@ -62,6 +67,11 @@ class Configuration {
     required this.merchBlitzEndDate,
     this.aiEnabled = true,
     this.geminiApiKey = '',
+    this.groqApiKey = '',
+    this.aiScanMode = 'hybrid',
+    this.aiProviderOrder = const ['gemini', 'groq'],
+    this.textModelGemini = 'gemini-2.0-flash',
+    this.textModelGroq = 'llama-3.3-70b-versatile',
     this.aiMonthlyRequestLimit = 3000,
     this.superAdminPasswordHash = '',
     this.salesTarget = 1000000.0,
@@ -130,6 +140,11 @@ class Configuration {
         merchBlitzEndDate: Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
         aiEnabled: true,
         geminiApiKey: '',
+        groqApiKey: '',
+        aiScanMode: 'hybrid',
+        aiProviderOrder: const ['gemini', 'groq'],
+        textModelGemini: 'gemini-2.0-flash',
+        textModelGroq: 'llama-3.3-70b-versatile',
         aiMonthlyRequestLimit: 3000,
         superAdminPasswordHash: '',
         salesTarget: 1000000.0,
@@ -168,6 +183,13 @@ class Configuration {
                   : Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
           aiEnabled: json['aiEnabled'] as bool? ?? true,
           geminiApiKey: json['geminiApiKey'] as String? ?? '',
+          groqApiKey: json['groqApiKey'] as String? ?? '',
+          aiScanMode: json['aiScanMode'] as String? ?? 'hybrid',
+          aiProviderOrder: (json['aiProviderOrder'] is List)
+              ? (json['aiProviderOrder'] as List).map((e) => e.toString()).toList()
+              : const ['gemini', 'groq'],
+          textModelGemini: json['textModelGemini'] as String? ?? 'gemini-2.0-flash',
+          textModelGroq: json['textModelGroq'] as String? ?? 'llama-3.3-70b-versatile',
           aiMonthlyRequestLimit: (json['aiMonthlyRequestLimit'] as num?)?.toInt() ?? 3000,
           superAdminPasswordHash: json['superAdminPasswordHash'] as String? ?? '',
           salesTarget: (json['salesTarget'] as num?)?.toDouble() ?? 1000000.0,
@@ -209,6 +231,11 @@ class Configuration {
     Timestamp? merchBlitzEndDate,
     bool? aiEnabled,
     String? geminiApiKey,
+    String? groqApiKey,
+    String? aiScanMode,
+    List<String>? aiProviderOrder,
+    String? textModelGemini,
+    String? textModelGroq,
     int? aiMonthlyRequestLimit,
     String? superAdminPasswordHash,
     double? salesTarget,
@@ -242,6 +269,11 @@ class Configuration {
       merchBlitzEndDate: merchBlitzEndDate ?? this.merchBlitzEndDate,
       aiEnabled: aiEnabled ?? this.aiEnabled,
       geminiApiKey: geminiApiKey ?? this.geminiApiKey,
+      groqApiKey: groqApiKey ?? this.groqApiKey,
+      aiScanMode: aiScanMode ?? this.aiScanMode,
+      aiProviderOrder: aiProviderOrder ?? List.from(this.aiProviderOrder),
+      textModelGemini: textModelGemini ?? this.textModelGemini,
+      textModelGroq: textModelGroq ?? this.textModelGroq,
       aiMonthlyRequestLimit: aiMonthlyRequestLimit ?? this.aiMonthlyRequestLimit,
       superAdminPasswordHash: superAdminPasswordHash ?? this.superAdminPasswordHash,
       salesTarget: salesTarget ?? this.salesTarget,
@@ -276,6 +308,11 @@ class Configuration {
       'MerchiBlitzEndDate': merchBlitzEndDate,
       'aiEnabled': aiEnabled,
       'geminiApiKey': geminiApiKey,
+      'groqApiKey': groqApiKey,
+      'aiScanMode': aiScanMode,
+      'aiProviderOrder': aiProviderOrder,
+      'textModelGemini': textModelGemini,
+      'textModelGroq': textModelGroq,
       'aiMonthlyRequestLimit': aiMonthlyRequestLimit,
       'superAdminPasswordHash': superAdminPasswordHash,
       'salesTarget': salesTarget,

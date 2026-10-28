@@ -16,6 +16,8 @@ import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/user_services.dart';
+import 'package:selecta_ops/services/ai/gemini_text_provider.dart';
+import 'package:selecta_ops/services/ai/groq_text_provider.dart';
 
 /// Hidden Super Admin developer control panel for managing AI settings,
 /// quota limits, API keys, and switching business roles.
@@ -31,6 +33,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   final DashboardController _dashboardController = DashboardController();
 
   final TextEditingController _apiKeyController = TextEditingController();
+  final TextEditingController _groqApiKeyController = TextEditingController();
   final TextEditingController _monthlyLimitController = TextEditingController(text: '1000');
   final TextEditingController _newAdminPasswordController = TextEditingController();
   final TextEditingController _confirmAdminPasswordController = TextEditingController();
@@ -42,7 +45,12 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   Configuration? _originalConfig;
   bool _configExistsInDb = false;
   bool _obscureApiKey = true;
+  bool _obscureGroqApiKey = true;
   bool _aiEnabled = true;
+  String _aiScanMode = 'hybrid';
+  String _primaryProvider = 'gemini';
+  bool _isTestingGemini = false;
+  bool _isTestingGroq = false;
   int _currentMonthUsage = 0;
   String _currentRole = BusinessRole.dealer;
   bool _isLoading = true;
@@ -60,6 +68,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   @override
   void dispose() {
     _apiKeyController.dispose();
+    _groqApiKeyController.dispose();
     _monthlyLimitController.dispose();
     _newAdminPasswordController.dispose();
     _confirmAdminPasswordController.dispose();
@@ -70,6 +79,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     try {
       final configResult = await _configController.loadConfiguration();
       final apiKey = await _configController.getGeminiApiKey();
+      final groqKey = await _configController.getGroqApiKey();
       final usage = await _configController.getCurrentAiUsage();
       final isDealer = await _dashboardController.isCurrentUserDealer();
       final pendingLogs = await ErrorLogService.getPendingLogCount();
@@ -83,6 +93,11 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
           _aiEnabled = configResult.config.aiEnabled;
           _monthlyLimitController.text = configResult.config.aiMonthlyRequestLimit.toString();
           _apiKeyController.text = apiKey ?? configResult.config.geminiApiKey;
+          _groqApiKeyController.text = groqKey ?? configResult.config.groqApiKey;
+          _aiScanMode = configResult.config.aiScanMode;
+          _primaryProvider = configResult.config.aiProviderOrder.isNotEmpty
+              ? configResult.config.aiProviderOrder.first
+              : 'gemini';
           _currentMonthUsage = usage;
           _currentRole = currentRole;
           _pendingLogsCount = pendingLogs;
@@ -555,6 +570,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       final monthlyLimit = int.tryParse(_monthlyLimitController.text.trim()) ?? 1000;
       final startDate = _originalConfig?.merchBlitzStartDate.toDate() ?? DateTime.now();
       final endDate = _originalConfig?.merchBlitzEndDate.toDate() ?? DateTime.now().add(const Duration(days: 7));
+      final providerOrder = _primaryProvider == 'gemini' ? ['gemini', 'groq'] : ['groq', 'gemini'];
 
       await _configController.saveConfiguration(
         startDate: startDate,
@@ -563,10 +579,14 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
         existsInDb: _configExistsInDb,
         aiEnabled: _aiEnabled,
         geminiApiKey: _apiKeyController.text.trim(),
+        groqApiKey: _groqApiKeyController.text.trim(),
+        aiScanMode: _aiScanMode,
+        aiProviderOrder: providerOrder,
         aiMonthlyRequestLimit: monthlyLimit,
       );
 
       await _configController.saveGeminiApiKey(_apiKeyController.text);
+      await _configController.saveGroqApiKey(_groqApiKeyController.text);
       GeminiAiService().invalidateCachedKey();
 
       _configExistsInDb = true;
@@ -582,6 +602,58 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       if (mounted) {
         setState(() => _isSaving = false);
       }
+    }
+  }
+
+  Future<void> _testGeminiConnection() async {
+    final key = _apiKeyController.text.trim();
+    if (key.isEmpty) {
+      ShowMessage.error(context, 'Please enter a Gemini API Key first.');
+      return;
+    }
+    setState(() => _isTestingGemini = true);
+    try {
+      final provider = GeminiTextProvider(getApiKey: () => key);
+      final res = await provider.generateJson(
+        'Respond with {"status": "ok", "provider": "gemini"}',
+        schemaHint: '{"status": string, "provider": string}',
+        timeout: const Duration(seconds: 10),
+      );
+      if (mounted) {
+        ShowMessage.success(context, '✅ Gemini Connection Verified! Response: $res');
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, '❌ Gemini Test Failed: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isTestingGemini = false);
+    }
+  }
+
+  Future<void> _testGroqConnection() async {
+    final key = _groqApiKeyController.text.trim();
+    if (key.isEmpty) {
+      ShowMessage.error(context, 'Please enter a Groq API Key first.');
+      return;
+    }
+    setState(() => _isTestingGroq = true);
+    try {
+      final provider = GroqTextProvider(getApiKey: () => key);
+      final res = await provider.generateJson(
+        'Respond with {"status": "ok", "provider": "groq"}',
+        schemaHint: '{"status": string, "provider": string}',
+        timeout: const Duration(seconds: 10),
+      );
+      if (mounted) {
+        ShowMessage.success(context, '✅ Groq Connection Verified! Response: $res');
+      }
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, '❌ Groq Test Failed: $e');
+      }
+    } finally {
+      if (mounted) setState(() => _isTestingGroq = false);
     }
   }
 
@@ -961,24 +1033,120 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
 
                           const SizedBox(height: 14),
 
-                          // Shared API Key Field
+                          // AI Scan Mode Selector
+                          DropdownButtonFormField<String>(
+                            initialValue: _aiScanMode,
+                            decoration: InputDecoration(
+                              labelText: 'AI Document Scan Mode',
+                              helperText: 'Select default engine for invoice & receipt scanning.',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              prefixIcon: const Icon(Icons.document_scanner_outlined, size: 20),
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'hybrid',
+                                child: Text('Hybrid (\$0 Free Tier, On-Device OCR + LLM Fallback)', style: TextStyle(fontSize: 13)),
+                              ),
+                              DropdownMenuItem(
+                                value: 'ocr_local',
+                                child: Text('OCR Local Only (\$0 Offline, Pure On-Device)', style: TextStyle(fontSize: 13)),
+                              ),
+                              DropdownMenuItem(
+                                value: 'cloud_vision',
+                                child: Text('Cloud Vision (Gemini Multimodal, Emergency Fallback)', style: TextStyle(fontSize: 13)),
+                              ),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setState(() => _aiScanMode = val);
+                            },
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          // AI Provider Priority Selector
+                          DropdownButtonFormField<String>(
+                            initialValue: _primaryProvider,
+                            decoration: InputDecoration(
+                              labelText: 'Primary LLM Provider',
+                              helperText: 'First provider called for ambiguous lines & AI chat.',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              prefixIcon: const Icon(Icons.swap_calls_rounded, size: 20),
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'gemini',
+                                child: Text('Google Gemini (Flash) -> Groq Fallback', style: TextStyle(fontSize: 13)),
+                              ),
+                              DropdownMenuItem(
+                                value: 'groq',
+                                child: Text('Groq (Llama 3.3) -> Gemini Fallback', style: TextStyle(fontSize: 13)),
+                              ),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) setState(() => _primaryProvider = val);
+                            },
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          // Gemini API Key Field + Test Connection
                           TextField(
                             controller: _apiKeyController,
                             obscureText: _obscureApiKey,
                             decoration: InputDecoration(
-                              labelText: 'Gemini API Key (Shared for All Users)',
-                              hintText: 'Enter your Google AI Studio API key',
+                              labelText: 'Gemini API Key (Google AI Studio)',
+                              hintText: 'Enter AI Studio API key',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                               prefixIcon: const Icon(Icons.key_rounded, size: 20),
-                              suffixIcon: IconButton(
-                                icon: Icon(_obscureApiKey ? Icons.visibility_off : Icons.visibility, size: 20),
-                                onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(_obscureApiKey ? Icons.visibility_off : Icons.visibility, size: 20),
+                                    onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
+                                  ),
+                                  TextButton(
+                                    onPressed: _isTestingGemini ? null : _testGeminiConnection,
+                                    child: _isTestingGemini
+                                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                        : const Text('Test', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          // Groq API Key Field + Test Connection
+                          TextField(
+                            controller: _groqApiKeyController,
+                            obscureText: _obscureGroqApiKey,
+                            decoration: InputDecoration(
+                              labelText: 'Groq API Key (Console.groq.com)',
+                              hintText: 'Enter Groq Cloud API key (gsk_...)',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              prefixIcon: const Icon(Icons.vpn_key_outlined, size: 20),
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(_obscureGroqApiKey ? Icons.visibility_off : Icons.visibility, size: 20),
+                                    onPressed: () => setState(() => _obscureGroqApiKey = !_obscureGroqApiKey),
+                                  ),
+                                  TextButton(
+                                    onPressed: _isTestingGroq ? null : _testGroqConnection,
+                                    child: _isTestingGroq
+                                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                        : const Text('Test', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Hidden from salesmen and dealers. Distributed via Firestore config.',
+                            'Shared securely via Firestore config. Used for fast text LLM calls and chat.',
                             style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                           ),
                         ],
