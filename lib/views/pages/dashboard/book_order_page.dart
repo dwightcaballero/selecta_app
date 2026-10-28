@@ -112,12 +112,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
   bool get _isEditing => widget.deliveryID.isNotEmpty && widget.existingDelivery != null;
 
-  bool get _isFutureDeliveryDate {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    return target.isAfter(today);
-  }
+  bool get _isFutureDeliveryDate => DeliveryController.isFutureDate(_selectedDate);
 
   bool get _hasUnsavedChanges {
     if (_isEditing) {
@@ -295,7 +290,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       date: _selectedDate,
       activePromos: _activePromos,
       usedCounts: _storePromoUsage,
-      availableStock: {for (final i in allInventory) i.id: _getMaxOrderableQty(i)},
+      availableStock: _isFutureDeliveryDate ? null : {for (final i in allInventory) i.id: _getMaxOrderableQty(i)},
       productBuyingPrices: {for (final i in allInventory) i.id: i.buyingPrice},
     );
   }
@@ -358,9 +353,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
   int _getSelectedQty(InventoryItem item) => _selectedQuantities[_itemKey(item)] ?? 0;
 
+  static const int _futureBookingCap = 99999;
+
   /// Effective available stock for this item, including any units already reserved by this order.
-  /// Regardless of delivery date, the user can only add quantity based on available stock.
+  /// For future delivery dates (tomorrow or later), returns [_futureBookingCap] allowing pre-orders.
   int _getMaxOrderableQty(InventoryItem item) {
+    if (_isFutureDeliveryDate) return _futureBookingCap;
     final alreadyInThisOrder = _initialOrderQuantities[_itemKey(item)] ?? 0;
     return (item.availableQuantity + alreadyInThisOrder).clamp(0, 999999);
   }
@@ -396,8 +394,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     _selectedQuantities.forEach((key, qty) {
       final item = invMap[key];
       if (item != null) {
-        final alreadyInOrder = _initialOrderQuantities[key] ?? 0;
-        final maxAllowed = (item.availableQuantity + alreadyInOrder).clamp(0, 999999);
+        final maxAllowed = _getMaxOrderableQty(item);
         if (qty > maxAllowed) {
           clampedAny = true;
           if (maxAllowed <= 0) {
@@ -563,7 +560,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     ),
                                     Text('•', style: TextStyle(color: colorScheme.outline)),
                                     Text(
-                                      '$maxAllowed available',
+                                      _isFutureDeliveryDate
+                                          ? (item.availableQuantity > 0 ? '${item.availableQuantity} on hand' : 'No stock yet - pre-order')
+                                          : '$maxAllowed available',
                                       style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                                     ),
                                   ],
@@ -666,6 +665,30 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         ),
                       ],
 
+                      if (_isFutureDeliveryDate && currentTyped > (item.availableQuantity > 0 ? item.availableQuantity : 0)) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.amber.shade300),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline_rounded, size: 16, color: Colors.amber.shade900),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Exceeds current stock (${item.availableQuantity > 0 ? item.availableQuantity : 0}). This will be a pre-order for ${_formatAppBarDate(_selectedDate)}.',
+                                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
                       const SizedBox(height: 12),
 
                       // ── Stepper Card ───────────────────────────────────────
@@ -727,7 +750,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     },
                                   ),
                                   Text(
-                                    'units (max $maxAllowed)',
+                                    _isFutureDeliveryDate ? 'units (pre-order)' : 'units (max $maxAllowed)',
                                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                                   ),
                                 ],
@@ -924,7 +947,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                             final isSelecta = item.productSource == 'selecta';
                             final itemKey = '${item.productSource}:${item.productId}';
                             final invItem = byKey[itemKey];
-                            final maxAllowed = invItem != null ? _getMaxOrderableQty(invItem) : 9999;
+                            final maxAllowed = invItem != null ? _getMaxOrderableQty(invItem) : _futureBookingCap;
                             final receiptIdx = _scannedReceiptOrder.indexOf(itemKey);
                             final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
                             final rawReceiptText = _scannedRawTexts[itemKey];
@@ -1244,6 +1267,16 @@ class _BookOrderPageState extends State<BookOrderPage> {
       return;
     }
 
+    if (!_isFutureDeliveryDate) {
+      final initialCount = _selectedQuantities.values.fold<int>(0, (a, b) => a + b);
+      _clampQuantitiesToAvailableStock(allInventory);
+      final newCount = _selectedQuantities.values.fold<int>(0, (a, b) => a + b);
+      if (newCount != initialCount) {
+        ShowMessage.error(context, 'Quantities were adjusted to match currently available stock for today.');
+        return;
+      }
+    }
+
     final promoEval = _evaluatePromos(rawOrderItems, allInventory);
 
     // Q1 Rule: promo should not be booked and the app should show that an item is out of stock.
@@ -1417,7 +1450,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
   // ============================================================
 
   /// Reads a receipt from the external booking app with Sedy AI and fills the cart.
-  /// Scanned quantities are capped to available stock; the user reviews before saving.
+  /// Scanned quantities are capped to available stock for today/past dates; for future dates, up to [_futureBookingCap] can be booked.
   Future<void> _onScanReceipt(List<InventoryItem> allInventory) async {
     if (_isScanning || _isSaving) return;
     _searchFocusNode.unfocus();
@@ -2494,7 +2527,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                       final isReward = item.isFreeReward;
                       final itemKey = '${item.productSource}:${item.productId}';
                       final invItem = byKey[itemKey];
-                      final maxAllowed = invItem != null ? _getMaxOrderableQty(invItem) : 9999;
+                      final maxAllowed = invItem != null ? _getMaxOrderableQty(invItem) : _futureBookingCap;
                       final receiptIdx = _scannedReceiptOrder.indexOf(itemKey);
                       final receiptNum = receiptIdx != -1 ? receiptIdx + 1 : null;
                       final isItemCorrected = _correctedReceiptKeys.contains(itemKey);
@@ -3140,7 +3173,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     final filtered = allInventory.where((item) {
       if (!item.isActive) return false;
       if (_selectedCategoryFilter == 'selected' && _getSelectedQty(item) <= 0) return false;
-      if (_hideOutOfStock && _getMaxOrderableQty(item) <= 0) return false;
+      if (_hideOutOfStock && !_isFutureDeliveryDate && _getMaxOrderableQty(item) <= 0) return false;
 
       // Category filter:
       if (_selectedCategoryFilter == 'unplaced') {
@@ -3193,11 +3226,13 @@ class _BookOrderPageState extends State<BookOrderPage> {
         emptyMessage = 'No selected products found';
       } else if (_selectedCategoryFilter == 'unplaced') {
         emptyMessage = 'All target best-sellers have already been placed for this store!';
-      } else if (_hideOutOfStock) {
+      } else if (_hideOutOfStock && !_isFutureDeliveryDate) {
         emptyMessage = 'No in-stock products found';
       } else {
         emptyMessage = 'No products found in this category';
       }
+
+      final bool hideOosActive = _hideOutOfStock && !_isFutureDeliveryDate;
 
       return Center(
         child: Padding(
@@ -3212,7 +3247,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant),
               ),
-              if (_selectedCategoryFilter != 'all' || _hideOutOfStock || _searchQuery.isNotEmpty) ...[
+              if (_selectedCategoryFilter != 'all' || hideOosActive || _searchQuery.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 TextButton.icon(
                   onPressed: () {

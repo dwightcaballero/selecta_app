@@ -50,15 +50,16 @@ class ProductOrderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isSelected = selectedQty > 0;
-    final isOutOfStock = maxOrderable <= 0;
+    final isOutOfStock = !isFutureDelivery && maxOrderable <= 0;
 
     final bool isBestSeller = ProductTag.isBestSeller(item.tag);
     final bool isNewProduct = ProductTag.isNewProduct(item.tag);
     final bool showNotPlacedMark = isBestSeller && !isPlaced;
 
+    final effectiveStock = isFutureDelivery ? item.availableQuantity : maxOrderable;
     final Color stockColor = isOutOfStock
         ? colorScheme.error
-        : (maxOrderable <= item.lowStockThreshold ? const Color(0xFFD97706) : colorScheme.primary);
+        : (effectiveStock <= item.lowStockThreshold ? const Color(0xFFD97706) : colorScheme.primary);
 
     Color cardBgColor = colorScheme.surface;
     Color cardBorderColor = colorScheme.outlineVariant.withValues(alpha: 0.45);
@@ -299,6 +300,25 @@ class ProductOrderCard extends StatelessWidget {
                               customStockLabel!,
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
                             )
+                          else if (isFutureDelivery)
+                            if (item.availableQuantity <= 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade100,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.amber.shade400.withValues(alpha: 0.6)),
+                                ),
+                                child: Text(
+                                  'No stock yet - pre-order',
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.amber.shade900),
+                                ),
+                              )
+                            else
+                              Text(
+                                '• ${item.availableQuantity} available',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: colorScheme.onSurfaceVariant),
+                              )
                           else if (item.stockQuantity <= 0 && item.incomingQuantity > 0)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),

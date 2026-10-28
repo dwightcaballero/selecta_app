@@ -129,6 +129,14 @@ class DeliveryController {
 
   PromoService get promoService => _promoService;
 
+  /// Returns whether [d] is strictly after today (calendar date comparison, ignoring time).
+  static bool isFutureDate(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(d.year, d.month, d.day);
+    return target.isAfter(today);
+  }
+
   // ==========================================
   // Shared / Role & Breakdown Queries
   // ==========================================
@@ -606,7 +614,11 @@ class DeliveryController {
     );
 
     // 1. Reserve floating inventory for all booked orders (today and future dates)
-    await _inventoryService.reserveStockForOrder(storeName: storeName, items: cleanItems);
+    await _inventoryService.reserveStockForOrder(
+      storeName: storeName,
+      items: cleanItems,
+      logShortAllocation: !isFutureDate(selectedDate),
+    );
 
     // 2. Persist unified transaction in `delivery` collection
     final String newId = await _deliveryService.addDelivery(newRecord);
@@ -644,7 +656,11 @@ class DeliveryController {
         newItems: cleanItems,
       );
     } else if (!currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
-      await _inventoryService.reserveStockForOrder(storeName: storeName, items: cleanItems);
+      await _inventoryService.reserveStockForOrder(
+        storeName: storeName,
+        items: cleanItems,
+        logShortAllocation: !isFutureDate(selectedDate),
+      );
     }
 
     final updated = currentDelivery.copyWith(

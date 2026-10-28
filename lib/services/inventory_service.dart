@@ -761,6 +761,7 @@ class InventoryService {
     required String storeName,
     required List<OrderItem> items,
     String? orderId,
+    bool logShortAllocation = true,
   }) async {
     final validItems = items.where((i) => i.productId.isNotEmpty && i.pickedQuantity > 0).toList();
     if (validItems.isEmpty) return;
@@ -797,7 +798,7 @@ class InventoryService {
           final availableAtMoment = currentStock - currentReserved;
 
           final isShort = availableAtMoment < item.pickedQuantity;
-          if (isShort) {
+          if (logShortAllocation && isShort) {
             shortAllocations.add((
               productId: snap.id,
               productName: (snap.data()?['productName'] as String?) ?? item.productName,
@@ -806,6 +807,8 @@ class InventoryService {
               available: availableAtMoment > 0 ? availableAtMoment : 0,
             ));
           }
+
+          final shortNote = (logShortAllocation && isShort) ? " [Short Allocation: Avail $availableAtMoment]" : "";
 
           final change = _computeStockChange(
             productRef: snap.reference,
@@ -821,7 +824,7 @@ class InventoryService {
             sourceLocation: 'warehouse',
             targetLocation: 'reserved',
             reason: 'Order Booked (Reserved Stock)',
-            notes: 'Store: $storeName (Reserved: +${item.pickedQuantity}${isShort ? " [Short Allocation: Avail $availableAtMoment]" : ""})',
+            notes: 'Store: $storeName (Reserved: +${item.pickedQuantity}$shortNote)',
             actorUid: actor.uid,
             actorRole: actor.role,
             actorName: actor.name,

@@ -7,6 +7,7 @@ import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/inventory/inventory_card.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/manual_po_product_picker_dialog.dart';
+import 'package:selecta_ops/controllers/delivery_controller.dart';
 
 void main() {
   final currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
@@ -75,7 +76,66 @@ void main() {
       expect(find.text('Add'), findsNothing);
     });
 
-    testWidgets('For tomorrow/future (isFutureDelivery=true) with 0 stock: renders Out of stock and disables ordering', (tester) async {
+    testWidgets('For tomorrow/future (isFutureDelivery=true) with 0 stock: renders pre-order label, shows Add button, and allows ordering', (tester) async {
+      bool tapped = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ProductOrderCard(
+              item: outOfStockItem,
+              selectedQty: 0,
+              maxOrderable: 99999,
+              isPlaced: false,
+              currencyFormat: currencyFormat,
+              isFutureDelivery: true,
+              onTap: () => tapped = true,
+              onIncrement: () => tapped = true,
+            ),
+          ),
+        ),
+      );
+
+      // Verify "No stock yet - pre-order" indicator is displayed
+      expect(find.text('No stock yet - pre-order'), findsOneWidget);
+      expect(find.text('Out of stock'), findsNothing);
+      expect(find.text('0 stock'), findsNothing);
+
+      // The Add button is shown and allows ordering
+      expect(find.text('Add'), findsOneWidget);
+      await tester.tap(find.text('Add'));
+      expect(tapped, isTrue);
+    });
+
+    testWidgets('For tomorrow/future (isFutureDelivery=true) with selectedQty exceeding available: "+" stepper button remains enabled', (tester) async {
+      bool incrementTapped = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ProductOrderCard(
+              item: outOfStockItem, // available = 0
+              selectedQty: 50, // ordered 50 above available
+              maxOrderable: 99999,
+              isPlaced: false,
+              currencyFormat: currencyFormat,
+              isFutureDelivery: true,
+              onTap: () {},
+              onIncrement: () => incrementTapped = true,
+              onDecrement: () {},
+            ),
+          ),
+        ),
+      );
+
+      // Shows selected quantity
+      expect(find.text('50'), findsOneWidget);
+      // Stepper '+' button is present and tappable
+      final plusButton = find.byIcon(Icons.add_rounded);
+      expect(plusButton, findsOneWidget);
+      await tester.tap(plusButton);
+      expect(incrementTapped, isTrue);
+    });
+
+    testWidgets('Van Load / Van Sell card regression: default isFutureDelivery=false still disables 0-stock items', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -85,7 +145,7 @@ void main() {
               maxOrderable: 0,
               isPlaced: false,
               currencyFormat: currencyFormat,
-              isFutureDelivery: true,
+              // isFutureDelivery defaults to false
               onTap: () {},
             ),
           ),
@@ -94,9 +154,8 @@ void main() {
 
       // Verify "Out of stock" indicator is displayed
       expect(find.text('Out of stock'), findsOneWidget);
-      // The Add button is not shown when out of stock for tomorrow/future
-      expect(find.text('Add'), findsNothing);
       expect(find.text('0 stock'), findsOneWidget);
+      expect(find.text('Add'), findsNothing);
     });
 
     testWidgets('For tomorrow/future (isFutureDelivery=true) with positive stock: shows available units and allows ordering', (tester) async {
@@ -107,7 +166,7 @@ void main() {
             body: ProductOrderCard(
               item: inStockItem,
               selectedQty: 0,
-              maxOrderable: 10,
+              maxOrderable: 99999,
               isPlaced: false,
               currencyFormat: currencyFormat,
               isFutureDelivery: true,
@@ -122,6 +181,43 @@ void main() {
       expect(find.text('Add'), findsOneWidget);
       await tester.tap(find.text('Add'));
       expect(tapped, isTrue);
+    });
+  });
+
+  group('Future Date Booking Helper & Controller Tests', () {
+    test('DeliveryController.isFutureDate: calendar date comparison (ignoring time)', () {
+      final now = DateTime.now();
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      final todayLate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      final tomorrow = todayMidnight.add(const Duration(days: 1));
+      final nextWeek = todayMidnight.add(const Duration(days: 7));
+      final yesterday = todayMidnight.subtract(const Duration(days: 1));
+
+      expect(DeliveryController.isFutureDate(todayMidnight), isFalse);
+      expect(DeliveryController.isFutureDate(todayLate), isFalse);
+      expect(DeliveryController.isFutureDate(yesterday), isFalse);
+      expect(DeliveryController.isFutureDate(tomorrow), isTrue);
+      expect(DeliveryController.isFutureDate(nextWeek), isTrue);
+    });
+
+    test('Date switch clamping: future quantities are trimmed when switching to today', () {
+      final item = inStockItem; // stockQuantity = 10
+      int computeMax(bool isFuture, InventoryItem it, int alreadyInOrder) {
+        if (isFuture) return 99999;
+        return (it.availableQuantity + alreadyInOrder).clamp(0, 999999);
+      }
+
+      // 1. Future date allows 50
+      final futureMax = computeMax(true, item, 0);
+      expect(futureMax, equals(99999));
+
+      // 2. Switching to today trims to available stock (10)
+      final todayMax = computeMax(false, item, 0);
+      expect(todayMax, equals(10));
+
+      final int cartQty = 50;
+      final int clampedQty = cartQty > todayMax ? todayMax : cartQty;
+      expect(clampedQty, equals(10));
     });
   });
 

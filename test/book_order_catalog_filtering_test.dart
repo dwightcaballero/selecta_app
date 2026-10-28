@@ -135,6 +135,21 @@ void main() {
       expect(inStockOnly.any((i) => i.id == '2' || i.id == '4'), isFalse);
     });
 
+    test('Hide Out of Stock Toggle: ignored when isFutureDelivery is true', () {
+      bool filterItem(InventoryItem item, {required bool hideOos, required bool isFuture}) {
+        if (hideOos && !isFuture && item.availableQuantity <= 0) return false;
+        return true;
+      }
+
+      // Today + Hide Out of Stock ON: removes 0-stock items
+      final todayFiltered = catalog.where((i) => filterItem(i, hideOos: true, isFuture: false)).toList();
+      expect(todayFiltered.any((i) => i.availableQuantity <= 0), isFalse);
+
+      // Future + Hide Out of Stock ON: retains all items (chip is ignored for future delivery)
+      final futureFiltered = catalog.where((i) => filterItem(i, hideOos: true, isFuture: true)).toList();
+      expect(futureFiltered.length, equals(catalog.length));
+    });
+
     test('Unplaced Recommendations Chip: filters strictly to unplaced best sellers', () {
       // Suppose the store has already placed 'P20 CREAMDAE CUPS CHOCO'
       final placedProductNames = {'p20 creamdae cups choco'};

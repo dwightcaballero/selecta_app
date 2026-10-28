@@ -274,6 +274,32 @@ void main() {
       expect(result.oosItemNames, contains('Cornetto'));
     });
 
+    test('Future date promo evaluation: lifting availableStock lifts OOS block', () {
+      final promo = Promo(
+        id: 'promo_future_oos_test',
+        name: 'Future OOS Combo',
+        rules: const [
+          PromoRule(productId: 'prod_1', requiredQty: 5),
+        ],
+        reward: const PromoReward(type: 'fixed', amount: 50.0),
+        createdDate: Timestamp.now(),
+        lastUpdatedDate: Timestamp.now(),
+      );
+
+      // When availableStock is null (the future-date rule in book_order_page)
+      final result = promoService.evaluate(
+        items: [const OrderItem(productId: 'prod_1', productName: 'Cornetto', sellingPrice: 30.0, orderedQuantity: 5)],
+        storeName: 'Store Alpha',
+        date: now.add(const Duration(days: 1)),
+        activePromos: [promo],
+        availableStock: null,
+      );
+
+      expect(result.isOOSBlocked, isFalse);
+      expect(result.appliedPromos.length, 1);
+      expect(result.discountAmount, 50.0);
+    });
+
     test('Almost-qualifying hint is generated when missing 1 unit', () {
       final promo = Promo(
         id: 'promo_hint',
