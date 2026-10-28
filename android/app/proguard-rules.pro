@@ -6,6 +6,9 @@
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
 
+# Google Play Core / Deferred Components (referenced by Flutter engine)
+-dontwarn com.google.android.play.core.**
+
 # Firebase Rules
 -keepattributes *Annotation*
 -keepattributes Signature
