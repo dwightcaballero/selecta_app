@@ -80,14 +80,7 @@ class SelectaProductService {
     });
   }
 
-  /// Updates dealer's configured bad order price per piece for a 'By Case' product.
-  Future<void> updateBadOrderPricePerPiece(String productId, double price) async {
-    ProductCatalogCache().invalidateSelecta();
-    await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).update({
-      'badOrderPricePerPiece': price,
-      'updatedAt': Timestamp.now(),
-    });
-  }
+
 
   // ═══════════════════════════════════════════════════════════════════════════
   // ADMIN MODEL (`AdminSelectaProduct` in `admin_selecta_products` collection)
@@ -180,57 +173,75 @@ class SelectaProductService {
 
     // Also keep local `selecta_products` in sync on this database
     final dealerRef = _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(docRef.id);
-    await dealerRef.set(
-      {
-        'productName': product.productName,
-        'imageUrl': product.imageUrl,
-        'buyingPrice': product.buyingPrice,
-        'sellingPrice': product.sellingPrice,
-        'price': product.sellingPrice,
-        'itemCode': '',
-        'barcode': product.barcode,
-        'category': product.category,
-        'tag': product.tag,
-        'isActive': true,
-        'importedAt': now,
-        'updatedAt': now,
-      },
-      SetOptions(merge: true),
-    );
+    final dealerData = <String, dynamic>{
+      'productName': product.productName,
+      'imageUrl': product.imageUrl,
+      'buyingPrice': product.buyingPrice,
+      'sellingPrice': product.sellingPrice,
+      'price': product.sellingPrice,
+      'itemCode': '',
+      'barcode': product.barcode,
+      'category': product.category,
+      'tag': product.tag,
+      'isActive': true,
+      if (product.category == 'By Case' && product.boPiecesPerCase != null)
+        'boPiecesPerCase': product.boPiecesPerCase,
+      'importedAt': now,
+      'updatedAt': now,
+    };
+    await dealerRef.set(dealerData, SetOptions(merge: true));
 
     return docRef.id;
   }
 
-  /// Updates an existing [AdminSelectaProduct] (Admin only) and updates local dealer catalog prices/name/image/category/barcode.
+  /// Updates an existing [AdminSelectaProduct] (Admin only) and updates local dealer catalog prices/name/image/category/barcode/piecesPerCase.
   Future<void> updateAdminProduct(String productId, AdminSelectaProduct product) async {
     final now = Timestamp.now();
+    final adminData = <String, dynamic>{
+      'productName': product.productName,
+      'imageUrl': product.imageUrl,
+      'buyingPrice': product.buyingPrice,
+      'sellingPrice': product.sellingPrice,
+      'category': product.category,
+      'tag': product.tag,
+      'barcode': product.barcode,
+      'updatedAt': now,
+    };
+    if (product.category == 'By Case') {
+      if (product.boPiecesPerCase != null) {
+        adminData['boPiecesPerCase'] = product.boPiecesPerCase;
+      }
+    } else {
+      adminData['boPiecesPerCase'] = FieldValue.delete();
+    }
+
     await _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).set(
-      {
-        'productName': product.productName,
-        'imageUrl': product.imageUrl,
-        'buyingPrice': product.buyingPrice,
-        'sellingPrice': product.sellingPrice,
-        'category': product.category,
-        'tag': product.tag,
-        'barcode': product.barcode,
-        'updatedAt': now,
-      },
+      adminData,
       SetOptions(merge: true),
     );
 
     // Also update product details in local dealer collection without overwriting dealer's `isActive`
+    final dealerData = <String, dynamic>{
+      'productName': product.productName,
+      'imageUrl': product.imageUrl,
+      'buyingPrice': product.buyingPrice,
+      'sellingPrice': product.sellingPrice,
+      'price': product.sellingPrice,
+      'category': product.category,
+      'tag': product.tag,
+      'barcode': product.barcode,
+      'updatedAt': now,
+    };
+    if (product.category == 'By Case') {
+      if (product.boPiecesPerCase != null) {
+        dealerData['boPiecesPerCase'] = product.boPiecesPerCase;
+      }
+    } else {
+      dealerData['boPiecesPerCase'] = FieldValue.delete();
+    }
+
     await _firestore.collection(SELECTA_PRODUCTS_COLLECTION_REF).doc(productId).set(
-      {
-        'productName': product.productName,
-        'imageUrl': product.imageUrl,
-        'buyingPrice': product.buyingPrice,
-        'sellingPrice': product.sellingPrice,
-        'price': product.sellingPrice,
-        'category': product.category,
-        'tag': product.tag,
-        'barcode': product.barcode,
-        'updatedAt': now,
-      },
+      dealerData,
       SetOptions(merge: true),
     );
   }
@@ -277,23 +288,29 @@ class SelectaProductService {
     return file;
   }
 
-  /// Exports all [AdminSelectaProduct] records as CSV text.
-  Future<String> exportAdminProductsToCsvString() async {
-    final products = await getAllAdminProducts();
+  /// Formats a list of [AdminSelectaProduct] records into standard CSV text.
+  static String formatProductsToCsv(List<AdminSelectaProduct> products) {
     final buffer = StringBuffer();
-    buffer.writeln('Product Name,Buying Price,Selling Price,Category,Tag,Image URL,ID');
+    buffer.writeln('Product Name,Buying Price,Selling Price,Category,Pieces Per Case,Tag,Image URL,ID');
     for (final p in products) {
       buffer.writeln(
         '${_escapeCsv(p.productName)},'
         '${p.buyingPrice.toStringAsFixed(2)},'
         '${p.sellingPrice.toStringAsFixed(2)},'
         '${_escapeCsv(p.category)},'
+        '${p.boPiecesPerCase != null ? p.boPiecesPerCase.toString() : ''},'
         '${_escapeCsv(p.tag)},'
         '${_escapeCsv(p.imageUrl)},'
         '${_escapeCsv(p.id)}',
       );
     }
     return buffer.toString();
+  }
+
+  /// Exports all [AdminSelectaProduct] records as CSV text.
+  Future<String> exportAdminProductsToCsvString() async {
+    final products = await getAllAdminProducts();
+    return formatProductsToCsv(products);
   }
 
   /// Saves the exported Admin Catalog to a local `.csv` file and returns the [File].
@@ -342,18 +359,22 @@ class SelectaProductService {
             : _firestore.collection(ADMIN_SELECTA_PRODUCTS_COLLECTION_REF).doc();
         final finalId = docRef.id;
         savedProducts.add(p.copyWith(id: finalId));
+        final adminData = <String, dynamic>{
+          'productName': p.productName,
+          'imageUrl': p.imageUrl,
+          'buyingPrice': p.buyingPrice,
+          'sellingPrice': p.sellingPrice,
+          'category': p.category,
+          'tag': p.tag,
+          'createdAt': p.createdAt ?? now,
+          'updatedAt': now,
+        };
+        if (p.category == 'By Case' && p.boPiecesPerCase != null) {
+          adminData['boPiecesPerCase'] = p.boPiecesPerCase;
+        }
         batch.set(
           docRef,
-          {
-            'productName': p.productName,
-            'imageUrl': p.imageUrl,
-            'buyingPrice': p.buyingPrice,
-            'sellingPrice': p.sellingPrice,
-            'category': p.category,
-            'tag': p.tag,
-            'createdAt': p.createdAt ?? now,
-            'updatedAt': now,
-          },
+          adminData,
           SetOptions(merge: true),
         );
       }
@@ -657,6 +678,7 @@ class SelectaProductService {
     int imageCol = -1;
     int idCol = -1;
     int barcodeCol = -1;
+    int piecesPerCaseCol = -1;
 
     String normalize(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
 
@@ -686,6 +708,13 @@ class SelectaProductService {
         sellingPriceCol = i;
       } else if (header == 'price') {
         priceCol = i;
+      } else if (header.contains('piecespercase') ||
+          header.contains('pcspercase') ||
+          header.contains('casesize') ||
+          header.contains('unitspercase') ||
+          header == 'pieces' ||
+          header == 'pcs') {
+        piecesPerCaseCol = i;
       } else if (header.contains('category') ||
           header == 'cat' ||
           header == 'type' ||
@@ -760,6 +789,12 @@ class SelectaProductService {
       final isCase = catRaw.toLowerCase().contains('case');
       final category = isCase ? 'By Case' : 'By Piece';
 
+      int? piecesPerCase;
+      if (piecesPerCaseCol >= 0 && piecesPerCaseCol < row.length) {
+        final rawPcs = row[piecesPerCaseCol].replaceAll(RegExp(r'[^0-9]'), '');
+        piecesPerCase = int.tryParse(rawPcs);
+      }
+
       final imageUrl = imageCol >= 0 ? getCol(imageCol) : '';
       final tag = tagCol >= 0 ? getCol(tagCol) : '';
       final barcode = barcodeCol >= 0 ? getCol(barcodeCol) : '';
@@ -775,6 +810,7 @@ class SelectaProductService {
           sellingPrice: sellingPrice,
           category: category,
           tag: tag,
+          boPiecesPerCase: isCase ? piecesPerCase : null,
         ),
       );
     }
@@ -824,6 +860,8 @@ class SelectaProductService {
         ..write(p.sellingPrice.toStringAsFixed(2))
         ..write('|')
         ..write(isCase ? 'case' : 'piece')
+        ..write('|')
+        ..write(isCase && p.boPiecesPerCase != null ? p.boPiecesPerCase.toString() : '')
         ..write('|')
         ..write(p.imageUrl.trim())
         ..write('|')
@@ -1012,6 +1050,7 @@ class SelectaProductService {
           final oldCat = (existingData['category'] as String? ?? '').trim();
           final oldTag = (existingData['tag'] as String? ?? '').trim();
           final oldBarcode = (existingData['barcode'] as String? ?? '').trim();
+          final oldPiecesPerCase = (existingData['boPiecesPerCase'] as num?)?.toInt();
 
           if (oldName != adminProd.productName ||
               oldImg != adminProd.imageUrl ||
@@ -1019,6 +1058,7 @@ class SelectaProductService {
               oldSell != adminProd.sellingPrice ||
               oldCat != adminProd.category ||
               oldTag != adminProd.tag ||
+              oldPiecesPerCase != adminProd.boPiecesPerCase ||
               (adminProd.barcode.isNotEmpty && oldBarcode != adminProd.barcode)) {
             updatedCount++;
           }
@@ -1045,6 +1085,7 @@ class SelectaProductService {
           barcode: targetBarcode,
           category: targetCategory,
           tag: adminProd.tag,
+          boPiecesPerCase: adminProd.boPiecesPerCase,
           importedAt: importedAt,
           updatedAt: now,
         );
@@ -1055,6 +1096,9 @@ class SelectaProductService {
           dealerPayload.remove('stockQuantity');
           dealerPayload.remove('reservedQuantity');
           dealerPayload.remove('incomingQuantity');
+        }
+        if (adminProd.category != 'By Case' || adminProd.boPiecesPerCase == null) {
+          dealerPayload['boPiecesPerCase'] = FieldValue.delete();
         }
         batch.set(docRef, dealerPayload, SetOptions(merge: true));
 
@@ -1125,6 +1169,7 @@ class SelectaProductService {
           sellingPrice: adminProd.sellingPrice,
           category: adminProd.category,
           tag: adminProd.tag,
+          boPiecesPerCase: adminProd.boPiecesPerCase,
         );
       }).toList();
     }

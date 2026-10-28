@@ -1,14 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/badorder_controller.dart';
-import 'package:selecta_ops/controllers/selecta_product_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/badorder_batch.dart';
-import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorder_batch_create_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorder_batch_detail_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorder_page.dart';
@@ -71,15 +68,6 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
 
   void _openAddBadOrderPage() {
     Helperfunctions.navigateTo(context, const BadOrderFormPage());
-  }
-
-  void _openByCaseConfigModal() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (modalContext) => const _ByCaseConfigBottomSheet(),
-    );
   }
 
   void _openCreateBatchPage() {
@@ -1468,13 +1456,29 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Submitted Batch Amount', style: TextStyle(fontSize: 13)),
+                            Text(
+                              batch.isLegacyBasis ? 'Expected Total (Legacy)' : 'Expected Supplier Refund',
+                              style: const TextStyle(fontSize: 13),
+                            ),
                             Text(
                               Helperfunctions.formatDoubleAmountForDisplay(batch.totalBatchAmount),
                               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
+                        if (batch.totalStoreRefundAmount != null) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Stores Refunded', style: TextStyle(fontSize: 13)),
+                              Text(
+                                Helperfunctions.formatDoubleAmountForDisplay(batch.totalStoreRefundAmount!),
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1693,14 +1697,6 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
         appBar: CustomAppbar(
           title: 'Bad Orders',
           subtitle: 'Damaged & Expired Products',
-          actions: [
-            if (_isDealer)
-              IconButton(
-                tooltip: 'Configure By Case B.O. Prices',
-                icon: const Icon(Icons.tune_outlined, color: Colors.white),
-                onPressed: _openByCaseConfigModal,
-              ),
-          ],
           bottom: TabBar(
             controller: _tabController,
             indicatorColor: Colors.white,
@@ -1865,258 +1861,3 @@ class _BadOrderListItem {
   _BadOrderListItem.doc(this.doc) : header = null;
 }
 
-/// Bottom sheet modal for dealers to view and configure `badOrderPricePerPiece`
-/// on "By Case" Selecta products.
-class _ByCaseConfigBottomSheet extends StatefulWidget {
-  const _ByCaseConfigBottomSheet();
-
-  @override
-  State<_ByCaseConfigBottomSheet> createState() => _ByCaseConfigBottomSheetState();
-}
-
-class _ByCaseConfigBottomSheetState extends State<_ByCaseConfigBottomSheet> {
-  final SelectaProductController _productController = SelectaProductController();
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _showEditPriceDialog(SelectaProduct product) {
-    final textController = TextEditingController(
-      text: product.badOrderPricePerPiece != null && product.badOrderPricePerPiece! > 0 ? product.badOrderPricePerPiece!.toStringAsFixed(2) : '',
-    );
-
-    showDialog(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Set B.O. Price Per Piece'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(product.productName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(height: 4),
-            Text(
-              'Case Buying Price: ${Helperfunctions.formatDoubleAmountForDisplay(product.buyingPrice)}',
-              style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: textController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Bad Order Price per Piece',
-                prefixText: '₱ ',
-                border: OutlineInputBorder(),
-                hintText: 'e.g. 8.00',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('Cancel')),
-          AsyncFilledButton(
-            onPressed: () async {
-              final val = double.tryParse(textController.text.trim()) ?? 0.0;
-              if (val <= 0) {
-                ShowMessage.error(dialogCtx, 'Please enter a price greater than 0.');
-                return;
-              }
-              try {
-                await _productController.updateBadOrderPricePerPiece(product.id, val);
-                if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                if (mounted) {
-                  ShowMessage.success(context, 'Updated B.O. price for ${product.productName} to ₱${val.toStringAsFixed(2)}');
-                }
-              } catch (e) {
-                if (dialogCtx.mounted) {
-                  ShowMessage.error(dialogCtx, 'Failed to update price: $e');
-                }
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: BoxDecoration(
-        color: theme.scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(top: 8, bottom: 4),
-              decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(2)),
-            ),
-          ),
-          // Title
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('By Case Bad Order Pricing', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      Text(
-                        'Set the individual piece price for By Case products during pullout.',
-                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-          ),
-          // Search box
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
-              decoration: InputDecoration(
-                hintText: 'Search By Case products...',
-                prefixIcon: const Icon(Icons.search, size: 18),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 16),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      )
-                    : null,
-                filled: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-          ),
-          const Divider(height: 1),
-          // Stream of products
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _productController.getProductsStream(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final docs = snapshot.data?.docs ?? [];
-                final caseProducts = docs
-                    .map((d) => SelectaProduct.fromSnapshot(d))
-                    .where((p) => p.category == 'By Case')
-                    .where((p) => _searchQuery.isEmpty || p.productName.toLowerCase().contains(_searchQuery))
-                    .toList();
-
-                if (caseProducts.isEmpty) {
-                  return const Center(
-                    child: Padding(padding: EdgeInsets.all(24.0), child: Text('No "By Case" Selecta products found.')),
-                  );
-                }
-
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: caseProducts.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final product = caseProducts[index];
-                    final isConfigured = product.badOrderPricePerPiece != null && product.badOrderPricePerPiece! > 0;
-
-                    return Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: isConfigured ? Colors.green.shade200 : Colors.red.shade200, width: 1.2),
-                      ),
-                      child: ListTile(
-                        leading: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
-                          child: product.imageUrl.isNotEmpty
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.network(
-                                    product.imageUrl,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => const Icon(Icons.icecream, color: Colors.purple),
-                                  ),
-                                )
-                              : const Icon(Icons.icecream, color: Colors.purple),
-                        ),
-                        title: Text(product.productName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Case Cost: ${Helperfunctions.formatDoubleAmountForDisplay(product.buyingPrice)}',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                            ),
-                            const SizedBox(height: 2),
-                            Text.rich(
-                              TextSpan(
-                                text: 'B.O. Piece: ',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
-                                children: [
-                                  TextSpan(
-                                    text: isConfigured ? '₱${product.badOrderPricePerPiece!.toStringAsFixed(2)} / pc' : 'Not Configured',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: isConfigured ? Colors.green.shade700 : Colors.red.shade700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          ),
-                          onPressed: () => _showEditPriceDialog(product),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.edit, size: 14),
-                              const SizedBox(width: 4),
-                              Text(isConfigured ? 'Edit' : 'Set Price', style: const TextStyle(fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}

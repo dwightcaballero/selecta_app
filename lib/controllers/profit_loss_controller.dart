@@ -5,6 +5,8 @@ import 'package:selecta_ops/dto/profit_loss_dto.dart';
 import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/expenses.dart';
+import 'package:selecta_ops/models/badorder_batch.dart';
+import 'package:selecta_ops/services/badorder_batch_service.dart';
 import 'package:selecta_ops/services/badorder_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/expenses_services.dart';
@@ -95,6 +97,9 @@ class ProfitLossController {
     // 3. Fetch bad orders within range
     final badOrders = await _fetchBadOrders(start, end);
 
+    // Fetch settled warehouse batches finalized within range for settlement variance
+    final settledBatches = await _fetchSettledBatches(start, end);
+
     // 4. Compute delivery revenue and COGS
     double grossRevenue = 0.0;
     double returnDeductions = 0.0;
@@ -155,19 +160,43 @@ class ProfitLossController {
       totalExpenses += exp.expenseAmount;
     }
 
-    // 6. Bad Order Losses
-    double totalBadOrders = 0.0;
+    // 6. Bad Order Losses & Settlement Variance
+    double storeRefundTotal = 0.0;
+    double supplierRecoveryTotal = 0.0;
+    double badOrderNetLoss = 0.0;
+    bool hasLegacyBadOrders = false;
+
     for (final bo in badOrders) {
-      final amt = bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount;
-      totalBadOrders += amt;
+      if (bo.hasDualPricing) {
+        storeRefundTotal += bo.totalAmount;
+        supplierRecoveryTotal += bo.supplierAmount;
+        badOrderNetLoss += bo.netLossAmount;
+      } else {
+        hasLegacyBadOrders = true;
+        final amt = bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount;
+        storeRefundTotal += amt;
+        // Legacy: supplier recovery is 0; 100% loss absorbed by dealer
+        badOrderNetLoss += amt;
+      }
     }
+
+    double settlementVariance = 0.0;
+    for (final batch in settledBatches) {
+      settlementVariance += batch.varianceAmount;
+    }
+
+    final totalBadOrders = roundToTwoDecimals(badOrderNetLoss);
+    storeRefundTotal = roundToTwoDecimals(storeRefundTotal);
+    supplierRecoveryTotal = roundToTwoDecimals(supplierRecoveryTotal);
+    settlementVariance = roundToTwoDecimals(settlementVariance);
 
     // 7. Profit calculations
     final grossProfit = netRevenue - netCOGS;
     final grossMarginPercent = netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0.0;
 
-    final totalOperatingCosts = totalExpenses + totalBadOrders;
-    final netProfit = grossProfit - totalOperatingCosts;
+    // Operating costs include dealer expenses and B.O. net loss adjusted by supplier settlement variance.
+    final totalOperatingCosts = roundToTwoDecimals(totalExpenses + totalBadOrders - settlementVariance);
+    final netProfit = roundToTwoDecimals(grossProfit - totalOperatingCosts);
     final netMarginPercent = netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0.0;
 
     final totalDeliveries = deliveries.length;
@@ -195,6 +224,10 @@ class ProfitLossController {
       grossMarginPercent: grossMarginPercent,
       totalExpenses: totalExpenses,
       totalBadOrders: totalBadOrders,
+      storeRefundTotal: storeRefundTotal,
+      supplierRecoveryTotal: supplierRecoveryTotal,
+      settlementVariance: settlementVariance,
+      hasLegacyBadOrders: hasLegacyBadOrders,
       totalOperatingCosts: totalOperatingCosts,
       netProfit: netProfit,
       netMarginPercent: netMarginPercent,
@@ -274,6 +307,40 @@ class ProfitLossController {
     }
   }
 
+  /// Fetches settled batches whose supplier refund / credit memo was finalized within [start] and [end].
+  Future<List<BadOrderBatch>> _fetchSettledBatches(DateTime start, DateTime end) async {
+    try {
+      final snapshot = await _firestore
+          .collection(BADORDER_BATCH_COLLECTION_REF)
+          .where('supplierRefundDate', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('supplierRefundDate', isLessThanOrEqualTo: Timestamp.fromDate(end))
+          .get();
+
+      return snapshot.docs
+          .map((doc) => BadOrderBatch.fromJson(doc.data(), doc.id))
+          .where((b) => b.isSettled)
+          .toList();
+    } catch (_) {
+      try {
+        final snapshot = await _firestore
+            .collection(BADORDER_BATCH_COLLECTION_REF)
+            .where('status', isEqualTo: BadOrderStatus.settled)
+            .get();
+
+        return snapshot.docs
+            .map((doc) => BadOrderBatch.fromJson(doc.data(), doc.id))
+            .where((b) {
+              if (b.supplierRefundDate == null) return false;
+              final d = b.supplierRefundDate!.toDate();
+              return !d.isBefore(start) && !d.isAfter(end);
+            })
+            .toList();
+      } catch (_) {
+        return [];
+      }
+    }
+  }
+
   /// Builds trend points grouped appropriately based on range duration.
   List<ProfitLossTrendPoint> _buildTrendPoints({
     required ProfitLossDateRange range,
@@ -346,7 +413,7 @@ class ProfitLossController {
 
     for (final bo in badOrders) {
       final idx = getSlotIndex(bo.badorderDate.toDate());
-      final amt = bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount;
+      final amt = bo.hasDualPricing ? bo.netLossAmount : (bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount);
       badOrdersAcc[idx] += amt;
     }
 
@@ -425,7 +492,7 @@ class ProfitLossController {
       final key = DateFormat('yyyy-MM-dd').format(bo.badorderDate.toDate());
       final idx = dayIndexMap[key];
       if (idx != null) {
-        final amt = bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount;
+        final amt = bo.hasDualPricing ? bo.netLossAmount : (bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount);
         badOrdersAcc[idx] += amt;
       }
     }
@@ -500,7 +567,7 @@ class ProfitLossController {
       for (final bo in badOrders) {
         final date = bo.badorderDate.toDate();
         if (!date.isBefore(weekStart) && !date.isAfter(weekEnd)) {
-          final amt = bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount;
+          final amt = bo.hasDualPricing ? bo.netLossAmount : (bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount);
           wBo += amt;
         }
       }
@@ -576,7 +643,7 @@ class ProfitLossController {
       for (final bo in badOrders) {
         final date = bo.badorderDate.toDate();
         if (!date.isBefore(monthStart) && !date.isAfter(monthEnd)) {
-          final amt = bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount;
+          final amt = bo.hasDualPricing ? bo.netLossAmount : (bo.badorderAmount > 0 ? bo.badorderAmount : bo.totalAmount);
           mBo += amt;
         }
       }

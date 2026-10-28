@@ -67,11 +67,22 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
     });
   }
 
-  double get _selectedTotalAmount {
+  double get _selectedStoreRefundTotal {
     double total = 0.0;
     for (final doc in widget.pendingOrders) {
       if (_selectedIds.contains(doc.id)) {
         total += doc.data().totalAmount;
+      }
+    }
+    return total;
+  }
+
+  double get _selectedSupplierCreditTotal {
+    double total = 0.0;
+    for (final doc in widget.pendingOrders) {
+      if (_selectedIds.contains(doc.id)) {
+        final bo = doc.data();
+        total += bo.hasDualPricing ? bo.supplierAmount : bo.totalAmount;
       }
     }
     return total;
@@ -90,7 +101,9 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
       context,
       title: 'Create Warehouse Batch',
       message:
-          'Create batch [${_batchNumberController.text.trim()}] containing ${_selectedIds.length} store pullouts for a total of ${Helperfunctions.formatDoubleAmountForDisplay(_selectedTotalAmount)}?',
+          'Create batch [${_batchNumberController.text.trim()}] containing ${_selectedIds.length} store pullouts?\n\n'
+          'Expected Supplier Credit: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedSupplierCreditTotal)}\n'
+          'Stores Refunded: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedStoreRefundTotal)}',
       icon: Icons.warehouse_outlined,
       confirmText: 'Confirm Batch',
     );
@@ -143,7 +156,7 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
       ),
       bottomNavigationBar: SafeArea(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
           decoration: BoxDecoration(
             color: Theme.of(context).scaffoldBackgroundColor,
             border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
@@ -164,21 +177,25 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
                   children: [
                     Text(
                       '${_selectedIds.length} store pullout${_selectedIds.length == 1 ? '' : 's'} selected',
-                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                     ),
                     Text(
-                      Helperfunctions.formatDoubleAmountForDisplay(_selectedTotalAmount),
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                      'Expected: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedSupplierCreditTotal)}',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                    ),
+                    Text(
+                      'Stores: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedStoreRefundTotal)} • Diff: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedStoreRefundTotal - _selectedSupplierCreditTotal)}',
+                      style: TextStyle(fontSize: 10.5, color: colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               AsyncFilledButton.icon(
                 onPressed: _selectedIds.isEmpty ? null : _onSubmit,
                 loadingLabel: 'Creating Batch...',
                 style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   backgroundColor: Colors.blue.shade700,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -376,6 +393,7 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
                       },
                       title: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
                             child: Text(
@@ -385,9 +403,25 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Text(
-                            Helperfunctions.formatDoubleAmountForDisplay(bo.totalAmount),
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5, color: colorScheme.primary),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                Helperfunctions.formatDoubleAmountForDisplay(
+                                  bo.hasDualPricing ? bo.supplierAmount : bo.totalAmount,
+                                ),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14.5,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                              if (bo.hasDualPricing)
+                                Text(
+                                  'Store: ${Helperfunctions.formatDoubleAmountForDisplay(bo.totalAmount)}',
+                                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                ),
+                            ],
                           ),
                         ],
                       ),

@@ -8,7 +8,9 @@ class BadOrderBatch {
   final Timestamp pulloutDate;
   final List<String> badOrderIds;
   final List<String> storeNames;
-  final double totalBatchAmount;
+  final double totalBatchAmount; // Expected supplier refund (or legacy store total for old batches)
+  final double? totalStoreRefundAmount; // Informational: sum of store refunds across all included B.O.s
+  final String pricingBasis; // 'supplier_buying_v1' for new batches, 'store_selling_legacy' for old batches
   final int totalItemsCount;
   final String status;
   final String notes;
@@ -35,6 +37,8 @@ class BadOrderBatch {
     required this.badOrderIds,
     this.storeNames = const [],
     required this.totalBatchAmount,
+    this.totalStoreRefundAmount,
+    this.pricingBasis = 'supplier_buying_v1',
     this.totalItemsCount = 0,
     this.status = BadOrderStatus.warehousePullout,
     this.notes = '',
@@ -52,6 +56,9 @@ class BadOrderBatch {
 
   bool get isSettled => status == BadOrderStatus.settled || isSupplierRefunded;
 
+  /// True when batch was created under the legacy pricing basis (where batch amount = store selling total).
+  bool get isLegacyBasis => pricingBasis != 'supplier_buying_v1';
+
   /// Variance between what the dealer submitted vs what the supplier actually credited.
   double get varianceAmount => (supplierRefundAmount ?? totalBatchAmount) - totalBatchAmount;
 
@@ -64,6 +71,8 @@ class BadOrderBatch {
       badOrderIds: (json['badOrderIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       storeNames: (json['storeNames'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       totalBatchAmount: (json['totalBatchAmount'] as num?)?.toDouble() ?? 0.0,
+      totalStoreRefundAmount: (json['totalStoreRefundAmount'] as num?)?.toDouble(),
+      pricingBasis: json['pricingBasis'] as String? ?? 'store_selling_legacy',
       totalItemsCount: (json['totalItemsCount'] as num?)?.toInt() ?? 0,
       status: json['status'] as String? ?? BadOrderStatus.warehousePullout,
       notes: json['notes'] as String? ?? '',
@@ -105,6 +114,8 @@ class BadOrderBatch {
       'badOrderIds': badOrderIds,
       'storeNames': storeNames,
       'totalBatchAmount': totalBatchAmount,
+      if (totalStoreRefundAmount != null) 'totalStoreRefundAmount': totalStoreRefundAmount,
+      'pricingBasis': pricingBasis,
       'totalItemsCount': totalItemsCount,
       'status': status,
       'notes': notes,
@@ -129,6 +140,8 @@ class BadOrderBatch {
     List<String>? badOrderIds,
     List<String>? storeNames,
     double? totalBatchAmount,
+    double? totalStoreRefundAmount,
+    String? pricingBasis,
     int? totalItemsCount,
     String? status,
     String? notes,
@@ -151,6 +164,8 @@ class BadOrderBatch {
       badOrderIds: badOrderIds ?? this.badOrderIds,
       storeNames: storeNames ?? this.storeNames,
       totalBatchAmount: totalBatchAmount ?? this.totalBatchAmount,
+      totalStoreRefundAmount: totalStoreRefundAmount ?? this.totalStoreRefundAmount,
+      pricingBasis: pricingBasis ?? this.pricingBasis,
       totalItemsCount: totalItemsCount ?? this.totalItemsCount,
       status: status ?? this.status,
       notes: notes ?? this.notes,

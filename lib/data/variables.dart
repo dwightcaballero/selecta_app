@@ -18,6 +18,11 @@ class KVariables {
     return user?.role == BusinessRole.admin;
   }
 
+  static Future<bool> getIsSalesman() async {
+    final user = await getUser();
+    return user?.role == BusinessRole.salesman;
+  }
+
   static Future<bool> getIsStore() async {
     final user = await getUser();
     return user?.role == BusinessRole.hapiStore;

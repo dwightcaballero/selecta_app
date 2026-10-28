@@ -111,7 +111,10 @@ class _BadOrderBatchDetailPageState extends State<BadOrderBatchDetailPage> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Submitted Batch Total:', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                          Text(
+                            _batch.isLegacyBasis ? 'Expected Total (Legacy):' : 'Expected Supplier Refund:',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                          ),
                           Text(
                             Helperfunctions.formatDoubleAmountForDisplay(_batch.totalBatchAmount),
                             style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
@@ -423,12 +426,20 @@ class _BadOrderBatchDetailPageState extends State<BadOrderBatchDetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Submitted Total Amount', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                      Text(
+                        _batch.isLegacyBasis ? 'Expected Total (Legacy)' : 'Expected Supplier Refund',
+                        style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                      ),
                       const SizedBox(height: 2),
                       Text(
                         Helperfunctions.formatDoubleAmountForDisplay(_batch.totalBatchAmount),
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
                       ),
+                      if (_batch.totalStoreRefundAmount != null)
+                        Text(
+                          'Store: ${Helperfunctions.formatDoubleAmountForDisplay(_batch.totalStoreRefundAmount!)}',
+                          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                        ),
                     ],
                   ),
                 ),

@@ -1,0 +1,507 @@
+SELECTA APP - ZERO-COST AI SCAN & CHAT IMPLEMENTATION PLAN (FOR REVIEW)
+=======================================================================
+
+Goal: stop depending on slow / unreliable Gemini vision calls and run the AI
+features at $0 (or as close to $0 as possible), while keeping accuracy and
+the existing screens and call sites unchanged.
+
+Status: PLAN ONLY. Nothing in this file has been implemented yet.
+Note: provider free-tier limits and model names change often. Every number
+marked (verify) must be re-checked on the provider's dashboard before Phase 0
+sign-off. Limits quoted here came from a general web summary, not from
+benchmarks on Selecta invoices.
+
+
+=======================================================================
+1. BACKGROUND (WHAT EXISTS TODAY)
+=======================================================================
+All AI goes through lib/services/gemini_ai_service.dart (singleton
+GeminiAiService, SDK google_generative_ai ^0.4.7, deprecated, no thinkingConfig).
+
+Vision flows (image in -> JSON out) - the slow ones:
+- extractPurchaseOrderFromImages          (purchaseorder_page.dart)
+- extractStoreOrderFromImages             (book_order/receipt_scan_flow.dart)
+- extractSupplierStockStatusFromImages    (supplier_oos_scan_dialog.dart,
+                                           automated_po_suggestion_dialog.dart)
+- compareOfficialInvoiceWithPoItems       (invoice vs PO reconciliation)
+
+Text flows (cheap, low volume):
+- startChat / sendMessage / generateText  (ai_chat_modal.dart, "Sedy")
+
+Already done (see AI_SCAN_SPEED_PLAN.txt): JSON mime type, temperature 0, image
+downscaling, catalog trimming, 45 s timeout, remembered working model, cache of
+AI status. Scans can still be slow or fail with "high demand" / 429 errors
+because the remaining problem is the remote vision call itself.
+
+Existing assets we can reuse:
+- SupplierMappingService (supplier_product_mappings, booking_receipt_mappings):
+  learned aliases raw text -> product, with usageCount and multi-variant support
+- InventoryItem catalog (id, itemCode, productName, buyingPrice, sellingPrice,
+  source), ProductCatalogCache
+- Result models: ExtractedPurchaseOrderData, ExtractedPoItem, AmbiguousPoItem,
+  ExtractedSupplierStockData, InvoiceComparisonResult
+- Disambiguation UI (product_disambiguation_sheet.dart) for unresolved lines
+- ai_usage_metrics collection + master enable/disable + monthly limit
+- AiScanTimingTracker (debug telemetry)
+- image / image_picker / flutter_doc_scanner / http / dio already in pubspec
+- Android minSdk 26 (ML Kit needs 21+, OK). App uses Bluetooth printer, SMS,
+  barcode scanner -> primarily an Android (and iOS) app.
+
+
+=======================================================================
+2. TARGET ARCHITECTURE
+=======================================================================
+Stop sending images to a cloud LLM. Read the text on the phone, match
+products locally, and only call a free text-only LLM for lines that the local
+matcher cannot resolve.
+
+   photo(s)
+      |
+      v
+   [A] ImagePrep (existing prepareImageBytesForAi / slicing)
+      |
+      v
+   [B] OcrService  --- Google ML Kit Text Recognition (on-device, free,
+      |                  unlimited, offline). Returns text blocks/lines with
+      |                  bounding boxes.
+      v
+   [C] DocumentLayoutParser  --- groups lines into rows by Y position, finds
+      |                         header, invoice no., date, total, and for each
+      |                         row: code, description, qty, unit price, amount
+      v
+   [D] CatalogMatcher  --- alias exact -> item code -> fuzzy name -> price check
+      |                    gives matched / ambiguous / unmatched + confidence
+      v
+   [E] decision: enough confident? ----yes----> result (no network at all)
+      |
+      no (unresolved lines only)
+      v
+   [F] TextLlmProvider chain (free tiers, TEXT ONLY, tiny prompt):
+         1) Gemini Flash-Lite free     2) Groq free     3) none -> manual
+      |
+      v
+   result -> existing models -> existing UI (disambiguation sheet etc.)
+
+Key properties
+- Image bytes never leave the device in the default mode (privacy + no quota).
+- Typical scan: ~1-3 s OCR + local matching; LLM only for leftovers.
+- Everything degrades gracefully: no network / quota exhausted still returns
+  a usable result with unmatched lines for manual pick.
+- Public method signatures on GeminiAiService stay the same so the 5 call
+  sites do not change in the first rollout.
+
+Scan modes (remote-configurable by superadmin, stored in Configuration):
+- ocr_local   : steps A-D only, never calls an LLM
+- hybrid      : A-F (DEFAULT after rollout)
+- cloud_vision: today's behavior (Gemini image call). Kept as an emergency
+                fallback and for web/desktop where ML Kit is unavailable.
+
+
+=======================================================================
+3. COST SUMMARY
+=======================================================================
+Component                     Cost    Notes
+ML Kit text recognition       $0      on-device, no quota, no key
+Local parser / matcher        $0      pure Dart
+Gemini Flash-Lite free tier   $0      about 15 req/min, 1,500/day (verify);
+                                      free-tier data may be used by Google
+Groq free tier                $0      about 30 req/min, 1,000/day,
+                                      200k tokens/day (verify); text models
+Firestore (usage counters)    ~$0     small reads/writes within Spark limits
+Cloud Functions proxy         NOT $0  requires Blaze plan (billing account
+                                      with card). OPTIONAL, not in this plan.
+Hosting a local model         NOT $0  needs a server/GPU. Out of scope.
+
+Free-tier risk: caps, no SLA, policies can change. Mitigated by the local-first
+design (most scans never hit an API) and the provider fallback chain.
+
+
+=======================================================================
+4. DESIGN DETAILS
+=======================================================================
+4.1 OCR (ML Kit)
+- Package: google_mlkit_text_recognition (Latin script, bundled model so it
+  works offline; adds a few MB to the APK - check size impact).
+- Wrap behind an abstract OcrEngine { Future<OcrResult> recognize(bytes) } so
+  tests use a fake and web/desktop can return "unsupported".
+- OcrResult: pages -> blocks -> lines -> elements, each with text + rect +
+  confidence (where provided).
+- Run image prep first (already 1600-2000 px, q80). For long screenshots reuse
+  ImageSlicingService; de-duplicate overlapping rows at slice boundaries
+  (equal normalized text + same qty + adjacent y) - replaces the prompt rule
+  "prevent duplicates from overlaps".
+- Run OCR on images concurrently (limit 2-3 at a time) in an isolate-safe way
+  (the plugin already runs natively off the UI thread).
+
+4.2 Layout parsing
+- Cluster lines into rows: same row if vertical centers within ~0.6 x median
+  line height. Sort each row left to right.
+- Detect header row via keywords (QTY, QUANTITY, DESCRIPTION, ITEM, PRICE,
+  AMOUNT, UNIT, CODE) to learn column x-ranges; fall back to regex when no
+  header (screenshots of ordering apps).
+- Extract per row: item code (digits / alphanumeric token matching catalog
+  codes), description text, qty, unit price, line amount, UOM (CS/BOX/PC/PCS).
+- Quantity rules ported from the current prompt:
+  * prefer delivered/invoiced qty over ordered qty when both columns exist
+  * never treat unit price, line amount or item code as qty
+  * sanity check: qty x unit price ~= line amount (+/- rounding); use it to
+    pick the right number and to flag suspicious rows
+  * digit confusions (1/7, 3/8, 5/6, 0/8, O/0, l/1) corrected inside numeric
+    fields only
+- Header fields: invoice number (regex near INVOICE / SI / DR / PO labels),
+  date (several PH formats -> yyyy-MM-dd), total (largest amount near TOTAL /
+  AMOUNT DUE / GRAND TOTAL, cross-check = sum of lines when available).
+- Each parsed row carries a confidence; rows that fail sanity checks are
+  marked needsReview.
+- Parser is per-document-type: PurchaseOrderParser, StoreReceiptParser,
+  SupplierStockParser, with shared row clustering utilities.
+
+4.3 Catalog matching (CatalogMatcher)
+Order of resolution for each row:
+ 1. Learned alias exact normalized match (SupplierMappingService, incl. prefix
+    match for truncated text with "..."). Multi-variant alias -> ambiguous.
+ 2. Item code exact match against InventoryItem.itemCode.
+ 3. Fuzzy name match: normalize (lowercase, strip punctuation, expand known
+    abbreviations such as CORN -> CORNETTO, MAG -> MAGNUM, WH -> WHITE; build
+    this dictionary from existing mappings), token-set similarity +
+    Jaro-Winkler / trigram, pre-filtered by an inverted token index so it is
+    fast on a few thousand items.
+ 4. Price verification: unit price on the document vs catalog buyingPrice
+    (PO) or sellingPrice (store receipt) within a tolerance; use it to
+    separate sizes (pint vs tub) and to break ties.
+ 5. Score bands: >= 0.90 matched; 0.60-0.90 ambiguous (top 3-5 candidates
+    for the existing disambiguation sheet); < 0.60 unmatched.
+- Cache normalized catalog + token index per scan session (rebuild when
+  ProductCatalogCache changes).
+- Source filtering stays: OOS flow only matches InventoryProductSource.selecta;
+  PO flow can pre-filter by supplier when known, with full-catalog fallback.
+- Output mapped to existing ExtractedPoItem / AmbiguousPoItem / unmatched.
+
+4.4 Text LLM step (hybrid only)
+- Triggered only when unresolved rows exist (ambiguous or unmatched), or when
+  header fields (invoice no./date/total) could not be parsed.
+- Prompt contains ONLY: the unresolved raw lines + each line's top-5 candidate
+  products (id, name, price) + header text snippets. No full catalog, no
+  images -> a few hundred tokens, answers in ~1-3 s.
+- JSON-mode response: [{row, product_id|null, qty, confidence}] and header
+  fields. Validate every returned product_id exists in the catalog; ignore
+  anything invalid (hallucination guard).
+- Result merges back; LLM answers never override a confident local match.
+- Provider chain with circuit breaker (see 4.6).
+
+4.5 Other flows
+- compareOfficialInvoiceWithPoItems: OCR + parse the invoice, then match its
+  rows to the original PO items (by product id mapping/name/code) ->
+  confirmed / adjusted qty / missing. LLM only for unresolved rows.
+- extractSupplierStockStatusFromImages: parse rows, detect OOS markers (OOS,
+  OUT OF STOCK, N/A, NONE, 0, strike-through not detectable -> rely on text),
+  available qty column when present. Match only Selecta products.
+- Chat (Sedy): move to TextLlmProvider chain (Gemini Flash-Lite free ->
+  Groq). Keep conversation history in-app and send last N turns, since REST
+  calls are stateless.
+
+4.6 Providers, quotas and resilience
+- Abstract interface:
+    abstract class TextLlmProvider {
+      String get id;
+      Future<String> generateJson(prompt, {schemaHint, timeout});
+      Future<String> chat(messages, {systemPrompt, timeout});
+    }
+- Implementations call REST with the existing http/dio package (no SDK):
+    GeminiTextProvider  -> generativelanguage.googleapis.com generateContent
+                           (model: a Flash-Lite model, thinking disabled via
+                           thinkingConfig/budget 0 if supported (verify))
+    GroqTextProvider    -> api.groq.com/openai/v1/chat/completions
+                           (OpenAI-compatible; JSON mode; a Llama/GPT-OSS
+                           text model (verify current free model list))
+- Model names live in remote config (Configuration/Firestore), NOT hardcoded,
+  so a retired model is fixed without an app release. Keep a safe default list
+  in code.
+- Quota guard: count requests per provider per day (+ per minute in memory);
+  stop at ~80% of the known free cap and skip to the next provider.
+- Error handling: 429 / 503 -> open a circuit for Retry-After (or 60 s),
+  move to next provider; 401/403 -> mark key invalid and show the existing
+  "key needed" message; timeout 15 s for text calls, max 1 retry.
+- Final fallback: return the local result (matched + unmatched) and let the
+  user resolve manually - the flow never hard-fails because AI is down.
+- Remove google_generative_ai from pubspec once Gemini goes through REST
+  (last step, behind the mode flag).
+
+4.7 Configuration / keys
+- Configuration model: add groqApiKey, aiScanMode, aiProviderOrder,
+  textModelGemini, textModelGroq, ocrMatchThresholds (optional).
+- Superadmin page: add Groq key field, scan mode selector, provider order,
+  per-provider daily counters, "test connection" buttons.
+- Keys are stored in Firestore config and fetched by the client (as today).
+  Because free-tier keys are extractable from a client, the worst case is
+  quota exhaustion, which the local-first design tolerates. Review
+  firestore.rules so only authenticated app users can read config.
+- If stronger protection is wanted later, a Cloud Function proxy is possible
+  but needs the Blaze plan (not $0) - intentionally out of scope.
+
+
+=======================================================================
+5. PHASES
+=======================================================================
+Effort estimates are for one developer.
+
+PHASE 0 - VALIDATE ASSUMPTIONS (0.5-1 day)  [gate: go / no-go]
+---------------------------------------------------------------
+[ ] Collect 30-50 real samples: supplier invoices (photo + screenshot), store
+    receipts from the booking app, supplier stock sheets, blurry / low-light /
+    faded thermal-paper
+    ones. Remove sensitive data if shared outside the team.
+[ ] Build ground truth (correct items + qty) for each sample, in a JSON file
+    under test/fixtures/ai_scans/ (no real customer PII)
+[ ] Prototype: run ML Kit on the samples and measure text quality
+[ ] Re-verify current free-tier limits and model names for Gemini Flash-Lite
+    and Groq on their dashboards; record in this file under RESULTS
+[ ] Decision gate:
+    - OCR text readable on >= 85% of printed docs -> continue
+    - very low-quality docs -> keep cloud_vision as fallback
+    - scans per day << free caps -> hybrid is safe
+
+PHASE 1 - FOUNDATION: PROVIDER LAYER + CONFIG (1-1.5 days)
+----------------------------------------------------------
+[ ] Add TextLlmProvider interface, GeminiTextProvider, GroqTextProvider (REST)
+[ ] Add AiProviderChain: ordering, circuit breaker, daily/minute counters,
+    error classification (reuse formatAiError / _isOverloadedError logic)
+[ ] Extend Configuration model + toJson/fromJson/copyWith + defaults
+    (lib/models/configuration.dart) and configuration_controller.dart
+    (getGroqApiKey/saveGroqApiKey, scan mode, provider order)
+[ ] Extend usage tracking in gemini_ai_service.dart / ai_usage_metrics with a
+    daily key and provider id (keep monthly total for the existing limit)
+[ ] Superadmin UI: Groq key, scan mode, provider order, test-connection
+    (lib/views/pages/sidebar/superadmin_page.dart)
+[ ] Move chat (startChat/sendMessage/generateText) onto the chain, keep
+    ai_chat_modal.dart API-compatible; update "Powered by" label to the active
+    provider
+[ ] Tests: provider chain fallback, 429 circuit breaker, quota guard, key
+    invalid handling (fake providers, no network)
+[ ] Verify: chat works via Flash-Lite and via Groq, and when one is down
+
+PHASE 2 - OCR SERVICE (1 day)
+-----------------------------
+[ ] Add google_mlkit_text_recognition to pubspec.yaml
+[ ] Create lib/services/ocr/ocr_engine.dart (interface), mlkit_ocr_engine.dart,
+    ocr_result.dart (blocks/lines/rects)
+[ ] Platform guard: kIsWeb / unsupported platform -> report unsupported and
+    force cloud_vision
+[ ] Concurrency limit + disposal of the recognizer
+[ ] Integrate with prepareImageBytesForAi / ImageSlicingService (ML Kit takes a
+    file path or bytes-as-InputImage; write temp file when needed and clean it)
+[ ] Verify: OCR time per image on a mid-range Android device (target < 2 s);
+    APK size delta recorded; release (R8/proguard) build still works - update
+    android proguard rules if needed
+
+PHASE 3 - LAYOUT PARSER (2-3 days)
+----------------------------------
+[ ] Row clustering utility + unit tests with synthetic OcrResult fixtures
+[ ] Header/column detection + regex fallback
+[ ] Field extractors: invoice number, date (PH formats), total, qty, price,
+    code, UOM
+[ ] Quantity/price sanity check (qty x price ~= amount) and needsReview flag
+[ ] Overlap de-duplication for sliced screenshots
+[ ] PurchaseOrderParser, StoreReceiptParser, SupplierStockParser
+[ ] Tests built from the Phase 0 ground-truth samples (golden OcrResult JSON
+    dumps saved as fixtures so tests do not need a device)
+[ ] Verify: header fields correct >= 90% on printed samples; line count equals
+    ground truth on >= 90% of samples
+
+PHASE 4 - CATALOG MATCHER (2 days)
+----------------------------------
+[ ] Text normalization + abbreviation dictionary (seeded from existing
+    supplier_product_mappings / booking_receipt_mappings and a static list)
+[ ] Inverted token index + similarity scoring (token set + Jaro-Winkler or
+    trigram); pure Dart, no new dependency if possible
+[ ] Alias resolution reuses SupplierMappingService.getAllMappings (cached
+    5 min), including multi-variant -> ambiguous
+[ ] Price verification and tie-breaking; score bands -> matched / ambiguous /
+    unmatched
+[ ] Map into ExtractedPurchaseOrderData / ExtractedSupplierStockData /
+    InvoiceComparisonResult
+[ ] Tests: truncated names ("MAGNUM CLASS..."), pint vs tub by price, flavor
+    variants, unknown products, empty catalog
+[ ] Verify: on the sample set, matched-correct rate >= current Gemini rate
+    minus 3 points; wrong-confident (incorrectly matched at >= 0.90) < 1%
+
+PHASE 5 - WIRE INTO SERVICE + HYBRID LLM STEP (1.5-2 days)
+----------------------------------------------------------
+[ ] Add a scan orchestrator (e.g. lib/services/ai_scan_pipeline.dart) used by
+    GeminiAiService.extract* / compareOfficialInvoiceWithPoItems according to
+    aiScanMode; keep existing method signatures and result models
+[ ] Pre-AI steps run concurrently (OCR, getAllMappings, checkAiAvailability);
+    checkAiAvailability must NOT block ocr_local mode (no key needed)
+[ ] Hybrid step: build the tiny unresolved-lines prompt, call the provider
+    chain, validate returned IDs, merge results without overriding confident
+    local matches
+[ ] Keep cloud_vision path intact (current Gemini vision code) behind the mode
+    flag and as the web/desktop fallback
+[ ] Learning loop: when the user confirms a disambiguation, keep saving
+    aliases as today so the next scan resolves locally
+[ ] Extend AiScanTimingTracker: log ocr ms, parse ms, match ms, llm ms,
+    unresolved count, provider used
+[ ] UX: loading dialog steps (Reading text -> Matching products -> Resolving
+    unclear items); keep cancel button; keep "taking longer than usual" hint
+[ ] Update the 5 call sites only if needed (none expected)
+[ ] Update existing tests: gemini_ai_service_retry_test.dart,
+    ai_scan_speed_optimization_test.dart; add pipeline tests with fake OCR +
+    fake provider
+
+PHASE 6 - ACCURACY VALIDATION ON SAMPLES (1-1.5 days; no shadow mode)
+---------------------------------------------------------------------
+(Shadow mode was skipped by owner decision. Validation uses the Phase 0
+ground-truth samples plus fresh real documents gathered by the owner/pilot
+users, and the staged rollout in Phase 7.)
+[ ] Run the full pipeline (ocr_local and hybrid) on all ground-truth samples
+    and on 20+ new real documents per flow; produce a per-flow accuracy table
+[ ] Review every mismatch; tune thresholds, abbreviation dictionary and
+    parser rules; add each fixed case as a regression fixture
+[ ] Decision gate before rollout:
+    - item-level agreement >= 95% with ground truth
+    - qty errors <= current Gemini vision error rate
+    - wrong-confident matches < 1%
+    - no systematic failure on any supplier format
+
+PHASE 7 - ROLLOUT (1 day + monitoring)
+--------------------------------------
+[ ] Ship with default aiScanMode = cloud_vision (no behavior change)
+[ ] Enable hybrid for the superadmin/test devices first, then 1-2 pilot
+    users, then everyone (remote config flip, no new release)
+[ ] Keep cloud_vision as a one-tap rollback in superadmin settings
+[ ] Monitor Crashlytics / error logs / ai_usage_metrics for a week
+[ ] After stable: remove google_generative_ai dependency (Gemini via REST
+    only), delete dead vision-only prompt code if cloud_vision is retired,
+    update README with the new AI setup and key instructions
+
+PHASE 8 - OPTIONAL IMPROVEMENTS
+-------------------------------
+[ ] Per-supplier parser profiles learned from confirmed scans (column x-ranges)
+[ ] Barcode/QR on invoices via the existing mobile_scanner to match by code
+[ ] On-device Gemini Nano / ML Kit GenAI (where available) for the text step
+[ ] Windows OCR engine (Windows.Media.Ocr or Tesseract) behind OcrEngine,
+    when the Windows app is planned (1-2 years out)
+[ ] Cloud Function proxy for key protection (requires Blaze, not $0)
+
+
+=======================================================================
+6. FILES TO CREATE / CHANGE
+=======================================================================
+Create
+- lib/services/ocr/ocr_engine.dart, mlkit_ocr_engine.dart, ocr_result.dart
+- lib/services/ocr/document_layout_parser.dart (+ per-type parsers)
+- lib/services/ocr/catalog_matcher.dart, text_normalizer.dart
+- lib/services/ai/text_llm_provider.dart, gemini_text_provider.dart,
+  groq_text_provider.dart, ai_provider_chain.dart
+- lib/services/ai_scan_pipeline.dart
+- test/ocr_layout_parser_test.dart, catalog_matcher_test.dart,
+  ai_provider_chain_test.dart, ai_scan_pipeline_test.dart
+- test/fixtures/ai_scans/ (OCR dumps + ground truth, no real PII)
+
+Change
+- pubspec.yaml                         (add ML Kit; later remove SDK)
+- lib/services/gemini_ai_service.dart  (delegate to pipeline/chain; keep API)
+- lib/models/configuration.dart        (new AI settings)
+- lib/controllers/configuration_controller.dart
+- lib/views/pages/sidebar/superadmin_page.dart  (Groq key, mode, order)
+- lib/views/widgets/ai_chat_modal.dart (provider label, history handling)
+- lib/views/widgets/book_order/receipt_scan_flow.dart,
+  lib/views/pages/sidebar/purchaseorder_page.dart,
+  lib/views/widgets/supplier_oos/supplier_oos_scan_dialog.dart,
+  lib/views/widgets/purchaseorder/automated_po_suggestion_dialog.dart
+  (loading-step text only, if needed)
+- android/app/proguard rules (only if release build needs them)
+- firestore.rules (confirm config read access), README.md
+- test/gemini_ai_service_retry_test.dart, ai_scan_speed_optimization_test.dart
+
+
+=======================================================================
+7. TARGETS
+=======================================================================
+- Typical single receipt/invoice: 2-5 s (hybrid), 1-3 s (ocr_local)
+- Multi-image (3-4 pages): under 10 s
+- LLM calls: at most 1 small text call per scan, none for most scans
+- Monthly cost: $0
+- Item/quantity accuracy: at least equal to current Gemini vision results
+- Behavior when offline or quota exhausted: scan still completes with
+  unresolved lines flagged for manual selection
+
+
+=======================================================================
+8. RISKS & MITIGATIONS
+=======================================================================
+- OCR misreads on blurry / thermal-faded paper
+  -> sanity checks, needsReview flags, cloud_vision fallback mode, UX hint to
+     retake photo when OCR confidence is low
+- Parser breaks on a new supplier layout
+  -> regex fallback + LLM step for unresolved rows + Phase 6 sample review;
+     per-supplier profiles in Phase 8
+- Wrong confident match (silent error) is the worst failure
+  -> conservative thresholds, price verification, user always reviews the
+     summary screen (existing flow), track wrong-confident rate in Phase 6
+- Free tier changes or is removed
+  -> provider chain, remote model/provider config, local-first design means
+     most scans need no API
+- Free-tier data may be used by the provider to improve products
+  -> accepted by owner: images never sent, only short text of unresolved
+     item rows; documents are cropped before scanning
+- Shared key extractable from the client
+  -> free tier only; quota guard; rotate key from superadmin if abused
+- ML Kit not available on web/desktop
+  -> force cloud_vision there; keep Gemini vision code
+- APK size increase from bundled ML Kit model
+  -> measure in Phase 2; acceptable only if increase is a few MB
+- Larger refactor touches all AI flows
+  -> mode flag, unchanged signatures, staged rollout, one-tap rollback
+
+
+=======================================================================
+9. OPEN DECISIONS FOR REVIEW
+=======================================================================
+DECIDED (owner answers)
+[x] Platforms: Android/iOS only now. Windows desktop is a possible future
+    (1-2 years away). ML Kit has no Windows support, so keep OcrEngine as an
+    interface; a Windows engine (e.g. Windows.Media.Ocr via platform channel,
+    or Tesseract) can be added later without touching parser/matcher.
+    Until then Windows/web would use the cloud_vision mode.
+[x] Default mode after rollout: hybrid.
+[x] Handwritten documents: none. cloud_vision stays only as the emergency
+    rollback / unsupported-platform mode; no manual "Scan with cloud AI"
+    button needed on the review screen.
+[x] Groq: add it. Provider order: Gemini Flash-Lite first, Groq second
+    (configurable in superadmin). Groq account/key to be created by the owner.
+
+STILL OPEN
+(none - all review questions answered)
+
+9.1 DATA SENT TO FREE LLM PROVIDERS - DECISION: NO EXTRA PRIVACY CONTROLS
+Owner decision: documents are cropped before scanning, so no PII scrubber,
+no per-flow AI on/off switch and no chat privacy hint are required.
+Shadow mode: SKIPPED (see Phase 6 for the lighter validation used instead).
+
+Still true by design (no extra work needed):
+- Hybrid mode never sends images, only short text.
+- Text is sent only when the local matcher cannot resolve a line, and only
+  the unresolved item rows (not the whole document or the full catalog).
+- Chat keeps sending only the dashboard KPIs it sends today.
+- Note: Google may use free-tier content to improve its products. Accepted.
+
+
+=======================================================================
+10. RECOMMENDED ORDER
+=======================================================================
+Phase 0 -> Phase 1 (also fixes chat reliability early) -> Phase 2 -> Phase 3 ->
+Phase 4 -> Phase 5 -> Phase 6 -> Phase 7.
+Total estimate: about 10-13 working days (shadow mode removed).
+Quick win available earlier: Phase 1 alone (Flash-Lite + Groq for chat and
+fallback) takes about 1.5 days.
+
+
+=======================================================================
+RESULTS (fill in during Phase 0 and after each phase)
+=======================================================================
+Free-tier limits verified on: ____ (Gemini Flash-Lite: ____, Groq: ____)
+OCR readable rate on samples: ____
+Header field accuracy: ____
+Item match accuracy vs ground truth: ____
+Average scan time per flow: ____

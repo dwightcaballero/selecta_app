@@ -2712,7 +2712,7 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
     for (final p in products) {
       final q = _quantities[p.id] ?? 0;
       if (q > 0) {
-        total += q * p.boPricePerPiece;
+        total += roundToTwoDecimals(q * p.storeRefundPerPiece);
       }
     }
     return total;
@@ -2724,20 +2724,16 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
     for (final p in allProducts) {
       final q = _quantities[p.id] ?? 0;
       if (q > 0) {
-        if (p.category == 'By Case' && !p.isBoPriceConfigured) {
+        if (!p.isBoPricingReady) {
           ShowMessage.error(
             context,
-            'Cannot submit: "${p.productName}" is By Case and has no B.O. price configured by dealer.',
+            'Cannot submit: "${p.productName}" is By Case and has no pieces per case configured by admin.',
           );
           return;
         }
-        selectedItems.add(BadOrderItem(
-          productId: p.id,
-          productName: p.productName,
-          category: p.category,
+        selectedItems.add(BadOrderItem.fromProduct(
+          product: p,
           quantity: q,
-          pricePerPiece: p.boPricePerPiece,
-          subtotal: q * p.boPricePerPiece,
           imageUrl: p.imageUrl,
         ));
       }
@@ -3040,10 +3036,10 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                           else
                             ...filteredProducts.map((product) {
                               final qty = _quantities[product.id] ?? 0;
-                              final isCase = product.category == 'By Case';
-                              final hasValidPrice = product.isBoPriceConfigured;
-                              final unitPrice = product.boPricePerPiece;
-                              final subtotal = qty * unitPrice;
+                              final isCase = product.isCaseProduct;
+                              final hasValidPrice = product.isBoPricingReady;
+                              final unitPrice = product.storeRefundPerPiece;
+                              final subtotal = roundToTwoDecimals(qty * unitPrice);
 
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 8),
@@ -3114,12 +3110,14 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                                                 const SizedBox(width: 6),
                                                 if (!hasValidPrice)
                                                   const Text(
-                                                    '⚠️ Price not set by dealer',
+                                                    '⚠️ No pieces/case set',
                                                     style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.bold),
                                                   )
                                                 else
                                                   Text(
-                                                    '@ ${Helperfunctions.formatDoubleAmountForDisplay(unitPrice)} / pc',
+                                                    isCase
+                                                        ? '@ ${Helperfunctions.formatDoubleAmountForDisplay(unitPrice)} / pc (${Helperfunctions.formatDoubleAmountForDisplay(product.sellingPrice)} / ${product.boPiecesPerCase})'
+                                                        : '@ ${Helperfunctions.formatDoubleAmountForDisplay(unitPrice)} / pc',
                                                     style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
                                                   ),
                                               ],

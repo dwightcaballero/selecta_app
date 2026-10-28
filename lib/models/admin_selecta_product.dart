@@ -13,6 +13,7 @@ class AdminSelectaProduct {
   final String category; // 'By Piece' or 'By Case'
   final String tag; // 'Best Seller', 'New Product', or ''
   final String? subCategoryId; // null = Unassigned
+  final int? boPiecesPerCase;
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
 
@@ -26,6 +27,7 @@ class AdminSelectaProduct {
     this.category = 'By Piece',
     this.tag = '',
     this.subCategoryId,
+    this.boPiecesPerCase,
     this.createdAt,
     this.updatedAt,
   });
@@ -37,6 +39,28 @@ class AdminSelectaProduct {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
+  /// Whether the product is sold By Case.
+  bool get isCaseProduct => category == 'By Case';
+
+  /// Whether the product has a valid configured pieces-per-case (2..999).
+  bool get hasValidBoPiecesPerCase =>
+      boPiecesPerCase != null && boPiecesPerCase! >= 2 && boPiecesPerCase! <= 999;
+
+  /// Whether the product is ready for bad order refund computation.
+  bool get isBoPricingReady => !isCaseProduct || hasValidBoPiecesPerCase;
+
+  /// Store refund per piece (dealer -> store), based on selling price.
+  double get storeRefundPerPiece {
+    if (!isBoPricingReady) return 0.0;
+    return isCaseProduct ? (sellingPrice / boPiecesPerCase!) : sellingPrice;
+  }
+
+  /// Supplier refund per piece (supplier -> dealer), based on buying price.
+  double get supplierRefundPerPiece {
+    if (!isBoPricingReady) return 0.0;
+    return isCaseProduct ? (buyingPrice / boPiecesPerCase!) : buyingPrice;
+  }
+
   static AdminSelectaProduct empty() => const AdminSelectaProduct(
         id: '',
         productName: '',
@@ -47,6 +71,7 @@ class AdminSelectaProduct {
         category: 'By Piece',
         tag: '',
         subCategoryId: null,
+        boPiecesPerCase: null,
       );
 
   factory AdminSelectaProduct.fromJson(String id, Map<String, Object?> json) {
@@ -79,6 +104,7 @@ class AdminSelectaProduct {
       category: category,
       tag: (json['tag'] as String? ?? '').trim(),
       subCategoryId: json['subCategoryId'] as String?,
+      boPiecesPerCase: (json['boPiecesPerCase'] as num?)?.toInt(),
       createdAt: parseTimestamp(json['createdAt']),
       updatedAt: parseTimestamp(json['updatedAt']),
     );
@@ -105,6 +131,18 @@ class AdminSelectaProduct {
         return double.tryParse(f['integerValue'].toString()) ?? 0.0;
       }
       return 0.0;
+    }
+
+    int? readInt(String key) {
+      final f = fields[key] as Map<String, dynamic>?;
+      if (f == null) return null;
+      if (f.containsKey('integerValue')) {
+        return int.tryParse(f['integerValue'].toString());
+      }
+      if (f.containsKey('doubleValue')) {
+        return (f['doubleValue'] as num?)?.toInt();
+      }
+      return null;
     }
 
     Timestamp? readTimestamp(String key) {
@@ -143,6 +181,7 @@ class AdminSelectaProduct {
       category: category,
       tag: readString('tag'),
       subCategoryId: subCatId.isNotEmpty ? subCatId : null,
+      boPiecesPerCase: readInt('boPiecesPerCase'),
       createdAt: readTimestamp('createdAt'),
       updatedAt: updatedAt,
     );
@@ -166,6 +205,8 @@ class AdminSelectaProduct {
     String? tag,
     String? subCategoryId,
     bool clearSubCategoryId = false,
+    int? boPiecesPerCase,
+    bool clearBoPiecesPerCase = false,
     Timestamp? createdAt,
     Timestamp? updatedAt,
   }) {
@@ -179,6 +220,7 @@ class AdminSelectaProduct {
       category: category ?? this.category,
       tag: tag ?? this.tag,
       subCategoryId: clearSubCategoryId ? null : (subCategoryId ?? this.subCategoryId),
+      boPiecesPerCase: clearBoPiecesPerCase ? null : (boPiecesPerCase ?? this.boPiecesPerCase),
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -193,6 +235,7 @@ class AdminSelectaProduct {
       'sellingPrice': sellingPrice,
       'category': category,
       'tag': tag,
+      if (category == 'By Case' && boPiecesPerCase != null) 'boPiecesPerCase': boPiecesPerCase,
       if (subCategoryId != null) 'subCategoryId': subCategoryId,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
@@ -210,6 +253,7 @@ class AdminSelectaProduct {
       'sellingPrice': sellingPrice,
       'category': category,
       'tag': tag,
+      if (category == 'By Case' && boPiecesPerCase != null) 'boPiecesPerCase': boPiecesPerCase,
       if (subCategoryId != null) 'subCategoryId': subCategoryId,
       'updatedAt': (updatedAt ?? Timestamp.now()).toDate().toUtc().toIso8601String(),
     };

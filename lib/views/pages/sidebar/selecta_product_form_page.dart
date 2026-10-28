@@ -44,6 +44,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
   late final TextEditingController _barcodeController;
   late final TextEditingController _buyingPriceController;
   late final TextEditingController _sellingPriceController;
+  late final TextEditingController _boPiecesPerCaseController;
   String _category = 'By Piece';
   String _tag = ProductTag.none;
 
@@ -60,6 +61,8 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     final role = widget.userRole.trim().toLowerCase();
     return role == 'admin' || role == 'super admin' || role == 'superadmin';
   }
+
+  bool get _isSalesman => widget.userRole.trim().toLowerCase() == 'salesman';
 
   final currencyFormat = NumberFormat.currency(symbol: '₱', decimalDigits: 2);
 
@@ -92,6 +95,11 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
       text: sp > 0 ? sp.toStringAsFixed(2) : '',
     );
 
+    final initialPieces = adminP?.boPiecesPerCase ?? dealerP?.boPiecesPerCase;
+    _boPiecesPerCaseController = TextEditingController(
+      text: initialPieces != null && initialPieces > 0 ? initialPieces.toString() : '',
+    );
+
     _networkImagePath = adminP?.imageUrl ?? dealerP?.imageUrl ?? '';
   }
 
@@ -101,6 +109,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     _barcodeController.dispose();
     _buyingPriceController.dispose();
     _sellingPriceController.dispose();
+    _boPiecesPerCaseController.dispose();
     super.dispose();
   }
 
@@ -210,6 +219,10 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final int? piecesPerCase = _category == 'By Case'
+        ? int.tryParse(_boPiecesPerCaseController.text.trim())
+        : null;
+
     final tempProduct = AdminSelectaProduct(
       id: widget.productId ?? '',
       productName: _nameController.text.trim(),
@@ -219,6 +232,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
       sellingPrice: _sellingPrice,
       category: _category,
       tag: _tag,
+      boPiecesPerCase: piecesPerCase,
     );
 
     final errors = _controller.validateAdminProduct(tempProduct);
@@ -254,6 +268,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
         sellingPrice: _sellingPrice,
         category: _category,
         tag: _tag,
+        boPiecesPerCase: piecesPerCase,
       );
 
       if (_isEditing) {
@@ -320,6 +335,8 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
     final initialBp = bp > 0 ? bp.toStringAsFixed(2) : '';
     final sp = adminP?.sellingPrice ?? dealerP?.sellingPrice ?? 0.0;
     final initialSp = sp > 0 ? sp.toStringAsFixed(2) : '';
+    final initialPieces = adminP?.boPiecesPerCase ?? dealerP?.boPiecesPerCase;
+    final initialPiecesText = initialPieces != null && initialPieces > 0 ? initialPieces.toString() : '';
 
     if (_isEditing && (adminP != null || dealerP != null)) {
       return _nameController.text.trim() != initialName ||
@@ -328,12 +345,14 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
           _tag != initialTag ||
           _buyingPriceController.text.trim() != initialBp ||
           _sellingPriceController.text.trim() != initialSp ||
+          _boPiecesPerCaseController.text.trim() != initialPiecesText ||
           _image != null;
     }
     return _nameController.text.trim().isNotEmpty ||
         _barcodeController.text.trim().isNotEmpty ||
         _buyingPriceController.text.trim().isNotEmpty ||
         _sellingPriceController.text.trim().isNotEmpty ||
+        _boPiecesPerCaseController.text.trim().isNotEmpty ||
         _image != null;
   }
 
@@ -499,6 +518,9 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
                       onSelectionChanged: (Set<String> newSelection) {
                         setState(() {
                           _category = newSelection.first;
+                          if (_category != 'By Case') {
+                            _boPiecesPerCaseController.clear();
+                          }
                         });
                       },
                       style: SegmentedButton.styleFrom(
@@ -508,6 +530,84 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
                       ),
                     ),
                   ),
+                  if (_category == 'By Case') ...[
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _boPiecesPerCaseController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(3),
+                      ],
+                      onChanged: (_) => setState(() {}),
+                      validator: (value) {
+                        if (_category != 'By Case') return null;
+                        final trimmed = (value ?? '').trim();
+                        if (trimmed.isEmpty) {
+                          return 'Pieces per case is required for By Case products.';
+                        }
+                        final count = int.tryParse(trimmed);
+                        if (count == null || count < 2 || count > 999) {
+                          return 'Enter a whole number between 2 and 999.';
+                        }
+                        return null;
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Pieces per case (for bad order refunds) *',
+                        hintText: 'e.g. 12',
+                        helperText: 'Whole number from 2 to 999. Used for store and supplier refund rates.',
+                        helperMaxLines: 2,
+                        prefixIcon: const Icon(Icons.pin_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Builder(
+                      builder: (context) {
+                        final pcs = int.tryParse(_boPiecesPerCaseController.text.trim());
+                        final isValidPcs = pcs != null && pcs >= 2 && pcs <= 999;
+                        final storeRef = isValidPcs && pcs > 0 ? (_sellingPrice / pcs) : 0.0;
+                        final suppRef = isValidPcs && pcs > 0 ? (_buyingPrice / pcs) : 0.0;
+
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isValidPcs
+                                ? Colors.blue.withValues(alpha: 0.08)
+                                : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isValidPcs
+                                  ? Colors.blue.withValues(alpha: 0.3)
+                                  : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                            ),
+                          ),
+                          child: isValidPcs
+                              ? Row(
+                                  children: [
+                                    const Icon(Icons.calculate_outlined, size: 18, color: Colors.blue),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Store refund/pc: ${currencyFormat.format(storeRef)}  •  Supplier refund/pc: ${currencyFormat.format(suppRef)}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.blue.shade900,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  'Enter pieces per case (2–999) to view live refund rates.',
+                                  style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
+                                ),
+                        );
+                      },
+                    ),
+                  ],
                 ],
               ),
 
@@ -952,20 +1052,21 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
             colorScheme: colorScheme,
             icon: Icons.payments_outlined,
             iconColor: const Color(0xFF15803D),
-            title: 'Pricing & Margins',
+            title: _isSalesman ? 'Pricing' : 'Pricing & Margins',
             children: [
               Row(
                 spacing: 12,
                 children: [
-                  Expanded(
-                    child: _buildReadOnlyPriceBox(
-                      label: 'Buying Price',
-                      value: currencyFormat.format(_buyingPrice),
-                      color: const Color(0xFF2563EB),
-                      icon: Icons.shopping_cart_outlined,
-                      colorScheme: colorScheme,
+                  if (!_isSalesman)
+                    Expanded(
+                      child: _buildReadOnlyPriceBox(
+                        label: 'Buying Price',
+                        value: currencyFormat.format(_buyingPrice),
+                        color: const Color(0xFF2563EB),
+                        icon: Icons.shopping_cart_outlined,
+                        colorScheme: colorScheme,
+                      ),
                     ),
-                  ),
                   Expanded(
                     child: _buildReadOnlyPriceBox(
                       label: 'Selling Price',
@@ -977,7 +1078,7 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
                   ),
                 ],
               ),
-              if (_buyingPrice > 0 && _sellingPrice > 0)
+              if (!_isSalesman && _buyingPrice > 0 && _sellingPrice > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 14),
                   child: Container(
@@ -1003,6 +1104,83 @@ class _SelectaProductFormPageState extends State<SelectaProductFormPage> {
                 ),
             ],
           ),
+
+          if (_category == 'By Case') ...[
+            const SizedBox(height: 16),
+            _buildSectionCard(
+              colorScheme: colorScheme,
+              icon: Icons.assignment_return_outlined,
+              iconColor: const Color(0xFFE11D48),
+              title: 'Bad Order Refund Rates',
+              children: [
+                () {
+                  final pieces = int.tryParse(_boPiecesPerCaseController.text.trim()) ?? 0;
+                  final hasValidPieces = pieces >= 2 && pieces <= 999;
+                  if (!hasValidPieces) {
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFFECACA)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, size: 20, color: Color(0xFFDC2626)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _isSalesman
+                                  ? 'Pieces per case not configured. Ask admin to set pieces per case before creating bad orders.'
+                                  : 'Pieces per case not configured. Edit product to set pieces per case (2–999) to enable bad orders.',
+                              style: const TextStyle(fontSize: 13, color: Color(0xFF991B1B)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                  final storeRate = _sellingPrice / pieces;
+                  final supplierRate = _buyingPrice / pieces;
+                  return Column(
+                    children: [
+                      _buildReadOnlyTile(
+                        label: 'Pieces Per Case',
+                        value: '$pieces pcs/case',
+                        icon: Icons.inventory_2_outlined,
+                        colorScheme: colorScheme,
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        spacing: 12,
+                        children: [
+                          Expanded(
+                            child: _buildReadOnlyPriceBox(
+                              label: 'Store Refund / Piece',
+                              value: '${currencyFormat.format(storeRate)} / pc',
+                              color: const Color(0xFFE11D48),
+                              icon: Icons.storefront_outlined,
+                              colorScheme: colorScheme,
+                            ),
+                          ),
+                          if (!_isSalesman)
+                            Expanded(
+                              child: _buildReadOnlyPriceBox(
+                                label: 'Supplier Refund / Piece',
+                                value: '${currencyFormat.format(supplierRate)} / pc',
+                                color: const Color(0xFFD97706),
+                                icon: Icons.local_shipping_outlined,
+                                colorScheme: colorScheme,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  );
+                }(),
+              ],
+            ),
+          ],
 
           // ── Stock & Inventory Card (Dealer Mode) ────────────────────
           if (dealerP != null) ...[

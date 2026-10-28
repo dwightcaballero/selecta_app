@@ -1,0 +1,371 @@
+EXPENSE vs END OF DAY SHORTAGE - IMPLEMENTATION PLAN
+====================================================
+
+GOAL
+----
+1. Salesman expenses and Dealer expenses (Cash) must reduce the cash the
+   salesman is expected to hand over, so the End of Day "Shortage / Overpaid"
+   shows the REAL difference.
+2. When creating or editing a Salesman expense or Dealer (Cash) expense, a
+   checkbox decides if the expense is deducted from that day's End of Day cash.
+   This is for forgotten expenses from earlier days, which must NOT change the
+   shortage.
+
+WHY THE PROBLEM HAPPENS NOW (root cause)
+----------------------------------------
+- services/endofday_services.dart already computes
+  expectedcashonhand = cash sales - (salesman + dealer cash expenses), live.
+- BUT the "Shortage / Overpaid" number shown on the End of Day page is the
+  STORED breakdown.discrepancy. It is only recalculated while the cash count is
+  being edited/saved in breakdown_page.dart, using the expected amount at that
+  time.
+- So when an expense is added AFTER the cash count was saved, Expected goes
+  down but Shortage stays the same.
+- Side issues found:
+  a) ExpensesService.getExpensesForEndOfDay() has catch (e) { return []; }.
+     A read error silently makes all expenses disappear.
+  b) Its end time is 23:59:59, so an expense at 23:59:59.5 is skipped.
+  c) Verifying a day only sets the verified flags. It does not save the final
+     numbers, so a locked day can still change if expenses change later.
+
+DECISIONS (confirmed)
+---------------------
+1. Shortage is calculated LIVE until the day is verified by the dealer. After
+   verification, a frozen copy of the numbers is shown.
+2. Checkbox label: "Deduct from End of Day cash".
+   Default ON when the expense date is today, OFF when it is a past date.
+3. An expense with the checkbox OFF keeps its real date (reports and Profit &
+   Loss stay accurate). It is simply not part of any day's cash count.
+4. The checkbox shows only for Salesman expenses and Dealer expenses paid by
+   Cash. Online dealer expenses never affect cash, so no checkbox.
+5. Old expenses (no field saved) are treated as ON (deducted), so past figures
+   do not change.
+6. Salesman can set the checkbox when creating a Salesman expense. Only the
+   dealer can change it on an existing expense. Every change is audit-logged
+   (existing Helperfunctions.logCreate / logUpdate).
+7. No extra "Cash paid on" date for now. (See "Future option" at the end.)
+8. A salesman's back-dated expense (expense date earlier than today) needs
+   DEALER APPROVAL (Phase 5B). Until approved it is not deducted.
+9. When the checkbox is OFF, a reason is required (Phase 5A).
+
+WHICH CASE USES WHICH SETTING (for the help text and training)
+--------------------------------------------------------------
+Situation                                         Setting
+------------------------------------------------  -----------------------------
+Expense happened today, cash taken from today's    Date = today, ON
+  cash on hand
+Forgotten expense from an earlier day that is      Date = that day, ON
+  NOT yet verified                                 (that day's shortage shrinks)
+Forgotten expense from an earlier day that is      OFF (today is not affected)
+  already verified/locked
+Forgotten expense, but the money is paid back      Date = today, ON
+  today out of today's cash on hand
+Paid by owner's own money or bank transfer         OFF
+
+PHASE 1 - DATA MODEL
+--------------------
+File: lib/models/expenses.dart
+1.1 Add field: bool deductFromEndOfDay (default true).
+1.2 Add to constructor, empty(), fromJson (json['deductFromEndOfDay'] as bool?
+    ?? true), fromSnapshot, copyWith and toJson.
+1.3 Add fields (all backward compatible, see Phase 5A and 5B):
+      String notDeductedReason   // '' when deducted. Else one of the reason
+                                 // codes in 5A.1
+      String notDeductedNote     // free text (required for "Other")
+      String approvalStatus      // 'approved' (default) | 'pending' | 'rejected'
+      String approvedBy
+      Timestamp? approvedDate
+      String rejectReason
+    Old records: approvalStatus = 'approved', everything else empty.
+1.4 Add getter:
+      bool get affectsEndOfDayCash =>
+          isCash && deductFromEndOfDay && approvalStatus == 'approved';
+    (Salesman expenses are always cash, so they follow the checkbox and the
+    approval status only. A pending or rejected expense is NOT deducted.)
+1.5 No Firestore index needed (filter in memory). Check firestore.rules for
+    /expenses/{expenseId}: make sure the new field is allowed and, if the rules
+    list allowed fields, add it.
+
+PHASE 2 - EXPENSE FORM
+----------------------
+Files: lib/views/pages/sidebar/expenses_page.dart,
+       lib/controllers/expenses_controller.dart
+2.1 State: bool _deductFromEndOfDay, bool _deductTouchedByUser.
+2.2 New record: default = (selected date is today). When the user changes the
+    date and has not touched the checkbox, re-apply the default.
+2.3 Existing record: load the saved value.
+2.4 Add a CheckboxListTile in BOTH layouts (the form appears twice, around
+    lines ~652 and ~916):
+      Title:    "Deduct from End of Day cash"
+      Subtitle: "Turn OFF if the cash did not come out of that day's cash on
+                 hand (for example, a forgotten expense from an earlier day)."
+    Show only when expense type is Salesman, or Dealer + payment method Cash.
+    Hide it for Dealer + Online (save value as false for online; it is ignored).
+2.5 Read-only rules:
+    - New record: salesman may set it for Salesman expenses.
+    - Existing record: only dealer can change it (same rule as other fields).
+2.6 Include the flag in _hasUnsavedChanges.
+2.7 Pass it through onSave/onUpdate -> createExpense/updateExpense (new
+    required parameter deductFromEndOfDay) -> Expenses model.
+2.8 Closed-day prompt (see Phase 5).
+
+PHASE 3 - END OF DAY CALCULATION
+--------------------------------
+Files: lib/services/expenses_services.dart, lib/services/endofday_services.dart,
+       lib/dto/endofday_dto.dart, lib/controllers/endofday_controller.dart,
+       lib/models/breakdown.dart
+3.1 expenses_services.dart: getExpensesForEndOfDay()
+    - Use a half-open range: expenseDate >= startOfDay AND < startOfNextDay.
+    - Stop swallowing errors (remove catch-all return []). Let the caller show
+      an error message instead of wrong numbers.
+3.2 endofday_dto.dart: add
+      double excludedExpenseAmount   // cash expenses with checkbox OFF
+    Keep salesmanExpenseAmount, dealerExpenseCashAmount,
+    dealerExpenseOnlineAmount. expenseAmount = only expenses where
+    affectsEndOfDayCash is true.
+3.3 endofday_services.dart: in the expenses loop
+      - salesman: if affectsEndOfDayCash -> salesmanExp += amount, else
+        excluded += amount
+        (pending and rejected expenses go to excluded; also count them in a
+        new pendingApprovalCount and pendingApprovalAmount on the DTO)
+      - dealer cash: same logic with dealerCashExp
+      - dealer online: dealerOnlineExp (unchanged, never deducted)
+    expenseAmount = salesmanExp + dealerCashExp
+    expectedcashonhand = cashamount - expenseAmount
+3.4 endofday_controller.dart: ONE shared function for shortage:
+      discrepancy = (actual cash counted + bank deposit) - expectedcashonhand
+      (rounded to 2 decimals, same as recompute() today)
+    - recompute() keeps using it.
+    - fetchEndOfDayData(): when the breakdown is NOT verified, recompute
+      breakdown.discrepancy and endOfDayData.discrepancy from the live
+      expected amount and the saved counted cash + bank deposit. Do not rely on
+      the stored discrepancy.
+    - When the breakdown IS verified, use the frozen values (3.5).
+3.5 Freeze on verify:
+    - models/breakdown.dart: add optional fields (default 0 / null, backward
+      compatible): finalExpectedAmount, finalDiscrepancy,
+      finalExpenseDeducted, finalExpenseExcluded.
+    - verifyAndSettleBreakdown(): before saving the verified record, fetch the
+      live End of Day data, store those final values, and save. Show the frozen
+      values for verified days.
+    - Old verified records without frozen values: fall back to stored
+      expectedAmount / discrepancy (current behaviour).
+3.6 Keep breakdown.expectedAmount and breakdown.discrepancy updated in the
+    database when the live value differs (so exports and other readers see the
+    right number): update them when the End of Day / Breakdown page loads and
+    the day is not verified.
+
+PHASE 4 - SCREENS
+-----------------
+Files: lib/views/pages/sidebar/endofday_page.dart,
+       lib/views/pages/sidebar/breakdown_page.dart,
+       lib/views/pages/sidebar/expenselist_page.dart
+4.1 End of Day cash card, show in order:
+      Cash Sales
+      - Salesman expenses
+      - Dealer expenses (Cash)
+      = Expected Cash
+      Salesman Actual Cash
+      Shortage / Overpaid / Balanced
+4.2 If excludedExpenseAmount > 0 show a small grey line:
+      "Not deducted (earlier-day expenses): PHP X"
+4.3 breakdown_page.dart _buildExpectedCollectionsCard: same lines, using
+    eod.salesmanExpenseAmount and eod.dealerExpenseCashAmount separately
+    (today it shows one combined expenses number).
+4.4 expenselist_page.dart: small badge "Not in EOD cash" on rows with the
+    checkbox OFF (cash/salesman only).
+4.5 After saving or deleting an expense, nothing else needs to be refreshed by
+    hand because Phase 3 recalculates live when the page opens.
+
+PHASE 5 - CLOSED (VERIFIED) DAY PROTECTION
+------------------------------------------
+Files: expenses_controller.dart, expenses_page.dart, breakdown_service.dart
+5.1 When saving an expense with checkbox ON, check if the breakdown for the
+    expense date is already verified (BreakdownService.getDocumentsBySpecificDate).
+5.2 If verified, block the save with this message and options:
+      "That day is already verified and locked. Did the cash come out of
+       today's cash on hand instead?"
+      - Move expense date to today (keeps ON)
+      - Keep the date and turn OFF (not deducted)
+      - Cancel
+    Dealer can also unverify the day first (existing toggleVerification).
+5.3 Same check when EDITING an existing expense that changes the amount, date,
+    type or checkbox on a verified day.
+5.4 Deleting an expense dated on a verified day is also blocked for the same
+    reason (it would change a locked number). Show a clear message.
+
+PHASE 5A - "NOT DEDUCTED" REASON AND MISUSE CONTROLS
+----------------------------------------------------
+Files: expenses.dart, constants.dart, expenses_page.dart,
+       expenses_controller.dart, endofday_page.dart, expenselist_page.dart
+5A.1 Reason dropdown. When the checkbox is OFF, show a required dropdown
+     "Why is this not deducted?":
+       - Paid on an earlier day that is already closed
+       - Paid with the owner's own money
+       - Paid by bank or online transfer
+       - Other (note required)
+     Add ExpenseNotDeductedReason constants in lib/data/constants.dart.
+     Save in notDeductedReason / notDeductedNote. Clear them when the checkbox
+     is turned ON. Include them in the audit log (they are part of toJson).
+5A.2 Who can choose OFF:
+       - Salesman: only when the expense date is BEFORE today. A salesman
+         expense dated today is always deducted (checkbox shown ON and locked).
+       - Dealer: any date.
+5A.3 Dealer hint on the End of Day page (dealer only): when the day is
+     "Overpaid" and a not-deducted expense for that day is within PHP 1 of the
+     overpaid amount, show:
+       "Overpaid by PHP 500 matches a not-deducted expense: [description].
+        Is this correct?"  with a link to open that expense.
+     This is only a hint. It changes nothing by itself.
+5A.4 "Not deducted expenses" review list (dealer only): a filter/tab in the
+     expense list for a chosen week or month showing date, description,
+     amount, reason, entered by, and the total. A person who uses OFF often
+     will stand out.
+5A.5 Visibility: the "Not deducted" line (Phase 4.2), the "Not in EOD cash"
+     badge (Phase 4.4), the hint and the review list are for the dealer only.
+
+PHASE 5B - DEALER APPROVAL FOR BACK-DATED SALESMAN EXPENSES
+-----------------------------------------------------------
+Files: expenses.dart, expenses_services.dart, expenses_controller.dart,
+       expenses_page.dart, expenselist_page.dart, endofday_controller.dart,
+       breakdown_page.dart, firestore.rules
+5B.1 Which expenses need approval:
+       - Created by a salesman AND expense date is earlier than today
+         -> approvalStatus = 'pending'.
+       - Everything else (dealer-created, or salesman expense dated today)
+         -> 'approved' automatically, so daily work has no extra step.
+     This applies whether the checkbox is ON or OFF. ON matters most: a
+     back-dated expense with ON lowers that day's expected cash, which is the
+     way a shortage could be covered up.
+5B.2 While 'pending' or 'rejected', the expense is NOT deducted (see
+     affectsEndOfDayCash). The shortage stays visible until the dealer decides.
+5B.3 Dealer actions (expense list "Pending approval" filter with a count badge;
+     also a button on the expense detail screen):
+       - Approve: sets 'approved', approvedBy, approvedDate. It now counts
+         according to its checkbox.
+       - Reject: sets 'rejected' with a required reason. Dealer may also edit
+         or delete it.
+     Salesmen see the status (Pending / Approved / Rejected + reason) on their
+     expense, but cannot change it.
+5B.4 Closed-day rule applies here too: the dealer cannot approve an expense
+     that would change a verified day (Phase 5). Show the same message; the
+     dealer must unverify the day first.
+5B.5 A day cannot be verified while it still has pending-approval expenses
+     dated on that day. Add to verifyAndSettleBreakdown() and
+     validateBeforeBreakdown() with the message: "There are still N expense(s)
+     waiting for approval on this date." (Same style as pending deliveries.)
+5B.6 Editing: if a salesman-created expense is edited by the dealer, it stays
+     as is; approval is not reset. If the amount, date or checkbox of an
+     APPROVED salesman expense is changed to a back date by anyone, set it to
+     'pending' again unless the dealer made the change.
+5B.7 Audit log: every approve / reject / status change goes through
+     Helperfunctions.logUpdate (who, when, reason).
+5B.8 firestore.rules: only dealers can write approvalStatus, approvedBy,
+     approvedDate and rejectReason, so the rule is enforced on the server and
+     not only in the app. Salesmen creating a record can only create with
+     'pending' (back-dated) or 'approved' (today). Confirm the exact rule
+     syntax against the existing role checks in firestore.rules.
+
+PHASE 6 - OTHER REPORTS (NO CHANGE EXPECTED, VERIFY)
+----------------------------------------------------
+- lib/controllers/profit_loss_controller.dart: keeps using ALL dealer expenses
+  by their real date. The checkbox must not change Profit & Loss. Add a test.
+- lib/services/export_report_service.dart, picklist_list_page.dart,
+  payslip_generator_page.dart: search for expenseAmount uses and confirm none
+  of them is meant to be the End of Day cash figure.
+
+PHASE 7 - TESTS
+---------------
+Folder: test/
+7.1 Expenses model: toJson/fromJson round trip; missing field -> true.
+7.2 affectsEndOfDayCash: salesman ON/OFF, dealer cash ON/OFF, dealer online.
+7.3 End of Day maths: mix of ON, OFF and online expenses -> correct
+    expenseAmount, excludedExpenseAmount, expectedcashonhand.
+7.4 Shortage updates after an expense is added AFTER the breakdown was saved
+    (the original bug).
+7.5 Verified day shows frozen values even if a new expense is added.
+7.6 Date-range boundary: expense at 23:59:59.500 is included.
+7.7 Profit & Loss totals unchanged by the checkbox.
+7.8 Approval: back-dated salesman expense starts 'pending' and is not
+    deducted; after approval it is deducted (if ON); rejected is not deducted.
+    Today-dated salesman and all dealer expenses start 'approved'.
+7.9 A day with pending-approval expenses cannot be verified.
+7.10 Salesman cannot choose OFF for a today-dated expense; reason is required
+    when OFF; reason is cleared when turned ON.
+7.11 Dealer hint: matches an overpaid amount within PHP 1, and does not show
+    for salesmen.
+Use the existing test patterns/fakes for Firestore if present in test/.
+
+PHASE 8 - ROLLOUT
+-----------------
+- No data migration. Old expenses count as ON.
+- Release order: model + service + End of Day maths first, then form checkbox,
+  then closed-day protection and badges.
+- Tell the dealer and salesmen the "which case uses which setting" table above.
+- After release, check a few recent days: shortage should equal
+  (counted cash + bank deposit) - (cash sales - deducted expenses).
+
+FILES TO CHANGE (summary)
+-------------------------
+lib/models/expenses.dart
+lib/models/breakdown.dart
+lib/data/constants.dart
+lib/services/expenses_services.dart
+lib/services/endofday_services.dart
+lib/dto/endofday_dto.dart
+lib/controllers/endofday_controller.dart
+lib/controllers/expenses_controller.dart
+lib/views/pages/sidebar/expenses_page.dart
+lib/views/pages/sidebar/expenselist_page.dart
+lib/views/pages/sidebar/endofday_page.dart
+lib/views/pages/sidebar/breakdown_page.dart
+firestore.rules (approval fields: dealer-only write, see Phase 5B.8)
+test/ (new tests)
+
+RISKS / NOTES
+-------------
+Risk 1 - Checkbox left ON/OFF wrongly, so a day looks "over" or "short"
+  - If the cash really came out of today's cash on hand, the expense must be
+    dated today and ON. If it is left OFF, today looks "over" by that amount.
+  - Controls: the required reason dropdown (5A.1), the help text (Phase 2), the
+    closed-day message (Phase 5), and the dealer-only hint that points to a
+    not-deducted expense matching an overpaid amount (5A.3).
+
+Risk 2 - An expense used to cover a real shortage
+  - The real danger is a made-up or inflated back-dated expense that is ON,
+    because it lowers that day's expected cash and hides the shortage.
+    (An OFF expense never hides a shortage; at worst it makes a day look
+    "over".)
+  - Controls: dealer approval for back-dated salesman expenses, and they are
+    not deducted until approved (5B); a day cannot be verified with pending
+    approvals (5B.5); salesman cannot use OFF on a today-dated expense (5A.2);
+    reasons are required (5A.1); every change is audit-logged; the dealer-only
+    "Not deducted" review list shows patterns (5A.4).
+
+REVIEW ANSWERS (confirmed)
+--------------------------
+Q1. Dealer approval: YES for back-dated salesman expenses (Phase 5B). This
+    replaces the earlier "no approval" answer. Dealer-created expenses and
+    salesman expenses dated today need no approval.
+Q2. Closed-day rule: BLOCK the save (Phase 5). Do not silently force OFF.
+Q3. The "Not deducted" amount (Phase 4.2) and the "Not in EOD cash" badge
+    (Phase 4.4) are visible to the DEALER ONLY. Salesmen do not see them.
+
+FUTURE OPTION - "CASH PAID ON" DATE (not included now)
+------------------------------------------------------
+Add a separate "Cash paid on" date to an expense. The expense date would drive
+reports and Profit & Loss, and the "Cash paid on" date would decide which day's
+cash count it reduces.
+Recommendation: do NOT add it now.
+  - With the checkbox, reason, approval and closed-day rules, every case is
+    already handled by choosing the right expense date: if the cash left on
+    day B, date the expense day B.
+  - The only thing lost is that such an expense appears in Profit & Loss on day
+    B instead of day A. Salesman expenses are not in Profit & Loss at all, so
+    this only matters for dealer expenses that cross a month end.
+  - It is cheap to add later: one optional field that defaults to the expense
+    date, so old records and reports do not change.
+Revisit it if, after a month or two of use, the dealer review list (5A.4) shows
+many expenses with the reason "Paid on an earlier day" that the dealer says
+were actually paid back from a later day's cash, or if dealer expenses often
+cross a month end and the monthly Profit & Loss looks wrong.

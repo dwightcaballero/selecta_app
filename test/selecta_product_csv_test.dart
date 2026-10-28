@@ -189,6 +189,43 @@ Twin Pops,15.00
 
       expect(remoteSig, equals(localSig));
     });
+
+    test('parseAdminProductsFromCsv parses Pieces Per Case column and exports correctly', () {
+      const csvData = '''Product Name,Category,Buying Price,Selling Price,Pieces Per Case
+Cornetto Choco,By Piece,22.50,30.00,
+Twin Pops Case,By Case,180.00,210.00,12
+Drumstick Case,By Case,240.00,300.00,24''';
+
+      final products = SelectaProductService.parseAdminProductsFromCsv(csvData);
+      expect(products.length, 3);
+
+      expect(products[0].productName, 'Cornetto Choco');
+      expect(products[0].boPiecesPerCase, isNull);
+
+      expect(products[1].productName, 'Twin Pops Case');
+      expect(products[1].boPiecesPerCase, 12);
+      expect(products[1].hasValidBoPiecesPerCase, isTrue);
+      expect(products[1].storeRefundPerPiece, equals(17.50)); // 210 / 12
+      expect(products[1].supplierRefundPerPiece, equals(15.00)); // 180 / 12
+
+      expect(products[2].productName, 'Drumstick Case');
+      expect(products[2].boPiecesPerCase, 24);
+
+      // Verify export contains Pieces Per Case column
+      final exportedCsv = SelectaProductService.formatProductsToCsv(products);
+      expect(exportedCsv.contains('Pieces Per Case'), isTrue);
+      expect(exportedCsv.contains('Twin Pops Case'), isTrue);
+      expect(exportedCsv.contains('12'), isTrue);
+
+      // Verify catalog signature changes if pieces per case changes
+      final productModified = products[1].copyWith(boPiecesPerCase: 6);
+      final list1 = [products[0], products[1]];
+      final list2 = [products[0], productModified];
+      expect(
+        SelectaProductService.computeCatalogSignature(list1),
+        isNot(equals(SelectaProductService.computeCatalogSignature(list2))),
+      );
+    });
   });
 }
 

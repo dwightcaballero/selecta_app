@@ -24,9 +24,6 @@ class SelectaProductController {
   Future<void> toggleActive(String productId, bool isActive) =>
       _service.toggleProductActive(productId, isActive);
 
-  /// Updates dealer configured bad order price per piece for a 'By Case' product.
-  Future<void> updateBadOrderPricePerPiece(String productId, double price) =>
-      _service.updateBadOrderPricePerPiece(productId, price);
 
   /// Updates dealer configured barcode for a Selecta product.
   Future<void> updateDealerBarcode(String productId, String barcode) =>
@@ -117,6 +114,13 @@ class SelectaProductController {
     }
     if (product.sellingPrice <= 0) {
       errors.add('Selling price must be greater than 0.');
+    }
+    if (product.category == 'By Case') {
+      if (product.boPiecesPerCase == null) {
+        errors.add('Pieces per case is required for By Case products.');
+      } else if (product.boPiecesPerCase! < 2 || product.boPiecesPerCase! > 999) {
+        errors.add('Pieces per case must be between 2 and 999.');
+      }
     }
     return errors;
   }

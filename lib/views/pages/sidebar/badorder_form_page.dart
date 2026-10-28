@@ -10,6 +10,7 @@ import 'package:selecta_ops/controllers/selecta_product_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/responsive.dart';
+import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/badorder.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
@@ -57,12 +58,16 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
   String _categoryFilter = 'All'; // 'All', 'By Piece', 'By Case'
   bool _isSubmitting = false;
   bool _isCardExpanded = true;
+  bool _isSalesman = false;
 
   bool get _isEditMode => widget.existingRecord != null && widget.recID != null;
 
   @override
   void initState() {
     super.initState();
+    KVariables.getIsSalesman().then((val) {
+      if (mounted) setState(() => _isSalesman = val);
+    });
     final existing = widget.existingRecord;
     _storeController = TextEditingController(
       text: existing?.hapistore ?? widget.initialStoreName ?? '',
@@ -136,7 +141,18 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
     for (final p in products) {
       final q = _quantities[p.id] ?? 0;
       if (q > 0) {
-        total += q * p.boPricePerPiece;
+        total += roundToTwoDecimals(q * p.storeRefundPerPiece);
+      }
+    }
+    return total;
+  }
+
+  double _computeSupplierTotalAmount(List<SelectaProduct> products) {
+    double total = 0.0;
+    for (final p in products) {
+      final q = _quantities[p.id] ?? 0;
+      if (q > 0) {
+        total += roundToTwoDecimals(q * p.supplierRefundPerPiece);
       }
     }
     return total;
@@ -154,6 +170,13 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
 
   /// Consistent modal quantity dialog matching Book Order, Purchase Order, and Van Sell.
   Future<void> _showQuantityDialog(SelectaProduct product) async {
+    if (!product.isBoPricingReady) {
+      ShowMessage.error(
+        context,
+        'Cannot set quantity: "${product.productName}" is By Case and has no pieces per case configured by admin.',
+      );
+      return;
+    }
     FocusManager.instance.primaryFocus?.unfocus();
     final currentQty = _quantities[product.id] ?? 0;
     final initialText = currentQty > 0 ? '$currentQty' : '';
@@ -177,7 +200,7 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
             }
 
             final typedVal = int.tryParse(controller.text.trim()) ?? 0;
-            final liveSubtotal = typedVal * product.boPricePerPiece;
+            final liveSubtotal = roundToTwoDecimals(typedVal * product.storeRefundPerPiece);
 
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -213,7 +236,9 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          '${product.category} • ${Helperfunctions.formatDoubleAmountForDisplay(product.boPricePerPiece)} / pc',
+                          product.isCaseProduct
+                              ? '${product.category} • ${Helperfunctions.formatDoubleAmountForDisplay(product.storeRefundPerPiece)} / pc (${Helperfunctions.formatDoubleAmountForDisplay(product.sellingPrice)} / ${product.boPiecesPerCase})'
+                              : '${product.category} • ${Helperfunctions.formatDoubleAmountForDisplay(product.storeRefundPerPiece)} / pc',
                           style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                         ),
                       ],
@@ -334,20 +359,16 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
     for (final p in allProducts) {
       final q = _quantities[p.id] ?? 0;
       if (q > 0) {
-        if (p.category == 'By Case' && !p.isBoPriceConfigured) {
+        if (!p.isBoPricingReady) {
           ShowMessage.error(
             context,
-            'Cannot submit: "${p.productName}" is By Case and has no B.O. price configured by dealer.',
+            'Cannot submit: "${p.productName}" is By Case and has no pieces per case configured by admin.',
           );
           return;
         }
-        selectedItems.add(BadOrderItem(
-          productId: p.id,
-          productName: p.productName,
-          category: p.category,
+        selectedItems.add(BadOrderItem.fromProduct(
+          product: p,
           quantity: q,
-          pricePerPiece: p.boPricePerPiece,
-          subtotal: q * p.boPricePerPiece,
           imageUrl: p.imageUrl,
         ));
       }
@@ -688,10 +709,10 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
   /// Product Item Card with Add button, quantity stepper, and tap-to-open quantity modal.
   Widget _buildProductCard(SelectaProduct product, ColorScheme colorScheme) {
     final qty = _quantities[product.id] ?? 0;
-    final isCase = product.category == 'By Case';
-    final hasValidPrice = product.isBoPriceConfigured;
-    final unitPrice = product.boPricePerPiece;
-    final subtotal = qty * unitPrice;
+    final isCase = product.isCaseProduct;
+    final hasValidPrice = product.isBoPricingReady;
+    final unitPrice = product.storeRefundPerPiece;
+    final subtotal = roundToTwoDecimals(qty * unitPrice);
     final isSelected = qty > 0;
 
     return Card(
@@ -795,12 +816,14 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
                               ),
                               if (!hasValidPrice)
                                 const Text(
-                                  '⚠️ Price not set',
+                                  '⚠️ No pieces/case set',
                                   style: TextStyle(fontSize: 10.5, color: Colors.red, fontWeight: FontWeight.bold),
                                 )
                               else
                                 Text(
-                                  '@ ${Helperfunctions.formatDoubleAmountForDisplay(unitPrice)} / pc',
+                                  isCase
+                                      ? '@ ${Helperfunctions.formatDoubleAmountForDisplay(unitPrice)} / pc (${Helperfunctions.formatDoubleAmountForDisplay(product.sellingPrice)} / ${product.boPiecesPerCase})'
+                                      : '@ ${Helperfunctions.formatDoubleAmountForDisplay(unitPrice)} / pc',
                                   style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant),
                                 ),
                             ],
@@ -968,6 +991,7 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
             final totalUnits = _totalUnits;
             final totalSkus = _totalSkus;
             final totalAmount = _computeTotalAmount(allProducts);
+            final totalSupplierAmount = _computeSupplierTotalAmount(allProducts);
 
             if (ScreenSize.isTabletLandscape(context)) {
               return Row(
@@ -990,6 +1014,7 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
                         totalSkus,
                         totalUnits,
                         totalAmount,
+                        totalSupplierAmount,
                       ),
                     ),
                   ),
@@ -1138,14 +1163,28 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
                                 '$totalSkus SKU${totalSkus == 1 ? '' : 's'} • $totalUnits pcs',
                                 style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
                               ),
-                              Text(
-                                Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: colorScheme.primary,
-                                ),
+                              Row(
+                                children: [
+                                  Text(
+                                    Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: colorScheme.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    '(Store refund)',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFE11D48)),
+                                  ),
+                                ],
                               ),
+                              if (!_isSalesman && totalSupplierAmount > 0)
+                                Text(
+                                  'Expected supplier: ${Helperfunctions.formatDoubleAmountForDisplay(totalSupplierAmount)}',
+                                  style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                                ),
                             ],
                           ),
                         ),
@@ -1181,6 +1220,7 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
     int totalSkus,
     int totalUnits,
     double totalAmount,
+    double totalSupplierAmount,
   ) {
     final selectedProducts = allProducts.where((p) => (_quantities[p.id] ?? 0) > 0).toList();
 
@@ -1249,7 +1289,7 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
                           else
                             ...selectedProducts.map((p) {
                               final qty = _quantities[p.id] ?? 0;
-                              final subtotal = qty * p.boPricePerPiece;
+                              final subtotal = roundToTwoDecimals(qty * p.storeRefundPerPiece);
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 6),
                                 child: Row(
@@ -1265,7 +1305,7 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           Text(
-                                            '${Helperfunctions.formatDoubleAmountForDisplay(p.boPricePerPiece)} × $qty = ${Helperfunctions.formatDoubleAmountForDisplay(subtotal)}',
+                                            '${Helperfunctions.formatDoubleAmountForDisplay(p.storeRefundPerPiece)} × $qty = ${Helperfunctions.formatDoubleAmountForDisplay(subtotal)}',
                                             style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
                                           ),
                                         ],
@@ -1336,17 +1376,36 @@ class _BadOrderFormPageState extends State<BadOrderFormPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '$totalSkus SKU${totalSkus == 1 ? '' : 's'} • $totalUnits pcs',
-                    style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$totalSkus SKU${totalSkus == 1 ? '' : 's'} • $totalUnits pcs',
+                        style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+                      ),
+                      const Text(
+                        'Refund to store',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFE11D48)),
+                      ),
+                    ],
                   ),
-                  Text(
-                    Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.primary,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                      if (!_isSalesman && totalSupplierAmount > 0)
+                        Text(
+                          'Expected supplier: ${Helperfunctions.formatDoubleAmountForDisplay(totalSupplierAmount)}',
+                          style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                        ),
+                    ],
                   ),
                 ],
               ),

@@ -855,11 +855,21 @@ class _ProfitLossPageState extends State<ProfitLossPage> {
                 ),
                 _buildStatementRow(
                   prefix: '(−)',
-                  title: 'Bad Order Losses (Spoilage & Pullouts)',
-                  subtitle: '${_data.totalBadOrdersCount} bad order records',
+                  title: 'Bad Order Net Loss (Store Refund − Supplier Recovery)',
+                  subtitle: _data.supplierRecoveryTotal > 0
+                      ? 'Stores refunded: ${Helperfunctions.formatDoubleAmountForDisplay(_data.storeRefundTotal)} • Expected supplier recovery: ${Helperfunctions.formatDoubleAmountForDisplay(_data.supplierRecoveryTotal)}${_data.hasLegacyBadOrders ? ' (includes legacy 100% loss)' : ''}'
+                      : '${_data.totalBadOrdersCount} bad order records${_data.hasLegacyBadOrders ? ' (legacy records treated as 100% loss)' : ''}',
                   amount: -_data.totalBadOrders,
                   isNegative: true,
                 ),
+                if (_data.settlementVariance.abs() > 0.01)
+                  _buildStatementRow(
+                    prefix: _data.settlementVariance >= 0 ? '(+)' : '(−)',
+                    title: 'Supplier Settlement Variance',
+                    subtitle: 'From settled warehouse batches in period',
+                    amount: _data.settlementVariance,
+                    isNegative: _data.settlementVariance < 0,
+                  ),
                 _buildSubtotalRow(
                   title: 'TOTAL OPERATING DEDUCTIONS',
                   amount: _data.totalOperatingCosts,

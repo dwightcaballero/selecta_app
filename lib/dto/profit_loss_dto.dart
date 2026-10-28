@@ -45,7 +45,11 @@ class ProfitLossDTO {
 
   // Operating Costs
   final double totalExpenses;
-  final double totalBadOrders;
+  final double totalBadOrders; // Bad Order Net Loss
+  final double storeRefundTotal; // Total store refunds issued in period
+  final double supplierRecoveryTotal; // Expected supplier recoveries for period B.O.s
+  final double settlementVariance; // Variance from batches settled in period (+ / -)
+  final bool hasLegacyBadOrders; // True if any B.O. in period uses legacy pricing
   final double totalOperatingCosts;
 
   // Net Profit
@@ -77,6 +81,10 @@ class ProfitLossDTO {
     required this.grossMarginPercent,
     required this.totalExpenses,
     required this.totalBadOrders,
+    this.storeRefundTotal = 0.0,
+    this.supplierRecoveryTotal = 0.0,
+    this.settlementVariance = 0.0,
+    this.hasLegacyBadOrders = false,
     required this.totalOperatingCosts,
     required this.netProfit,
     required this.netMarginPercent,

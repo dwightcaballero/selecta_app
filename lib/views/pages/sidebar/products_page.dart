@@ -232,10 +232,10 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
     bool isFetchingUrl = false;
 
     const sampleCsv =
-        'Product Name,Buying Price,Selling Price,Category,Image URL\n'
-        'Cornetto Chocolate,25.00,30.00,By Piece,\n'
-        'Magnum Classic,50.00,65.00,By Piece,\n'
-        'Selecta Super Thick Vanilla 1.4L,180.00,210.00,By Case,';
+        'Product Name,Buying Price,Selling Price,Category,Pieces Per Case,Image URL\n'
+        'Cornetto Chocolate,25.00,30.00,By Piece,,\n'
+        'Magnum Classic,50.00,65.00,By Piece,,\n'
+        'Selecta Super Thick Vanilla 1.4L,180.00,210.00,By Case,12,';
 
     await showDialog<void>(
       context: context,
@@ -385,7 +385,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                         decoration: InputDecoration(
                           hintText: selectedFormat == 'JSON'
                               ? '[{"productName": "...", "buyingPrice": 20, "sellingPrice": 25, "category": "By Piece", "imageUrl": "..."}]'
-                              : 'Product Name,Buying Price,Selling Price,Category,Image URL\nCornetto Chocolate,25.00,30.00,By Piece,\nMagnum Classic,50.00,65.00,By Piece,',
+                              : 'Product Name,Buying Price,Selling Price,Category,Pieces Per Case,Image URL\nCornetto Chocolate,25.00,30.00,By Piece,,\nSelecta Super Thick Vanilla 1.4L,180.00,210.00,By Case,12,',
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5),
@@ -414,6 +414,24 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                       if (ctx.mounted) Navigator.pop(ctx);
                       if (mounted) {
                         ShowMessage.success(context, 'Imported $count products successfully.');
+                        try {
+                          final prods = await _selectaController.getAdminProductsStream().first;
+                          final needsSetup = prods.docs.where((d) {
+                            final data = d.data();
+                            final cat = (data['category'] as String? ?? '').trim().toLowerCase();
+                            if (cat != 'by case' && cat != 'case') return false;
+                            final pcs = data['boPiecesPerCase'];
+                            final pNum = pcs is num ? pcs.toInt() : (pcs != null ? int.tryParse(pcs.toString()) : null);
+                            return pNum == null || pNum < 2 || pNum > 999;
+                          }).length;
+                          if (needsSetup > 0 && mounted) {
+                            ShowMessage.alert(
+                              context,
+                              title: 'Pieces Per Case Required',
+                              message: '$needsSetup "By Case" product(s) do not have pieces per case set. Bad orders cannot be created for them until pieces per case is configured.',
+                            );
+                          }
+                        } catch (_) {}
                       }
                     } catch (e) {
                       if (ctx.mounted) ShowMessage.error(ctx, 'Import failed: $e');
@@ -489,11 +507,31 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
       final code = (data['itemCode'] as String? ?? '').toLowerCase();
       final matchesSearch = _selectaSearchQuery.isEmpty || name.contains(_selectaSearchQuery) || code.contains(_selectaSearchQuery);
 
+      if (!matchesSearch) return false;
+
+      if (_isAdmin) {
+        if (_selectaFilterStatus == 'Needs Setup') {
+          final cat = (data['category'] as String? ?? '').trim().toLowerCase();
+          final isCase = cat == 'by case' || cat == 'case';
+          if (!isCase) return false;
+          final pcs = data['boPiecesPerCase'];
+          final pNum = pcs is num ? pcs.toInt() : (pcs != null ? int.tryParse(pcs.toString()) : null);
+          return pNum == null || pNum < 2 || pNum > 999;
+        } else if (_selectaFilterStatus == 'By Case') {
+          final cat = (data['category'] as String? ?? '').trim().toLowerCase();
+          return cat == 'by case' || cat == 'case';
+        } else if (_selectaFilterStatus == 'By Piece') {
+          final cat = (data['category'] as String? ?? '').trim().toLowerCase();
+          return cat != 'by case' && cat != 'case';
+        }
+        return true;
+      }
+
       final isActive = data['isActive'] as bool? ?? true;
       final matchesStatus =
           _selectaFilterStatus == 'All' || (_selectaFilterStatus == 'Active' && isActive) || (_selectaFilterStatus == 'Inactive' && !isActive);
 
-      return matchesSearch && matchesStatus;
+      return matchesStatus;
     }).toList();
   }
 
@@ -747,41 +785,42 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
         ),
 
         // Status Filter Chips
-        if (!_isAdmin)
-          SizedBox(
-            height: 42,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: 3,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final status = const ['All', 'Active', 'Inactive'][index];
-                final isSelected = _selectaFilterStatus == status;
-                return FilterChip(
-                  selected: isSelected,
-                  label: Text(
-                    status,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                      color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
-                    ),
+        SizedBox(
+          height: 42,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _isAdmin ? 4 : 3,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final status = _isAdmin
+                  ? const ['All', 'Needs Setup', 'By Case', 'By Piece'][index]
+                  : const ['All', 'Active', 'Inactive'][index];
+              final isSelected = _selectaFilterStatus == status;
+              return FilterChip(
+                selected: isSelected,
+                label: Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                    color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
                   ),
-                  selectedColor: colorScheme.primary,
-                  backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                  checkmarkColor: colorScheme.onPrimary,
-                  showCheckmark: false,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: BorderSide(color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5)),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                  onSelected: (_) => setState(() => _selectaFilterStatus = status),
-                );
-              },
-            ),
+                ),
+                selectedColor: colorScheme.primary,
+                backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                checkmarkColor: colorScheme.onPrimary,
+                showCheckmark: false,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(color: isSelected ? colorScheme.primary : colorScheme.outlineVariant.withValues(alpha: 0.5)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                onSelected: (_) => setState(() => _selectaFilterStatus = status),
+              );
+            },
           ),
+        ),
 
         // Stream and List
         Expanded(
@@ -845,7 +884,7 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
               selectaCaseItems.sort(compareProducts);
               selectaPieceItems.sort(compareProducts);
 
-              final isFiltered = _selectaSearchQuery.isNotEmpty || (!_isAdmin && _selectaFilterStatus != 'All');
+              final isFiltered = _selectaSearchQuery.isNotEmpty || _selectaFilterStatus != 'All';
 
               return Column(
                 children: [
@@ -973,10 +1012,41 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                       product.productName,
                       style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5, height: 1.25, color: colorScheme.onSurface),
                     ),
-                    if (product.category.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(product.category, style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
-                    ],
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        if (product.category.isNotEmpty)
+                          Text(product.category, style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
+                        if (product.isCaseProduct) ...[
+                          if (product.category.isNotEmpty) const SizedBox(width: 8),
+                          if (product.hasValidBoPiecesPerCase)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${product.boPiecesPerCase} pcs/case (B.O.)',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: colorScheme.primary),
+                              ),
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFFECACA)),
+                              ),
+                              child: const Text(
+                                'Set pieces/case',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 6),
                     Row(
                       children: [
@@ -1048,30 +1118,63 @@ class _ProductsPageState extends State<ProductsPage> with SingleTickerProviderSt
                         color: isActive ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    if (product.itemCode.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text('Item Code: ${product.itemCode}', style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
-                    ],
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        if (product.itemCode.isNotEmpty)
+                          Text('Item Code: ${product.itemCode}', style: TextStyle(fontSize: 11.5, color: colorScheme.onSurfaceVariant)),
+                        if (product.isCaseProduct) ...[
+                          if (product.itemCode.isNotEmpty) const SizedBox(width: 8),
+                          if (product.hasValidBoPiecesPerCase)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${product.boPiecesPerCase} pcs/case',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: colorScheme.primary),
+                              ),
+                            )
+                          else
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFFECACA)),
+                              ),
+                              child: Text(
+                                _isSalesman ? 'Needs pieces/case' : 'Needs pieces/case (Ask admin to set)',
+                                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFFDC2626)),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Text(
-                          'Buy: ',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                        if (!_isSalesman) ...[
+                          Text(
+                            'Buy: ',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            ),
                           ),
-                        ),
-                        Text(
-                          currencyFormat.format(product.buyingPrice),
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                          Text(
+                            currencyFormat.format(product.buyingPrice),
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: isActive ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
+                          const SizedBox(width: 16),
+                        ],
                         Text(
                           'Sell: ',
                           style: TextStyle(

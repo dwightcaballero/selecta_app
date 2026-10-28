@@ -158,6 +158,7 @@ class BadOrderController {
     bool isStoreRefunded = false,
   }) async {
     final user = getCurrentUserDisplayName();
+    final totalSupplier = roundToTwoDecimals(items.fold<double>(0.0, (acc, i) => acc + i.supplierSubtotal));
     final newRecord = BadOrder(
       hapistore: hapistore,
       badorderDate: Timestamp.fromDate(selectedDate),
@@ -165,7 +166,8 @@ class BadOrderController {
       status: BadOrderStatus.storePullout,
       notes: notes,
       items: items,
-      schemaVersion: 2,
+      supplierAmount: totalSupplier,
+      schemaVersion: 3,
       createdBy: user,
       lastUpdatedBy: user,
       createdDate: Timestamp.now(),
@@ -200,7 +202,10 @@ class BadOrderController {
       );
     }
     final user = getCurrentUserDisplayName();
+    final totalSupplier = roundToTwoDecimals(updatedRecord.items.fold<double>(0.0, (acc, i) => acc + i.supplierSubtotal));
     final toSave = updatedRecord.copyWith(
+      supplierAmount: totalSupplier,
+      schemaVersion: 3,
       lastUpdatedBy: user,
       lastupdatedDate: Timestamp.now(),
       lastUpdatedPage: page,
@@ -313,7 +318,15 @@ class BadOrderController {
 
     final badOrderIds = selectedBadOrders.map((d) => d.id).toList();
     final storeNames = selectedBadOrders.map((d) => d.data().hapistore).toSet().toList();
-    final totalAmount = selectedBadOrders.fold<double>(0.0, (acc, d) => acc + d.data().totalAmount);
+    final totalStoreRefundAmount = roundToTwoDecimals(
+      selectedBadOrders.fold<double>(0.0, (acc, d) => acc + d.data().totalAmount),
+    );
+    final expectedSupplierTotal = roundToTwoDecimals(
+      selectedBadOrders.fold<double>(
+        0.0,
+        (acc, d) => acc + (d.data().hasDualPricing ? d.data().supplierAmount : d.data().totalAmount),
+      ),
+    );
     final totalItems = selectedBadOrders.fold<int>(0, (acc, d) => acc + d.data().items.length);
 
     final newBatch = BadOrderBatch(
@@ -322,7 +335,9 @@ class BadOrderController {
       pulloutDate: Timestamp.fromDate(pulloutDate),
       badOrderIds: badOrderIds,
       storeNames: storeNames,
-      totalBatchAmount: totalAmount,
+      totalBatchAmount: expectedSupplierTotal,
+      totalStoreRefundAmount: totalStoreRefundAmount,
+      pricingBasis: 'supplier_buying_v1',
       totalItemsCount: totalItems,
       status: BadOrderStatus.warehousePullout,
       notes: notes.trim(),
