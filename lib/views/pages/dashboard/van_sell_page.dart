@@ -12,7 +12,7 @@ import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/van_load.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
-import 'package:selecta_ops/services/thermal_printer_service.dart';
+import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
@@ -32,7 +32,6 @@ class VanSellPage extends StatefulWidget {
 
 class _VanSellPageState extends State<VanSellPage> {
   final VanSellController _controller = VanSellController();
-  final ThermalPrinterService _printerService = ThermalPrinterService();
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'en_PH', symbol: '₱');
 
   final TextEditingController _remarksController = TextEditingController();
@@ -1142,49 +1141,13 @@ class _VanSellPageState extends State<VanSellPage> {
   }
 
   Future<void> _promptThermalPrint(Delivery delivery, String deliveryId) async {
-    final shouldPrint = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.print_outlined, color: Colors.teal),
-            SizedBox(width: 8),
-            Text('Print Receipt', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Text(
-          'Would you like to print the receipt for ${delivery.storeName} (${Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount)})?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Later / Skip')),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: Colors.teal),
-            icon: const Icon(Icons.print, size: 18),
-            label: const Text('Print Now'),
-            onPressed: () => Navigator.pop(ctx, true),
-          ),
-        ],
-      ),
+    await DigitalReceiptDialog.show(
+      context,
+      delivery: delivery,
+      deliveryId: deliveryId,
+      proceedLabel: 'Done',
+      remindIfNotPrinted: true,
     );
-
-    if (shouldPrint == true && mounted) {
-      try {
-        final success = await _printerService.printReceipt(
-          delivery: delivery,
-          dealerName: 'Selecta Ops',
-          deliveryId: deliveryId,
-        );
-        if (mounted) {
-          if (success) {
-            SnackBarWidget.success(context, 'Receipt printed successfully!');
-          } else {
-            SnackBarWidget.error(context, 'Failed to send print job to thermal printer.');
-          }
-        }
-      } catch (e) {
-        if (mounted) SnackBarWidget.error(context, 'Print error: $e');
-      }
-    }
   }
 
   void _showStoreSelectionModal() {

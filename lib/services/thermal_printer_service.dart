@@ -36,6 +36,9 @@ class ThermalPrinterService {
   factory ThermalPrinterService() => _instance;
   ThermalPrinterService._internal();
 
+  @visibleForTesting
+  ThermalPrinterService.forTesting();
+
   static const String prefPaperSizeKey = 'thermal_printer_paper_size';
   static const String prefPrinterMacKey = 'thermal_printer_mac';
   static const String prefPrinterNameKey = 'thermal_printer_name';

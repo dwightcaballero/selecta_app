@@ -1083,6 +1083,7 @@ class _PicklistPageState extends State<PicklistPage> {
         delivery: updatedDelivery,
         deliveryId: widget.deliveryID,
         proceedLabel: 'Close',
+        remindIfNotPrinted: true,
         onProceed: () {
           if (!mounted) return;
           Navigator.pop(context, true);

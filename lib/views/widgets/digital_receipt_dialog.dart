@@ -16,6 +16,8 @@ class DigitalReceiptDialog extends StatefulWidget {
   final String? dealerName;
   final VoidCallback? onProceed;
   final String proceedLabel;
+  final bool remindIfNotPrinted;
+  final ThermalPrinterService? printerService;
 
   const DigitalReceiptDialog({
     super.key,
@@ -24,6 +26,8 @@ class DigitalReceiptDialog extends StatefulWidget {
     this.dealerName,
     this.onProceed,
     this.proceedLabel = 'Close',
+    this.remindIfNotPrinted = false,
+    this.printerService,
   });
 
   /// Static helper to display the receipt dialog easily from any page.
@@ -34,12 +38,21 @@ class DigitalReceiptDialog extends StatefulWidget {
     String? dealerName,
     VoidCallback? onProceed,
     String proceedLabel = 'Close',
+    bool remindIfNotPrinted = false,
+    ThermalPrinterService? printerService,
   }) {
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) =>
-          DigitalReceiptDialog(delivery: delivery, deliveryId: deliveryId, dealerName: dealerName, onProceed: onProceed, proceedLabel: proceedLabel),
+      builder: (_) => DigitalReceiptDialog(
+        delivery: delivery,
+        deliveryId: deliveryId,
+        dealerName: dealerName,
+        onProceed: onProceed,
+        proceedLabel: proceedLabel,
+        remindIfNotPrinted: remindIfNotPrinted,
+        printerService: printerService,
+      ),
     );
   }
 
@@ -48,7 +61,9 @@ class DigitalReceiptDialog extends StatefulWidget {
 }
 
 class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
-  final ThermalPrinterService _printerService = ThermalPrinterService();
+  late final ThermalPrinterService _printerService = widget.printerService ?? ThermalPrinterService();
+  bool _hasPrinted = false;
+  bool _isClosing = false;
 
   ThermalPaperSize _paperSize = ThermalPaperSize.mm58;
   String _effectiveDealerName = '';
@@ -157,6 +172,9 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
 
       if (mounted) {
         if (success) {
+          setState(() {
+            _hasPrinted = true;
+          });
           ShowMessage.success(context, 'Receipt printed successfully on $_paperSize printer!');
         } else {
           ShowMessage.error(context, 'Failed to send print job to thermal printer.');
@@ -195,13 +213,49 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
     );
   }
 
+  Future<void> _handleClose() async {
+    if (_isClosing || _isPrinting) return;
+    if (widget.remindIfNotPrinted && !_hasPrinted) {
+      _isClosing = true;
+      try {
+        final shouldPrint = await ShowMessage.confirm(
+          context,
+          title: 'Receipt not printed yet',
+          message:
+              'This transaction has not been printed. The salesman should bring the receipt together with the stocks. Print it now?',
+          confirmText: 'Print Now',
+          cancelText: 'Close Without Printing',
+          icon: Icons.print_disabled_rounded,
+          iconColor: Colors.amber.shade800,
+          barrierDismissible: false,
+        );
+        if (!mounted) return;
+        if (shouldPrint) {
+          await _handlePrint();
+          return;
+        }
+      } finally {
+        _isClosing = false;
+      }
+    }
+    if (!mounted) return;
+    Navigator.pop(context);
+    widget.onProceed?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleClose();
+      },
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 460),
         decoration: BoxDecoration(
@@ -248,10 +302,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                   IconButton(
                     icon: const Icon(Icons.close_rounded),
                     tooltip: 'Close',
-                    onPressed: () {
-                      Navigator.pop(context);
-                      widget.onProceed?.call();
-                    },
+                    onPressed: _handleClose,
                   ),
                 ],
               ),
@@ -460,8 +511,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
                   const SizedBox(height: 10),
                   AsyncFilledButton(
                     onPressed: () {
-                      Navigator.pop(context);
-                      widget.onProceed?.call();
+                      _handleClose();
                     },
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF15803D),
@@ -475,6 +525,7 @@ class _DigitalReceiptDialogState extends State<DigitalReceiptDialog> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

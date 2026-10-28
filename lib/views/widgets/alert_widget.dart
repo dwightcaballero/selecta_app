@@ -91,33 +91,40 @@ class ShowMessage {
     String cancelText = 'Cancel',
     bool isDestructive = false,
     IconData? icon,
+    bool barrierDismissible = true,
+    Color? iconColor,
   }) async {
     final result = await showDialog<bool>(
       context: context,
+      barrierDismissible: barrierDismissible,
       builder: (dialogContext) {
         final colorScheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          icon: icon != null
-              ? Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: (isDestructive ? Colors.red : colorScheme.primary).withValues(alpha: 0.1), shape: BoxShape.circle),
-                  child: Icon(icon, color: isDestructive ? Colors.red : colorScheme.primary, size: 32),
-                )
-              : null,
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, decoration: TextDecoration.none)),
-          content: Text(message, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant, decoration: TextDecoration.none)),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(cancelText)),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: isDestructive ? Colors.red.shade600 : null,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        final effectiveIconColor = iconColor ?? (isDestructive ? Colors.red : colorScheme.primary);
+        return PopScope(
+          canPop: barrierDismissible,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            icon: icon != null
+                ? Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: effectiveIconColor.withValues(alpha: 0.1), shape: BoxShape.circle),
+                    child: Icon(icon, color: effectiveIconColor, size: 32),
+                  )
+                : null,
+            title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, decoration: TextDecoration.none)),
+            content: Text(message, style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant, decoration: TextDecoration.none)),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: Text(cancelText)),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: isDestructive ? Colors.red.shade600 : null,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(confirmText),
               ),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: Text(confirmText),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
