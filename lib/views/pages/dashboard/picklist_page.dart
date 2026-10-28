@@ -21,6 +21,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/sound_feedback_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_continuous_scanner_page.dart';
+import 'package:selecta_ops/views/widgets/picklist/multi_qty_reminder_dialog.dart';
 import 'package:image_picker/image_picker.dart';
 
 class PicklistPage extends StatefulWidget {
@@ -597,102 +598,19 @@ class _PicklistPageState extends State<PicklistPage> {
       return;
     }
 
-    final qty = item.pickedQuantity;
+    setState(() {
+      _items[matchIndex] = item.copyWith(isPicked: true);
+    });
+    SoundFeedbackService().playSuccessChime();
+    final unitLabel = reqQty == 1 ? '1 unit' : '$reqQty units';
+    ShowMessage.success(context, 'Checked: ${item.productName} ($unitLabel)');
 
-    // If orderedQuantity == 1:
-    if (qty <= 1) {
-      setState(() {
-        _items[matchIndex] = item.copyWith(isPicked: true);
-      });
-      SoundFeedbackService().playSuccessChime();
-      ShowMessage.success(context, 'Checked: ${item.productName} (1 unit)');
-      if (mounted) _scannerFocusNode.requestFocus();
-      return;
-    }
-
-    // If orderedQuantity > 1: Fast confirmation modal
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
-              child: Icon(Icons.check_circle_outline_rounded, color: Colors.green.shade700, size: 24),
-            ),
-            const SizedBox(width: 10),
-            const Expanded(
-              child: Text('Verify Pick Quantity', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CachedProductImage(imageUrl: item.imageUrl, size: 48, borderRadius: 8),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.productName, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 2),
-                      Text('Category: ${item.category}', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 24),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green.shade200),
-              ),
-              child: Row(
-                children: [
-                  const Text('Ordered Quantity:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  Text(
-                    '×$qty ${item.category.toLowerCase().contains('case') ? 'Cases' : 'Units'}',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.green.shade800),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Please confirm that all $qty ${item.category.toLowerCase().contains('case') ? 'cases' : 'units'} are picked and placed into the delivery order.',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.green.shade700),
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            child: Text('Confirm Picked ($qty)'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      setState(() {
-        _items[matchIndex] = item.copyWith(isPicked: true);
-      });
-      SoundFeedbackService().playSuccessChime();
-      ShowMessage.success(context, 'Checked: ${item.productName} ($qty units)');
+    if (shouldShowMultiQtyReminder(reqQty) && mounted) {
+      await showMultiQtyReminderDialog(
+        context,
+        _items[matchIndex],
+        requiredQty: reqQty,
+      );
     }
 
     if (mounted) _scannerFocusNode.requestFocus();
@@ -933,6 +851,14 @@ class _PicklistPageState extends State<PicklistPage> {
       _items[index] = item.copyWith(isPicked: true);
       SoundFeedbackService().playSuccessChime();
     });
+
+    if (shouldShowMultiQtyReminder(reqQty) && mounted) {
+      await showMultiQtyReminderDialog(
+        context,
+        _items[index],
+        requiredQty: reqQty,
+      );
+    }
   }
 
   Future<void> _openEditOrderProducts() async {

@@ -1,0 +1,134 @@
+MULTI-QUANTITY PICK REMINDER - IMPLEMENTATION PLAN
+==================================================
+
+GOAL
+----
+When a picker checks an item on the Picklist whose quantity to pick is 2 or
+more, show a modal that REMINDS them the quantity is greater than 1. The
+quantity is shown very large for emphasis. The modal has a single "OK" button.
+It is a notice only - it never blocks or undoes the check.
+
+DECISIONS (confirmed by reviewer)
+---------------------------------
+1. Trigger: required qty >= 2 (i.e. "greater than 1").
+2. Scope (all three check flows):
+     (A) Manual checkbox            - picklist_page.dart
+     (B) Typed / barcode scan input - picklist_page.dart
+     (C) Continuous scanner         - picklist_continuous_scanner_page.dart
+         (both its scan flow and its manual row toggle)
+3. The existing "Verify Pick Quantity" / "Confirm Pick Quantity" dialogs
+   (Cancel / Confirm Picked) are REPLACED by the new OK-only reminder, so all
+   flows behave the same.
+4. "Check All" and "Check Category" bulk buttons are UNCHANGED (no reminder).
+5. Item is checked IMMEDIATELY; the modal appears afterwards as a notice.
+   (Consequence: there is no Cancel path any more. To undo, the picker
+   un-ticks the item as before.)
+6. Dismiss: OK button OR tap outside the modal.
+7. Quantity shown = REQUIRED qty (recommended option), i.e. the same value as
+   _getRequiredQty(): pickedQuantity if > 0, else orderedQuantity.
+   If it differs from orderedQuantity (adjusted line), show a small secondary
+   line "Ordered: N" so a shortage adjustment is not hidden.
+
+CURRENT BEHAVIOR (findings)
+---------------------------
+- picklist_page.dart
+  * _toggleItemPicked(index) (~line 886) - checkbox handler. Unchecking /
+    restore logic, then stock check (_showCannotPickStockDialog), then checks
+    the item with NO quantity prompt.
+  * Scan handler (~lines 586-700) - after stock check, qty <= 1 checks
+    instantly; qty > 1 shows a Cancel/Confirm dialog (barrierDismissible:
+    false) and only checks on Confirm. Refocuses _scannerFocusNode after.
+  * _toggleAllPicked / _toggleCategoryPicked - bulk, left alone.
+- picklist_continuous_scanner_page.dart
+  * Scan handler (~lines 244-380) - same pattern: qty <= 1 instant, qty > 1
+    Cancel/Confirm dialog. Uses _isProcessingModal to pause scan input while a
+    modal is open, then _keyboardFocusNode.requestFocus().
+  * _toggleManualItem(index) (~line 381) - manual row tap, checks with no
+    quantity prompt.
+- The two existing dialogs are near-duplicates (copy/paste), which is why a
+  shared helper is proposed.
+
+IMPLEMENTATION
+--------------
+Phase 1 - Shared reminder dialog (new file)
+  File: lib/views/widgets/picklist/multi_qty_reminder_dialog.dart
+  API:  Future<void> showMultiQtyReminderDialog(
+          BuildContext context, OrderItem item, {required int requiredQty});
+  Behavior / UI:
+    - showDialog, barrierDismissible: true (tap outside closes).
+    - Header: amber/orange warning icon + "Quantity is more than 1".
+    - Product row: CachedProductImage (size 48) + product name + category.
+    - HERO quantity block (the emphasis):
+        * Full-width rounded container, amber/orange tint, thick border.
+        * "x{qty}" at ~72px, FontWeight.w900, high contrast.
+        * Unit label below it, large: "CASES" if category contains "case",
+          else "UNITS" (same rule the app already uses).
+    - Secondary line only when requiredQty != item.orderedQuantity:
+      "Ordered: {orderedQuantity}".
+    - Short reminder text: "Pick {qty} {units} for this item."
+    - Single FilledButton "OK" (full width, large tap target) that pops.
+    - Wrap qty in FittedBox so 3-4 digit quantities never overflow on small
+      screens; works in landscape (SingleChildScrollView in content).
+    - Haptic: HapticFeedback.mediumImpact() when shown (distinct cue vs the
+      light haptic used for normal checks).
+  Small pure helper for testability:
+    bool shouldShowMultiQtyReminder(int requiredQty) => requiredQty > 1;
+
+Phase 2 - Picklist page (picklist_page.dart)
+  2.1 _toggleItemPicked: after the item is checked (end of method), if
+      shouldShowMultiQtyReminder(reqQty) and mounted -> await
+      showMultiQtyReminderDialog(...).
+  2.2 Scan handler: remove the Cancel/Confirm showDialog block (~614-697).
+      Check the item immediately for ALL qty, play success chime, show the
+      success message, then if qty > 1 show the reminder. Keep
+      _scannerFocusNode.requestFocus() after the dialog closes.
+  2.3 Delete now-unused code/imports caused by the removal (only if unused).
+
+Phase 3 - Continuous scanner (picklist_continuous_scanner_page.dart)
+  3.1 Scan handler: remove the Cancel/Confirm dialog (~269-380). For qty > 1:
+      check item, set success ScanFeedback (quantity: qty), then
+      setState(_isProcessingModal = true) -> await reminder ->
+      setState(_isProcessingModal = false) -> requestFocus. This keeps scan
+      input paused while the reminder is open so a stray scan cannot dismiss
+      it or check the next item by mistake.
+  3.2 _toggleManualItem: make it async; after checking (not when unchecking),
+      show the reminder if qty > 1, with the same _isProcessingModal guard.
+  3.3 Remove unused code/imports.
+
+Phase 4 - Tests
+  - Unit: shouldShowMultiQtyReminder (0, 1 -> false; 2, 5 -> true).
+  - Widget: showMultiQtyReminderDialog shows the large qty, product name,
+    "CASES" vs "UNITS", "Ordered: N" only when adjusted, single OK button,
+    closes on OK and on barrier tap.
+  - Place under test/ following existing conventions.
+
+Phase 5 - Verify
+  - flutter analyze (no new warnings).
+  - Run the new tests plus any existing picklist tests.
+  - Hot reload/restart and manually check: checkbox qty 1 (no modal), checkbox
+    qty >= 2 (checked + modal), adjusted qty line, scan qty >= 2, continuous
+    scanner scan + manual tap, Check All / Check Category (no modal), small
+    screen + large font scale (no overflow).
+
+OUT OF SCOPE / NOT DOING
+------------------------
+- No Firestore / data model change.
+- No "Don't show again" option (safety reminder must not be mutable).
+- No reminder on bulk Check All / Check Category (per decision 4).
+- No typed quantity-count confirmation (possible future feature).
+- Delivery / Return pages unchanged.
+
+RISKS / NOTES
+-------------
+- Removing the Cancel/Confirm gate means a mistaken scan of a multi-qty item
+  now checks it immediately; the picker must un-tick it to correct. This is
+  per decision 5.
+- Rapid scanning in the continuous scanner will pause on each multi-qty item
+  until OK / tap-outside. Intended; the pause is the reminder.
+
+FILES TOUCHED
+-------------
+  NEW      lib/views/widgets/picklist/multi_qty_reminder_dialog.dart
+  MODIFIED lib/views/pages/dashboard/picklist_page.dart
+  MODIFIED lib/views/pages/dashboard/picklist_continuous_scanner_page.dart
+  NEW      test/... (reminder helper + dialog widget tests)
