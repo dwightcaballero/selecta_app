@@ -31,10 +31,12 @@ class SoundFeedbackService {
         await _player.setAudioContext(
           AudioContext(
             android: const AudioContextAndroid(
-              isSpeakerphoneOn: true,
+              // Media stream keeps playing in vibrate/silent ringer mode
+              // (sonification/touch-sound usage is muted there).
+              isSpeakerphoneOn: false,
               stayAwake: false,
-              contentType: AndroidContentType.sonification,
-              usageType: AndroidUsageType.assistanceSonification,
+              contentType: AndroidContentType.music,
+              usageType: AndroidUsageType.media,
               audioFocus: AndroidAudioFocus.gainTransientMayDuck,
             ),
             iOS: AudioContextIOS(
