@@ -1,9 +1,14 @@
+import 'dart:async';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/dashboard_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/dto/dashboard_dto.dart';
 import 'package:selecta_ops/models/users.dart';
+import 'package:selecta_ops/services/notification_badge_service.dart';
+import 'package:selecta_ops/services/push_notification_service.dart';
+import 'package:selecta_ops/views/pages/others/notifications_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/kpi_overview_page.dart';
@@ -57,6 +62,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
   String _lastSyncDateTime = '';
   DateTime? _lastSyncTime;
   int _currentTabIndex = 0;
+  StreamSubscription<RemoteMessage>? _fcmSub;
 
   @override
   void initState() {
@@ -70,10 +76,27 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
     _pendingPjpCountStream = _controller.getPendingPjpCountStream();
     _pendingScanningCountStream = _controller.getPendingScanningCountStream();
     _loadInitialData();
+    _fcmSub = PushNotificationService().onForegroundMessage.listen((msg) {
+      final n = msg.notification;
+      if (!mounted || n == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${n.title ?? 'Notification'}\n${n.body ?? ''}'),
+        action: SnackBarAction(
+          label: 'VIEW',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NotificationsPage(roles: NotificationAudience.salesman)),
+          ),
+        ),
+      ));
+      NotificationBadgeService().onPushReceived();
+    });
+    NotificationBadgeService().refresh(NotificationAudience.salesman, force: true);
   }
 
   @override
   void dispose() {
+    _fcmSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     dashboardNeedsRefreshNotifier.removeListener(_refreshDashboardIfNeeded);
     super.dispose();
@@ -83,6 +106,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _autoSyncIfStaleOrRequested();
+      NotificationBadgeService().refresh(NotificationAudience.salesman);
     }
   }
 
@@ -562,6 +586,22 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
           ),
         ),
         actions: [
+          IconButton(
+            icon: ValueListenableBuilder<int>(
+              valueListenable: NotificationBadgeService().unreadCount,
+              builder: (_, count, child) => Badge(
+                isLabelVisible: count > 0,
+                label: Text(count > 9 ? '9+' : '$count'),
+                child: child,
+              ),
+              child: const Icon(Icons.notifications_outlined, color: Colors.white),
+            ),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificationsPage(roles: NotificationAudience.salesman)),
+            ),
+            tooltip: 'Notifications',
+          ),
           AsyncIconButton(
             icon: const Icon(Icons.sync_rounded, color: Colors.white),
             onPressed: () => _syncDashboard(force: true),

@@ -12,7 +12,10 @@ import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:selecta_ops/services/notification_badge_service.dart';
 import 'package:selecta_ops/services/offline_sync_service.dart';
+import 'package:selecta_ops/services/push_notification_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
@@ -65,6 +68,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   final ValueNotifier<int> _dashboardVersionNotifier = ValueNotifier<int>(0);
   final ValueNotifier<bool> _isSecondaryPageOpenNotifier = ValueNotifier<bool>(false);
   late final _RightPaneNavigatorObserver _rightPaneObserver = _RightPaneNavigatorObserver(_isSecondaryPageOpenNotifier);
+  StreamSubscription<RemoteMessage>? _fcmSub;
 
   void _toggleSidebar() {
     setState(() => _isSidebarOpen = !_isSidebarOpen);
@@ -99,10 +103,24 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     WidgetsBinding.instance.addPostFrameCallback((_) {
       prefetchData();
     });
+    _fcmSub = PushNotificationService().onForegroundMessage.listen((msg) {
+      final n = msg.notification;
+      if (!mounted || n == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${n.title ?? 'Notification'}\n${n.body ?? ''}'),
+        action: SnackBarAction(
+          label: 'VIEW',
+          onPressed: () => _navigateToPage(const NotificationsPage(roles: NotificationAudience.dealer)),
+        ),
+      ));
+      NotificationBadgeService().onPushReceived();
+    });
+    NotificationBadgeService().refresh(NotificationAudience.dealer, force: true);
   }
 
   @override
   void dispose() {
+    _fcmSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     dashboardNeedsRefreshNotifier.removeListener(_refreshDashboardIfNeeded);
     _configSubscription?.cancel();
@@ -115,6 +133,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _autoSyncIfStaleOrRequested();
+      NotificationBadgeService().refresh(NotificationAudience.dealer);
     }
   }
 
@@ -676,8 +695,16 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   List<Widget> _buildAppBarActions(BuildContext context) => [
     IconButton(
-      icon: const Icon(Icons.notifications_outlined, color: Colors.white),
-      onPressed: () => _navigateToPage(const NotificationsPage()),
+      icon: ValueListenableBuilder<int>(
+        valueListenable: NotificationBadgeService().unreadCount,
+        builder: (_, count, child) => Badge(
+          isLabelVisible: count > 0,
+          label: Text(count > 9 ? '9+' : '$count'),
+          child: child,
+        ),
+        child: const Icon(Icons.notifications_outlined, color: Colors.white),
+      ),
+      onPressed: () => _navigateToPage(const NotificationsPage(roles: NotificationAudience.dealer)),
       tooltip: 'Notifications',
     ),
     IconButton(

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.migrateAllUserClaims = exports.setUserClaims = exports.getStoreCatalog = exports.resetStorePassword = exports.storeChangePassword = exports.storeLogin = exports.createStoreAccount = void 0;
+exports.sendQueuedNotification = exports.migrateAllUserClaims = exports.setUserClaims = exports.getStoreCatalog = exports.resetStorePassword = exports.storeChangePassword = exports.storeLogin = exports.createStoreAccount = void 0;
+exports.targetForRole = targetForRole;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
@@ -398,6 +399,98 @@ exports.migrateAllUserClaims = regionalFunctions
     }
     catch (error) {
         throw new functions.https.HttpsError("internal", error?.message || "Migration failed.");
+    }
+});
+/**
+ * 8. sendQueuedNotification
+ * Firestore trigger: when the app queues a doc in `notifications`, deliver
+ * it as an FCM topic message. onCreate ONLY so the status stamp below can
+ * never retrigger this function.
+ */
+const ROLE_TOPICS = {
+    dealer: "dealers",
+    admin: "dealers",
+    salesman: "salesmen",
+};
+function targetForRole(role) {
+    if (typeof role !== "string")
+        return undefined;
+    const normalized = role.trim();
+    if (normalized.toLowerCase() === "staff") {
+        return { condition: "'dealers' in topics || 'salesmen' in topics" };
+    }
+    if (normalized.startsWith("store_")) {
+        const topic = normalized.replace(/[^a-zA-Z0-9-_.~%]/g, "_");
+        return topic.length > 6 ? { topic } : undefined;
+    }
+    const topic = ROLE_TOPICS[normalized.toLowerCase()];
+    return topic ? { topic } : undefined;
+}
+exports.sendQueuedNotification = regionalFunctions
+    .runWith(FUNCTION_OPTS)
+    .firestore.document("notifications/{notificationId}")
+    .onCreate(async (snap, context) => {
+    const data = snap.data();
+    // push:false = in-app list only (no system notification). See
+    // Appendix A for which events should be push vs in-app only.
+    if (data.push === false) {
+        await snap.ref.update({
+            status: "stored",
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return;
+    }
+    const target = targetForRole(data.role);
+    if (!target) {
+        await snap.ref.update({
+            status: "skipped",
+            error: "Unknown role",
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return;
+    }
+    // FCM data payload values must all be strings.
+    const payloadData = {};
+    const rawData = (data.data ?? {});
+    for (const [key, value] of Object.entries(rawData)) {
+        if (value !== null && value !== undefined) {
+            payloadData[key] = String(value);
+        }
+    }
+    payloadData.notificationId = context.params.notificationId;
+    try {
+        await admin.messaging().send({
+            ...target,
+            notification: {
+                title: String(data.title ?? "Selecta Ops").slice(0, 100),
+                body: String(data.body ?? "").slice(0, 300),
+            },
+            data: payloadData,
+            android: {
+                priority: "high",
+                notification: {
+                    channelId: "selecta_ops_high_importance",
+                    // Same tag replaces the previous notification instead of
+                    // stacking (e.g. repeated updates for the same order).
+                    ...(payloadData.tag ? { tag: payloadData.tag } : {}),
+                },
+            },
+        });
+        await snap.ref.update({
+            status: "sent",
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    }
+    catch (error) {
+        functions.logger.error("FCM send failed", {
+            role: data.role,
+            error: error?.message,
+        });
+        await snap.ref.update({
+            status: "failed",
+            error: String(error?.message ?? error).slice(0, 300),
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
     }
 });
 //# sourceMappingURL=index.js.map

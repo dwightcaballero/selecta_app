@@ -7,6 +7,7 @@ import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
+import 'package:selecta_ops/services/push_notification_service.dart';
 import 'package:selecta_ops/views/pages/others/welcome_page.dart';
 import 'package:selecta_ops/views/pages/store/store_change_password_page.dart';
 import 'package:selecta_ops/views/pages/store/store_performance_page.dart';
@@ -68,6 +69,10 @@ class _StoreAccountPageState extends State<StoreAccountPage> {
     if (confirmed != true) return;
 
     try {
+      final user = await KVariables.getUser();
+      if (user != null && user.storeId.isNotEmpty) {
+        await PushNotificationService().clearStoreTopic(user.storeId);
+      }
       await FirebaseAuth.instance.signOut();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(

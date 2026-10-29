@@ -348,6 +348,26 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Queued push notifications. Clients may only create well-formed docs;
+    // the Cloud Function (Admin SDK) stamps status fields. Reads are limited
+    // to the notification's own audience.
+    match /notifications/{notificationId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['role', 'title', 'body', 'data', 'createdAt', 'read', 'push', 'expireAt']) &&
+        (!request.resource.data.keys().hasAny(['push']) || request.resource.data.push is bool) &&
+        request.resource.data.keys().hasAll(['role', 'title', 'body', 'createdAt']) &&
+        request.resource.data.role is string && request.resource.data.role.size() <= 60 &&
+        request.resource.data.title is string && request.resource.data.title.size() <= 100 &&
+        request.resource.data.body is string && request.resource.data.body.size() <= 300 &&
+        (!request.resource.data.keys().hasAny(['data']) || request.resource.data.data is map) &&
+        request.resource.data.createdAt == request.time;
+      allow read: if isAuthenticated() && (
+        (!isStoreUser() && resource.data.role in ['Dealer', 'Salesman', 'Admin', 'Staff']) ||
+        (isStoreUser() && resource.data.role == 'store_' + myStoreId())
+      );
+      allow update, delete: if false;
+    }
+
     // Fallback rule: deny all other paths
     match /{document=**} {
       allow read, write: if false;

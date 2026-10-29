@@ -1,0 +1,841 @@
+SELECTA APP - NOTIFICATIONS FIX PLAN (FOR REVIEW)
+=================================================
+
+Goal: Make dashboard notifications actually work (push + in-app list) while
+staying inside the Firebase free quotas.
+Context: Project "selectaapp" is already on Blaze with Cloud Functions deployed
+in asia-east1 (see COST_OPTIMIZATION_PLAN.txt). Android-only app.
+Note: Findings come from static code review. Nothing here has been run or
+deployed yet.
+
+-------------------------------------------------------------------------------
+0. WHY NOTIFICATIONS DON'T WORK TODAY
+-------------------------------------------------------------------------------
+1. No sender. PushNotificationService.sendNotificationToRole()
+   (lib/services/push_notification_service.dart) only writes a doc to the
+   Firestore `notifications` collection. functions/src/index.ts has no trigger
+   that reads it and calls FCM. Nothing is ever pushed.
+2. No Firestore rule for `notifications`. The catch-all in firestore.rules
+   (`allow read, write: if false`) rejects the write. The error is swallowed
+   (debugPrint + empty catch in store_order_service.dart), so it fails silently.
+3. The Notifications page (lib/views/pages/others/notifications_page.dart)
+   never reads the `notifications` collection. It only shows Pending tasks,
+   "Pending Picklist" deliveries, and FCM messages received while that page is
+   open (kept in memory only).
+4. Firestore errors on that page are only logged; the UI shows "No
+   Notifications" instead of an error.
+5. Bell icon (lib/views/dashboard_page.dart ~line 679) has no unread badge.
+6. Store users are never subscribed to their `store_<storeId>` topic, so even a
+   working sender could not reach them.
+7. Foreground FCM messages are not displayed by Android automatically (only
+   pushed into an in-memory stream nobody shows).
+8. Android channel "selecta_ops_high_importance" is referenced in
+   AndroidManifest.xml but never created, so pushes land in the fallback
+   "Miscellaneous" channel (no heads-up popup).
+
+-------------------------------------------------------------------------------
+1. DESIGN
+-------------------------------------------------------------------------------
+Flow:
+  app -> Firestore `notifications` doc (role, title, body, data)
+      -> Cloud Function onCreate trigger -> FCM topic message
+      -> devices subscribed to that topic show a system notification
+  Notifications page also streams the same collection (filtered by role), so
+  alerts persist and can be reviewed later.
+
+Role -> FCM topic mapping (topics already subscribed by the app):
+  "Dealer"        -> dealers
+  "Salesman"      -> salesmen
+  "Admin"         -> dealers
+  "Staff"         -> dealers AND salesmen (one doc, one FCM send; used for
+                     "new store order", which both roles must receive)
+  "store_<id>"    -> store_<id>     (NEW: store users must subscribe, step 4.5)
+Sending to topics means NO token lookups (zero extra Firestore reads) and no
+stale-token cleanup.
+
+Read/unread state stays per-device in SharedPreferences (already how the page
+works). No Firestore writes when a user opens or reads a notification.
+
+-------------------------------------------------------------------------------
+2. COST ANALYSIS (answer to "will this incur Firebase cost?")
+-------------------------------------------------------------------------------
+Short answer: expected cost is $0 at current scale, as long as the project
+stays within free quotas. Nothing here needs a plan upgrade because the
+project is already on Blaze and already runs Cloud Functions.
+
+Per component:
+- FCM (push delivery, topics): free, no quota or per-message charge.
+- Cloud Functions: 1 invocation per notification. Free tier: 2M
+  invocations/month, 400K GB-seconds, 200K CPU-seconds. A few hundred
+  notifications/day is ~0.5% of the invocation quota. Function is tiny
+  (256MB, <1s).
+- Firestore writes: 1 create + 1 update (sentAt/status stamp) per
+  notification, so 2 writes. Free: 20K writes/day. 500 notifications/day =
+  1,000 writes = 5% of the daily free quota.
+- Firestore reads: the Notifications page loads at most 30 docs per open
+  (limit 30) = 30 reads. 10 users opening it 10x/day = 3,000 reads/day vs
+  50K/day free. Do NOT leave the stream open outside that page.
+  Bell badge (step 4.7b): 1 count() read per app open/resume, throttled to
+  once per 60s. 10 users x 20 opens/day = ~200 reads/day (0.4% of quota).
+  Firestore rules `get()` lookups (isStoreUser) add 1 read per query.
+- Firestore storage: tiny (~300 bytes/doc). 1 GiB free. Add the TTL policy in
+  step 4.9 so old docs are removed.
+- Extra Firestore index (role + createdAt): negligible storage.
+- Artifact Registry: each function deploy leaves a container image; 500 MB
+  free. COST_OPTIMIZATION_PLAN.txt already covers
+  `firebase functions:artifacts:setpolicy`. Do that once.
+
+Where cost COULD appear (guards in this plan):
+- Infinite trigger loop: the function updates its own doc. Guard: the trigger
+  is onCreate only, never onUpdate, so the stamp update cannot retrigger it.
+- Spam/abuse writes to `notifications` by any signed-in user: rules in step 4.2
+  restrict fields and size. App Check (COST_OPTIMIZATION_PLAN Phase 1) is the
+  stronger control.
+- Function misconfiguration: maxInstances is capped at 5 via existing
+  FUNCTION_OPTS.
+- Cloud Logging: one short log line per send; well under the 50 GiB free.
+Recommended: set a Cloud Billing budget alert (e.g. $1) if not yet done
+(already item in COST_OPTIMIZATION_PLAN.txt).
+
+Caveat: Blaze has no hard cap. The numbers above are estimates for typical
+usage, not a guarantee.
+
+-------------------------------------------------------------------------------
+3. FILES TO CHANGE
+-------------------------------------------------------------------------------
+  functions/src/index.ts                           (add trigger)
+  firestore.rules                                  (add notifications rule)
+  firestore.indexes.json                           (add composite index)
+  lib/services/push_notification_service.dart      (store topic, Staff role,
+                                                    dedupeKey/push params)
+  lib/services/notification_badge_service.dart     (NEW: persisted unread count)
+  lib/services/store_order_service.dart            (new-order alert -> 'Staff')
+  lib/views/pages/others/auth_page.dart            (subscribe store users)
+  lib/views/pages/others/notifications_page.dart   (load collection, errors)
+  lib/views/dashboard_page.dart                    (foreground banner, badge)
+  lib/views/pages/dashboard/salesman_dashboard_page.dart (banner, badge)
+  android/.../MainActivity.kt                      (create notif. channel)
+  test/                                            (unit tests, step 6)
+
+-------------------------------------------------------------------------------
+4. IMPLEMENTATION
+-------------------------------------------------------------------------------
+
+4.1 Cloud Function: functions/src/index.ts  (append at end of file)
+-------------------------------------------------------------------
+Uses the existing `regionalFunctions` (asia-east1) and `FUNCTION_OPTS`.
+Firestore trigger region must match the Firestore database location.
+Verify with: Firebase console -> Firestore -> Data -> location. If Firestore is
+NOT in asia-east1, the function still works (cross-region), but latency/egress
+differ; confirm the region noted in COST_OPTIMIZATION_PLAN.txt item "Region".
+
+    /**
+     * 8. sendQueuedNotification
+     * Firestore trigger: when the app queues a doc in `notifications`, deliver
+     * it as an FCM topic message. onCreate ONLY so the status stamp below can
+     * never retrigger this function.
+     */
+    const ROLE_TOPICS: Record<string, string> = {
+      dealer: "dealers",
+      admin: "dealers",
+      salesman: "salesmen",
+    };
+
+    type Target = { topic: string } | { condition: string };
+
+    function targetForRole(role: unknown): Target | undefined {
+      if (typeof role !== "string") return undefined;
+      const normalized = role.trim();
+      if (normalized.toLowerCase() === "staff") {
+        return { condition: "'dealers' in topics || 'salesmen' in topics" };
+      }
+      if (normalized.startsWith("store_")) {
+        const topic = normalized.replace(/[^a-zA-Z0-9-_.~%]/g, "_");
+        return topic.length > 6 ? { topic } : undefined;
+      }
+      const topic = ROLE_TOPICS[normalized.toLowerCase()];
+      return topic ? { topic } : undefined;
+    }
+
+    export const sendQueuedNotification = regionalFunctions
+      .runWith(FUNCTION_OPTS)
+      .firestore.document("notifications/{notificationId}")
+      .onCreate(async (snap, context) => {
+        const data = snap.data();
+
+        // push:false = in-app list only (no system notification). See
+        // Appendix A for which events should be push vs in-app only.
+        if (data.push === false) {
+          await snap.ref.update({
+            status: "stored",
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return;
+        }
+
+        const target = targetForRole(data.role);
+
+        if (!target) {
+          await snap.ref.update({
+            status: "skipped",
+            error: "Unknown role",
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          return;
+        }
+
+        // FCM data payload values must all be strings.
+        const payloadData: Record<string, string> = {};
+        const rawData = (data.data ?? {}) as Record<string, unknown>;
+        for (const [key, value] of Object.entries(rawData)) {
+          if (value !== null && value !== undefined) {
+            payloadData[key] = String(value);
+          }
+        }
+        payloadData.notificationId = context.params.notificationId;
+
+        try {
+          await admin.messaging().send({
+            ...target,
+            notification: {
+              title: String(data.title ?? "Selecta Ops").slice(0, 100),
+              body: String(data.body ?? "").slice(0, 300),
+            },
+            data: payloadData,
+            android: {
+              priority: "high",
+              notification: {
+                channelId: "selecta_ops_high_importance",
+                // Same tag replaces the previous notification instead of
+                // stacking (e.g. repeated updates for the same order).
+                ...(payloadData.tag ? { tag: payloadData.tag } : {}),
+              },
+            },
+          });
+          await snap.ref.update({
+            status: "sent",
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (error: any) {
+          functions.logger.error("FCM send failed", {
+            role: data.role,
+            error: error?.message,
+          });
+          await snap.ref.update({
+            status: "failed",
+            error: String(error?.message ?? error).slice(0, 300),
+            processedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+      });
+
+Notes:
+- Do not add retries (`failurePolicy`): a retry loop is the main way this could
+  generate unexpected cost.
+- Build with `cd functions && npm run build`. Deploy only this function:
+  `firebase deploy --only functions:sendQueuedNotification`
+  (Rules/index first or after? See deploy order in section 7.)
+- `status` / `processedAt` / `error` are written by the Admin SDK, so they
+  bypass Firestore rules.
+- Condition sends ("Staff") count as a single FCM send.
+- Deduplication: callers should create the doc with a DETERMINISTIC id, e.g.
+  `notifications/{type}_{orderId}_{status}` using .doc(id).set(...). Because
+  rules deny update, a duplicate attempt (double tap, retry, offline replay)
+  is rejected by Firestore instead of sending a second push. See step 4.4(c).
+
+4.2 Firestore rules: firestore.rules
+------------------------------------
+Add above the "Fallback rule" block (e.g. after the fcm_tokens block):
+
+    // Queued push notifications. Clients may only create well-formed docs;
+    // the Cloud Function (Admin SDK) stamps status fields. Reads are limited
+    // to the notification's own audience.
+    match /notifications/{notificationId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasOnly(['role', 'title', 'body', 'data', 'createdAt', 'read', 'push', 'expireAt']) &&
+        (!request.resource.data.keys().hasAny(['push']) || request.resource.data.push is bool) &&
+        request.resource.data.keys().hasAll(['role', 'title', 'body', 'createdAt']) &&
+        request.resource.data.role is string && request.resource.data.role.size() <= 60 &&
+        request.resource.data.title is string && request.resource.data.title.size() <= 100 &&
+        request.resource.data.body is string && request.resource.data.body.size() <= 300 &&
+        (!request.resource.data.keys().hasAny(['data']) || request.resource.data.data is map) &&
+        request.resource.data.createdAt == request.time;
+      allow read: if isAuthenticated() && (
+        (!isStoreUser() && resource.data.role in ['Dealer', 'Salesman', 'Admin', 'Staff']) ||
+        (isStoreUser() && resource.data.role == 'store_' + myStoreId())
+      );
+      allow update, delete: if false;
+    }
+
+Notes:
+- Existing client write already sends: role, title, body, data, createdAt
+  (serverTimestamp), read:false -> all allowed keys.
+- Dealers and salesmen see dealer/salesman/admin alerts (matches current rules
+  posture where isStaff() == any signed-in user). Tighten per-role later if
+  needed.
+- Store users can only read `store_<their storeId>` notifications.
+
+4.3 Composite index: firestore.indexes.json
+-------------------------------------------
+Add to the "indexes" array:
+
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+
+(The page queries `whereIn` roles + orderBy createdAt; if you use `whereIn`
+the same index works.)
+
+4.4 PushNotificationService: lib/services/push_notification_service.dart
+-------------------------------------------------------------------------
+(a) Add a store-topic sync method (next to syncRoleTopics):
+
+    /// Subscribes a Hapi Store user to their own order-status topic.
+    Future<void> syncStoreTopic(String storeId) async {
+      final id = storeId.trim();
+      if (id.isEmpty) return;
+      await subscribeToTopic('store_$id');
+    }
+
+    /// Call on sign-out so a shared device stops receiving the store's pushes.
+    Future<void> clearStoreTopic(String storeId) async {
+      final id = storeId.trim();
+      if (id.isEmpty) return;
+      await unsubscribeFromTopic('store_$id');
+    }
+
+(b) syncRoleTopics: also accept 'admin' -> subscribe 'dealers':
+
+    if (normalized == 'dealer' || normalized == 'admin') { ... }
+
+(c) sendNotificationToRole: surface failures instead of failing silently.
+    Keep the swallow-and-log behavior (callers wrap in try/catch and must not
+    block order flow), but log with ErrorLogService so a rules/permission
+    problem is visible:
+
+    } catch (e, s) {
+      debugPrint('Error sending notification to role $role: $e');
+      ErrorLogService.logError(
+        page: 'PushNotificationService',
+        action: 'Queue Notification',
+        error: e,
+        stackTrace: s,
+      );
+    }
+
+    Remove the `'read': false` field from the doc and from the rule's allowed
+    keys if you prefer (read state is per-device). Optional.
+
+(c) Extend the method signature for the new capabilities (backwards
+    compatible with existing callers):
+
+      Future<void> sendNotificationToRole({
+        required String role,
+        required String title,
+        required String body,
+        Map<String, dynamic>? data,
+        String? dedupeKey,   // deterministic doc id, e.g. 'so_$orderId_submitted'
+        bool push = true,    // false = in-app list only
+      }) async {
+        final col = _firestore.collection('notifications');
+        final ref = dedupeKey == null ? col.doc() : col.doc(dedupeKey);
+        await ref.set({
+          'role': role, 'title': title, 'body': body,
+          'data': data ?? {}, 'push': push,
+          'createdAt': FieldValue.serverTimestamp(),
+          'expireAt': Timestamp.fromDate(
+              DateTime.now().add(const Duration(days: 30))),
+        });
+      }
+
+    A duplicate dedupeKey is rejected by the rules (update denied); catch and
+    ignore it (already logged by the catch block above).
+
+    Update the "new store order" call in store_order_service.dart to
+    role: 'Staff' (reaches dealers AND salesmen), with
+    dedupeKey: 'so_${docRef.id}_submitted'.
+
+(d) Add a notification-open stream so tapping a push can route (optional):
+    onMessageOpenedApp already logs; leave as-is for this phase.
+
+4.5 Subscribe store users: lib/views/pages/others/auth_page.dart
+-----------------------------------------------------------------
+In _RoleBasedDashboardRouter.build, in the `userProfile.isStore` branch,
+before returning, add (fire-and-forget):
+
+    final storeUser = FirebaseAuth.instance.currentUser;
+    if (storeUser != null) {
+      PushNotificationService().saveTokenForUser(
+        email: storeUser.email, uid: storeUser.uid, role: 'Hapi Store');
+      PushNotificationService().syncStoreTopic(userProfile.storeId);
+    }
+
+Note: build() can run more than once; subscribeToTopic is idempotent. If you
+want to avoid repeats, move this into a one-time initState/FutureBuilder
+callback.
+On store logout (store sign-out handler): call
+PushNotificationService().clearStoreTopic(storeId) before signOut.
+
+4.6 Notifications page: lib/views/pages/others/notifications_page.dart
+-----------------------------------------------------------------------
+Goals: show persisted queued notifications, stop re-querying Firestore on every
+push, show errors instead of a blank list.
+
+(a) Add NotificationType.queued is NOT necessary; reuse fcmMessage so the
+    existing "Messages" filter and icon work.
+
+(b) Role needed to filter: resolve once from the current user profile
+    (Users.isDealer etc.) or pass in via constructor
+    `NotificationsPage({this.roles = const ['Dealer','Admin']})`.
+    Dealer dashboard passes ['Dealer','Admin','Staff']; salesman dashboard
+    passes ['Salesman','Staff'].
+
+(c) In _fetchOperationalAlerts add a section 3 (before the in-session FCM
+    section), one-shot get() with limit (NOT a snapshot stream; keeps reads
+    predictable):
+
+      final queuedSnap = await _firestore
+          .collection('notifications')
+          .where('role', whereIn: widget.roles)
+          .orderBy('createdAt', descending: true)
+          .limit(30)
+          .get();
+
+      for (final doc in queuedSnap.docs) {
+        final data = doc.data();
+        final id = 'queued_${doc.id}';
+        items.add(AppNotificationItem(
+          id: id,
+          title: (data['title'] as String? ?? 'Notification').trim(),
+          message: (data['body'] as String? ?? '').trim(),
+          timestamp: (data['createdAt'] as Timestamp?)?.toDate() ?? now,
+          type: NotificationType.fcmMessage,
+          priority: NotificationPriority.warning,
+          isRead: _readIds.contains(id),
+        ));
+      }
+
+    De-duplicate: a live FCM message for the same doc has
+    `message.data['notificationId']`. Skip live messages whose
+    notificationId is already in the queued list:
+
+      final queuedIds = queuedSnap.docs.map((d) => d.id).toSet();
+      ... if (queuedIds.contains(msg.data['notificationId'])) continue;
+
+(d) Stop re-fetching everything on each live push. Change the listener so it
+    only recompiles from cached data. Simplest: keep _fetchOperationalAlerts
+    but split it into `_loadRemote()` (the 3 Firestore queries, cached in
+    fields) and `_compileNotifications()` (merges cached lists + live
+    messages, sorts, setState). The FCM listener calls only
+    _compileNotifications(). Pull-to-refresh / Refresh button call
+    _loadRemote(). This avoids ~50 reads per incoming push.
+
+(e) Error state: add `String? _loadError;`. In the catch block set
+    _loadError = 'Could not load notifications. Pull to retry.' and render it
+    (with the Refresh button) instead of the empty state when non-null.
+
+(f) Update empty-state copy: 'No pending tasks, picklists, or alerts right
+    now.'
+
+4.7 Dashboard bell + foreground banner: lib/views/dashboard_page.dart
+----------------------------------------------------------------------
+(a) Foreground banner. Android does not show a system notification while the
+    app is open, so show a SnackBar. In the dashboard State's initState:
+
+      _fcmSub = PushNotificationService().onForegroundMessage.listen((msg) {
+        final n = msg.notification;
+        if (!mounted || n == null) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${n.title ?? 'Notification'}\n${n.body ?? ''}'),
+          action: SnackBarAction(
+            label: 'VIEW',
+            onPressed: () => _navigateToPage(const NotificationsPage()),
+          ),
+        ));
+        NotificationBadgeService().onPushReceived();
+      });
+
+    Cancel in dispose(). Do the same in salesman_dashboard_page.dart. (The
+    badge count itself is handled in 4.7b.)
+
+(b) Persisted unread badge on the bell (DECIDED: Appendix B, Option 2).
+
+    NEW FILE lib/services/notification_badge_service.dart
+
+      import 'package:cloud_firestore/cloud_firestore.dart';
+      import 'package:flutter/foundation.dart';
+      import 'package:shared_preferences/shared_preferences.dart';
+
+      /// Audience roles whose `notifications` docs each dashboard shows.
+      class NotificationAudience {
+        static const dealer = ['Dealer', 'Admin', 'Staff'];
+        static const salesman = ['Salesman', 'Staff'];
+      }
+
+      /// Unread count for the dashboard bell. One count() aggregation
+      /// (~1 Firestore read) per refresh; refreshes are throttled.
+      class NotificationBadgeService {
+        static final NotificationBadgeService _instance =
+            NotificationBadgeService._internal();
+        factory NotificationBadgeService() => _instance;
+        NotificationBadgeService._internal();
+
+        static const _lastSeenKey = 'notif_last_seen_ms';
+        static const _minRefreshGap = Duration(seconds: 60);
+
+        final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
+        DateTime? _lastRefresh;
+
+        /// Recounts notifications newer than the last time the list was
+        /// opened. First run (no saved time) starts from "now" so a fresh
+        /// install does not show a backlog of old alerts.
+        Future<void> refresh(List<String> roles, {bool force = false}) async {
+          final last = _lastRefresh;
+          if (!force && last != null &&
+              DateTime.now().difference(last) < _minRefreshGap) {
+            return;
+          }
+          _lastRefresh = DateTime.now();
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final ms = prefs.getInt(_lastSeenKey);
+            if (ms == null) {
+              await prefs.setInt(_lastSeenKey, DateTime.now().millisecondsSinceEpoch);
+              unreadCount.value = 0;
+              return;
+            }
+            final snap = await FirebaseFirestore.instance
+                .collection('notifications')
+                .where('role', whereIn: roles)
+                .where('createdAt',
+                    isGreaterThan: Timestamp.fromMillisecondsSinceEpoch(ms))
+                .count()
+                .get();
+            unreadCount.value = snap.count ?? 0;
+          } catch (e) {
+            debugPrint('NotificationBadgeService.refresh failed: $e');
+          }
+        }
+
+        /// Foreground push arrived: bump the badge locally (0 reads). The
+        /// next resume/refresh corrects the number from Firestore.
+        void onPushReceived() => unreadCount.value = unreadCount.value + 1;
+
+        /// Call when the Notifications page is opened. [newest] is the
+        /// createdAt of the newest queued doc shown (server clock, avoids
+        /// device clock skew); falls back to device time.
+        Future<void> markAllSeen({DateTime? newest}) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt(
+            _lastSeenKey,
+            (newest ?? DateTime.now()).millisecondsSinceEpoch,
+          );
+          unreadCount.value = 0;
+        }
+      }
+
+    Dashboard wiring (dashboard_page.dart with NotificationAudience.dealer;
+    salesman_dashboard_page.dart with NotificationAudience.salesman):
+      - State mixes in WidgetsBindingObserver (add/remove in initState/
+        dispose). In didChangeAppLifecycleState(resumed) call
+        NotificationBadgeService().refresh(audience).
+      - initState: call refresh(audience, force: true) once after login.
+      - In the foreground-push listener (4.7a) replace `_unreadPushCount++`
+        with NotificationBadgeService().onPushReceived().
+      - Bell icon in _buildAppBarActions:
+
+          IconButton(
+            icon: ValueListenableBuilder<int>(
+              valueListenable: NotificationBadgeService().unreadCount,
+              builder: (_, count, child) => Badge(
+                isLabelVisible: count > 0,
+                label: Text(count > 9 ? '9+' : '$count'),
+                child: child,
+              ),
+              child: const Icon(Icons.notifications_outlined, color: Colors.white),
+            ),
+            onPressed: () => _navigateToPage(
+              NotificationsPage(roles: NotificationAudience.dealer)),
+            tooltip: 'Notifications',
+          ),
+
+    NotificationsPage (4.6): after the queued docs load, call
+      NotificationBadgeService().markAllSeen(newest: <createdAt of
+      queuedSnap.docs.first, if any>);
+    so opening the page clears the badge. The per-item "unread" styling on
+    the page still uses the per-item read ids in SharedPreferences; the badge
+    only tracks "new since you last opened the list".
+
+    Behavior notes:
+      - Counts only `notifications` docs (not tasks/picklists, which already
+        have their own dashboard badges).
+      - Counts in-app-only (push:false) docs too, since they appear in the
+        list.
+      - Per-device state (SharedPreferences), same as the page's read marks.
+      - Uses the role+createdAt index from 4.3; if Firestore asks for another
+        index for the count query, the error message contains a create-link.
+      - Store users do not have this bell (not in scope; they receive system
+        pushes only).
+
+4.8 Android channel: android/app/src/main/kotlin/com/selecta/selectaapp/MainActivity.kt
+-------------------------------------------------------------------------------------
+Create the channel the manifest and function already reference, so pushes show
+as heads-up with sound. Add in MainActivity (Kotlin):
+
+    import android.app.NotificationChannel
+    import android.app.NotificationManager
+    import android.os.Build
+    import android.os.Bundle
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+      super.onCreate(savedInstanceState)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channel = NotificationChannel(
+          "selecta_ops_high_importance",
+          "Selecta Ops Alerts",
+          NotificationManager.IMPORTANCE_HIGH
+        )
+        getSystemService(NotificationManager::class.java)
+          .createNotificationChannel(channel)
+      }
+    }
+
+(Merge with the existing MainActivity contents; keep the existing class
+declaration and imports.) No new Flutter packages required, so no pubspec
+change and no extra build size.
+
+4.9 Firestore TTL (cost hygiene)
+--------------------------------
+The client already writes `expireAt` (step 4.4c) and the rule allows it. Create
+the TTL policy:
+    gcloud firestore fields ttls update expireAt \
+      --collection-group=notifications --enable-ttl --project=selectaapp
+(Matches Phase 2.5 of COST_OPTIMIZATION_PLAN.txt.) Skip if you'd rather
+purge manually; storage impact is negligible either way.
+
+-------------------------------------------------------------------------------
+5. EDGE CASES / KNOWN LIMITS
+-------------------------------------------------------------------------------
+- Topic delivery is to devices subscribed on this device; a user who logs out
+  and a different role logs in is handled by syncRoleTopics (dealer <->
+  salesman). Stores: clearStoreTopic on logout.
+- Topic messages are not guaranteed instant (usually seconds). Offline devices
+  receive them when they reconnect (FCM keeps for up to 4 weeks by default).
+- First topic subscription can take a few minutes to become effective.
+- Users who denied the Android 13+ notification permission will not see
+  system pushes; they still see the in-app list.
+- The in-app list shows only the last 30 queued notifications.
+- iOS is not configured in this plan (Android-only app).
+
+-------------------------------------------------------------------------------
+6. TESTS
+-------------------------------------------------------------------------------
+- Unit test targetForRole mapping (extract into functions/src/ if you want
+  Jest; otherwise cover with the Functions emulator).
+- Unit test NotificationBadgeService with fake_cloud_firestore if available:
+  first run starts at 0, count only newer docs, markAllSeen resets, refresh
+  throttled to once per 60s.
+- Flutter widget test for NotificationsPage: empty state, error state, queued
+  doc rendered (use fake_cloud_firestore if already in dev_dependencies;
+  otherwise skip and verify manually).
+- Rules: Firebase emulator test cases
+    * authenticated create with valid fields -> allowed
+    * create with extra field / oversized body -> denied
+    * update/delete -> denied
+    * store user reading Dealer notification -> denied
+    * store user reading own store_<id> notification -> allowed
+- Manual end-to-end (needs a real Android device, emulator lacks Play
+  Services topics sometimes):
+    1. Log in as Dealer on device A, background the app.
+    2. Log in as Hapi Store on device B, submit an order.
+    3. Device A should show "New Store Order Received" in the system tray.
+    4. Open the bell -> same item appears in the list.
+    5. Approve the order as Dealer -> Device B (store) gets "Order Approved!".
+    6. Check Firestore doc has status: "sent".
+    7. Check Functions logs: `firebase functions:log --only sendQueuedNotification`
+
+-------------------------------------------------------------------------------
+7. DEPLOY ORDER
+-------------------------------------------------------------------------------
+1. firebase deploy --only firestore:indexes     (wait until index is READY)
+2. firebase deploy --only functions:sendQueuedNotification
+3. firebase deploy --only firestore:rules
+4. Build and ship the Flutter app update (steps 4.4-4.8).
+Rules last so no client write is accepted before the function exists; the
+function is harmless without the client changes.
+
+-------------------------------------------------------------------------------
+8. ROLLBACK
+-------------------------------------------------------------------------------
+- firebase functions:delete sendQueuedNotification --region asia-east1
+- Revert the `notifications` rule block (writes go back to being denied).
+- Client changes are additive; the page falls back to tasks/picklists.
+
+-------------------------------------------------------------------------------
+9. DECISIONS
+-------------------------------------------------------------------------------
+- "New store order" goes to BOTH dealers and salesmen (role "Staff", step 4.4c).
+  CONFIRMED by owner.
+- Firestore location is asia-east1. CONFIRMED by owner.
+- Bell badge: PERSISTED unread count (Appendix B Option 2, step 4.7b).
+  CONFIRMED by owner.
+- Which events notify: Appendix A. CONFIRMED by owner. Phase 1 builds only
+  the pipeline + store-order events; the rest follow the A7 rollout.
+
+-------------------------------------------------------------------------------
+APPENDIX A. WHAT SHOULD (AND SHOULD NOT) NOTIFY
+-------------------------------------------------------------------------------
+Industry practice for operations apps (field sales / distribution / logistics)
+to avoid "alert fatigue" - once users get noise they mute everything and miss
+the important alerts:
+  1. Notify only when the RECIPIENT must DO something or something CHANGED for
+     them. "FYI" events belong in the in-app list or the dashboard badges.
+  2. Never notify a user about their own action.
+  3. Target narrowly (the right role; ideally the right person/store).
+  4. One event = one notification. Dedupe, replace (same `tag`), and batch.
+  5. Three tiers:
+       PUSH      - needs attention soon; sound + system notification
+       IN-APP    - stored in the Notifications page only (push:false)
+       DIGEST    - one summary push per day instead of many alerts
+  6. Budget: aim for <= 3-5 pushes/user/day normally, never more than ~10.
+  7. Let users opt out by category later (settings toggles map to topics).
+
+A1. PUSH immediately (event-driven)
+  Dealer + Salesman ("Staff")
+   - New store order submitted                         (already wired)
+  Dealer
+   - Return proof submitted, awaiting your confirmation (RETURN_PROOF_GATE)
+   - Inventory adjustment pending approval (over threshold)
+     (INVENTORY_AUDIT plans: pending adjustments need dealer approval)
+   - Store cancelled an order that was already Approved
+  Salesman
+   - Return proof REJECTED by dealer (must resubmit; blocks End of Day)
+   - Task assigned to you / task changed by dealer (tasks_controller)
+   - A delivery assigned or rescheduled for you
+  Hapi Store (role store_<id>)
+   - Order Approved (with delivery date)               (already wired)
+   - Order Rejected (with reason)                      (already wired)
+   - Order Out for Delivery                            (merge with generic
+   - Order Delivered                                    "Order <status>" text)
+   Use ONE tag per order (`tag: order_<id>`) so status changes REPLACE the
+   previous notification instead of stacking.
+
+A2. IN-APP ONLY (push:false) - visible in the list, no system alert
+   - Picklist created / ready
+   - Store order moved to a non-actionable status (e.g. Submitted -> Under
+     review internally)
+   - Return proof CONFIRMED / overridden (good news, no action)
+   - Payslip issued/acknowledged (unless you want payslip = push, it is low
+     frequency)
+   - Product catalog / price updates, sort changes
+   - AI scan finished
+
+A3. DAILY DIGEST (one push, via scheduled function - phase 2)
+   Dealer, ~5:30 PM (before End of Day):
+   - Unverified breakdown backlog: N records, oldest <date>
+   - Unpaid credit / overpayment counts that crossed a threshold
+   - Pending picklists and overdue/pending deliveries
+   - Items below minimum stock level (if reorder levels are configured)
+   Salesman, ~7:30 AM:
+   - Tasks due today (+ overdue), PJP store visits scheduled today
+   Skip the digest when all counts are zero (no "nothing to report" noise).
+   The data already exists in dashboard counts / existing queries; the digest
+   function should use Firestore count() aggregations (about 1 read per query).
+
+A4. NEVER notify
+   - Every inventory movement or stock change (audit ledger is a log, not an
+     alert; only exceptions/pending approvals matter)
+   - GPS/route tracking, sync success/failure, catalog sync
+   - Individual overdue deliveries one by one (digest instead)
+   - The user's own saves, edits, deletes
+   - Technical errors (stay in error_logs; optional dealer weekly summary)
+   - App update availability (already has its own banner/dialog)
+
+A5. Anti-overload controls (cheap, built into this plan)
+   - Deterministic doc ids (`dedupeKey`) -> no duplicate pushes on retry.
+   - FCM `tag` per order/entity -> replaces instead of stacking.
+   - Low-stock/threshold alerts fire only when crossing the threshold once,
+     not on every movement below it (store a flag on the product).
+   - Optional later: per-user category settings (orders / returns / tasks /
+     digest) implemented as separate FCM topics, e.g. dealers_orders,
+     dealers_returns, so users can mute categories.
+   - Optional later: quiet hours (no push 10 PM - 6 AM; store in-app only).
+
+A6. Targeting limit to be aware of
+   Topics reach ALL users of a role. "Task assigned to you" or "return
+   rejected for your delivery" must reach ONE salesman. Options:
+   (a) per-user topic `user_<uid>`: subscribe at login, role in notification
+       doc = `user_<uid>`; zero extra reads (recommended), or
+   (b) look up that user's fcm token from `fcm_tokens` (1 read per send).
+   Phase 1 can ship without per-user events; add (a) when you wire them.
+
+A7. Suggested rollout
+   Phase 1: fix pipeline (sections 4.x) + store order events (A1 Dealer/Staff/
+            Store lines). Verify end-to-end.
+   Phase 2: salesman/dealer action alerts (A1 return proof, tasks, inventory
+            approvals) with per-user topics.
+   Phase 3: daily digests (A3). Cloud Scheduler: 3 jobs free per billing
+            account, then ~$0.10/job/month - effectively negligible.
+   Phase 4: category settings and quiet hours.
+
+-------------------------------------------------------------------------------
+APPENDIX B. BELL BADGE: PERSISTED UNREAD COUNT (DECIDED: OPTION 2)
+-------------------------------------------------------------------------------
+Option 1 - since app opened (REJECTED, zero reads)
+  The badge counts pushes received while the app is in the foreground and
+  resets when the app restarts or the page is opened. Problem: pushes that
+  arrive while the app is closed or in the background (the MOST common case)
+  are never counted, and the badge is blank on next launch. Users open the app
+  and see no sign of a new alert.
+
+Option 2 - persisted unread count (CHOSEN; implemented in step 4.7b)
+  - Save `notif_last_seen` (timestamp) in SharedPreferences whenever the
+    Notifications page is opened.
+  - On app start/resume and after each foreground push, run ONE aggregation
+    query:
+      _firestore.collection('notifications')
+        .where('role', whereIn: roles)
+        .where('createdAt', isGreaterThan: lastSeen)
+        .count().get();
+  - Show the result on the bell badge (cap display at 9+).
+  Cost: a count() aggregation bills about 1 document read per up to 1,000
+  matching index entries, minimum 1. So ~1 read per app open/resume. A user who
+  opens the app 20 times a day = 20 reads; 10 users = 200 reads/day against
+  the 50,000/day free quota (0.4%). Uses the same role+createdAt index (4.3).
+  Throttle: do not re-run more often than once per 60 seconds.
+  Limitation: read state is per-device (SharedPreferences), same as the page.
+  Include tasks/picklist items in the badge? No - those already have their own
+  dashboard badges; the bell should only count notification docs.
+
+-------------------------------------------------------------------------------
+APPENDIX C. "REUSING THE SAME PIPELINE" FOR FUTURE EVENTS
+-------------------------------------------------------------------------------
+Once sections 4.1-4.4 are in, adding any new notification is one call at the
+place where the event happens, no new infrastructure:
+
+  await PushNotificationService().sendNotificationToRole(
+    role: BusinessRole.dealer,                 // or 'Staff', 'store_<id>'
+    title: 'Return proof submitted',
+    body: '$storeName - DR $drNo needs your confirmation',
+    data: {'type': 'return_proof', 'deliveryId': id, 'tag': 'rp_$id'},
+    dedupeKey: 'rp_${id}_submitted',           // prevents duplicate pushes
+    push: true,                                // false = in-app only
+  );
+
+Example call sites in this codebase:
+  - Return proof submitted/rejected -> return_controller.dart /
+    return proof service
+  - Task assigned -> tasks_controller.dart (createTask / updateTask)
+  - Inventory adjustment pending approval -> inventory_service.dart
+  - Delivery rescheduled -> delivery_controller.dart
+Scheduled/digest events (low stock, overdue deliveries, unverified backlog)
+cannot be triggered by a user action, so they use a scheduled Cloud Function
+(functions.region('asia-east1').pubsub.schedule('30 17 * * *')
+.timeZone('Asia/Manila')) that computes counts with Firestore count() queries
+and writes ONE doc into `notifications` (the same trigger then pushes it).
+The `data.type` field lets the app route a tap to the right page later.

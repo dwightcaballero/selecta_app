@@ -50,6 +50,12 @@ class _RoleBasedDashboardRouter extends StatelessWidget {
         }
         final userProfile = snapshot.data;
         if (userProfile != null && userProfile.isStore) {
+          final storeUser = FirebaseAuth.instance.currentUser;
+          if (storeUser != null && userProfile.storeId.isNotEmpty) {
+            PushNotificationService().saveTokenForUser(
+              email: storeUser.email, uid: storeUser.uid, role: 'Hapi Store');
+            PushNotificationService().syncStoreTopic(userProfile.storeId);
+          }
           if (userProfile.mustChangePassword) {
             return const StoreChangePasswordPage(isForced: true);
           }

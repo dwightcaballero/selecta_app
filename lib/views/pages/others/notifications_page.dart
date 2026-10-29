@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:selecta_ops/services/notification_badge_service.dart';
 import 'package:selecta_ops/services/push_notification_service.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
@@ -48,9 +49,14 @@ class AppNotificationItem {
 }
 
 /// Centralized In-App Notifications Center displaying pending tasks, overdue deliveries,
-/// and live FCM push notifications.
+/// queued notifications, and live FCM push notifications.
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  final List<String> roles;
+
+  const NotificationsPage({
+    super.key,
+    this.roles = const ['Dealer', 'Admin', 'Staff'],
+  });
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -64,7 +70,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
   final List<RemoteMessage> _liveFcmMessages = [];
   Set<String> _readIds = {};
   bool _isLoading = true;
+  String? _loadError;
   String _activeFilter = 'All';
+
+  List<AppNotificationItem> _cachedTasks = [];
+  List<AppNotificationItem> _cachedPicklists = [];
+  List<AppNotificationItem> _cachedQueued = [];
+  Set<String> _queuedDocIds = {};
 
   List<AppNotificationItem> _notifications = [];
 
@@ -80,7 +92,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         });
       }
     });
-    _fetchOperationalAlerts();
+    _loadRemote();
   }
 
   @override
@@ -104,12 +116,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
     await prefs.setStringList('read_notification_ids', _readIds.toList());
   }
 
-  Future<void> _fetchOperationalAlerts() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadRemote() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
 
     try {
       final now = DateTime.now();
-      final items = <AppNotificationItem>[];
+      final tasks = <AppNotificationItem>[];
+      final picklists = <AppNotificationItem>[];
+      final queued = <AppNotificationItem>[];
 
       // 1. Fetch Overdue & Pending Tasks
       final tasksSnap = await _firestore
@@ -126,11 +143,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
         final deadline = deadlineTs?.toDate() ?? now;
         final isOverdue = deadline.isBefore(now);
 
-        items.add(
+        tasks.add(
           AppNotificationItem(
             id: 'task_${doc.id}',
             title: isOverdue ? 'Overdue Task: $title' : 'Pending Task: $title',
-            message: store.isNotEmpty ? 'Store: $store • Due: ${DateFormat('MMM d, h:mm a').format(deadline)}' : 'Due: ${DateFormat('MMM d, h:mm a').format(deadline)}',
+            message: store.isNotEmpty
+                ? 'Store: $store • Due: ${DateFormat('MMM d, h:mm a').format(deadline)}'
+                : 'Due: ${DateFormat('MMM d, h:mm a').format(deadline)}',
             timestamp: deadline,
             type: NotificationType.task,
             priority: isOverdue ? NotificationPriority.urgent : NotificationPriority.warning,
@@ -153,7 +172,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         final createdTs = data['createdDate'] as Timestamp?;
         final created = createdTs?.toDate() ?? now;
 
-        items.add(
+        picklists.add(
           AppNotificationItem(
             id: 'picklist_${doc.id}',
             title: 'Picklist Awaiting Prep',
@@ -167,16 +186,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
         );
       }
 
-      // 3. Fetch In-session FCM messages
-      for (int i = 0; i < _liveFcmMessages.length; i++) {
-        final msg = _liveFcmMessages[i];
-        final id = 'fcm_${msg.messageId ?? i}';
-        items.add(
+      // 3. Fetch Queued Notifications
+      final queuedSnap = await _firestore
+          .collection('notifications')
+          .where('role', whereIn: widget.roles)
+          .orderBy('createdAt', descending: true)
+          .limit(30)
+          .get();
+
+      final qIds = <String>{};
+      DateTime? newestTimestamp;
+
+      for (final doc in queuedSnap.docs) {
+        qIds.add(doc.id);
+        final data = doc.data();
+        final id = 'queued_${doc.id}';
+        final ts = (data['createdAt'] as Timestamp?)?.toDate();
+        if (newestTimestamp == null && ts != null) {
+          newestTimestamp = ts;
+        }
+        queued.add(
           AppNotificationItem(
             id: id,
-            title: msg.notification?.title ?? 'Notification',
-            message: msg.notification?.body ?? 'New alert received from Selecta Ops',
-            timestamp: msg.sentTime ?? now,
+            title: (data['title'] as String? ?? 'Notification').trim(),
+            message: (data['body'] as String? ?? '').trim(),
+            timestamp: ts ?? now,
             type: NotificationType.fcmMessage,
             priority: NotificationPriority.warning,
             isRead: _readIds.contains(id),
@@ -184,19 +218,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
         );
       }
 
-      // Sort newest / highest priority first
-      items.sort((a, b) {
-        if (a.priority != b.priority) {
-          return a.priority.index.compareTo(b.priority.index);
-        }
-        return b.timestamp.compareTo(a.timestamp);
-      });
+      // Mark all seen for badge service
+      NotificationBadgeService().markAllSeen(newest: newestTimestamp);
 
       if (mounted) {
-        setState(() {
-          _notifications = items;
-          _isLoading = false;
-        });
+        _cachedTasks = tasks;
+        _cachedPicklists = picklists;
+        _cachedQueued = queued;
+        _queuedDocIds = qIds;
+        _compileNotifications();
       }
     } catch (e, s) {
       ErrorLogService.logError(
@@ -205,12 +235,59 @@ class _NotificationsPageState extends State<NotificationsPage> {
         error: e,
         stackTrace: s,
       );
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadError = 'Could not load notifications. Pull to retry.';
+        });
+      }
     }
   }
 
   void _compileNotifications() {
-    _fetchOperationalAlerts();
+    final now = DateTime.now();
+    final items = <AppNotificationItem>[
+      ..._cachedTasks,
+      ..._cachedPicklists,
+      ..._cachedQueued,
+    ];
+
+    // Merge in-session FCM messages, skipping duplicates already loaded from queued collection
+    for (int i = 0; i < _liveFcmMessages.length; i++) {
+      final msg = _liveFcmMessages[i];
+      final notifId = msg.data['notificationId'] as String?;
+      if (notifId != null && _queuedDocIds.contains(notifId)) {
+        continue;
+      }
+      final id = 'fcm_${msg.messageId ?? i}';
+      items.add(
+        AppNotificationItem(
+          id: id,
+          title: msg.notification?.title ?? 'Notification',
+          message: msg.notification?.body ?? 'New alert received from Selecta Ops',
+          timestamp: msg.sentTime ?? now,
+          type: NotificationType.fcmMessage,
+          priority: NotificationPriority.warning,
+          isRead: _readIds.contains(id),
+        ),
+      );
+    }
+
+    // Sort newest / highest priority first
+    items.sort((a, b) {
+      if (a.priority != b.priority) {
+        return a.priority.index.compareTo(b.priority.index);
+      }
+      return b.timestamp.compareTo(a.timestamp);
+    });
+
+    if (mounted) {
+      setState(() {
+        _notifications = items;
+        _isLoading = false;
+        _loadError = null;
+      });
+    }
   }
 
   void _markAllAsRead() {
@@ -250,74 +327,76 @@ class _NotificationsPageState extends State<NotificationsPage> {
       },
       child: Scaffold(
         appBar: CustomAppbar(
-        title: 'Notifications',
-        subtitle: unreadCount > 0 ? '$unreadCount unread alert${unreadCount == 1 ? "" : "s"}' : 'All caught up',
-        actions: [
-          if (_notifications.isNotEmpty && unreadCount > 0)
-            AsyncIconButton(
-              icon: const Icon(Icons.done_all_rounded, color: Colors.white),
-              tooltip: 'Mark All as Read',
-              onPressed: _markAllAsRead,
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // ── Filter Chips ────────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            color: colorScheme.surface,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: ['All', 'Tasks', 'Picklists', 'Messages'].map((filter) {
-                  final isSelected = _activeFilter == filter;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      selected: isSelected,
-                      label: Text(filter),
-                      labelStyle: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+          title: 'Notifications',
+          subtitle: unreadCount > 0 ? '$unreadCount unread alert${unreadCount == 1 ? "" : "s"}' : 'All caught up',
+          actions: [
+            if (_notifications.isNotEmpty && unreadCount > 0)
+              AsyncIconButton(
+                icon: const Icon(Icons.done_all_rounded, color: Colors.white),
+                tooltip: 'Mark All as Read',
+                onPressed: _markAllAsRead,
+              ),
+          ],
+        ),
+        body: Column(
+          children: [
+            // ── Filter Chips ────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              color: colorScheme.surface,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: ['All', 'Tasks', 'Picklists', 'Messages'].map((filter) {
+                    final isSelected = _activeFilter == filter;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        selected: isSelected,
+                        label: Text(filter),
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+                        ),
+                        selectedColor: colorScheme.primary,
+                        checkmarkColor: colorScheme.onPrimary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        onSelected: (_) {
+                          setState(() => _activeFilter = filter);
+                        },
                       ),
-                      selectedColor: colorScheme.primary,
-                      checkmarkColor: colorScheme.onPrimary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      onSelected: (_) {
-                        setState(() => _activeFilter = filter);
-                      },
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
+                ),
               ),
             ),
-          ),
 
-          // ── Notification Items ──────────────────────────────────────────
-          Expanded(
-            child: _isLoading
-                ? const ListSkeleton(itemCount: 6)
-                : _filteredNotifications.isEmpty
-                    ? _buildEmptyState(colorScheme)
-                    : RefreshIndicator(
-                        onRefresh: _fetchOperationalAlerts,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          itemCount: _filteredNotifications.length,
-                          itemBuilder: (context, index) {
-                            final item = _filteredNotifications[index];
-                            return _buildNotificationCard(item, colorScheme);
-                          },
-                        ),
-                      ),
-          ),
-        ],
+            // ── Notification Items ──────────────────────────────────────────
+            Expanded(
+              child: _isLoading
+                  ? const ListSkeleton(itemCount: 6)
+                  : _loadError != null && _notifications.isEmpty
+                      ? _buildErrorState(colorScheme)
+                      : _filteredNotifications.isEmpty
+                          ? _buildEmptyState(colorScheme)
+                          : RefreshIndicator(
+                              onRefresh: _loadRemote,
+                              child: ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                                itemCount: _filteredNotifications.length,
+                                itemBuilder: (context, index) {
+                                  final item = _filteredNotifications[index];
+                                  return _buildNotificationCard(item, colorScheme);
+                                },
+                              ),
+                            ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildEmptyState(ColorScheme colorScheme) {
     return Center(
@@ -338,15 +417,50 @@ class _NotificationsPageState extends State<NotificationsPage> {
             ),
             const SizedBox(height: 6),
             Text(
-              'You have no pending tasks, delayed deliveries, or unread alerts right now.',
+              'No pending tasks, picklists, or alerts right now.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 20),
             FilledButton.tonalIcon(
-              onPressed: _fetchOperationalAlerts,
+              onPressed: _loadRemote,
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('Refresh'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(ColorScheme colorScheme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 64,
+              color: Colors.red.withValues(alpha: 0.6),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Failed to Load Alerts',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _loadError ?? 'Could not load notifications. Pull to retry.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.tonalIcon(
+              onPressed: _loadRemote,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -394,7 +508,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
           if (item.destinationPage != null) {
             await Navigator.push(context, MaterialPageRoute(builder: (_) => item.destinationPage!));
-            _fetchOperationalAlerts();
+            _loadRemote();
           }
         },
         child: Padding(

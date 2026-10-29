@@ -212,7 +212,7 @@ class PushNotificationService {
   /// Syncs role-based topic subscriptions (dealers vs salesmen).
   Future<void> syncRoleTopics(String role) async {
     final normalized = role.toLowerCase().trim();
-    if (normalized == 'dealer') {
+    if (normalized == 'dealer' || normalized == 'admin') {
       await subscribeToTopic('dealers');
       await unsubscribeFromTopic('salesmen');
     } else if (normalized == 'salesman') {
@@ -221,25 +221,51 @@ class PushNotificationService {
     }
   }
 
+  /// Subscribes a Hapi Store user to their own order-status topic.
+  Future<void> syncStoreTopic(String storeId) async {
+    final id = storeId.trim();
+    if (id.isEmpty) return;
+    await subscribeToTopic('store_$id');
+  }
+
+  /// Call on sign-out so a shared device stops receiving the store's pushes.
+  Future<void> clearStoreTopic(String storeId) async {
+    final id = storeId.trim();
+    if (id.isEmpty) return;
+    await unsubscribeFromTopic('store_$id');
+  }
+
   /// Sends a push notification to users belonging to a specific business role.
   Future<void> sendNotificationToRole({
     required String role,
     required String title,
     required String body,
     Map<String, dynamic>? data,
+    String? dedupeKey, // deterministic doc id, e.g. 'so_${orderId}_submitted'
+    bool push = true, // false = in-app list only
   }) async {
     try {
-      await _firestore.collection('notifications').add({
+      final col = _firestore.collection('notifications');
+      final ref = dedupeKey == null ? col.doc() : col.doc(dedupeKey);
+      await ref.set({
         'role': role,
         'title': title,
         'body': body,
         'data': data ?? {},
+        'push': push,
         'createdAt': FieldValue.serverTimestamp(),
-        'read': false,
+        'expireAt': Timestamp.fromDate(
+            DateTime.now().add(const Duration(days: 30))),
       });
       debugPrint('Notification queued for role $role: $title - $body');
-    } catch (e) {
+    } catch (e, s) {
       debugPrint('Error sending notification to role $role: $e');
+      ErrorLogService.logError(
+        page: 'PushNotificationService',
+        action: 'Queue Notification',
+        error: e,
+        stackTrace: s,
+      );
     }
   }
 

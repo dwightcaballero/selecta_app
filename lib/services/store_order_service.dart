@@ -94,10 +94,10 @@ class StoreOrderService {
     final docRef = await _firestore.collection(STORE_ORDERS_COLLECTION).add(newOrder.toJson());
     final createdOrder = newOrder.copyWith(id: docRef.id);
 
-    // Notify dealer about the incoming store order
+    // Notify dealer and salesmen about the incoming store order
     try {
       await _pushNotificationService.sendNotificationToRole(
-        role: BusinessRole.dealer,
+        role: 'Staff',
         title: 'New Store Order Received',
         body: '$storeName submitted order $orderNo for ₱${totalAmount.toStringAsFixed(2)}',
         data: {
@@ -105,7 +105,9 @@ class StoreOrderService {
           'orderId': docRef.id,
           'orderNo': orderNo,
           'storeId': storeId,
+          'tag': 'order_${docRef.id}',
         },
+        dedupeKey: 'so_${docRef.id}_submitted',
       );
     } catch (_) {}
 
@@ -383,7 +385,9 @@ class StoreOrderService {
           'type': 'store_order_status',
           'orderId': orderId,
           'status': StoreOrderStatus.approved,
+          'tag': 'order_$orderId',
         },
+        dedupeKey: 'so_${orderId}_approved',
       );
     } catch (_) {}
 
@@ -436,7 +440,9 @@ class StoreOrderService {
           'type': 'store_order_status',
           'orderId': orderId,
           'status': StoreOrderStatus.rejected,
+          'tag': 'order_$orderId',
         },
+        dedupeKey: 'so_${orderId}_rejected',
       );
     } catch (_) {}
   }
@@ -496,7 +502,9 @@ class StoreOrderService {
               'type': 'store_order_status',
               'orderId': doc.id,
               'status': targetStatus,
+              'tag': 'order_${doc.id}',
             },
+            dedupeKey: 'so_${doc.id}_$targetStatus',
           );
         } catch (_) {}
       }
