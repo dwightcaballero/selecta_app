@@ -408,7 +408,9 @@ class _ReturnPageState extends State<ReturnPage> {
 
   Widget _buildReturnedItemsCard() {
     if (_delivery.items.isEmpty) return const SizedBox.shrink();
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final isFullReturn = _delivery.transactionStatus == DeliveryStatus.returned;
     final returnedItems = _delivery.items.where((item) {
       return item.returnedQuantity > 0 || (isFullReturn && item.pickedQuantity > 0);
@@ -456,13 +458,13 @@ class _ReturnPageState extends State<ReturnPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.red.shade50,
+                    color: Colors.red.withValues(alpha: isDark ? 0.2 : 0.08),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.red.shade200),
+                    border: Border.all(color: Colors.red.withValues(alpha: isDark ? 0.4 : 0.25)),
                   ),
                   child: Text(
                     '$totalReturnedQty units',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red.shade800),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? Colors.red.shade300 : Colors.red.shade800),
                   ),
                 ),
               ],
@@ -663,7 +665,7 @@ class _ReturnPageState extends State<ReturnPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+          Text(label, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           Text(
             Helperfunctions.formatDoubleAmountForDisplay(amount),
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: valueColor),
@@ -676,6 +678,7 @@ class _ReturnPageState extends State<ReturnPage> {
   Widget _buildStickyBottomBar() {
     if (!_isDealer) return const SizedBox.shrink();
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isApproved = _delivery.isReturnApprovedByDealer;
 
     return SafeArea(
@@ -717,18 +720,18 @@ class _ReturnPageState extends State<ReturnPage> {
                   alignment: Alignment.center,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: isDark ? colorScheme.surfaceContainerHighest : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.grey.shade300),
+                    border: Border.all(color: isDark ? colorScheme.outlineVariant : Colors.grey.shade300),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.inventory_2_outlined, color: Colors.grey.shade700, size: 20),
+                      Icon(Icons.inventory_2_outlined, color: isDark ? colorScheme.onSurfaceVariant : Colors.grey.shade700, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         'Return Finalized (Stock in Warehouse)',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade800, fontSize: 13.5),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? colorScheme.onSurface : Colors.grey.shade800, fontSize: 13.5),
                       ),
                     ],
                   ),
@@ -741,18 +744,18 @@ class _ReturnPageState extends State<ReturnPage> {
                   alignment: Alignment.center,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
+                    color: Colors.blue.withValues(alpha: isDark ? 0.2 : 0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.blue.shade300),
+                    border: Border.all(color: Colors.blue.withValues(alpha: isDark ? 0.4 : 0.25)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.check_circle_outline, color: Colors.blue.shade700, size: 20),
+                      Icon(Icons.check_circle_outline, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         'Already Rescheduled (New Order Created)',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade800, fontSize: 13.5),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.blue.shade300 : Colors.blue.shade800, fontSize: 13.5),
                       ),
                     ],
                   ),
@@ -811,6 +814,9 @@ class _ReturnPageState extends State<ReturnPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -847,20 +853,20 @@ class _ReturnPageState extends State<ReturnPage> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
+                  color: Colors.amber.withValues(alpha: isDark ? 0.18 : 0.08),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade300, width: 1.2),
+                  border: Border.all(color: Colors.amber.withValues(alpha: isDark ? 0.4 : 0.25), width: 1.2),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.lock_outline, color: Colors.amber.shade900, size: 22),
+                    Icon(Icons.lock_outline, color: isDark ? Colors.amber.shade300 : Colors.amber.shade900, size: 22),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'View-Only: Only dealers are authorized to approve returned stock, redeliver, or delete returned orders.',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.amber.shade900,
+                          color: isDark ? Colors.amber.shade200 : Colors.amber.shade900,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -873,13 +879,13 @@ class _ReturnPageState extends State<ReturnPage> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
+                  color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300, width: 1.2),
+                  border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.2),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.inventory_2_outlined, color: Colors.grey.shade700, size: 24),
+                    Icon(Icons.inventory_2_outlined, color: colorScheme.onSurfaceVariant, size: 24),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -887,12 +893,12 @@ class _ReturnPageState extends State<ReturnPage> {
                         children: [
                           Text(
                             'Return Finalized (Completed)',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey.shade900),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'Returned stock was physically checked into the warehouse by ${_delivery.returnApprovedBy.isNotEmpty ? _delivery.returnApprovedBy : "Dealer"}. This order has been finalized and closed${_delivery.returnFinalizedBy.isNotEmpty ? " by ${_delivery.returnFinalizedBy}" : ""}${_delivery.returnFinalizedDate != null ? " on ${DateFormat('MMM d, yyyy h:mm a').format(_delivery.returnFinalizedDate!.toDate())}" : ""}.',
-                            style: TextStyle(fontSize: 12.5, color: Colors.grey.shade800),
+                            style: TextStyle(fontSize: 12.5, color: colorScheme.onSurfaceVariant),
                           ),
                         ],
                       ),
@@ -905,13 +911,13 @@ class _ReturnPageState extends State<ReturnPage> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: Colors.blue.withValues(alpha: isDark ? 0.18 : 0.08),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade300, width: 1.2),
+                  border: Border.all(color: Colors.blue.withValues(alpha: isDark ? 0.4 : 0.25), width: 1.2),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.local_shipping_outlined, color: Colors.blue.shade700, size: 24),
+                    Icon(Icons.local_shipping_outlined, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700, size: 24),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -919,12 +925,12 @@ class _ReturnPageState extends State<ReturnPage> {
                         children: [
                           Text(
                             'Rescheduled for Redelivery',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.blue.shade300 : Colors.blue.shade900),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'A new delivery order has been booked in Pending Picklist${_delivery.rescheduledDate != null ? " for ${DateFormat('MMM d, yyyy').format(_delivery.rescheduledDate!.toDate())}" : ""}. Warehouse staff will prepare the picklist for redelivery.',
-                            style: TextStyle(fontSize: 12.5, color: Colors.blue.shade800),
+                            style: TextStyle(fontSize: 12.5, color: isDark ? Colors.blue.shade200 : Colors.blue.shade800),
                           ),
                         ],
                       ),
@@ -937,13 +943,13 @@ class _ReturnPageState extends State<ReturnPage> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.green.shade50,
+                  color: Colors.green.withValues(alpha: isDark ? 0.18 : 0.08),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green.shade300, width: 1.2),
+                  border: Border.all(color: Colors.green.withValues(alpha: isDark ? 0.4 : 0.25), width: 1.2),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle_rounded, color: Colors.green.shade700, size: 24),
+                    Icon(Icons.check_circle_rounded, color: isDark ? Colors.green.shade300 : Colors.green.shade700, size: 24),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -951,12 +957,12 @@ class _ReturnPageState extends State<ReturnPage> {
                         children: [
                           Text(
                             'Approved by Dealer',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.green.shade300 : Colors.green.shade900),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'Returned stock was physically checked into the warehouse by ${_delivery.returnApprovedBy.isNotEmpty ? _delivery.returnApprovedBy : "Dealer"}${_delivery.returnApprovedDate != null ? " on ${DateFormat('MMM d, yyyy h:mm a').format(_delivery.returnApprovedDate!.toDate())}" : ""}. Items are now in Current Stock. You can now Redeliver or Finalize this return below.',
-                            style: TextStyle(fontSize: 12.5, color: Colors.green.shade800),
+                            style: TextStyle(fontSize: 12.5, color: isDark ? Colors.green.shade200 : Colors.green.shade800),
                           ),
                         ],
                       ),
@@ -1001,20 +1007,20 @@ class _ReturnPageState extends State<ReturnPage> {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
+                  color: Colors.blue.withValues(alpha: isDark ? 0.18 : 0.08),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade300, width: 1.2),
+                  border: Border.all(color: Colors.blue.withValues(alpha: isDark ? 0.4 : 0.25), width: 1.2),
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue.shade900, size: 22),
+                    Icon(Icons.info_outline, color: isDark ? Colors.blue.shade300 : Colors.blue.shade900, size: 22),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'This return has already been rescheduled to a new delivery scheduled for ${_delivery.rescheduledDate != null ? DateFormat('MMM d, yyyy').format(_delivery.rescheduledDate!.toDate()) : 'a future date'}.',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.blue.shade900,
+                          color: isDark ? Colors.blue.shade200 : Colors.blue.shade900,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

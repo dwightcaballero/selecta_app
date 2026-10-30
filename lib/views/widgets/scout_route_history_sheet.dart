@@ -341,12 +341,7 @@ class _ScoutRouteHistorySheetState extends State<ScoutRouteHistorySheet> {
         setState(() {
           widget.routes.removeWhere((r) => r.id == route.id);
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Route successfully deleted'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        ShowMessage.success(context, 'Route successfully deleted');
       }
     }
   }

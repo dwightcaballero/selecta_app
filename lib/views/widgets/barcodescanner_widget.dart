@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 
 class BarcodeScannerWidget extends StatefulWidget {
   const BarcodeScannerWidget({super.key});
@@ -61,12 +62,25 @@ class _BarcodeScannerWidgetState extends State<BarcodeScannerWidget> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan Barcode'),
+      appBar: CustomAppbar(
+        title: 'Scan Barcode',
+        subtitle: 'Align product barcode within frame',
         actions: [
-          IconButton(icon: const Icon(Icons.keyboard_outlined), tooltip: 'Enter barcode manually', onPressed: _enterBarcodeManually),
-          IconButton(icon: const Icon(Icons.flash_on_rounded), onPressed: () => _controller.toggleTorch()),
-          IconButton(icon: const Icon(Icons.cameraswitch_rounded), onPressed: () => _controller.switchCamera()),
+          IconButton(
+            icon: const Icon(Icons.keyboard_outlined, color: Colors.white),
+            tooltip: 'Enter barcode manually',
+            onPressed: _enterBarcodeManually,
+          ),
+          IconButton(
+            icon: const Icon(Icons.flash_on_rounded, color: Colors.white),
+            tooltip: 'Toggle Flash',
+            onPressed: () => _controller.toggleTorch(),
+          ),
+          IconButton(
+            icon: const Icon(Icons.cameraswitch_rounded, color: Colors.white),
+            tooltip: 'Switch Camera',
+            onPressed: () => _controller.switchCamera(),
+          ),
         ],
       ),
       body: MobileScanner(controller: _controller, onDetect: _onDetect),

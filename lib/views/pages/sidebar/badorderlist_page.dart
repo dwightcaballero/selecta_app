@@ -12,6 +12,7 @@ import 'package:selecta_ops/views/pages/sidebar/badorder_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
+import 'package:selecta_ops/views/widgets/empty_state_widget.dart';
 import 'package:selecta_ops/views/pages/sidebar/badorder_form_page.dart';
 import 'package:intl/intl.dart';
 
@@ -765,58 +766,30 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: const Icon(Icons.check_circle_outline_rounded, color: Colors.green, size: 44),
-            ),
-            const SizedBox(height: 16),
-            const Text('No Bad Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            const Text(
-              'No damaged or expired goods recorded.\nBad orders can be recorded by salesmen and dealers.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+    return const EmptyStateWidget(
+      icon: Icons.check_circle_outline_rounded,
+      iconColor: Colors.green,
+      title: 'No Bad Orders',
+      message: 'No damaged or expired goods recorded. Bad orders can be recorded by salesmen and dealers.',
     );
   }
 
   Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
-          const SizedBox(height: 8),
-          Text(
-            _searchQuery.isNotEmpty ? 'No records matching "$_searchQuery"' : 'No records found for this filter',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-          const SizedBox(height: 8),
-          TextButton.icon(
-            onPressed: () {
-              _searchController.clear();
-              setState(() {
-                _searchQuery = '';
-                _selectedPeriod = 'All';
-                _selectedStatus = 'All';
-                _selectedRefund = 'All';
-              });
-            },
-            icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('Reset filters'),
-          ),
-        ],
-      ),
+    return EmptyStateWidget(
+      icon: Icons.search_off_rounded,
+      title: _searchQuery.isNotEmpty ? 'No records matching "$_searchQuery"' : 'No records found for this filter',
+      message: 'Try adjusting your search query or reset filters.',
+      actionLabel: 'Reset filters',
+      actionIcon: Icons.refresh_rounded,
+      onAction: () {
+        _searchController.clear();
+        setState(() {
+          _searchQuery = '';
+          _selectedPeriod = 'All';
+          _selectedStatus = 'All';
+          _selectedRefund = 'All';
+        });
+      },
     );
   }
 
@@ -835,44 +808,13 @@ class _BadOrderlistPageState extends State<BadOrderlistPage> with SingleTickerPr
         _cachedBatchesCount = batches.length;
 
         if (batches.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.warehouse_outlined, color: Colors.blue.shade700, size: 44),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('No Warehouse Batches', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'When the supplier conducts a pullout of accumulated bad orders from your warehouse, create a batch here to track pullout slips and supplier refund settlements.',
-                    style: TextStyle(fontSize: 13, color: Colors.black54),
-                    textAlign: TextAlign.center,
-                  ),
-                  if (_isDealer) ...[
-                    const SizedBox(height: 16),
-                    AsyncFilledButton.icon(
-                      onPressed: _openCreateBatchPage,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.blue.shade700,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Create First Warehouse Batch', style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+          return EmptyStateWidget(
+            icon: Icons.warehouse_outlined,
+            title: 'No Warehouse Batches',
+            message: 'When the supplier conducts a pullout of accumulated bad orders from your warehouse, create a batch here to track pullout slips and supplier refund settlements.',
+            actionLabel: _isDealer ? 'Create First Warehouse Batch' : null,
+            actionIcon: Icons.add_rounded,
+            onAction: _isDealer ? _openCreateBatchPage : null,
           );
         }
 

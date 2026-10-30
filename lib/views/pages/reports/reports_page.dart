@@ -8,6 +8,7 @@ import 'package:selecta_ops/views/pages/sidebar/export_reports_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/profit_loss_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
+import 'package:selecta_ops/views/widgets/adaptive_page_body.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 
 /// Consolidated Reports & Analytics Hub.
@@ -34,10 +35,8 @@ class ReportsPage extends StatelessWidget {
     return Scaffold(
       appBar: const CustomAppbar(
         title: 'Reports & Analytics',
-        centerTitle: false,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      body: AdaptivePageBody(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -144,68 +144,95 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
     }
   }
 
+  bool get _hasUnsavedChanges =>
+      _supplierRefController.text.trim().isNotEmpty ||
+      _notesController.text.trim().isNotEmpty ||
+      _selectedIds.length != widget.pendingOrders.length;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final allSelected = widget.pendingOrders.isNotEmpty && _selectedIds.length == widget.pendingOrders.length;
 
-    return Scaffold(
-      appBar: const CustomAppbar(
-        title: 'New Warehouse Batch',
-        subtitle: 'Batch Supplier Pullout',
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                offset: const Offset(0, -2),
-                blurRadius: 6,
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_selectedIds.length} store pullout${_selectedIds.length == 1 ? '' : 's'} selected',
-                      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
-                    ),
-                    Text(
-                      'Expected: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedSupplierCreditTotal)}',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
-                    ),
-                    Text(
-                      'Stores: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedStoreRefundTotal)} • Diff: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedStoreRefundTotal - _selectedSupplierCreditTotal)}',
-                      style: TextStyle(fontSize: 10.5, color: colorScheme.onSurfaceVariant),
-                    ),
-                  ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isLoading) return;
+        if (_hasUnsavedChanges) {
+          final shouldPop = await ShowMessage.confirm(
+            context,
+            title: 'Discard Batch?',
+            message: 'You have unsaved changes in this batch setup. Are you sure you want to discard them?',
+            isDestructive: true,
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldPop && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: const CustomAppbar(
+          title: 'New Warehouse Batch',
+          subtitle: 'Batch Supplier Pullout',
+        ),
+        bottomNavigationBar: SafeArea(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 10.0),
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  offset: const Offset(0, -2),
+                  blurRadius: 6,
                 ),
-              ),
-              const SizedBox(width: 8),
-              AsyncFilledButton.icon(
-                onPressed: _selectedIds.isEmpty ? null : _onSubmit,
-                loadingLabel: 'Creating Batch...',
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  backgroundColor: Colors.blue.shade700,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_selectedIds.length} store pullout${_selectedIds.length == 1 ? '' : 's'} selected',
+                        style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+                      ),
+                      Text(
+                        'Expected: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedSupplierCreditTotal)}',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.primary),
+                      ),
+                      Text(
+                        'Stores: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedStoreRefundTotal)} • Diff: ${Helperfunctions.formatDoubleAmountForDisplay(_selectedStoreRefundTotal - _selectedSupplierCreditTotal)}',
+                        style: TextStyle(fontSize: 10.5, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
                 ),
-                icon: const Icon(Icons.check_circle_outline, size: 20),
-                label: const Text('Create Batch', style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
+                const SizedBox(width: 8),
+                AsyncFilledButton.icon(
+                  onPressed: _selectedIds.isEmpty ? null : _onSubmit,
+                  loadingLabel: 'Creating Batch...',
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    backgroundColor: colorScheme.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.check_circle_outline, size: 20),
+                  label: const Text('Create Batch', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -228,10 +255,10 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
                         Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: Colors.blue.shade50,
+                            color: colorScheme.primary.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.08),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Icon(Icons.inventory_2_outlined, color: Colors.blue.shade700, size: 20),
+                          child: Icon(Icons.inventory_2_outlined, color: colorScheme.primary, size: 20),
                         ),
                         const SizedBox(width: 10),
                         const Text(
@@ -462,6 +489,7 @@ class _BadOrderBatchCreatePageState extends State<BadOrderBatchCreatePage> {
               ),
           ],
         ),
+      ),
       ),
     );
   }

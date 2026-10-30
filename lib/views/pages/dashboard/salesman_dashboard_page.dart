@@ -79,16 +79,38 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
     _fcmSub = PushNotificationService().onForegroundMessage.listen((msg) {
       final n = msg.notification;
       if (!mounted || n == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${n.title ?? 'Notification'}\n${n.body ?? ''}'),
-        action: SnackBarAction(
-          label: 'VIEW',
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const NotificationsPage(roles: NotificationAudience.salesman)),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          margin: const EdgeInsets.all(16),
+          content: Row(
+            children: [
+              const Icon(Icons.notifications_active_rounded, color: Colors.white, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(n.title ?? 'Notification', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    if (n.body != null && n.body!.isNotEmpty)
+                      Text(n.body!, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'VIEW',
+            textColor: Colors.white,
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificationsPage(roles: NotificationAudience.salesman)),
+            ),
           ),
         ),
-      ));
+      );
       NotificationBadgeService().onPushReceived();
     });
     NotificationBadgeService().refresh(NotificationAudience.salesman, force: true);

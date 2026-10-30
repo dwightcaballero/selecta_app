@@ -645,33 +645,67 @@ class _PromoEditorModalState extends State<_PromoEditorModal> {
     );
   }
 
+  bool get _hasUnsavedChanges {
+    final p = widget.existingPromo;
+    if (p != null) {
+      return _nameController.text.trim() != p.name ||
+          _descController.text.trim() != p.description ||
+          _supplierNameController.text.trim() != (p.supplierName ?? '') ||
+          _rules.length != p.rules.length;
+    }
+    return _nameController.text.trim().isNotEmpty ||
+        _descController.text.trim().isNotEmpty ||
+        _supplierNameController.text.trim().isNotEmpty ||
+        _rules.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.existingPromo != null;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isEditing ? 'Edit Promotion' : 'Create Promotion'),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: AsyncFilledButton(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_hasUnsavedChanges) {
+          final shouldDiscard = await ShowMessage.confirm(
+            context,
+            title: 'Discard Promotion?',
+            message: 'You have unsaved changes in this promotion. Are you sure you want to discard them?',
+            confirmText: 'Discard',
+            cancelText: 'Keep Editing',
+            isDestructive: true,
+            icon: Icons.warning_amber_rounded,
+          );
+          if (shouldDiscard && context.mounted) {
+            Navigator.pop(context);
+          }
+        } else {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: CustomAppbar(
+          title: isEditing ? 'Edit Promotion' : 'Create Promotion',
+          subtitle: isEditing ? 'Update promo rules & criteria' : 'Configure new campaign or bundle',
+          leading: IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.maybePop(context),
+            tooltip: 'Close',
+          ),
+          actions: [
+            AsyncFilledButton(
               style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: _savePromo,
               loadingLabel: 'Saving...',
               child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             ),
-          ),
-        ],
-      ),
-      body: Form(
+          ],
+        ),
+        body: Form(
         key: _formKey,
         child: ListView(
           padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 48),
@@ -1037,6 +1071,7 @@ class _PromoEditorModalState extends State<_PromoEditorModal> {
             const SizedBox(height: 24),
           ],
         ),
+      ),
       ),
     );
   }

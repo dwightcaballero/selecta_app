@@ -43,6 +43,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _homeScaffoldKey = GlobalKey<ScaffoldState>();
+  final GlobalKey<ScaffoldState> _phoneScaffoldKey = GlobalKey<ScaffoldState>();
   // Controller handling dashboard sync, data caching, live count streams, and role switching
   final DashboardController _controller = DashboardController();
 
@@ -106,13 +107,35 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _fcmSub = PushNotificationService().onForegroundMessage.listen((msg) {
       final n = msg.notification;
       if (!mounted || n == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('${n.title ?? 'Notification'}\n${n.body ?? ''}'),
-        action: SnackBarAction(
-          label: 'VIEW',
-          onPressed: () => _navigateToPage(const NotificationsPage(roles: NotificationAudience.dealer)),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          margin: const EdgeInsets.all(16),
+          content: Row(
+            children: [
+              const Icon(Icons.notifications_active_rounded, color: Colors.white, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(n.title ?? 'Notification', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    if (n.body != null && n.body!.isNotEmpty)
+                      Text(n.body!, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'VIEW',
+            textColor: Colors.white,
+            onPressed: () => _navigateToPage(const NotificationsPage(roles: NotificationAudience.dealer)),
+          ),
         ),
-      ));
+      );
       NotificationBadgeService().onPushReceived();
     });
     NotificationBadgeService().refresh(NotificationAudience.dealer, force: true);
@@ -632,7 +655,33 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     ),
   ];
 
+  void _openDrawer() {
+    if (_phoneScaffoldKey.currentState != null) {
+      _phoneScaffoldKey.currentState!.openDrawer();
+    } else {
+      _homeScaffoldKey.currentState?.openDrawer();
+    }
+  }
+
+  Widget _buildDrawer() => DashboardDrawer(
+    currentUser: _currentUser,
+    isDealer: isDealer,
+    isSyncing: isSyncing,
+    dashboardDTO: dashboardDTO,
+    merchBlitzCountStream: _merchBlitzCountStream,
+    tasksCountStream: _tasksCountStream,
+    activeReturnsCountStream: _activeReturnsCountStream,
+    unverifiedBreakdownCountStream: _unverifiedBreakdownsCountStream,
+    onSync: () => syncDashboard(force: true),
+    onLogout: onLogout,
+    onNavigate: _navigateToPage,
+  );
+
   bool _handleBackPress() {
+    if (_phoneScaffoldKey.currentState?.isDrawerOpen == true) {
+      _phoneScaffoldKey.currentState?.closeDrawer();
+      return true;
+    }
     if (_homeScaffoldKey.currentState?.isDrawerOpen == true) {
       _homeScaffoldKey.currentState?.closeDrawer();
       return true;
@@ -657,30 +706,14 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         showBackButton: false,
         leading: isWideLandscape
             ? null
-            : Builder(
-                builder: (ctx) => IconButton(
-                  icon: const Icon(Icons.menu_rounded, color: Colors.white),
-                  onPressed: () => Scaffold.of(ctx).openDrawer(),
-                  tooltip: 'Open Menu',
-                ),
+            : IconButton(
+                icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                onPressed: _openDrawer,
+                tooltip: 'Open Menu',
               ),
         actions: appBarActions,
       ),
-      drawer: isWideLandscape
-          ? null
-          : DashboardDrawer(
-              currentUser: _currentUser,
-              isDealer: isDealer,
-              isSyncing: isSyncing,
-              dashboardDTO: dashboardDTO,
-              merchBlitzCountStream: _merchBlitzCountStream,
-              tasksCountStream: _tasksCountStream,
-              activeReturnsCountStream: _activeReturnsCountStream,
-              unverifiedBreakdownCountStream: _unverifiedBreakdownsCountStream,
-              onSync: () => syncDashboard(force: true),
-              onLogout: onLogout,
-              onNavigate: _navigateToPage,
-            ),
+      drawer: isWideLandscape ? null : _buildDrawer(),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: null,
         onPressed: () => AiChatModal.show(context, dashboardDTO: dashboardDTO, userRole: isDealer ? 'Dealer' : 'Salesman'),
@@ -716,13 +749,16 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     ),
   ];
 
-  List<Widget> _buildTabPages(BuildContext context, {required bool isWideLandscape}) => [
-    _buildHomeDashboard(_buildAppBarActions(context), Theme.of(context).colorScheme, isWideLandscape: isWideLandscape),
-    const PurchaseorderlistPage(),
-    const InventoryPage(),
-    const PicklistListPage(),
-    const DeliveryListPage(),
-  ];
+  List<Widget> _buildTabPages(BuildContext context, {required bool isWideLandscape}) {
+    final VoidCallback? onOpenDrawer = isWideLandscape ? null : _openDrawer;
+    return [
+      _buildHomeDashboard(_buildAppBarActions(context), Theme.of(context).colorScheme, isWideLandscape: isWideLandscape),
+      PurchaseorderlistPage(onOpenDrawer: onOpenDrawer),
+      InventoryPage(onOpenDrawer: onOpenDrawer),
+      PicklistListPage(onOpenDrawer: onOpenDrawer),
+      DeliveryListPage(onOpenDrawer: onOpenDrawer),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -829,6 +865,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     } else if (isTablet) {
       // ── TABLET PORTRAIT layout: NavigationRail + tab content (drawer for operations) ──
       content = Scaffold(
+        key: _phoneScaffoldKey,
+        drawer: _buildDrawer(),
         body: Row(
           children: [
             SafeArea(
@@ -857,6 +895,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     } else {
       // ── PHONE layout: persistent bottom nav + IndexedStack ───────────────
       content = Scaffold(
+        key: _phoneScaffoldKey,
+        drawer: _buildDrawer(),
         body: IndexedStack(
           index: _currentTabIndex,
           children: _buildTabPages(context, isWideLandscape: false),

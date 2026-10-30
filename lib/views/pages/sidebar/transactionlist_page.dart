@@ -6,6 +6,7 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/views/pages/dashboard/delivery_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/empty_state_widget.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 import 'package:intl/intl.dart';
 
@@ -281,37 +282,19 @@ class _TransactionListPageState extends State<TransactionListPage> {
   }
 
   Widget _buildEmptyState() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.receipt_long_outlined, color: colorScheme.outline, size: 44),
-            const SizedBox(height: 12),
-            const Text('No Delivered Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(
-              'No orders found for this timeframe.',
-              style: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
-            ),
-          ],
-        ),
-      ),
+    return const EmptyStateWidget(
+      icon: Icons.receipt_long_outlined,
+      title: 'No Delivered Orders',
+      message: 'No orders found for this timeframe.',
     );
   }
 
   Widget _buildErrorState() {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.error_outline_rounded, color: Theme.of(context).colorScheme.error, size: 36),
-          const SizedBox(height: 8),
-          const Text('Unable to load transactions'),
-        ],
-      ),
+    return EmptyStateWidget(
+      icon: Icons.error_outline_rounded,
+      iconColor: Theme.of(context).colorScheme.error,
+      title: 'Unable to load transactions',
+      message: 'An error occurred while fetching order history. Please try again later.',
     );
   }
 

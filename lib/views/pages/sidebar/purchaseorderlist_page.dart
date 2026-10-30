@@ -6,11 +6,13 @@ import 'package:selecta_ops/models/purchaseorder.dart';
 import 'package:selecta_ops/views/pages/sidebar/purchaseorder_catalog_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/purchaseorder_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/empty_state_widget.dart';
 import 'package:intl/intl.dart';
 
 /// Presentation page for displaying, filtering, and sorting purchase orders.
 class PurchaseorderlistPage extends StatefulWidget {
-  const PurchaseorderlistPage({super.key});
+  final VoidCallback? onOpenDrawer;
+  const PurchaseorderlistPage({super.key, this.onOpenDrawer});
 
   @override
   State<PurchaseorderlistPage> createState() => _PurchaseorderlistPageState();
@@ -500,72 +502,37 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
 
   Widget _buildEmptyState() {
     final String monthName = _isAllMonths ? 'All Time' : DateFormat('MMMM yyyy').format(_selectedMonth);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4), shape: BoxShape.circle),
-              child: Icon(Icons.receipt_long_outlined, size: 40, color: Theme.of(context).colorScheme.primary),
-            ),
-            const SizedBox(height: 16),
-            Text('No Orders for $monthName', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text(
-              'No purchase orders recorded for this month. Tap "Add Order" below to create one.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () {
-                Helperfunctions.navigateTo(
-                  context,
-                  const PurchaseOrderCatalogPage(
-                    isDirectCreationFlow: true,
-                  ),
-                );
-              },
-              icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
-              label: const Text('Add Order', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
+    return EmptyStateWidget(
+      icon: Icons.receipt_long_outlined,
+      title: 'No Orders for $monthName',
+      message: 'No purchase orders recorded for this month. Tap "Add Order" below to create one.',
+      actionLabel: 'Add Order',
+      actionIcon: Icons.add_shopping_cart_rounded,
+      onAction: () {
+        Helperfunctions.navigateTo(
+          context,
+          const PurchaseOrderCatalogPage(
+            isDirectCreationFlow: true,
+          ),
+        );
+      },
     );
   }
 
   Widget _buildNoSearchResultsState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
-            const SizedBox(height: 10),
-            Text(
-              _searchQuery.isNotEmpty ? 'No orders match "$_searchQuery"' : 'No orders match the selected filter',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-            const SizedBox(height: 10),
-            TextButton.icon(
-              onPressed: () {
-                _searchController.clear();
-                setState(() {
-                  _searchQuery = '';
-                  _selectedFilter = 'All';
-                });
-              },
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Reset filters'),
-            ),
-          ],
-        ),
-      ),
+    return EmptyStateWidget(
+      icon: Icons.search_off_rounded,
+      title: _searchQuery.isNotEmpty ? 'No orders match "$_searchQuery"' : 'No orders match filter',
+      message: 'Try adjusting your search terms or clearing your current filter.',
+      actionLabel: 'Reset filters',
+      actionIcon: Icons.refresh_rounded,
+      onAction: () {
+        _searchController.clear();
+        setState(() {
+          _searchQuery = '';
+          _selectedFilter = 'All';
+        });
+      },
     );
   }
 
@@ -574,7 +541,17 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const CustomAppbar(title: 'Restock (PO)', subtitle: 'Restock from Selecta • Invoices & Tracking'),
+      appBar: CustomAppbar(
+        title: 'Restock (PO)',
+        subtitle: 'Restock from Selecta • Invoices & Tracking',
+        leading: widget.onOpenDrawer != null
+            ? IconButton(
+                icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                onPressed: widget.onOpenDrawer,
+                tooltip: 'Open Menu',
+              )
+            : null,
+      ),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: null,
         onPressed: () {

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/data/forms.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:http/http.dart' as http;
 
 class ImageViewerPage extends StatefulWidget {
@@ -44,12 +45,10 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
       );
 
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image saved to your gallery')));
+      ShowMessage.success(context, 'Image saved to your gallery');
     } catch (error) {
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save image: $error')));
+      ShowMessage.error(context, 'Failed to save image: $error');
     } finally {
       if (mounted) {
         setState(() => _isDownloading = false);

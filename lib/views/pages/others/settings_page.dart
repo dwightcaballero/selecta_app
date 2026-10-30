@@ -8,6 +8,7 @@ import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/theme/app_theme.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/pages/others/changepassword_page.dart';
 import 'package:selecta_ops/views/pages/others/changeusernamerole_page.dart';
 import 'package:selecta_ops/views/pages/others/deleteaccount_page.dart';
@@ -121,16 +122,20 @@ class _SettingsPageState extends State<SettingsPage> {
         Navigator.pop(context);
       },
       child: Scaffold(
-        appBar: AppBar(
-        title: const Text('Settings'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Section 1: Appearance ───────────────────────────────────────
-            _buildSectionHeader('Appearance', Icons.palette_outlined),
+        appBar: const CustomAppbar(
+          title: 'Settings',
+          subtitle: 'Preferences & System Options',
+        ),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Section 1: Appearance ───────────────────────────────────────
+                  _buildSectionHeader('Appearance', Icons.palette_outlined),
             const SizedBox(height: 8),
             Card(
               child: Column(
@@ -524,7 +529,9 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     ),
-  );
+  ),
+),
+);
 }
 
   Widget _buildPill(String text, Color color) {

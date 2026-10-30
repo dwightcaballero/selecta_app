@@ -17,7 +17,8 @@ import 'package:intl/intl.dart';
 
 /// Dedicated Inventory Management page unifying active [SelectaProduct] and [OtherProduct] items.
 class InventoryPage extends StatefulWidget {
-  const InventoryPage({super.key});
+  final VoidCallback? onOpenDrawer;
+  const InventoryPage({super.key, this.onOpenDrawer});
 
   @override
   State<InventoryPage> createState() => _InventoryPageState();
@@ -145,14 +146,34 @@ class _InventoryPageState extends State<InventoryPage> {
       stream: _inventoryStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-          return const Scaffold(
-            appBar: CustomAppbar(title: 'Inventory', subtitle: 'Selecta & Other Products Stock'),
-            body: Center(child: CircularProgressIndicator()),
+          return Scaffold(
+            appBar: CustomAppbar(
+              title: 'Inventory',
+              subtitle: 'Selecta & Other Products Stock',
+              leading: widget.onOpenDrawer != null
+                  ? IconButton(
+                      icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                      onPressed: widget.onOpenDrawer,
+                      tooltip: 'Open Menu',
+                    )
+                  : null,
+            ),
+            body: const Center(child: CircularProgressIndicator()),
           );
         }
         if (snapshot.hasError) {
           return Scaffold(
-            appBar: const CustomAppbar(title: 'Inventory', subtitle: 'Selecta & Other Products Stock'),
+            appBar: CustomAppbar(
+              title: 'Inventory',
+              subtitle: 'Selecta & Other Products Stock',
+              leading: widget.onOpenDrawer != null
+                  ? IconButton(
+                      icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                      onPressed: widget.onOpenDrawer,
+                      tooltip: 'Open Menu',
+                    )
+                  : null,
+            ),
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -382,6 +403,13 @@ class _InventoryPageState extends State<InventoryPage> {
           appBar: CustomAppbar(
             title: 'Inventory',
             subtitle: subtitleText,
+            leading: widget.onOpenDrawer != null
+                ? IconButton(
+                    icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                    onPressed: widget.onOpenDrawer,
+                    tooltip: 'Open Menu',
+                  )
+                : null,
             actions: [_buildAppbarMenu(summary, floatingCount, colorScheme)],
           ),
           body: isTabletLandscape

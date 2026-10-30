@@ -720,22 +720,23 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   Widget _buildWithReturnsSection() {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return _buildSectionCard(
       title: 'Itemized Returns',
       icon: Icons.assignment_return_outlined,
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.red.shade50,
+          color: Colors.red.withValues(alpha: isDark ? 0.2 : 0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.red.shade200),
+          border: Border.all(color: Colors.red.withValues(alpha: isDark ? 0.4 : 0.25)),
         ),
         child: Text(
           'Total Return: ${Helperfunctions.formatDoubleAmountForDisplay(calculatedItemsReturnAmount)}',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.bold,
-            color: Colors.red.shade800,
+            color: isDark ? Colors.red.shade300 : Colors.red.shade800,
           ),
         ),
       ),
@@ -847,21 +848,21 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.red.shade50.withValues(alpha: 0.8),
+                      color: Colors.red.withValues(alpha: isDark ? 0.25 : 0.08),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.shade200),
+                      border: Border.all(color: Colors.red.withValues(alpha: isDark ? 0.4 : 0.25)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
                           '${item.productName} × $qty',
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.red.shade900),
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: isDark ? Colors.red.shade200 : Colors.red.shade900),
                         ),
                         const SizedBox(width: 6),
                         Text(
                           Helperfunctions.formatDoubleAmountForDisplay(item.sellingPrice * qty),
-                          style: TextStyle(fontSize: 12, color: Colors.red.shade800, fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: 12, color: isDark ? Colors.red.shade300 : Colors.red.shade800, fontWeight: FontWeight.w600),
                         ),
                         if (!isLocked) ...[
                           const SizedBox(width: 4),
@@ -963,6 +964,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   Widget _buildBadOrdersSection() {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bool cannotRecord = isPermanentlySettled;
 
     return _buildSectionCard(
@@ -972,16 +974,16 @@ class _DeliveryPageState extends State<DeliveryPage> {
           ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.orange.shade50,
+                color: Colors.orange.withValues(alpha: isDark ? 0.2 : 0.08),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.shade200),
+                border: Border.all(color: Colors.orange.withValues(alpha: isDark ? 0.4 : 0.25)),
               ),
               child: Text(
                 '$_recordedBadOrdersCount Recorded',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: Colors.orange.shade800,
+                  color: isDark ? Colors.orange.shade300 : Colors.orange.shade800,
                 ),
               ),
             )
@@ -1018,6 +1020,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   Widget _buildPaymentBreakdownCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return _buildSectionCard(
       title: 'Payment Breakdown',
       icon: Icons.payments_outlined,
@@ -1055,13 +1058,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.red.shade50,
+                color: Colors.red.withValues(alpha: isDark ? 0.2 : 0.08),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.red.shade200),
+                border: Border.all(color: Colors.red.withValues(alpha: isDark ? 0.4 : 0.25)),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.assignment_return_outlined, color: Colors.red.shade700, size: 22),
+                  Icon(Icons.assignment_return_outlined, color: isDark ? Colors.red.shade300 : Colors.red.shade700, size: 22),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
@@ -1074,7 +1077,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 16.5,
-                      color: Colors.red.shade700,
+                      color: isDark ? Colors.red.shade300 : Colors.red.shade700,
                     ),
                   ),
                 ],
@@ -1734,6 +1737,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   List<Widget> _buildStatusBanners() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return [
       if (isLocked)
         Container(
@@ -1741,13 +1745,17 @@ class _DeliveryPageState extends State<DeliveryPage> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: _currentDelivery.isReturnApprovedByDealer
-                ? Colors.green.shade50
-                : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade50 : Colors.amber.shade50),
+                ? Colors.green.withValues(alpha: isDark ? 0.2 : 0.08)
+                : (_currentDelivery.isInventorySettled || isDayVerified
+                    ? Colors.red.withValues(alpha: isDark ? 0.2 : 0.08)
+                    : Colors.amber.withValues(alpha: isDark ? 0.2 : 0.08)),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: _currentDelivery.isReturnApprovedByDealer
-                  ? Colors.green.shade300
-                  : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade300 : Colors.amber.shade300),
+                  ? Colors.green.withValues(alpha: isDark ? 0.4 : 0.3)
+                  : (_currentDelivery.isInventorySettled || isDayVerified
+                      ? Colors.red.withValues(alpha: isDark ? 0.4 : 0.3)
+                      : Colors.amber.withValues(alpha: isDark ? 0.4 : 0.3)),
               width: 1.2,
             ),
           ),
@@ -1756,8 +1764,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
               Icon(
                 _currentDelivery.isReturnApprovedByDealer ? Icons.check_circle_outline : Icons.lock_outline,
                 color: _currentDelivery.isReturnApprovedByDealer
-                    ? Colors.green.shade900
-                    : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                    ? (isDark ? Colors.green.shade300 : Colors.green.shade900)
+                    : (_currentDelivery.isInventorySettled || isDayVerified
+                        ? (isDark ? Colors.red.shade300 : Colors.red.shade900)
+                        : (isDark ? Colors.amber.shade300 : Colors.amber.shade900)),
                 size: 24,
               ),
               const SizedBox(width: 12),
@@ -1773,8 +1783,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   style: TextStyle(
                     fontSize: 14,
                     color: _currentDelivery.isReturnApprovedByDealer
-                        ? Colors.green.shade900
-                        : (_currentDelivery.isInventorySettled || isDayVerified ? Colors.red.shade900 : Colors.amber.shade900),
+                        ? (isDark ? Colors.green.shade300 : Colors.green.shade900)
+                        : (_currentDelivery.isInventorySettled || isDayVerified
+                            ? (isDark ? Colors.red.shade300 : Colors.red.shade900)
+                            : (isDark ? Colors.amber.shade300 : Colors.amber.shade900)),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1787,10 +1799,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.amber.shade50,
+            color: Colors.amber.withValues(alpha: isDark ? 0.2 : 0.08),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.amber.shade400,
+              color: Colors.amber.withValues(alpha: isDark ? 0.5 : 0.4),
               width: 1.2,
             ),
           ),
@@ -1798,7 +1810,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             children: [
               Icon(
                 Icons.warning_amber_rounded,
-                color: Colors.amber.shade900,
+                color: isDark ? Colors.amber.shade300 : Colors.amber.shade900,
                 size: 24,
               ),
               const SizedBox(width: 12),
@@ -1807,7 +1819,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   'Late Delivery: This date\'s cash breakdown has already been verified. As a dealer, you can update or reschedule this transaction; saving as Delivered or Returned will automatically reconcile inventory.',
                   style: TextStyle(
                     fontSize: 13.5,
-                    color: Colors.amber.shade900,
+                    color: isDark ? Colors.amber.shade300 : Colors.amber.shade900,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1877,10 +1889,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.orange.shade50,
+            color: Colors.orange.withValues(alpha: isDark ? 0.2 : 0.08),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Colors.orange.shade300,
+              color: Colors.orange.withValues(alpha: isDark ? 0.5 : 0.3),
               width: 1.2,
             ),
           ),
@@ -1889,7 +1901,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             children: [
               Icon(
                 Icons.info_outline_rounded,
-                color: Colors.orange.shade900,
+                color: isDark ? Colors.orange.shade300 : Colors.orange.shade900,
                 size: 22,
               ),
               const SizedBox(width: 12),
@@ -1902,13 +1914,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.bold,
-                        color: Colors.orange.shade900,
+                        color: isDark ? Colors.orange.shade300 : Colors.orange.shade900,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       '${_currentDelivery.items.where((i) => i.pickedQuantity < i.orderedQuantity).length} product(s) could not be fully fulfilled due to warehouse stock shortage. They are printed on the delivery receipt and the store is not charged.',
-                      style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                      style: TextStyle(fontSize: 12, color: isDark ? Colors.orange.shade200 : Colors.orange.shade900),
                     ),
                   ],
                 ),
@@ -2307,6 +2319,7 @@ class _ItemizedReturnsBottomSheetState extends State<_ItemizedReturnsBottomSheet
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final filteredItems = widget.items.where((i) => i.pickedQuantity > 0).where((i) {
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
@@ -2340,10 +2353,10 @@ class _ItemizedReturnsBottomSheetState extends State<_ItemizedReturnsBottomSheet
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.red.shade50,
+                    color: Colors.red.withValues(alpha: isDark ? 0.2 : 0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(Icons.assignment_return_outlined, color: Colors.red.shade700, size: 22),
+                  child: Icon(Icons.assignment_return_outlined, color: isDark ? Colors.red.shade300 : Colors.red.shade700, size: 22),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -2449,10 +2462,10 @@ class _ItemizedReturnsBottomSheetState extends State<_ItemizedReturnsBottomSheet
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: isSelected ? Colors.red.shade50.withValues(alpha: 0.6) : colorScheme.surface,
+                          color: isSelected ? Colors.red.withValues(alpha: isDark ? 0.25 : 0.08) : colorScheme.surface,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: isSelected ? Colors.red.shade300 : colorScheme.outlineVariant.withValues(alpha: 0.6),
+                            color: isSelected ? (isDark ? Colors.red.shade400 : Colors.red.shade300) : colorScheme.outlineVariant.withValues(alpha: 0.6),
                             width: isSelected ? 1.4 : 1.0,
                           ),
                         ),
@@ -2782,6 +2795,7 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.90,
@@ -2929,11 +2943,13 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: _imageFile == null
-                                  ? Colors.red.shade50.withValues(alpha: 0.5)
-                                  : Colors.green.shade50.withValues(alpha: 0.5),
+                                  ? Colors.red.withValues(alpha: isDark ? 0.2 : 0.08)
+                                  : Colors.green.withValues(alpha: isDark ? 0.2 : 0.08),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: _imageFile == null ? Colors.red.shade300 : Colors.green.shade400,
+                                color: _imageFile == null
+                                    ? (isDark ? Colors.red.shade400 : Colors.red.shade300)
+                                    : (isDark ? Colors.green.shade400 : Colors.green.shade400),
                                 width: 1.2,
                               ),
                             ),
@@ -2945,7 +2961,9 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                                     Icon(
                                       Icons.photo_camera_outlined,
                                       size: 18,
-                                      color: _imageFile == null ? Colors.red.shade800 : Colors.green.shade800,
+                                      color: _imageFile == null
+                                          ? (isDark ? Colors.red.shade300 : Colors.red.shade800)
+                                          : (isDark ? Colors.green.shade300 : Colors.green.shade800),
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
@@ -2953,7 +2971,9 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                                       style: TextStyle(
                                         fontSize: 13.5,
                                         fontWeight: FontWeight.bold,
-                                        color: _imageFile == null ? Colors.red.shade800 : Colors.green.shade800,
+                                        color: _imageFile == null
+                                            ? (isDark ? Colors.red.shade300 : Colors.red.shade800)
+                                            : (isDark ? Colors.green.shade300 : Colors.green.shade800),
                                       ),
                                     ),
                                     const Spacer(),
@@ -3063,7 +3083,7 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                                         width: 40,
                                         height: 40,
                                         decoration: BoxDecoration(
-                                          color: Colors.purple.shade50,
+                                          color: isDark ? colorScheme.surfaceContainerHighest : Colors.purple.shade50,
                                           borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: product.imageUrl.isNotEmpty
@@ -3095,7 +3115,9 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                                                 Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                                   decoration: BoxDecoration(
-                                                    color: isCase ? Colors.purple.shade50 : Colors.blue.shade50,
+                                                    color: isCase
+                                                        ? (isDark ? Colors.purple.withValues(alpha: 0.2) : Colors.purple.shade50)
+                                                        : (isDark ? Colors.blue.withValues(alpha: 0.2) : Colors.blue.shade50),
                                                     borderRadius: BorderRadius.circular(4),
                                                   ),
                                                   child: Text(
@@ -3103,7 +3125,9 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                                                     style: TextStyle(
                                                       fontSize: 10.5,
                                                       fontWeight: FontWeight.bold,
-                                                      color: isCase ? Colors.purple.shade700 : Colors.blue.shade700,
+                                                      color: isCase
+                                                          ? (isDark ? Colors.purple.shade300 : Colors.purple.shade700)
+                                                          : (isDark ? Colors.blue.shade300 : Colors.blue.shade700),
                                                     ),
                                                   ),
                                                 ),
@@ -3141,10 +3165,10 @@ class _DeliveryBadOrderBottomSheetState extends State<_DeliveryBadOrderBottomShe
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                           decoration: BoxDecoration(
-                                            color: Colors.red.shade50,
+                                            color: Colors.red.withValues(alpha: isDark ? 0.25 : 0.08),
                                             borderRadius: BorderRadius.circular(6),
                                           ),
-                                          child: const Text('Blocked', style: TextStyle(color: Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
+                                          child: Text('Blocked', style: TextStyle(color: isDark ? Colors.red.shade300 : Colors.red, fontSize: 11, fontWeight: FontWeight.bold)),
                                         )
                                       else
                                         Row(

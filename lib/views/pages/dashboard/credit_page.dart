@@ -89,7 +89,7 @@ class _CreditPageState extends State<CreditPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _isUpdating = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating credit: $e')));
+        ShowMessage.error(context, 'Error updating credit: $e');
       }
     }
   }
@@ -649,13 +649,7 @@ class _CreditPageState extends State<CreditPage> {
         child: AsyncFilledButton.icon(
           onPressed: () async {
             if (isUnchanged) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Credit status is already set to this value'),
-                  duration: Duration(seconds: 2),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              ShowMessage.info(context, 'Credit status is already set to this value');
               return;
             }
 

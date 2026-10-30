@@ -17,6 +17,7 @@ import 'package:selecta_ops/views/pages/dashboard/van_sell_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
+import 'package:selecta_ops/views/widgets/empty_state_widget.dart';
 import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
@@ -26,7 +27,8 @@ import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 /// summary calculation, date formatting, and filtering are handled by [DeliveryController],
 /// while direct database calls are managed in the service layer.
 class DeliveryListPage extends StatefulWidget {
-  const DeliveryListPage({super.key});
+  final VoidCallback? onOpenDrawer;
+  const DeliveryListPage({super.key, this.onOpenDrawer});
 
   @override
   State<DeliveryListPage> createState() => _DeliveryListPageState();
@@ -409,14 +411,14 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.directions_car_filled_outlined, size: 18, color: _selectedSegment == 1 ? Colors.teal : colorScheme.onSurfaceVariant),
+                    Icon(Icons.directions_car_filled_outlined, size: 18, color: _selectedSegment == 1 ? colorScheme.secondary : colorScheme.onSurfaceVariant),
                     const SizedBox(width: 7),
                     Text(
                       'Van Sell (${summary.vanSellCount})',
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: _selectedSegment == 1 ? FontWeight.bold : FontWeight.w600,
-                        color: _selectedSegment == 1 ? Colors.teal : colorScheme.onSurfaceVariant,
+                        color: _selectedSegment == 1 ? colorScheme.secondary : colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -458,23 +460,31 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   Widget _buildVanSellSummaryBar(DeliverySummaryCounts summary) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.teal.withValues(alpha: 0.05),
+        color: colorScheme.secondary.withValues(alpha: isDark ? 0.15 : 0.06),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.teal.withValues(alpha: 0.3)),
+        border: Border.all(color: colorScheme.secondary.withValues(alpha: isDark ? 0.35 : 0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildSummaryStat(label: 'Van Sells', value: '${summary.vanSellCount}', color: Colors.teal.shade800),
-          Container(width: 1, height: 32, color: Colors.teal.withValues(alpha: 0.2)),
+          _buildSummaryStat(
+            label: 'Van Sells',
+            value: '${summary.vanSellCount}',
+            color: colorScheme.secondary,
+          ),
+          Container(width: 1, height: 32, color: colorScheme.secondary.withValues(alpha: 0.25)),
           _buildSummaryStat(
             label: 'Total Revenue',
             value: Helperfunctions.formatDoubleAmountForDisplay(summary.vanSellAmount),
-            color: Colors.teal.shade900,
+            color: colorScheme.primary,
           ),
         ],
       ),
@@ -494,7 +504,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(fontSize: 13.5, color: colorScheme.onSurfaceVariant),
-          prefixIcon: Icon(Icons.search, size: 22, color: _selectedSegment == 1 ? Colors.teal : colorScheme.primary),
+          prefixIcon: Icon(Icons.search, size: 22, color: _selectedSegment == 1 ? colorScheme.secondary : colorScheme.primary),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
                   icon: const Icon(Icons.clear, size: 20),
@@ -559,12 +569,16 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final timeStr = DateFormat('h:mm a').format(delivery.createdDate.toDate());
 
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accentColor = colorScheme.secondary;
+
     return Material(
-      color: isSelected ? Colors.teal.withValues(alpha: 0.08) : colorScheme.surface,
+      color: isSelected ? accentColor.withValues(alpha: isDark ? 0.2 : 0.08) : colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: isSelected ? Colors.teal : Colors.teal.withValues(alpha: 0.3),
+          color: isSelected ? accentColor : accentColor.withValues(alpha: 0.3),
           width: isSelected ? 2.0 : 1.0,
         ),
       ),
@@ -586,8 +600,11 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(color: Colors.teal.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.point_of_sale_rounded, color: Colors.teal, size: 24),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: isDark ? 0.2 : 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.point_of_sale_rounded, color: accentColor, size: 24),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -600,13 +617,13 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           margin: const EdgeInsets.only(right: 6),
                           decoration: BoxDecoration(
-                            color: Colors.teal.withValues(alpha: 0.15),
+                            color: accentColor.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.teal.withValues(alpha: 0.35)),
+                            border: Border.all(color: accentColor.withValues(alpha: 0.35)),
                           ),
                           child: Text(
                             '#${index + 1}',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.teal),
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accentColor),
                           ),
                         ),
                         Expanded(
@@ -672,7 +689,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                 children: [
                   Text(
                     Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                    style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: Colors.teal),
+                    style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: accentColor),
                   ),
                   const SizedBox(height: 4),
                   const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
@@ -860,12 +877,12 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: isVan ? Colors.teal.withValues(alpha: 0.12) : theme.colorScheme.primaryContainer.withValues(alpha: 0.6),
+                    color: isVan ? theme.colorScheme.secondary.withValues(alpha: 0.12) : theme.colorScheme.primaryContainer.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     isVan ? Icons.point_of_sale_rounded : Icons.storefront_outlined,
-                    color: isVan ? Colors.teal : theme.colorScheme.primary,
+                    color: isVan ? theme.colorScheme.secondary : theme.colorScheme.primary,
                     size: 26,
                   ),
                 ),
@@ -895,10 +912,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: isVan ? Colors.teal.withValues(alpha: 0.08) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                color: isVan ? theme.colorScheme.secondary.withValues(alpha: 0.08) : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: isVan ? Colors.teal.withValues(alpha: 0.25) : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+                  color: isVan ? theme.colorScheme.secondary.withValues(alpha: 0.25) : theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
                 ),
               ),
               child: Row(
@@ -907,7 +924,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                   _buildSummaryStat(
                     label: 'Total Value',
                     value: Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount),
-                    color: isVan ? Colors.teal.shade900 : theme.colorScheme.primary,
+                    color: isVan ? theme.colorScheme.secondary : theme.colorScheme.primary,
                   ),
                   Container(width: 1, height: 32, color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6)),
                   _buildSummaryStat(
@@ -1021,7 +1038,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
               width: double.infinity,
               child: AsyncFilledButton.icon(
                 style: FilledButton.styleFrom(
-                  backgroundColor: isVan ? Colors.teal : theme.colorScheme.primary,
+                  backgroundColor: isVan ? theme.colorScheme.secondary : theme.colorScheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -1055,7 +1072,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
           await Navigator.push(context, MaterialPageRoute(builder: (context) => const VanSellPage()));
           prefetchData();
         },
-        backgroundColor: Colors.teal,
+        backgroundColor: Theme.of(context).colorScheme.primary,
         icon: const Icon(Icons.add, color: Colors.white, size: 22),
         label: const Text(
           'New Van Sell',
@@ -1109,7 +1126,14 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
             subtitle: _isEditing
                 ? 'Drag to reorder • ${_dateLabel()}'
                 : (isVanSell ? 'Spot sales off truck • ${_dateLabel()}' : 'Order → Picklist → Delivery'),
-            showBackButton: true,
+            leading: widget.onOpenDrawer != null
+                ? IconButton(
+                    icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                    onPressed: widget.onOpenDrawer,
+                    tooltip: 'Open Menu',
+                  )
+                : null,
+            showBackButton: widget.onOpenDrawer == null,
             actions: [
               if (!_isEditing && !isVanSell && preSellDocs.isNotEmpty)
                 IconButton(
@@ -1169,41 +1193,24 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
 
                       final Widget listContent = !isVanSell
                           ? (preSellDocs.isEmpty
-                              ? Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.local_shipping_outlined, size: 48, color: Colors.grey.shade400),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        'No scheduled deliveries for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
-                                        style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w500),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      OutlinedButton.icon(
-                                        onPressed: () => Navigator.push(
-                                          context,
-                                          MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)),
-                                        ),
-                                        icon: const Icon(Icons.storefront_outlined, size: 20),
-                                        label: const Text('Store Order', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                                      ),
-                                    ],
+                              ? EmptyStateWidget(
+                                  icon: Icons.local_shipping_outlined,
+                                  title: 'No scheduled deliveries',
+                                  message: 'No deliveries recorded for ${DateFormat('d MMM yyyy').format(_selectedDate)}.',
+                                  actionLabel: 'Store Order',
+                                  actionIcon: Icons.storefront_outlined,
+                                  onAction: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => BookOrderPage(initialDate: _selectedDate)),
                                   ),
                                 )
                               : filteredDocs.isEmpty
-                              ? Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'No matching ${_selectedStatusFilter != 'All' ? _selectedStatusFilter : ''} records found',
-                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                                      ),
-                                    ],
-                                  ),
+                              ? EmptyStateWidget(
+                                  icon: Icons.search_off_rounded,
+                                  title: 'No matching records found',
+                                  message: _selectedStatusFilter != 'All'
+                                      ? 'No deliveries matching "$_selectedStatusFilter" filter.'
+                                      : 'Try adjusting your search query.',
                                 )
                               : ListView.separated(
                                   primary: false,
@@ -1242,47 +1249,22 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                   },
                                 ))
                           : (vanSellDocs.isEmpty
-                              ? Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.directions_car_filled_outlined, size: 48, color: Colors.teal.shade300),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        'No Van Sell transactions for ${DateFormat('d MMM yyyy').format(_selectedDate)}',
-                                        style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Sell directly to stores off your van load stock.',
-                                        style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      AsyncFilledButton.icon(
-                                        style: FilledButton.styleFrom(backgroundColor: Colors.teal),
-                                        onPressed: () async {
-                                          await Navigator.push(context, MaterialPageRoute(builder: (_) => const VanSellPage()));
-                                          prefetchData();
-                                        },
-                                        icon: const Icon(Icons.add, size: 20),
-                                        label: const Text('New Van Sell', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      ),
-                                    ],
-                                  ),
+                              ? EmptyStateWidget(
+                                  icon: Icons.directions_car_filled_outlined,
+                                  title: 'No Van Sell transactions',
+                                  message: 'No transactions for ${DateFormat('d MMM yyyy').format(_selectedDate)}. Sell directly to stores off your van load stock.',
+                                  actionLabel: 'New Van Sell',
+                                  actionIcon: Icons.add_rounded,
+                                  onAction: () async {
+                                    await Navigator.push(context, MaterialPageRoute(builder: (_) => const VanSellPage()));
+                                    prefetchData();
+                                  },
                                 )
                               : filteredDocs.isEmpty
-                              ? Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.search_off, size: 40, color: Colors.grey.shade400),
-                                      const SizedBox(height: 8),
-                                      const Text(
-                                        'No matching van sell records found',
-                                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                                      ),
-                                    ],
-                                  ),
+                              ? const EmptyStateWidget(
+                                  icon: Icons.search_off_rounded,
+                                  title: 'No matching records found',
+                                  message: 'No van sell records match your query.',
                                 )
                               : ListView.separated(
                                   primary: false,
@@ -1362,15 +1344,10 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
     final targetPjpDay = _controller.getPreviousPjpDayName(_selectedDate, _storesByName);
 
     if (_editableDeliveryIDs.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Text(
-            'No orders or deliveries for ${_dateLabel()}.',
-            style: TextStyle(fontSize: 14, color: colorScheme.onSurfaceVariant),
-            textAlign: TextAlign.center,
-          ),
-        ),
+      return EmptyStateWidget(
+        icon: Icons.local_shipping_outlined,
+        title: 'No orders or deliveries',
+        message: 'No deliveries recorded for ${_dateLabel()}.',
       );
     }
 
@@ -1477,13 +1454,13 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: Colors.teal.withValues(alpha: 0.12),
+                                      color: colorScheme.secondary.withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: Colors.teal.withValues(alpha: 0.4), width: 1),
+                                      border: Border.all(color: colorScheme.secondary.withValues(alpha: 0.4), width: 1),
                                     ),
-                                    child: const Text(
+                                    child: Text(
                                       'VAN SELL',
-                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.teal),
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: colorScheme.secondary),
                                     ),
                                   ),
                                 _statusBadge(delivery.transactionStatus),

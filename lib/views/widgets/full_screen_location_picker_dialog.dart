@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:selecta_ops/models/map_tile_style.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/map_style_switcher_button.dart';
 
@@ -55,9 +56,7 @@ class _FullScreenLocationPickerDialogState
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission denied')),
-          );
+          ShowMessage.warning(context, 'Location permission denied');
         }
         return;
       }
@@ -71,9 +70,7 @@ class _FullScreenLocationPickerDialogState
       if (mounted) setState(() {});
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not get GPS: $e')),
-        );
+        ShowMessage.error(context, 'Could not get GPS: $e');
       }
     } finally {
       if (mounted) setState(() => _isLocating = false);

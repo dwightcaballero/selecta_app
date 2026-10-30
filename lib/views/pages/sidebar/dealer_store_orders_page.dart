@@ -4,6 +4,7 @@ import 'package:selecta_ops/controllers/store_order_controller.dart';
 import 'package:selecta_ops/models/store_order.dart';
 import 'package:selecta_ops/views/pages/sidebar/dealer_store_order_review_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/empty_state_widget.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
 /// Dealer / Admin Store Orders Management Inbox.
@@ -248,41 +249,12 @@ class _DealerStoreOrdersPageState extends State<DealerStoreOrdersPage>
         }
 
         if (orders.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.inbox_outlined,
-                      size: 36,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _searchQuery.isNotEmpty ? 'No orders match your search' : 'No orders in this category',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _searchQuery.isNotEmpty
-                        ? 'Try searching with a different order number or store name.'
-                        : 'Store orders submitted by Hapi Stores will appear here.',
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
+          return EmptyStateWidget(
+            icon: Icons.inbox_outlined,
+            title: _searchQuery.isNotEmpty ? 'No orders match your search' : 'No orders in this category',
+            message: _searchQuery.isNotEmpty
+                ? 'Try searching with a different order number or store name.'
+                : 'Store orders submitted by Hapi Stores will appear here.',
           );
         }
 

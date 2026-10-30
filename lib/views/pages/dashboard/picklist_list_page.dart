@@ -20,7 +20,8 @@ import 'package:selecta_ops/views/widgets/marked_date_picker.dart';
 import 'package:selecta_ops/views/widgets/shimmer_loading.dart';
 
 class PicklistListPage extends StatefulWidget {
-  const PicklistListPage({super.key});
+  final VoidCallback? onOpenDrawer;
+  const PicklistListPage({super.key, this.onOpenDrawer});
 
   @override
   State<PicklistListPage> createState() => _PicklistListPageState();
@@ -534,6 +535,14 @@ class _PicklistListPageState extends State<PicklistListPage> {
           appBar: CustomAppbar(
             title: _isEditing ? 'Rearrange Picklist' : 'Booked Orders (Picklists)',
             subtitle: _isEditing ? 'Drag to reorder • ${_dateLabel()}' : 'Warehouse Picking • ${_dateLabel()}',
+            leading: widget.onOpenDrawer != null && !_isEditing
+                ? IconButton(
+                    icon: const Icon(Icons.menu_rounded, color: Colors.white),
+                    onPressed: widget.onOpenDrawer,
+                    tooltip: 'Open Menu',
+                  )
+                : null,
+            showBackButton: !_isEditing && widget.onOpenDrawer == null,
             actions: [
               if (!_isEditing)
                 IconButton(

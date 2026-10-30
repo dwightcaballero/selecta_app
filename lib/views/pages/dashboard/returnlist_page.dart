@@ -185,7 +185,9 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
     bool isSelected = false,
     VoidCallback? onTap,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final displayAmount = delivery.returnAmount > 0 ? delivery.returnAmount : delivery.orderAmount;
     final isPartialReturn = delivery.returnAmount > 0 && delivery.returnAmount != delivery.orderAmount;
 
@@ -265,31 +267,31 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.amber.shade50,
+                              color: Colors.amber.withValues(alpha: isDark ? 0.2 : 0.08),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.amber.shade300),
+                              border: Border.all(color: Colors.amber.withValues(alpha: isDark ? 0.4 : 0.25)),
                             ),
                             child: Text(
                               'Partial Return',
-                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: isDark ? Colors.amber.shade300 : Colors.amber.shade900),
                             ),
                           ),
                         if (delivery.isReturnFinalized)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
+                              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.grey.shade400),
+                              border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.inventory_2_outlined, size: 10, color: Colors.grey.shade700),
+                                Icon(Icons.inventory_2_outlined, size: 10, color: colorScheme.onSurfaceVariant),
                                 const SizedBox(width: 3),
                                 Text(
                                   'Finalized',
-                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                                 ),
                               ],
                             ),
@@ -298,18 +300,18 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
+                              color: Colors.blue.withValues(alpha: isDark ? 0.2 : 0.08),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.blue.shade300),
+                              border: Border.all(color: Colors.blue.withValues(alpha: isDark ? 0.4 : 0.25)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.check_circle_outline, size: 10, color: Colors.blue.shade700),
+                                Icon(Icons.check_circle_outline, size: 10, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700),
                                 const SizedBox(width: 3),
                                 Text(
                                   'Rescheduled',
-                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.blue.shade800),
+                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: isDark ? Colors.blue.shade300 : Colors.blue.shade800),
                                 ),
                               ],
                             ),
@@ -318,18 +320,18 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: Colors.green.shade50,
+                              color: Colors.green.withValues(alpha: isDark ? 0.2 : 0.08),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: Colors.green.shade300),
+                              border: Border.all(color: Colors.green.withValues(alpha: isDark ? 0.4 : 0.25)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.check_circle_rounded, size: 10, color: Colors.green.shade700),
+                                Icon(Icons.check_circle_rounded, size: 10, color: isDark ? Colors.green.shade300 : Colors.green.shade700),
                                 const SizedBox(width: 3),
                                 Text(
                                   'Approved (Action Needed)',
-                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green.shade800),
+                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: isDark ? Colors.green.shade300 : Colors.green.shade800),
                                 ),
                               ],
                             ),
@@ -424,6 +426,7 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
       );
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final displayAmount = delivery.returnAmount > 0 ? delivery.returnAmount : delivery.orderAmount;
     final isPartialReturn = delivery.returnAmount > 0 && delivery.returnAmount != delivery.orderAmount;
 
@@ -493,22 +496,22 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
+                          color: Colors.amber.withValues(alpha: isDark ? 0.2 : 0.08),
                           borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: Colors.amber.shade300),
+                          border: Border.all(color: Colors.amber.withValues(alpha: isDark ? 0.4 : 0.25)),
                         ),
                         child: Text(
                           'Partial Return (Orig: ${Helperfunctions.formatDoubleAmountForDisplay(delivery.orderAmount)})',
-                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: isDark ? Colors.amber.shade300 : Colors.amber.shade900),
                         ),
                       ),
                     if (delivery.isReturnFinalized)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
+                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: Colors.grey.shade400),
+                          border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
                         ),
                         child: const Text('Finalized', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
                       )
@@ -516,21 +519,21 @@ class _ReturnlistPageState extends State<ReturnlistPage> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
+                          color: Colors.blue.withValues(alpha: isDark ? 0.2 : 0.08),
                           borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: Colors.blue.shade300),
+                          border: Border.all(color: Colors.blue.withValues(alpha: isDark ? 0.4 : 0.25)),
                         ),
-                        child: Text('Rescheduled', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.blue.shade800)),
+                        child: Text('Rescheduled', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: isDark ? Colors.blue.shade300 : Colors.blue.shade800)),
                       )
                     else if (delivery.isReturnApprovedByDealer)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.green.shade50,
+                          color: Colors.green.withValues(alpha: isDark ? 0.2 : 0.08),
                           borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: Colors.green.shade300),
+                          border: Border.all(color: Colors.green.withValues(alpha: isDark ? 0.4 : 0.25)),
                         ),
-                        child: Text('Approved (Action Needed)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+                        child: Text('Approved (Action Needed)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: isDark ? Colors.green.shade300 : Colors.green.shade800)),
                       )
                     else
                       Container(

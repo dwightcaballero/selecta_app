@@ -100,7 +100,7 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.teal.shade300, width: 1.5),
+        side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.5), width: 1.5),
       ),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -439,15 +439,15 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
                       decoration: BoxDecoration(
-                        color: (shortages.length + missing.length) > 0 ? Colors.red.shade50 : Colors.grey.shade100,
+                        color: (shortages.length + missing.length) > 0 ? Colors.red.withValues(alpha: 0.12) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Shortages', style: TextStyle(fontSize: 10.5, color: (shortages.length + missing.length) > 0 ? Colors.red.shade700 : Colors.grey, fontWeight: FontWeight.w600)),
+                          Text('Shortages', style: TextStyle(fontSize: 10.5, color: (shortages.length + missing.length) > 0 ? Colors.red.shade700 : colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 2),
-                          Text('${shortages.length + missing.length}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: (shortages.length + missing.length) > 0 ? Colors.red.shade800 : Colors.black87)),
+                          Text('${shortages.length + missing.length}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: (shortages.length + missing.length) > 0 ? Colors.red.shade800 : colorScheme.onSurface)),
                         ],
                       ),
                     ),
@@ -457,15 +457,15 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
                       decoration: BoxDecoration(
-                        color: (excess.length + extra.length) > 0 ? Colors.blue.shade50 : Colors.grey.shade100,
+                        color: (excess.length + extra.length) > 0 ? Colors.blue.withValues(alpha: 0.12) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Excess', style: TextStyle(fontSize: 10.5, color: (excess.length + extra.length) > 0 ? Colors.blue.shade700 : Colors.grey, fontWeight: FontWeight.w600)),
+                          Text('Excess', style: TextStyle(fontSize: 10.5, color: (excess.length + extra.length) > 0 ? Colors.blue.shade700 : colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 2),
-                          Text('${excess.length + extra.length}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: (excess.length + extra.length) > 0 ? Colors.blue.shade800 : Colors.black87)),
+                          Text('${excess.length + extra.length}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: (excess.length + extra.length) > 0 ? Colors.blue.shade800 : colorScheme.onSurface)),
                         ],
                       ),
                     ),
@@ -475,15 +475,15 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
                       decoration: BoxDecoration(
-                        color: matched.isNotEmpty ? Colors.green.shade50 : Colors.grey.shade100,
+                        color: matched.isNotEmpty ? Colors.green.withValues(alpha: 0.12) : colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Matched', style: TextStyle(fontSize: 10.5, color: matched.isNotEmpty ? Colors.green.shade700 : Colors.grey, fontWeight: FontWeight.w600)),
+                          Text('Matched', style: TextStyle(fontSize: 10.5, color: matched.isNotEmpty ? Colors.green.shade700 : colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 2),
-                          Text('${matched.length}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: matched.isNotEmpty ? Colors.green.shade800 : Colors.black87)),
+                          Text('${matched.length}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: matched.isNotEmpty ? Colors.green.shade800 : colorScheme.onSurface)),
                         ],
                       ),
                     ),
@@ -503,9 +503,9 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         decoration: BoxDecoration(
-                          color: invoiceSelectedTab == 0 ? Colors.teal : Colors.transparent,
+                          color: invoiceSelectedTab == 0 ? colorScheme.primary : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: invoiceSelectedTab == 0 ? Colors.teal : Colors.grey.shade300),
+                          border: Border.all(color: invoiceSelectedTab == 0 ? colorScheme.primary : colorScheme.outlineVariant),
                         ),
                         child: Center(
                           child: Text(
@@ -513,7 +513,7 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: invoiceSelectedTab == 0 ? Colors.white : Colors.black87,
+                              color: invoiceSelectedTab == 0 ? colorScheme.onPrimary : colorScheme.onSurface,
                             ),
                           ),
                         ),
@@ -528,9 +528,9 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         decoration: BoxDecoration(
-                          color: invoiceSelectedTab == 1 ? Colors.teal : Colors.transparent,
+                          color: invoiceSelectedTab == 1 ? colorScheme.primary : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: invoiceSelectedTab == 1 ? Colors.teal : Colors.grey.shade300),
+                          border: Border.all(color: invoiceSelectedTab == 1 ? colorScheme.primary : colorScheme.outlineVariant),
                         ),
                         child: Center(
                           child: Text(
@@ -538,7 +538,7 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: invoiceSelectedTab == 1 ? Colors.white : Colors.black87,
+                              color: invoiceSelectedTab == 1 ? colorScheme.onPrimary : colorScheme.onSurface,
                             ),
                           ),
                         ),
@@ -683,7 +683,7 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                                                       ),
                                                       TextSpan(
                                                         text: item.rawDocText,
-                                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
                                                       ),
                                                     ],
                                                   ),

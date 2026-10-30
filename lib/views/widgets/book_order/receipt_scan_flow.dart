@@ -315,7 +315,8 @@ class ReceiptScanFlow {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
-            final colorScheme = Theme.of(ctx).colorScheme;
+            final theme = Theme.of(ctx);
+            final colorScheme = theme.colorScheme;
             const warnColor = Color(0xFFD97706);
             final allGood = capped.isEmpty && skipped.isEmpty;
             final currentLines = getScannedLines != null ? getScannedLines() : (scannedLines ?? const []);
@@ -519,7 +520,7 @@ class ReceiptScanFlow {
                                                 ),
                                                 TextSpan(
                                                   text: line.rawText,
-                                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.black87),
+                                                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                                                 ),
                                               ],
                                             ),

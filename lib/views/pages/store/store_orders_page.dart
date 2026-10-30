@@ -6,6 +6,7 @@ import 'package:selecta_ops/models/store_order.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/views/pages/store/store_order_detail_page.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/empty_state_widget.dart';
 
 /// Store Order History View.
 /// Displays all submitted, approved, out-for-delivery, and completed orders with status filtering.
@@ -197,39 +198,14 @@ class _StoreOrdersPageState extends State<StoreOrdersPage> {
                     }).toList();
 
                     if (filteredOrders.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 72,
-                                height: 72,
-                                decoration: BoxDecoration(
-                                  color: colorScheme.primary.withValues(alpha: 0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.receipt_long_outlined, size: 36, color: colorScheme.primary),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _selectedStatusFilter == 'All'
-                                    ? 'No orders placed yet'
-                                    : 'No orders with status "$_selectedStatusFilter"',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                _selectedStatusFilter == 'All'
-                                    ? 'Orders placed via the catalog will appear here.'
-                                    : 'Try selecting another status filter above.',
-                                style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 13),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
+                      return EmptyStateWidget(
+                        icon: Icons.receipt_long_outlined,
+                        title: _selectedStatusFilter == 'All'
+                            ? 'No orders placed yet'
+                            : 'No orders with status "$_selectedStatusFilter"',
+                        message: _selectedStatusFilter == 'All'
+                            ? 'Orders placed via the catalog will appear here.'
+                            : 'Try selecting another status filter above.',
                       );
                     }
 

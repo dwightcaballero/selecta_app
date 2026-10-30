@@ -237,7 +237,7 @@ class ProductOrderCard extends StatelessWidget {
                                 const SizedBox(height: 2),
                                 Text(
                                   rawReceiptText!.trim(),
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black87, height: 1.25),
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: colorScheme.onSurface, height: 1.25),
                                 ),
                               ],
                             ),

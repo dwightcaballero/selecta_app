@@ -17,6 +17,7 @@ import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/book_order/product_order_card.dart';
 import 'package:selecta_ops/views/widgets/cached_product_image.dart';
+import 'package:selecta_ops/views/widgets/empty_state_widget.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
 import 'package:selecta_ops/views/widgets/snackbar_widget.dart';
 
@@ -224,8 +225,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
               ),
               ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
-                  child: const Icon(Icons.camera_alt_outlined, color: Colors.teal),
+                  backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                  child: Icon(Icons.camera_alt_outlined, color: colorScheme.primary),
                 ),
                 title: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: const Text('Capture loaded van with camera'),
@@ -236,8 +237,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
               ),
               ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: Colors.teal.withValues(alpha: 0.1),
-                  child: const Icon(Icons.photo_library_outlined, color: Colors.teal),
+                  backgroundColor: colorScheme.primary.withValues(alpha: 0.1),
+                  child: Icon(Icons.photo_library_outlined, color: colorScheme.primary),
                 ),
                 title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: const Text('Select photo from gallery'),
@@ -432,77 +433,83 @@ class _VanLoadPageState extends State<VanLoadPage> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.local_shipping_rounded, color: Colors.teal),
-            SizedBox(width: 8),
-            Text('Confirm & Load Van', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'You are loading $_totalLoadedUnits units (${Helperfunctions.formatDoubleAmountForDisplay(_totalLoadedAmount)}) onto the van.',
-              style: const TextStyle(fontSize: 14.5),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.amber.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.amber.shade300),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Warehouse stock will be deducted immediately with "Van Load" movement logs.',
-                      style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.green.shade200),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.verified_outlined, size: 18, color: Colors.green),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Proof of Van Load is attached.',
-                      style: TextStyle(fontSize: 12.5, color: Colors.green, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text('Proceed with loading?', style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.teal),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Confirm & Deduct Stock'),
+      builder: (ctx) {
+        final dTheme = Theme.of(ctx);
+        final dColorScheme = dTheme.colorScheme;
+        final dIsDark = dTheme.brightness == Brightness.dark;
+
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.local_shipping_rounded, color: dColorScheme.primary),
+              const SizedBox(width: 8),
+              const Text('Confirm & Load Van', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
           ),
-        ],
-      ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You are loading $_totalLoadedUnits units (${Helperfunctions.formatDoubleAmountForDisplay(_totalLoadedAmount)}) onto the van.',
+                style: const TextStyle(fontSize: 14.5),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: dIsDark ? 0.2 : 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.withValues(alpha: dIsDark ? 0.5 : 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: dIsDark ? Colors.amber.shade300 : Colors.amber.shade900, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Warehouse stock will be deducted immediately with "Van Load" movement logs.',
+                        style: TextStyle(fontSize: 12.5, color: dIsDark ? Colors.amber.shade300 : Colors.amber.shade900, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: dIsDark ? 0.2 : 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.withValues(alpha: dIsDark ? 0.4 : 0.25)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.verified_outlined, size: 18, color: dIsDark ? Colors.green.shade300 : Colors.green),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Proof of Van Load is attached.',
+                        style: TextStyle(fontSize: 12.5, color: dIsDark ? Colors.green.shade300 : Colors.green.shade800, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Proceed with loading?', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: dColorScheme.primary),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirm & Deduct Stock'),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed != true) return;
@@ -614,57 +621,63 @@ class _VanLoadPageState extends State<VanLoadPage> {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.edit_note_rounded, color: Colors.teal),
-            SizedBox(width: 8),
-            Text('Save Van Load Changes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Updated load: $_totalLoadedUnits units (${Helperfunctions.formatDoubleAmountForDisplay(_totalLoadedAmount)}).',
-              style: const TextStyle(fontSize: 14.5),
-            ),
-            const SizedBox(height: 12),
-            if (_editingOriginalLoad!.isStockDeducted && !_editingOriginalLoad!.isStockSettled)
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.amber.shade300),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline_rounded, color: Colors.amber.shade900, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Warehouse stock differences will be automatically adjusted with audit logs.',
-                        style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 12),
-            const Text('Confirm and apply changes?', style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.teal),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Save Changes'),
+      builder: (ctx) {
+        final dTheme = Theme.of(ctx);
+        final dColorScheme = dTheme.colorScheme;
+        final dIsDark = dTheme.brightness == Brightness.dark;
+
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.edit_note_rounded, color: dColorScheme.primary),
+              const SizedBox(width: 8),
+              const Text('Save Van Load Changes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ],
           ),
-        ],
-      ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Updated load: $_totalLoadedUnits units (${Helperfunctions.formatDoubleAmountForDisplay(_totalLoadedAmount)}).',
+                style: const TextStyle(fontSize: 14.5),
+              ),
+              const SizedBox(height: 12),
+              if (_editingOriginalLoad!.isStockDeducted && !_editingOriginalLoad!.isStockSettled)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: dIsDark ? 0.2 : 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber.withValues(alpha: dIsDark ? 0.5 : 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: dIsDark ? Colors.amber.shade300 : Colors.amber.shade900, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Warehouse stock differences will be automatically adjusted with audit logs.',
+                          style: TextStyle(fontSize: 12.5, color: dIsDark ? Colors.amber.shade300 : Colors.amber.shade900, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              const Text('Confirm and apply changes?', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: dColorScheme.primary),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save Changes'),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirmed != true) return;
@@ -728,11 +741,15 @@ class _VanLoadPageState extends State<VanLoadPage> {
             totalReturnedValue += item.sellingPrice * qty;
           }
 
+          final mTheme = Theme.of(ctx);
+          final mColorScheme = mTheme.colorScheme;
+          final mIsDark = mTheme.brightness == Brightness.dark;
+
           return Container(
             height: MediaQuery.of(ctx).size.height * 0.85,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            decoration: BoxDecoration(
+              color: mTheme.scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             ),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             child: Column(
@@ -742,7 +759,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   child: Container(
                     width: 40,
                     height: 4,
-                    decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                    decoration: BoxDecoration(color: mColorScheme.outlineVariant, borderRadius: BorderRadius.circular(2)),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -750,8 +767,11 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.assignment_turned_in_outlined, color: Colors.teal),
+                      decoration: BoxDecoration(
+                        color: mColorScheme.primary.withValues(alpha: mIsDark ? 0.2 : 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.assignment_turned_in_outlined, color: mColorScheme.primary),
                     ),
                     const SizedBox(width: 10),
                     const Expanded(
@@ -770,17 +790,17 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.teal.shade50.withValues(alpha: 0.5),
+                    color: mColorScheme.primary.withValues(alpha: mIsDark ? 0.15 : 0.06),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.teal.shade200),
+                    border: Border.all(color: mColorScheme.primary.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _buildMiniStat('Loaded', '${vanLoad.totalLoadedUnits}'),
                       _buildMiniStat('Sold', '${vanLoad.totalSoldUnits}', color: Colors.green.shade700),
-                      _buildMiniStat('Returning', '$totalReturnedUnits', color: Colors.teal.shade800),
-                      _buildMiniStat('Return Value', Helperfunctions.formatDoubleAmountForDisplay(totalReturnedValue), color: Colors.teal.shade800),
+                      _buildMiniStat('Returning', '$totalReturnedUnits', color: mColorScheme.primary),
+                      _buildMiniStat('Return Value', Helperfunctions.formatDoubleAmountForDisplay(totalReturnedValue), color: mColorScheme.primary),
                     ],
                   ),
                 ),
@@ -845,7 +865,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: Colors.teal,
+                    backgroundColor: mColorScheme.primary,
                     minimumSize: const Size.fromHeight(48),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
@@ -1070,6 +1090,9 @@ class _VanLoadPageState extends State<VanLoadPage> {
               );
             }
 
+            final hTheme = Theme.of(context);
+            final hColorScheme = hTheme.colorScheme;
+
             return ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -1084,7 +1107,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                     side: BorderSide(
-                      color: isCurrent ? Colors.teal : Colors.grey.shade200,
+                      color: isCurrent ? hColorScheme.primary : hColorScheme.outlineVariant.withValues(alpha: 0.5),
                       width: isCurrent ? 1.5 : 1,
                     ),
                   ),
@@ -1098,10 +1121,10 @@ class _VanLoadPageState extends State<VanLoadPage> {
                     leading: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: isCurrent ? Colors.teal.shade50 : Colors.grey.shade100,
+                        color: isCurrent ? hColorScheme.primary.withValues(alpha: 0.12) : hColorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Icon(Icons.local_shipping_rounded, color: isCurrent ? Colors.teal : Colors.grey.shade700),
+                      child: Icon(Icons.local_shipping_rounded, color: isCurrent ? hColorScheme.primary : hColorScheme.onSurfaceVariant),
                     ),
                     title: Row(
                       children: [
@@ -1181,11 +1204,11 @@ class _VanLoadPageState extends State<VanLoadPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.teal.shade300, width: 1.5),
+        border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.5), width: 1.5),
         boxShadow: [
-          BoxShadow(color: Colors.teal.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(color: theme.colorScheme.primary.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
@@ -1199,8 +1222,11 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.local_shipping_rounded, color: Colors.teal, size: 24),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.local_shipping_rounded, color: theme.colorScheme.primary, size: 24),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -1235,7 +1261,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text('${(progress * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.teal)),
+                  Text('${(progress * 100).toStringAsFixed(0)}%', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                 ],
               ),
               const SizedBox(height: 6),
@@ -1244,8 +1270,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 child: LinearProgressIndicator(
                   value: progress,
                   minHeight: 8,
-                  backgroundColor: Colors.teal.shade50,
-                  valueColor: const AlwaysStoppedAnimation<Color>(Colors.teal),
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.15),
+                  valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
                 ),
               ),
             ],
@@ -1256,7 +1282,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
             children: [
               _buildMiniStat('Loaded', '${load.totalLoadedUnits} units'),
               _buildMiniStat('Sold Value', Helperfunctions.formatDoubleAmountForDisplay(load.calculatedSoldAmount), color: Colors.green.shade700),
-              _buildMiniStat('Remaining', '${load.totalAvailableUnits} units', color: Colors.teal.shade800),
+              _buildMiniStat('Remaining', '${load.totalAvailableUnits} units', color: theme.colorScheme.primary),
             ],
           ),
           if (load.remarks.trim().isNotEmpty) ...[
@@ -1265,13 +1291,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.grey.shade50,
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade200),
+                border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
               ),
               child: Text(
                 'Remarks: ${load.remarks.trim()}',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontStyle: FontStyle.italic),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant, fontStyle: FontStyle.italic),
               ),
             ),
           ],
@@ -1323,7 +1349,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                         ],
                       ),
                     ),
-                    const Icon(Icons.fullscreen, size: 20, color: Colors.teal),
+                    Icon(Icons.fullscreen, size: 20, color: theme.colorScheme.primary),
                   ],
                 ),
               ),
@@ -1336,7 +1362,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
               width: double.infinity,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.teal,
+                  backgroundColor: theme.colorScheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 11),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -1351,8 +1377,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.teal.shade800,
-                      side: BorderSide(color: Colors.teal.shade300),
+                      foregroundColor: theme.colorScheme.primary,
+                      side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -1366,8 +1392,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   Expanded(
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.teal.shade800,
-                        side: BorderSide(color: Colors.teal.shade600),
+                        foregroundColor: theme.colorScheme.primary,
+                        side: BorderSide(color: theme.colorScheme.primary),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
@@ -1384,7 +1410,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
               width: double.infinity,
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.teal,
+                  backgroundColor: theme.colorScheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 11),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -1402,8 +1428,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.teal.shade800,
-                      side: BorderSide(color: Colors.teal.shade300),
+                      foregroundColor: theme.colorScheme.primary,
+                      side: BorderSide(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
@@ -1417,7 +1443,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   Expanded(
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.teal,
+                        backgroundColor: theme.colorScheme.primary,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
@@ -1436,46 +1462,35 @@ class _VanLoadPageState extends State<VanLoadPage> {
   }
 
   Widget _buildNoActiveLoadCard(ThemeData theme) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
+        side: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
-      child: Column(
-        children: [
-          Icon(Icons.no_transfer_outlined, size: 48, color: Colors.grey.shade400),
-          const SizedBox(height: 12),
-          const Text('No Active Van Load', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(
-            _isDealer
-                ? 'Create a manifest to load products from warehouse inventory onto the van.'
-                : 'Only dealers are allowed to create a van load record.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-          ),
-          if (_isDealer) ...[
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: Colors.teal),
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('Create New Van Load', style: TextStyle(fontWeight: FontWeight.bold)),
-              onPressed: () {
-                setState(() {
-                  _isCreatingNew = true;
-                  _currentVanLoad = null;
-                  _loadedQuantities.clear();
-                  for (final c in _qtyControllers.values) {
-                    c.clear();
-                  }
-                });
-              },
-            ),
-          ],
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: EmptyStateWidget(
+          icon: Icons.no_transfer_outlined,
+          title: 'No Active Van Load',
+          description: _isDealer
+              ? 'Create a manifest to load products from warehouse inventory onto the van.'
+              : 'Only dealers are allowed to create a van load record.',
+          actionText: _isDealer ? 'Create New Van Load' : null,
+          actionIcon: _isDealer ? Icons.add : null,
+          onActionPressed: _isDealer
+              ? () {
+                  setState(() {
+                    _isCreatingNew = true;
+                    _currentVanLoad = null;
+                    _loadedQuantities.clear();
+                    for (final c in _qtyControllers.values) {
+                      c.clear();
+                    }
+                  });
+                }
+              : null,
+        ),
       ),
     );
   }
@@ -1597,7 +1612,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
               actions: [
                 TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
                 FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: Colors.teal),
+                  style: FilledButton.styleFrom(backgroundColor: Theme.of(dCtx).colorScheme.primary),
                   onPressed: () {
                     final raw = int.tryParse(controller.text.trim()) ?? minAllowed;
                     final qty = raw.clamp(minAllowed, effectiveMax);
@@ -1629,6 +1644,10 @@ class _VanLoadPageState extends State<VanLoadPage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (sheetCtx, setSheetState) {
+            final sTheme = Theme.of(sheetCtx);
+            final sColorScheme = sTheme.colorScheme;
+            final isDark = sTheme.brightness == Brightness.dark;
+
             final loadedItems = _allInventoryItems.where((i) => (_loadedQuantities[i.id] ?? 0) > 0).toList();
             loadedItems.sort((a, b) => Helperfunctions.compareProducts(
                   nameA: a.productName,
@@ -1666,7 +1685,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                       ),
                       Row(
                         children: [
-                          Icon(Icons.local_shipping_outlined, color: Colors.teal.shade800, size: 22),
+                          Icon(Icons.local_shipping_outlined, color: sColorScheme.primary, size: 22),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -1712,7 +1731,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                             const SizedBox(width: 4),
                             FilledButton.icon(
                               style: FilledButton.styleFrom(
-                                backgroundColor: Colors.teal,
+                                backgroundColor: sColorScheme.primary,
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1728,7 +1747,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                             const SizedBox(width: 4),
                             FilledButton.icon(
                               style: FilledButton.styleFrom(
-                                backgroundColor: Colors.teal,
+                                backgroundColor: sColorScheme.primary,
                                 visualDensity: VisualDensity.compact,
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1837,16 +1856,16 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                         padding: const EdgeInsets.only(left: 54),
                                         child: Text(
                                           Helperfunctions.formatDoubleAmountForDisplay(lineTotal),
-                                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.teal.shade800),
+                                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: sColorScheme.primary),
                                         ),
                                       ),
                                       if (isQuantityEditable)
                                         Container(
                                           height: 32,
                                           decoration: BoxDecoration(
-                                            color: Colors.grey.shade100,
+                                            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
                                             borderRadius: BorderRadius.circular(16),
-                                            border: Border.all(color: Colors.grey.shade300),
+                                            border: Border.all(color: sColorScheme.outlineVariant.withValues(alpha: 0.5)),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
@@ -1869,7 +1888,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                                     size: 16,
                                                     color: (currentQty <= minAllowed && minAllowed > 0)
                                                         ? Colors.grey.shade400
-                                                        : (currentQty == 1 ? Colors.red : Colors.teal.shade800),
+                                                        : (currentQty == 1 ? Colors.red : sColorScheme.primary),
                                                   ),
                                                 ),
                                               ),
@@ -1884,7 +1903,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                                   alignment: Alignment.center,
                                                   child: Text(
                                                     '$currentQty',
-                                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: sColorScheme.primary),
                                                   ),
                                                 ),
                                               ),
@@ -1902,7 +1921,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                                   child: Icon(
                                                     Icons.add_rounded,
                                                     size: 16,
-                                                    color: currentQty < effectiveMax ? Colors.teal.shade800 : Colors.grey.shade400,
+                                                    color: currentQty < effectiveMax ? sColorScheme.primary : Colors.grey.shade400,
                                                   ),
                                                 ),
                                               ),
@@ -1912,8 +1931,12 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                       else
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                                          decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(6)),
-                                          child: Text('$currentQty loaded', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal.shade900)),
+                                          decoration: BoxDecoration(
+                                            color: sColorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.08),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: sColorScheme.primary.withValues(alpha: 0.25)),
+                                          ),
+                                          child: Text('$currentQty loaded', style: TextStyle(fontWeight: FontWeight.bold, color: sColorScheme.primary)),
                                         ),
                                     ],
                                   ),
@@ -1932,13 +1955,13 @@ class _VanLoadPageState extends State<VanLoadPage> {
                               Text('Total Amount', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                               Text(
                                 Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: sColorScheme.primary),
                               ),
                             ],
                           ),
                           FilledButton(
                             style: FilledButton.styleFrom(
-                              backgroundColor: Colors.teal,
+                              backgroundColor: sColorScheme.primary,
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             ),
@@ -1963,6 +1986,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
     final colorScheme = theme.colorScheme;
     final bool isBestSeller = ProductTag.isBestSeller(item.tag);
     final bool isNewProduct = ProductTag.isNewProduct(item.tag);
+    final bool isDark = theme.brightness == Brightness.dark;
 
     return Card(
       elevation: 0,
@@ -2067,10 +2091,14 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(6)),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: colorScheme.primary.withValues(alpha: 0.25)),
+                    ),
                     child: Text(
                       '$currentQty loaded',
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                      style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary),
                     ),
                   ),
                 ],
@@ -2122,15 +2150,18 @@ class _VanLoadPageState extends State<VanLoadPage> {
     final hasLocalImage = _proofImage != null;
     final hasNetworkImage = !hasLocalImage && _networkImagePath.trim().isNotEmpty;
     final hasImage = hasLocalImage || hasNetworkImage;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: hasImage ? Colors.teal.shade50.withValues(alpha: 0.35) : Colors.amber.shade50.withValues(alpha: 0.45),
+        color: hasImage
+            ? theme.colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.08)
+            : Colors.amber.shade50.withValues(alpha: isDark ? 0.2 : 0.45),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: hasImage ? Colors.teal.shade300 : Colors.amber.shade400,
+          color: hasImage ? theme.colorScheme.primary.withValues(alpha: 0.3) : Colors.amber.shade400,
           width: 1.0,
         ),
       ),
@@ -2197,10 +2228,10 @@ class _VanLoadPageState extends State<VanLoadPage> {
                         children: [
                           Text(
                             'Proof Attached',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary),
                           ),
                           const SizedBox(width: 4),
-                          Icon(Icons.check_circle_rounded, size: 13, color: Colors.teal.shade700),
+                          Icon(Icons.check_circle_rounded, size: 13, color: theme.colorScheme.primary),
                         ],
                       ),
                       Text(
@@ -2215,7 +2246,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                     visualDensity: VisualDensity.compact,
                     padding: const EdgeInsets.all(4),
                     constraints: const BoxConstraints(),
-                    icon: Icon(Icons.edit_outlined, size: 18, color: Colors.teal.shade800),
+                    icon: Icon(Icons.edit_outlined, size: 18, color: theme.colorScheme.primary),
                     tooltip: 'Change Photo',
                     onPressed: _showImageSourceSelector,
                   ),
@@ -2328,13 +2359,14 @@ class _VanLoadPageState extends State<VanLoadPage> {
   }
 
   Widget _buildRemarksSection(ThemeData theme, {required bool isEditable}) {
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       height: 38,
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade50,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
       ),
       child: TextField(
         controller: _remarksController,
@@ -2345,7 +2377,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           border: InputBorder.none,
-          prefixIcon: Icon(Icons.notes_rounded, size: 17, color: Colors.teal.shade700),
+          prefixIcon: Icon(Icons.notes_rounded, size: 17, color: theme.colorScheme.primary),
           hintText: isEditable ? 'Remarks / Notes (Optional)...' : 'No remarks recorded',
           hintStyle: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
         ),
@@ -2434,7 +2466,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
           title: 'By Piece',
           count: pieceProducts.length,
           icon: Icons.icecream_outlined,
-          accentColor: Colors.teal,
+          accentColor: theme.colorScheme.primary,
         ));
         for (final item in pieceProducts) {
           entries.add(_VanLoadProductEntry(item));
@@ -2464,7 +2496,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
         // Top info card
         Container(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          color: Colors.white,
+          color: theme.colorScheme.surface,
           child: Column(
             children: [
               _buildEditBanner(theme),
@@ -2491,7 +2523,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                         : null,
                     isDense: true,
                     filled: true,
-                    fillColor: Colors.grey.shade100,
+                    fillColor: theme.brightness == Brightness.dark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                   ),
@@ -2509,7 +2541,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                         child: ChoiceChip(
                           label: Text(cat, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                           selected: _selectedCategory == cat,
-                          selectedColor: Colors.teal.shade100,
+                          selectedColor: theme.colorScheme.primaryContainer,
                           onSelected: (sel) {
                             if (sel) setState(() => _selectedCategory = cat);
                           },
@@ -2616,6 +2648,8 @@ class _VanLoadPageState extends State<VanLoadPage> {
   }
 
   Widget _buildTabletManifestSummaryPanel(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
     final isDraft = _currentVanLoad == null || _currentVanLoad!.status == VanLoadStatus.draft;
     final isQuantityEditable = isDraft || (_isDealer && _isEditingExisting && !(_editingOriginalLoad?.isStockSettled ?? false));
     final loadedItems = _allInventoryItems.where((i) => (_loadedQuantities[i.id] ?? 0) > 0).toList();
@@ -2645,11 +2679,11 @@ class _VanLoadPageState extends State<VanLoadPage> {
               Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: Colors.teal.shade50,
+                  color: colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.08),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.teal.shade200),
+                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.25)),
                 ),
-                child: const Icon(Icons.receipt_long_rounded, color: Colors.teal, size: 20),
+                child: Icon(Icons.receipt_long_rounded, color: colorScheme.primary, size: 20),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -2790,16 +2824,16 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                 padding: const EdgeInsets.only(left: 50),
                                 child: Text(
                                   Helperfunctions.formatDoubleAmountForDisplay(lineTotal),
-                                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Colors.teal.shade800),
+                                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: colorScheme.primary),
                                 ),
                               ),
                               if (isQuantityEditable)
                                 Container(
                                   height: 30,
                                   decoration: BoxDecoration(
-                                    color: Colors.grey.shade100,
+                                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
                                     borderRadius: BorderRadius.circular(15),
-                                    border: Border.all(color: Colors.grey.shade300),
+                                    border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.5)),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -2821,7 +2855,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                             size: 15,
                                             color: (currentQty <= minAllowed && minAllowed > 0)
                                                 ? Colors.grey.shade400
-                                                : (currentQty == 1 ? Colors.red : Colors.teal.shade800),
+                                                : (currentQty == 1 ? Colors.red : colorScheme.primary),
                                           ),
                                         ),
                                       ),
@@ -2833,7 +2867,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                           alignment: Alignment.center,
                                           child: Text(
                                             '$currentQty',
-                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: colorScheme.primary),
                                           ),
                                         ),
                                       ),
@@ -2848,7 +2882,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                           child: Icon(
                                             Icons.add_rounded,
                                             size: 15,
-                                            color: currentQty < effectiveMax ? Colors.teal.shade800 : Colors.grey.shade400,
+                                            color: currentQty < effectiveMax ? colorScheme.primary : Colors.grey.shade400,
                                           ),
                                         ),
                                       ),
@@ -2858,8 +2892,12 @@ class _VanLoadPageState extends State<VanLoadPage> {
                               else
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(color: Colors.teal.shade50, borderRadius: BorderRadius.circular(6)),
-                                  child: Text('$currentQty loaded', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.teal.shade900)),
+                                  decoration: BoxDecoration(
+                                    color: colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.08),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: colorScheme.primary.withValues(alpha: 0.25)),
+                                  ),
+                                  child: Text('$currentQty loaded', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: colorScheme.primary)),
                                 ),
                             ],
                           ),
@@ -2878,7 +2916,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   Text('Total Load Amount', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
                   Text(
                     Helperfunctions.formatDoubleAmountForDisplay(totalAmount),
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.teal.shade900),
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: colorScheme.primary),
                   ),
                 ],
               ),
@@ -2905,7 +2943,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                     const SizedBox(width: 8),
                     AsyncFilledButton.icon(
                       style: FilledButton.styleFrom(
-                        backgroundColor: Colors.teal,
+                        backgroundColor: colorScheme.primary,
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
@@ -2919,7 +2957,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
               else if (isDraft && _isDealer)
                 AsyncFilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: Colors.teal,
+                    backgroundColor: colorScheme.primary,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
@@ -2951,16 +2989,18 @@ class _VanLoadPageState extends State<VanLoadPage> {
   }
 
   Widget _buildBottomActionBar(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final colorScheme = theme.colorScheme;
     final isDraft = _currentVanLoad == null || _currentVanLoad!.status == VanLoadStatus.draft;
     final loadedSkuCount = _loadedQuantities.values.where((q) => q > 0).length;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey.shade300)),
+        color: colorScheme.surface,
+        border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6))),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -2)),
+          BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05), blurRadius: 10, offset: const Offset(0, -2)),
         ],
       ),
       child: SafeArea(
@@ -2977,11 +3017,11 @@ class _VanLoadPageState extends State<VanLoadPage> {
                       Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.teal.shade50,
+                          color: colorScheme.primary.withValues(alpha: isDark ? 0.2 : 0.08),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.teal.shade200),
+                          border: Border.all(color: colorScheme.primary.withValues(alpha: 0.25)),
                         ),
-                        child: const Icon(Icons.receipt_long_rounded, color: Colors.teal, size: 18),
+                        child: Icon(Icons.receipt_long_rounded, color: colorScheme.primary, size: 18),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -3000,12 +3040,12 @@ class _VanLoadPageState extends State<VanLoadPage> {
                                   ),
                                 ),
                                 const SizedBox(width: 2),
-                                const Icon(Icons.keyboard_arrow_up_rounded, size: 16, color: Colors.teal),
+                                Icon(Icons.keyboard_arrow_up_rounded, size: 16, color: colorScheme.primary),
                               ],
                             ),
                             Text(
                               Helperfunctions.formatDoubleAmountForDisplay(_totalLoadedAmount),
-                              style: TextStyle(fontSize: 15, color: Colors.teal.shade800, fontWeight: FontWeight.bold),
+                              style: TextStyle(fontSize: 15, color: colorScheme.primary, fontWeight: FontWeight.bold),
                               overflow: TextOverflow.ellipsis,
                               maxLines: 1,
                             ),
@@ -3043,7 +3083,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
                   AsyncFilledButton.icon(
                     style: FilledButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      backgroundColor: Colors.teal,
+                      backgroundColor: colorScheme.primary,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
@@ -3058,7 +3098,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
               AsyncFilledButton.icon(
                 style: FilledButton.styleFrom(
                   visualDensity: VisualDensity.compact,
-                  backgroundColor: Colors.teal,
+                  backgroundColor: colorScheme.primary,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
