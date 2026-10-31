@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/configuration_controller.dart';
 import 'package:selecta_ops/models/configuration.dart';
 import 'package:selecta_ops/models/sub_category.dart';
+import 'package:selecta_ops/services/sms_gateway_service.dart';
 import 'package:selecta_ops/services/thermal_printer_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/admin_promos_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/product_sorting_page.dart';
@@ -47,20 +48,31 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   late final TextEditingController _throughputTargetController;
   late final TextEditingController _expansionTargetController;
   late final TextEditingController _creditSmsTemplateController;
+  late final TextEditingController _smsGatewayUrlController;
+  late final TextEditingController _smsGatewayTokenController;
 
   // State for collapsible cards
   bool _isMerchBlitzExpanded = false;
   bool _isKpiTargetsExpanded = false;
   bool _isCreditSmsExpanded = false;
+  bool _isSmsGatewayExpanded = false;
   bool _isWarehouseExpanded = false;
   bool _isPrinterExpanded = false;
   bool _isProductSortExpanded = false;
   bool _isPromosExpanded = false;
 
+  // SMS Gateway settings
+  bool _smsGatewayEnabled = true;
+  int _smsGatewaySimSlot = 1;
+  bool _isTestingGateway = false;
+  String? _gatewayHealthMessage;
+  bool? _isGatewayOnline;
+
   bool get _allExpanded =>
       _isMerchBlitzExpanded &&
       _isKpiTargetsExpanded &&
       _isCreditSmsExpanded &&
+      _isSmsGatewayExpanded &&
       _isWarehouseExpanded &&
       _isPrinterExpanded &&
       _isProductSortExpanded &&
@@ -72,6 +84,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       _isMerchBlitzExpanded = shouldExpand;
       _isKpiTargetsExpanded = shouldExpand;
       _isCreditSmsExpanded = shouldExpand;
+      _isSmsGatewayExpanded = shouldExpand;
       _isWarehouseExpanded = shouldExpand;
       _isPrinterExpanded = shouldExpand;
       _isProductSortExpanded = shouldExpand;
@@ -92,6 +105,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     _creditSmsTemplateController.addListener(() {
       if (mounted) setState(() {});
     });
+    _smsGatewayUrlController = TextEditingController();
+    _smsGatewayUrlController.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _smsGatewayTokenController = TextEditingController();
     _loadConfiguration();
   }
 
@@ -101,6 +119,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     _throughputTargetController.dispose();
     _expansionTargetController.dispose();
     _creditSmsTemplateController.dispose();
+    _smsGatewayUrlController.dispose();
+    _smsGatewayTokenController.dispose();
     super.dispose();
   }
 
@@ -128,6 +148,10 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           _thermalPaperSize = paperSize;
           _printerName = pName;
           _isPrinterConnected = isConnected;
+          _smsGatewayEnabled = result.config.smsGatewayEnabled;
+          _smsGatewayUrlController.text = result.config.smsGatewayUrl;
+          _smsGatewayTokenController.text = result.config.smsGatewayToken;
+          _smsGatewaySimSlot = result.config.smsGatewaySimSlot;
           _isLoading = false;
         });
       }
@@ -220,6 +244,10 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         creditReminderSmsTemplate: smsTemplate,
         productSortMode: _productSortMode,
         subCategories: _subCategories,
+        smsGatewayEnabled: _smsGatewayEnabled,
+        smsGatewayUrl: _smsGatewayUrlController.text.trim(),
+        smsGatewayToken: _smsGatewayTokenController.text.trim(),
+        smsGatewaySimSlot: _smsGatewaySimSlot,
       );
 
       _configExistsInDb = true;
@@ -869,6 +897,187 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     );
   }
 
+  Future<void> _testSmsGatewayConnection() async {
+    setState(() {
+      _isTestingGateway = true;
+      _gatewayHealthMessage = null;
+      _isGatewayOnline = null;
+    });
+
+    try {
+      final result = await SmsGatewayService().checkHealth();
+      if (!mounted) return;
+      setState(() {
+        _isTestingGateway = false;
+        _isGatewayOnline = result.isOnline;
+        _gatewayHealthMessage = result.isOnline
+            ? 'Online (${result.latencyMs ?? 0}ms) • ${result.status}'
+            : result.status;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isTestingGateway = false;
+        _isGatewayOnline = false;
+        _gatewayHealthMessage = 'Check failed: $e';
+      });
+    }
+  }
+
+  Widget _buildSmsGatewayCard(ColorScheme colorScheme) {
+    final isConfigured = _smsGatewayUrlController.text.trim().isNotEmpty;
+    final badgeText = !_smsGatewayEnabled
+        ? 'Disabled'
+        : (isConfigured ? 'Configured' : 'Unconfigured');
+    final badgeColor = !_smsGatewayEnabled
+        ? Colors.grey
+        : (isConfigured ? const Color(0xFF10B981) : Colors.orange);
+
+    return _buildCollapsibleSectionCard(
+      isExpanded: _isSmsGatewayExpanded,
+      onToggle: () => setState(() => _isSmsGatewayExpanded = !_isSmsGatewayExpanded),
+      icon: Icons.cell_tower_rounded,
+      iconColor: const Color(0xFF0D9488),
+      title: 'Office SMS Gateway',
+      subtitle: 'Dispatch SMS via spare Android phone with unlimited SIM promo',
+      badgeText: badgeText,
+      badgeColor: badgeColor,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Enable Office SMS Gateway', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          subtitle: const Text('When disabled, the app falls back to the device\'s native SMS messenger.', style: TextStyle(fontSize: 12)),
+          value: _smsGatewayEnabled,
+          onChanged: (val) => setState(() => _smsGatewayEnabled = val),
+        ),
+        const SizedBox(height: 8),
+
+        // Info Banner
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D9488).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFF0D9488).withValues(alpha: 0.2)),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.verified_outlined, size: 18, color: Color(0xFF0D9488)),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '100% Google Play Compliant. Selecta Ops makes a secure Cloud Function call instead of requesting restricted SMS permissions on salesmen devices.',
+                  style: TextStyle(fontSize: 12, height: 1.35, color: Color(0xFF0F766E)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Gateway URL
+        TextField(
+          controller: _smsGatewayUrlController,
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            labelText: 'Gateway Phone URL *',
+            hintText: 'https://sms-gateway.yourcompany.org/message or http://192.168.1.120:8080',
+            prefixIcon: const Icon(Icons.link_rounded, size: 20),
+            helperText: 'Endpoint of android-sms-gateway app (via Cloudflare Tunnel, Cloud Relay, or LAN)',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Auth Token / Credentials
+        TextField(
+          controller: _smsGatewayTokenController,
+          decoration: InputDecoration(
+            labelText: 'API Token / Basic Auth (Optional)',
+            hintText: 'selecta_gateway:YourPassword or BearerToken',
+            prefixIcon: const Icon(Icons.key_rounded, size: 20),
+            helperText: 'Basic Auth credentials (username:password) or API token configured in gateway app',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // SIM Slot Selector
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<int>(
+                initialValue: _smsGatewaySimSlot,
+                decoration: InputDecoration(
+                  labelText: 'Default SIM Slot',
+                  prefixIcon: const Icon(Icons.sim_card_outlined, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 1, child: Text('SIM Slot 1 (Primary)')),
+                  DropdownMenuItem(value: 2, child: Text('SIM Slot 2 (Secondary)')),
+                ],
+                onChanged: (val) {
+                  if (val != null) setState(() => _smsGatewaySimSlot = val);
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Test Connection Button & Status Feedback
+        Row(
+          children: [
+            AsyncOutlinedButton.icon(
+              onPressed: _testSmsGatewayConnection,
+              loadingLabel: 'Pinging...',
+              icon: const Icon(Icons.network_ping_rounded, size: 16),
+              label: const Text('Test Connection', style: TextStyle(fontSize: 12.5)),
+            ),
+            const SizedBox(width: 12),
+            if (_isTestingGateway)
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (_isGatewayOnline != null)
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(
+                      _isGatewayOnline == true ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                      size: 16,
+                      color: _isGatewayOnline == true ? Colors.green : Colors.red,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _gatewayHealthMessage ?? '',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: _isGatewayOnline == true ? Colors.green.shade700 : Colors.red.shade700,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildWarehouseBarcodeCard(ColorScheme colorScheme) {
     return _buildCollapsibleSectionCard(
       isExpanded: _isWarehouseExpanded,
@@ -1495,6 +1704,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
                     // Credit Overdue SMS Reminder Card
                     _buildCreditReminderSmsCard(colorScheme),
+
+                    const SizedBox(height: 12),
+
+                    // Office SMS Gateway Relay Card
+                    _buildSmsGatewayCard(colorScheme),
 
                     const SizedBox(height: 12),
 

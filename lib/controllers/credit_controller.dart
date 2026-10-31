@@ -1,4 +1,3 @@
-import 'package:another_telephony/telephony.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/data/constants.dart';
@@ -10,6 +9,7 @@ import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
+import 'package:selecta_ops/services/sms_gateway_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Available sorting options for outstanding credit records.
@@ -341,24 +341,27 @@ class CreditController {
     return false;
   }
 
-  /// Directly dispatches an SMS using the in-app Telephony service.
-  ///
-  /// Requests required permissions if not yet granted.
-  Future<bool> sendDirectSms({required String phone, required String message}) async {
+  /// Dispatches an SMS using the Office SMS Gateway (or falls back to native device SMS app).
+  Future<bool> sendDirectSms({
+    required String phone,
+    required String message,
+    BuildContext? context,
+    String? storeName,
+  }) async {
     final formattedNumber = formatPhoneNumberForTelephony(phone);
     if (formattedNumber.isEmpty) return false;
 
-    final telephony = Telephony.instance;
-    final permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
-    if (permissionsGranted != true) {
-      return false;
+    if (context != null) {
+      final result = await SmsGatewayService().sendSms(
+        context: context,
+        phoneNumber: formattedNumber,
+        message: message,
+        storeName: storeName,
+        category: 'credit_reminder',
+      );
+      return result.isSuccessful;
     }
 
-    await telephony.sendSms(
-      to: formattedNumber,
-      message: message,
-      isMultipart: true,
-    );
-    return true;
+    return await launchSmsApp(phone: formattedNumber, message: message);
   }
 }

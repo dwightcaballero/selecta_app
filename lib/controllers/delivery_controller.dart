@@ -1,8 +1,9 @@
 import 'dart:io';
-import 'package:another_telephony/telephony.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/sms_gateway_service.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/data.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
@@ -941,18 +942,19 @@ class DeliveryController {
         'Please expect your stocks to arrive in a few hours. Thank you for choosing Selecta Ice Cream. Have a sweet day!';
   }
 
-  /// Sends an SMS notification to the customer store using Telephony.
+  /// Sends an SMS notification to the customer store using the Office SMS Gateway.
   Future<void> sendDeliverySms({required String storeName, required String message}) async {
     try {
-      String storeContact = await HapiStoreService.getContactByStoreName(storeName);
-      storeContact = storeContact.replaceFirst('09', '+639');
+      final String storeContact = await HapiStoreService.getContactByStoreName(storeName);
+      if (storeContact.trim().isEmpty) return;
 
-      final Telephony telephony = Telephony.instance;
-      final bool? permissionsGranted = await telephony.requestPhoneAndSmsPermissions;
-
-      if (permissionsGranted ?? false) {
-        telephony.sendSms(to: storeContact, message: message, isMultipart: true);
-      }
+      final functions = FirebaseFunctions.instanceFor(region: 'asia-east1');
+      await functions.httpsCallable('dispatchSms').call<Map<String, dynamic>>({
+        'phoneNumber': SmsGatewayService.formatPhoneNumberForPh(storeContact),
+        'message': message,
+        'storeName': storeName,
+        'category': 'delivery_confirmation',
+      });
     } catch (_) {
       // SMS failures should not block successful transaction persistence
     }

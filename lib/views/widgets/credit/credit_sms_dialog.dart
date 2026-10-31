@@ -140,7 +140,12 @@ class _CreditSmsDialogState extends State<CreditSmsDialog> {
     setState(() => _isSending = true);
 
     try {
-      final success = await _controller.sendDirectSms(phone: phone, message: message);
+      final success = await _controller.sendDirectSms(
+        phone: phone,
+        message: message,
+        context: context,
+        storeName: widget.storeName,
+      );
       if (!mounted) return;
 
       if (success) {
@@ -148,7 +153,6 @@ class _CreditSmsDialogState extends State<CreditSmsDialog> {
         Navigator.of(context).pop();
       } else {
         setState(() => _isSending = false);
-        ShowMessage.error(context, 'Failed to send SMS. Ensure SMS permissions are granted.');
       }
     } catch (e) {
       if (mounted) {

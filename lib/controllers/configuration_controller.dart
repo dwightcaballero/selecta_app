@@ -80,6 +80,10 @@ class ConfigurationController {
     String? creditReminderSmsTemplate,
     String? productSortMode,
     List<SubCategory>? subCategories,
+    bool? smsGatewayEnabled,
+    String? smsGatewayUrl,
+    String? smsGatewayToken,
+    int? smsGatewaySimSlot,
   }) async {
     if (endDate.isBefore(startDate)) {
       throw ArgumentError('Merch Blitz End Date must be after or equal to the Start Date.');
@@ -103,6 +107,10 @@ class ConfigurationController {
     final finalProviderOrder = aiProviderOrder ?? originalConfig?.aiProviderOrder ?? const ['gemini', 'groq'];
     final finalTextModelGemini = textModelGemini ?? originalConfig?.textModelGemini ?? 'gemini-2.0-flash';
     final finalTextModelGroq = textModelGroq ?? originalConfig?.textModelGroq ?? 'llama-3.3-70b-versatile';
+    final finalSmsGatewayEnabled = smsGatewayEnabled ?? originalConfig?.smsGatewayEnabled ?? true;
+    final finalSmsGatewayUrl = (smsGatewayUrl ?? originalConfig?.smsGatewayUrl ?? '').trim();
+    final finalSmsGatewayToken = (smsGatewayToken ?? originalConfig?.smsGatewayToken ?? '').trim();
+    final finalSmsGatewaySimSlot = smsGatewaySimSlot ?? originalConfig?.smsGatewaySimSlot ?? 1;
 
     final config = Configuration(
       merchBlitzStartDate: newStartDateTs,
@@ -127,6 +135,10 @@ class ConfigurationController {
       creditReminderSmsTemplate: finalCreditSmsTemplate,
       productSortMode: finalProductSortMode,
       subCategories: finalSubCategories,
+      smsGatewayEnabled: finalSmsGatewayEnabled,
+      smsGatewayUrl: finalSmsGatewayUrl,
+      smsGatewayToken: finalSmsGatewayToken,
+      smsGatewaySimSlot: finalSmsGatewaySimSlot,
     );
 
     await _configService.saveConfiguration(config);

@@ -1,0 +1,702 @@
+SELECTA OPS - SPARE ANDROID PHONE SMS GATEWAY IMPLEMENTATION PLAN
+================================================================================
+Document: Production Implementation Plan & Architecture Specification
+Target: Selecta Ops Mobile App & Firebase Infrastructure
+Author: Antigravity AI Engineering
+Status: READY FOR REVIEW (Plan Only)
+Target File: SMS_GATEWAY_IMPLEMENTATION_PLAN.txt
+================================================================================
+
+
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. Executive Summary & Value Proposition
+2. Current Selecta Ops SMS Architecture & Google Play Roadblock
+3. Recommended Target Architecture: Cloud Relay & Gateway Outbox
+4. SMS Gateway Software & Hardware Evaluation
+5. End-to-End Workflow & Data Flow Diagrams
+6. Detailed Implementation Phases
+   - Phase 1: Dedicated Gateway Device Setup & Hardening
+   - Phase 2: Network Connectivity & Secure Ingress (Cloudflare Tunnel)
+   - Phase 3: Firebase Cloud Function & Outbox Backend (`dispatchSms`)
+   - Phase 4: Flutter App Integration (`SmsGatewayService` & Controllers)
+   - Phase 5: Google Play Compliance & Manifest Cleanup (Zero-Permission App)
+7. Carrier Compliance, Spam Prevention & Telco Limits (PH Context)
+8. Battery Safety, Power Management & Hardware Maintenance
+9. Testing, Monitoring, Fallback & Disaster Recovery
+10. Cost Comparison & Financial Summary
+
+
+================================================================================
+1. EXECUTIVE SUMMARY & VALUE PROPOSITION
+================================================================================
+Commercial SMS API aggregators in the Philippines charge high recurring rates:
+- Twilio: ~₱2.50 to ₱3.20 per SMS segment
+- Semaphore PH: ~₱0.50 to ₱0.80 per SMS
+- PhilSMS / EngageSpark: ~₱0.40 to ₱0.65 per SMS
+
+For an active FMCG ice cream distributor sending:
+- 50 to 200 overdue credit reminders daily
+- 100 to 300 PJP route visit notices and promotional broadcasts
+- Delivery dispatch notices and store order confirmations
+Commercial costs quickly total ₱4,000 to ₱12,000+ monthly.
+
+THE SOLUTION: TURN A SPARE ANDROID PHONE INTO A HIGH-THROUGHPUT SMS GATEWAY.
+By placing a single spare Android phone in your branch/office running on
+Wi-Fi and equipped with a standard Philippine SIM card (Smart, Globe, DITO,
+or TNT) subscribed to an unlimited all-network SMS promo (₱50 - ₱150/month):
+- Recurring SMS Fee: Virtually ₱0 (flat ₱50-₱150/month prepaid promo).
+- Operational Overhead: Zero server hosting fees (runs via Firebase Cloud
+  Functions free tier + free Cloudflare Tunnel / Webhook relay).
+- Google Play Compliance: 100% compliant. Field salesmen devices running
+  Selecta Ops DO NOT request SEND_SMS or READ_PHONE_STATE permissions. The
+  app only triggers a secure HTTPS REST call to your Firebase Cloud Function.
+- Resilience: If the gateway phone is ever offline, the app seamlessly falls
+  back to launching the salesman's native SMS app with the pre-filled text.
+
+
+================================================================================
+2. CURRENT SELECTA OPS SMS ARCHITECTURE & GOOGLE PLAY ROADBLOCK
+================================================================================
+2.1 Existing Codebase Audit
+Today, Selecta Ops utilizes SMS across multiple workflows:
+- Credit Reminders (`lib/views/widgets/credit/credit_sms_dialog.dart` and
+  `lib/controllers/credit_controller.dart`): Overdue credit notices.
+- PJP Route Broadcasts (`lib/views/widgets/pjp/pjp_sms_broadcast_dialog.dart`):
+  Bulk SMS broadcasts to scheduled route stores.
+- Store Quick SMS (`lib/views/pages/dashboard/pjp_page.dart`,
+  `lib/views/pages/sidebar/store_profile_page.dart`,
+  `lib/views/pages/sidebar/hapistorelist_page.dart`).
+- Delivery Confirmations (`lib/controllers/delivery_controller.dart`).
+
+2.2 The Google Play Roadblock
+Currently, `android/app/src/main/AndroidManifest.xml` declares:
+    <uses-permission android:name="android.permission.SEND_SMS"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS"/>
+
+And the Flutter code calls:
+    Telephony.instance.sendSms(to: formattedNumber, message: message)
+
+WHY THIS BLOCKS GOOGLE PLAY PUBLICATION:
+Google Play's "Permissions Policy: SMS and Call Log Permissions" strictly
+forbids apps from requesting `SEND_SMS` unless the app is designated as the
+system's Default SMS Handler. Enterprise utility apps, delivery apps, and CRMs
+are routinely rejected by Google Play during automated review if `SEND_SMS` is
+present in the APK/AAB manifest.
+
+2.3 The Architectural Shift
+By delegating SMS dispatch to a dedicated office Gateway Phone:
+1. We completely DELETE `SEND_SMS`, `READ_PHONE_STATE`, and `READ_PHONE_NUMBERS`
+   from `AndroidManifest.xml`.
+2. Selecta Ops on Google Play becomes a standard, zero-SMS-permission app that
+   passes Google Play automated compliance tests instantly.
+3. Field salesmen don't expend their personal mobile load; all SMS originates
+   from the official distributor hotline/SIM.
+
+
+================================================================================
+3. RECOMMENDED TARGET ARCHITECTURE: CLOUD RELAY & GATEWAY OUTBOX
+================================================================================
+There are two architecture patterns for Android SMS Gateways:
+
+[Pattern A - Rejected]: Direct App-to-Phone Local Network Request
+- Salesman phone sends HTTP POST directly to Gateway Phone IP (e.g. 192.168.1.50).
+- Fails: Salesmen are on the road on mobile data (4G/5G) and cannot access the
+  office local Wi-Fi subnet without an active VPN.
+
+[Pattern B - RECOMMENDED]: Firebase Cloud Function + Secure Tunnel Relay
+- Salesman in Selecta Ops clicks "Send SMS" -> calls callable Cloud Function
+  `dispatchSms` or writes to Firestore collection `sms_outbox`.
+- Cloud Function authenticates caller (role: Salesman/Dealer/Admin) and forwards
+  the encrypted payload to the Gateway Phone via a secure endpoint (secured with
+  API key or Basic Auth token).
+- Gateway Phone receives payload, dispatches SMS via SIM card, and reports back
+  status (`sent`, `failed`, `delivered`).
+- Ingress: Gateway Phone exposes its local HTTP server safely to the Cloud
+  Function via a free Cloudflare Tunnel (or Tailscale Funnel / Ngrok / Dynamic DNS),
+  requiring zero public static IP or router port forwarding.
+
+                   +-----------------------------+
+                   |  Field Salesman / Dealer    |
+                   |      Selecta Ops App        |
+                   +--------------+--------------+
+                                  | HTTPS (Callable Cloud Function)
+                                  v
+                   +-----------------------------+
+                   |   Firebase Cloud Function   |
+                   |       `dispatchSms`         |
+                   |   (Validates Auth & Token)  |
+                   +--------------+--------------+
+                                  |
+                   +--------------+--------------+
+                   |                             |
+                   v                             v
+      +-------------------------+   +-------------------------+
+      |  Firestore `sms_logs`   |   |   Cloudflare Tunnel     |
+      |   (Audit & Delivery)    |   |  (Secure HTTPS Ingress) |
+      +-------------------------+   +------------+------------+
+                                                 |
+                                                 v
+                                    +-------------------------+
+                                    |   Office Gateway Phone  |
+                                    |  (android-sms-gateway)  |
+                                    +------------+------------+
+                                                 | Hardware SIM (Unli SMS)
+                                                 v
+                                    +-------------------------+
+                                    |    Customer / Store     |
+                                    |      Mobile Phone       |
+                                    +-------------------------+
+
+
+================================================================================
+4. SMS GATEWAY SOFTWARE & HARDWARE EVALUATION
+================================================================================
+4.1 Recommended Software: `android-sms-gateway` (Capcom6)
+- GitHub: https://github.com/capcom6/android-sms-gateway
+- Official Docs: https://sms-gate.app / https://github.com/capcom6/android-sms-gateway
+- License: Open Source (Apache-2.0 / MIT compatible)
+- Why Capcom6 is the best fit:
+  * Native local HTTP server built-in (runs on port 8080).
+  * REST API: `POST /message` with JSON payload `{"phoneNumbers": ["+63..."], "message": "..."}`.
+  * Security: Supports HTTP Basic Authentication and Bearer API Tokens.
+  * Delivery Tracking: Supports webhooks for SMS status (`Pending`, `Sent`, `Delivered`, `Failed`).
+  * Dual-SIM Support: Select which SIM slot (SIM 1 or SIM 2) sends specific messages.
+  * Lightweight foreground service with persistent notification preventing Android OS kills.
+  * Optional Free Cloud Mode: Has an official free cloud relay backend if you don't want
+    to run Cloudflare Tunnel.
+
+4.2 Hardware Requirements
+- Any spare Android phone running Android 8.0 (Oreo) or higher (Android 10 - 14 recommended).
+- Examples: Spare Samsung Galaxy A-series, Xiaomi Redmi, Vivo, Oppo, or Realme.
+- 2GB+ RAM, 16GB+ storage.
+- Stable office Wi-Fi connection.
+- Active SIM card inserted with unli-allnet SMS subscription.
+
+
+================================================================================
+5. END-TO-END WORKFLOW & DATA FLOW
+================================================================================
+5.1 Normal Execution Flow
+1. User Action:
+   Salesman taps "Send Reminder" in CreditSmsDialog or "Send Broadcast" in PJP.
+2. App Pre-flight:
+   Selecta Ops sanitizes the phone number (converting `09171234567` into `+639171234567`).
+3. Callable Cloud Function (`dispatchSms`):
+   Selecta Ops calls Firebase Cloud Function `dispatchSms({ phone, message, type, storeId })`.
+4. Authentication & Rate-Limiting:
+   The Cloud Function verifies caller's Firebase Auth token and checks anti-abuse
+   limits (e.g. max 50 SMS/minute per salesman).
+5. Gateway Relay:
+   Cloud Function issues an HTTPS POST request to the Gateway Phone's secure
+   Cloudflare Tunnel URL (`https://sms-gateway.yourcompany.org/message`) with header
+   `Authorization: Basic <gateway_credentials>`.
+6. SIM Transmission:
+   The Gateway App receives the JSON payload, queues it, and instructs the Android
+   TelephonyManager to send the SMS.
+7. Audit Log:
+   Cloud Function records the dispatch in Firestore collection `sms_logs` with
+   fields: `{ storeId, storeName, phone, message, senderUid, status: "sent", timestamp }`.
+8. UI Feedback:
+   Selecta Ops shows a green snackbar: "SMS sent successfully via Office Gateway."
+
+5.2 Offline Gateway Fallback Flow
+What if the office gateway phone runs out of battery, loses Wi-Fi, or the SIM expires?
+1. The Cloud Function catches an HTTP timeout (10 seconds) or error status.
+2. The Cloud Function returns `{ success: false, error: "gateway_offline", allowDeviceFallback: true }`.
+3. Selecta Ops immediately detects this and displays a prompt:
+   "Office SMS Gateway is currently offline. Send directly from this device instead?"
+4. If approved, Selecta Ops launches the native SMS app:
+   `launchUrl(Uri(scheme: 'sms', path: phone, queryParameters: {'body': message}))`
+5. The salesman can still tap "Send" in their native SMS app. Operations NEVER halt.
+
+
+================================================================================
+6. DETAILED IMPLEMENTATION PHASES
+================================================================================
+
+--------------------------------------------------------------------------------
+PHASE 1: DEDICATED GATEWAY DEVICE SETUP & HARDENING
+--------------------------------------------------------------------------------
+Objective: Set up the spare Android phone for 24/7 uninterrupted operation.
+
+Step 1.1: Factory Prep & SIM Installation
+- Wipe or clean unnecessary apps from the spare phone.
+- Insert an active SIM card (Smart / TNT / Globe / TM / DITO).
+- Subscribe to a 30-day unlimited SMS promo:
+  * Smart/TNT: GIGA / Magic Data / Unli Allnet SMS promo (₱100/mo).
+  * Globe/TM: GoUNLI / TM AllNet promo (₱90 - ₱150/mo).
+  * DITO: DITO Starter / 30-day unli-allnet SMS packs (₱50 - ₱99/mo).
+
+Step 1.2: Install `android-sms-gateway`
+- Download the latest APK from GitHub Releases:
+  https://github.com/capcom6/android-sms-gateway/releases
+- Install and launch the application.
+- Grant necessary runtime permissions:
+  * SMS: Send and view SMS messages.
+  * Phone: Read phone state.
+  * Battery: Unrestricted battery usage (Disable battery optimization).
+  * Notifications: Allow notifications so the foreground service remains active.
+
+Step 1.3: Configure App Settings
+- In `android-sms-gateway` Settings:
+  * Enable "HTTP Server".
+  * Port: `8080` (default).
+  * Authentication: Set "Username" (e.g. `selecta_gateway`) and "Password" (a strong random token).
+  * Enable "Start on boot" so the gateway auto-restarts if the phone reboots.
+  * Note the local IP shown on screen (e.g., `192.168.1.120:8080`).
+
+Step 1.4: Android OS Deep Sleep Hardening
+Prevent the Android OS OEM power-saving algorithms from killing background apps:
+- Go to Android Settings -> Apps -> SMS Gateway:
+  * Battery: Set to "Unrestricted" / "Don't optimize".
+  * Auto-start / Background autostart: ENABLED.
+  * Lock in Recent Apps: Open app switcher, tap app icon, select "Lock" so it cannot be swiped away.
+- Wi-Fi Settings:
+  * Set "Keep Wi-Fi on during sleep" to ALWAYS.
+  * Turn OFF "Wi-Fi Power Saving Mode".
+- Developer Options:
+  * Enable "Stay awake while charging" (Screen never sleeps while plugged in).
+
+
+--------------------------------------------------------------------------------
+PHASE 2: NETWORK CONNECTIVITY & SECURE INGRESS (CLOUDFLARE TUNNEL)
+--------------------------------------------------------------------------------
+Objective: Allow Firebase Cloud Functions (running in Google Cloud asia-east1)
+to securely POST to the Gateway Phone on your office Wi-Fi, without needing a
+public static IP or configuring port forwarding on your office router.
+
+Recommended Method: Cloudflare Tunnel (Free & Enterprise-Grade)
+- If you have an office desktop/mini-PC, Raspberry Pi, or router running 24/7 on
+  the same Wi-Fi, run `cloudflared` tunnel:
+    cloudflared tunnel route ip 192.168.1.120/32
+  Or map a hostname:
+    https://sms-gateway.yourdomain.com -> http://192.168.1.120:8080
+- Alternative 1 (No server in office): Use `android-sms-gateway` built-in Cloud
+  Relay feature (provided free by the open source project at sms-gate.app). You
+  simply scan a QR code in the app and get a private cloud API endpoint and token.
+- Alternative 2: Tailscale Funnel / Ngrok on an office device.
+
+Result:
+Cloud Function has a persistent, HTTPS secured target endpoint:
+  URL: https://sms-gateway.selectaops.com/message
+  Headers:
+    Content-Type: application/json
+    Authorization: Basic c2VsZWN0YV9nYXRld2F5OlNlY3JldEtleTEyMwo=
+
+
+--------------------------------------------------------------------------------
+PHASE 3: FIREBASE CLOUD FUNCTION & OUTBOX BACKEND (`dispatchSms`)
+--------------------------------------------------------------------------------
+Objective: Add a secure server-side dispatch function in `functions/src/index.ts`.
+
+Step 3.1: Add Gateway Config to Firebase
+Store gateway secrets safely in Firebase config or environment:
+  firebase functions:config:set \
+    sms_gateway.url="https://sms-gateway.yourdomain.com/message" \
+    sms_gateway.token="Basic <BASE64_TOKEN>" \
+    sms_gateway.enabled="true"
+
+Step 3.2: Implement `dispatchSms` in `functions/src/index.ts`
+TypeScript specification for Cloud Function:
+
+```typescript
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+import axios from "axios";
+
+export const dispatchSms = regionalFunctions
+  .runWith(FUNCTION_OPTS)
+  .https.onCall(async (data, context) => {
+    // 1. Authenticate caller
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Must be logged in to send SMS.");
+    }
+
+    const { phoneNumber, message, storeId, storeName, category } = data;
+
+    if (!phoneNumber || !message) {
+      throw new functions.https.HttpsError("invalid-argument", "Phone number and message required.");
+    }
+
+    // 2. Format phone number for PH (+639xxxxxxxxx)
+    let formattedNumber = phoneNumber.replace(/[^0-9+]/g, "");
+    if (formattedNumber.startsWith("09")) {
+      formattedNumber = "+63" + formattedNumber.substring(1);
+    } else if (formattedNumber.startsWith("9") && formattedNumber.length === 10) {
+      formattedNumber = "+63" + formattedNumber;
+    }
+
+    // 3. Fetch gateway configuration
+    const gatewayUrl = process.env.SMS_GATEWAY_URL || functions.config().sms_gateway?.url;
+    const gatewayToken = process.env.SMS_GATEWAY_TOKEN || functions.config().sms_gateway?.token;
+    const gatewayEnabled = functions.config().sms_gateway?.enabled !== "false";
+
+    if (!gatewayEnabled || !gatewayUrl) {
+      return {
+        success: false,
+        error: "gateway_disabled",
+        allowDeviceFallback: true,
+      };
+    }
+
+    // 4. Send HTTP POST to Android SMS Gateway phone
+    try {
+      const response = await axios.post(
+        gatewayUrl,
+        {
+          phoneNumbers: [formattedNumber],
+          message: message,
+          simNumber: 1, // Optional: specify SIM slot 1 or 2
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": gatewayToken,
+          },
+          timeout: 10000, // 10 second timeout
+        }
+      );
+
+      // 5. Audit Log to Firestore `sms_logs`
+      await db.collection("sms_logs").add({
+        senderUid: context.auth.uid,
+        senderEmail: context.auth.token.email || null,
+        recipientPhone: formattedNumber,
+        messagePreview: message.substring(0, 100),
+        storeId: storeId || null,
+        storeName: storeName || null,
+        category: category || "general", // "credit_reminder", "pjp_broadcast", "delivery"
+        status: "sent",
+        gatewayResponse: response.data || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { success: true, messageId: response.data?.id };
+    } catch (error: any) {
+      console.error("SMS Gateway dispatch failed:", error.message);
+
+      // Log failure in Firestore
+      await db.collection("sms_logs").add({
+        senderUid: context.auth.uid,
+        recipientPhone: formattedNumber,
+        storeId: storeId || null,
+        category: category || "general",
+        status: "failed",
+        errorMessage: error.message,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        success: false,
+        error: "gateway_unreachable",
+        allowDeviceFallback: true,
+      };
+    }
+  });
+```
+
+
+--------------------------------------------------------------------------------
+PHASE 4: FLUTTER APP INTEGRATION (`SmsGatewayService` & CONTROLLERS)
+--------------------------------------------------------------------------------
+Objective: Create a centralized `SmsGatewayService` in Flutter that all
+screens and controllers use, replacing direct `telephony` calls.
+
+Step 4.1: Create `lib/services/sms_gateway_service.dart`
+Responsibilities:
+- Invokes Cloud Function `dispatchSms`.
+- Checks if the gateway succeeds.
+- If gateway fails or is offline, provides automatic fallback to `url_launcher`
+  (`sms:<phone>?body=<message>`).
+
+Dart specification:
+```dart
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+enum SmsDispatchResult {
+  sentViaGateway,
+  fallbackToNativeSms,
+  cancelled,
+  failed,
+}
+
+class SmsGatewayService {
+  static final SmsGatewayService _instance = SmsGatewayService._internal();
+  factory SmsGatewayService() => _instance;
+  SmsGatewayService._internal();
+
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'asia-east1');
+
+  /// Dispatches an SMS via the office gateway phone.
+  /// If the gateway is offline, prompts user to send via native device SMS app.
+  Future<SmsDispatchResult> sendSms({
+    required BuildContext context,
+    required String phoneNumber,
+    required String message,
+    String? storeId,
+    String? storeName,
+    String category = 'general',
+  }) async {
+    final sanitizedNumber = _sanitizePhone(phoneNumber);
+    if (sanitizedNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid phone number')),
+      );
+      return SmsDispatchResult.failed;
+    }
+
+    try {
+      // 1. Call Firebase Cloud Function
+      final callable = _functions.httpsCallable('dispatchSms');
+      final result = await callable.call<Map<String, dynamic>>({
+        'phoneNumber': sanitizedNumber,
+        'message': message,
+        'storeId': storeId,
+        'storeName': storeName,
+        'category': category,
+      });
+
+      final data = result.data;
+      if (data['success'] == true) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('SMS dispatched via Office SMS Gateway.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return SmsDispatchResult.sentViaGateway;
+      }
+
+      // If gateway is unavailable or offline, trigger graceful fallback
+      if (data['allowDeviceFallback'] == true && context.mounted) {
+        return await _handleFallbackPrompt(
+          context: context,
+          phoneNumber: sanitizedNumber,
+          message: message,
+          reason: 'Office Gateway is temporarily offline',
+        );
+      }
+    } catch (e) {
+      debugPrint('SmsGatewayService error: $e');
+      if (context.mounted) {
+        return await _handleFallbackPrompt(
+          context: context,
+          phoneNumber: sanitizedNumber,
+          message: message,
+          reason: 'Could not connect to SMS server',
+        );
+      }
+    }
+
+    return SmsDispatchResult.failed;
+  }
+
+  /// Prompts salesman to open their default SMS messenger if gateway is offline.
+  Future<SmsDispatchResult> _handleFallbackPrompt({
+    required BuildContext context,
+    required String phoneNumber,
+    required String message,
+    required String reason,
+  }) async {
+    final shouldFallback = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gateway Unavailable'),
+        content: Text(
+          '$reason. Would you like to send this SMS directly using your device\'s SIM card instead?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Open SMS App'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldFallback == true) {
+      final uri = Uri(
+        scheme: 'sms',
+        path: phoneNumber,
+        queryParameters: {'body': message},
+      );
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+        return SmsDispatchResult.fallbackToNativeSms;
+      }
+    }
+
+    return SmsDispatchResult.cancelled;
+  }
+
+  String _sanitizePhone(String phone) {
+    return phone.replaceAll(RegExp(r'[^0-9+]'), '');
+  }
+}
+```
+
+Step 4.2: Refactor Call Sites
+Update controllers and widgets to use `SmsGatewayService`:
+- `CreditController.dart`: Deprecate `sendDirectSms()` and route through `SmsGatewayService`.
+- `CreditSmsDialog.dart`: When salesman taps "Send SMS", call `SmsGatewayService().sendSms(...)`.
+- `PjpSmsBroadcastDialog.dart`: Stream batch array to `dispatchSms` with progress indicator.
+- `PjpPage.dart`, `StoreProfilePage.dart`, `HapistorelistPage.dart`: Replace direct telephony triggers.
+
+
+--------------------------------------------------------------------------------
+PHASE 5: GOOGLE PLAY COMPLIANCE & MANIFEST CLEANUP (ZERO-PERMISSION APP)
+--------------------------------------------------------------------------------
+Objective: Make Selecta Ops 100% compliant with Google Play Store SMS policies.
+
+Step 5.1: Remove High-Risk Permissions from `AndroidManifest.xml`
+In `android/app/src/main/AndroidManifest.xml`:
+REMOVE THESE LINES COMPLETELY:
+- `<uses-permission android:name="android.permission.SEND_SMS"/>`
+- `<uses-permission android:name="android.permission.READ_PHONE_STATE"/>`
+- `<uses-permission android:name="android.permission.READ_PHONE_NUMBERS"/>`
+
+KEEP QUERY INTENTS:
+Keep the standard Android 11+ query intent so the app can launch the system SMS app:
+    <queries>
+      <intent>
+        <action android:name="android.intent.action.VIEW" />
+        <data android:scheme="sms" />
+      </intent>
+    </queries>
+(Note: `<queries>` intents DO NOT require special permissions or declarations).
+
+Step 5.2: Remove or Isolate `telephony` in `pubspec.yaml`
+- The `telephony` Flutter plugin brings in native Android SMS receivers in its
+  bundled `AndroidManifest.xml`.
+- Once `SmsGatewayService` is active and `url_launcher` is used for fallback,
+  remove `telephony` from `pubspec.yaml` or exclude its permissions via
+  `tools:node="remove"`.
+- Run: `flutter pub get` and verify build with `flutter build appbundle`.
+
+Step 5.3: Google Play Console Submission
+- In Google Play Console -> App Content -> Sensitive Permissions:
+  Select NO for "Does your app use SMS or Call Log permissions?".
+- Zero declaration forms or video proofs required.
+- Review passes automated compliance immediately.
+
+
+================================================================================
+7. CARRIER COMPLIANCE, SPAM PREVENTION & TELCO LIMITS (PH CONTEXT)
+================================================================================
+Philippine carriers (Smart, Globe, DITO) enforce automated anti-spam and
+fraud heuristics on prepaid SIM cards. To prevent the gateway SIM from being
+flagged or blocked:
+
+Rule 1: Rate Limiting & Inter-Message Delays
+- Do not blast 100 SMS in 1 second. Carrier SMSCs detect rapid bursts as botnets.
+- Configure `android-sms-gateway` or Cloud Function with a 2 to 3-second delay
+  between individual SMS dispatches during batch broadcasts.
+- For a route of 30 stores, 30 SMS will take ~60-90 seconds to transmit smoothly.
+
+Rule 2: Daily Fair Use Policy (FUP) Limits
+- Unli-SMS promos typically cap fair use at around 500 to 1,000 SMS per day per SIM.
+- Recommended Selecta Ops Volume: 100 to 300 SMS/day is well within carrier safe limits.
+- If daily volume exceeds 500 SMS/day, use a Dual-SIM phone and balance traffic
+  between SIM 1 (Smart) and SIM 2 (Globe).
+
+Rule 3: Message Text Personalization
+- Spam filters flag identical, repetitive message hashes.
+- Always include dynamic variables: Store Name, Balance Amount, Invoice Date,
+  or Reference Code.
+  Example:
+  "Hi [Aling Nena Store], your Selecta overdue credit is P1,450.00 as of Oct 31.
+   Ref: [INV-1092]. Thank you!"
+- Dynamic tags prevent message fingerprint deduplication by telcos.
+
+
+================================================================================
+8. BATTERY SAFETY, POWER MANAGEMENT & HARDWARE MAINTENANCE
+================================================================================
+Running a spare Android smartphone plugged into a charger 24/7 presents battery
+bloat (swelling) risks if left unmanaged.
+
+Best Practices for 24/7 Gateway Hardware:
+1. Smart Plug with Battery Cycle Automation:
+   - Plug the phone charger into a cheap ₱250 Tuya/Sonoff Wi-Fi smart plug.
+   - Use an automation (or Android automation app like Macrodroid/Tasker) to:
+     * Turn ON smart plug when phone battery drops to 20%.
+     * Turn OFF smart plug when phone battery reaches 80%.
+   - This eliminates lithium-ion battery bloat completely.
+2. Battery Protection Mode (Samsung / Xiaomi):
+   - Modern Android OS includes "Protect Battery" (limits max charge to 80% or 85%).
+   - Enable this in Android Settings -> Battery.
+3. Physical Environment:
+   - Keep the gateway phone in a cool, ventilated area of the office (away from
+     direct sunlight or hot machinery).
+   - Use a simple phone stand so air circulates behind the back cover.
+
+
+================================================================================
+9. TESTING, MONITORING, FALLBACK & DISASTER RECOVERY
+================================================================================
+9.1 Testing Checklist (Phase-by-Phase Verification)
+- [ ] Hardware Verification: Phone sends an SMS manually to a test number.
+- [ ] Local Server Verification: Send HTTP POST curl to local IP:
+      curl -X POST http://192.168.1.120:8080/message \
+        -H "Content-Type: application/json" \
+        -u selecta_gateway:YourPassword \
+        -d '{"phoneNumbers": ["+639171234567"], "message": "Test from Selecta Gateway"}'
+- [ ] Ingress Verification: Send same curl via Cloudflare Tunnel URL.
+- [ ] Cloud Function Verification: Run `firebase emulators:start` and test `dispatchSms`.
+- [ ] Flutter App Verification: Trigger SMS in `CreditSmsDialog` and confirm receipt.
+- [ ] Fallback Verification: Turn off Wi-Fi on Gateway Phone. Verify Selecta Ops
+      gracefully offers "Open SMS App" without crashing.
+
+9.2 Monitoring & Alerting
+- Create a simple scheduled Cloud Function (runs daily at 8:00 AM) that sends a
+  ping to the gateway.
+- If gateway doesn't respond within 15 seconds, send a Telegram/Discord alert or
+  email to the branch IT admin: "Attention: Selecta SMS Gateway Phone is offline."
+- Admin Configuration Screen in Selecta Ops:
+  Add an "SMS Gateway Status" card in `ConfigurationPage` showing:
+  * Gateway Status: Online / Offline
+  * Last SMS Dispatched: 10 mins ago
+  * Today's Total Dispatches: 42 messages
+
+
+================================================================================
+10. COST COMPARISON & FINANCIAL SUMMARY
+================================================================================
+Monthly Cost Analysis for 3,000 SMS/month (Approx. 100 SMS/day):
+
++--------------------------+---------------------+---------------------+
+| Service / Approach       | Rate per SMS        | Monthly Total Cost  |
++--------------------------+---------------------+---------------------+
+| Twilio API               | ~₱2.80 / SMS        | ₱8,400 / month      |
+| Semaphore PH             | ~₱0.50 / SMS        | ₱1,500 / month      |
+| PhilSMS                  | ~₱0.45 / SMS        | ₱1,350 / month      |
+|--------------------------+---------------------+---------------------|
+| SPARE ANDROID GATEWAY    | ₱0.00 / SMS         | ₱0 API Fees         |
+| Prepaid SIM Unli Promo   | Flat Promo Rate     | ₱99.00 / month      |
+| Cloudflare Tunnel        | Free Tier           | ₱0.00               |
+| Firebase Cloud Functions | Free Tier           | ₱0.00               |
+|--------------------------+---------------------+---------------------|
+| TOTAL FIRST-YEAR SAVINGS |                     | ₱15,000 - ₱99,000+  |
++--------------------------+---------------------+---------------------+
+
+Key Advantages:
+1. 99% cost reduction compared to commercial SMS aggregators.
+2. 100% compliant with Google Play Store permissions policy.
+3. Clean separation of concerns: field salesmen need no special SIM balance or
+   dangerous permissions.
+4. Production-safe fallback: app never breaks if gateway is offline.
+
+================================================================================
+END OF IMPLEMENTATION PLAN
+================================================================================

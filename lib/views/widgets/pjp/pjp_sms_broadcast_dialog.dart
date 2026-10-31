@@ -1,4 +1,3 @@
-import 'package:another_telephony/telephony.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/pjp_controller.dart';
@@ -6,6 +5,7 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
+import 'package:selecta_ops/services/sms_gateway_service.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 
@@ -30,7 +30,7 @@ class PjpSmsBroadcastDialog extends StatefulWidget {
 
 class _PjpSmsBroadcastDialogState extends State<PjpSmsBroadcastDialog> {
   final PjpController _controller = PjpController();
-  final Telephony _telephony = Telephony.instance;
+  final SmsGatewayService _smsGatewayService = SmsGatewayService();
 
   late String _selectedDay;
   final TextEditingController _templateController = TextEditingController();
@@ -197,7 +197,7 @@ class _PjpSmsBroadcastDialogState extends State<PjpSmsBroadcastDialog> {
             Text('Ready to send pre-order reminder SMS to ${recipients.length} stores on the $_selectedDay route?'),
             const SizedBox(height: 10),
             Text(
-              'Standard carrier SMS rates may apply. Messages will be sent automatically using the device\'s active SIM.',
+              'Messages will be dispatched automatically via the Office SMS Gateway.',
               style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
             ),
           ],
@@ -214,15 +214,6 @@ class _PjpSmsBroadcastDialogState extends State<PjpSmsBroadcastDialog> {
     );
 
     if (confirmed != true || !mounted) return;
-
-    // Check permissions
-    final bool? permissionsGranted = await _telephony.requestPhoneAndSmsPermissions;
-    if (!(permissionsGranted ?? false)) {
-      if (mounted) {
-        ShowMessage.error(context, 'SMS permissions are required to broadcast messages.');
-      }
-      return;
-    }
 
     setState(() {
       _isSending = true;
@@ -245,19 +236,28 @@ class _PjpSmsBroadcastDialogState extends State<PjpSmsBroadcastDialog> {
       });
 
       try {
-        await _telephony.sendSms(
-          to: formattedNumber,
+        final result = await _smsGatewayService.sendSms(
+          context: context,
+          phoneNumber: formattedNumber,
           message: message,
-          isMultipart: true,
+          storeName: store.storeName,
+          category: 'pjp_broadcast',
+          showSuccessSnackBar: false,
+          allowFallbackPrompt: false,
         );
-        _successCount++;
+        if (result.isSuccessful) {
+          _successCount++;
+        } else {
+          _failedCount++;
+          _failureLogs.add('${store.storeName} ($formattedNumber): ${result.errorMessage ?? "Failed"}');
+        }
       } catch (e) {
         _failedCount++;
         _failureLogs.add('${store.storeName} ($formattedNumber): $e');
       }
 
-      // Small delay between sends to respect modem queue and avoid OS rate limiting
-      await Future.delayed(const Duration(milliseconds: 650));
+      // Inter-message pacing to respect carrier anti-spam policies
+      await Future.delayed(const Duration(milliseconds: 1200));
     }
 
     if (!mounted) return;

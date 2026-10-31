@@ -51,7 +51,6 @@ dependencies:
   open_filex: ^4.7.0
   firebase_storage: ^13.4.5
   flutter_doc_scanner: ^0.0.21
-  another_telephony: ^0.4.1
   fl_chart: ^1.2.0
   gal: ^2.3.3
   http: ^1.6.0

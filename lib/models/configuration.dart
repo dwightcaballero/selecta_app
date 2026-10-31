@@ -62,6 +62,12 @@ class Configuration {
   // Return Proof Gate Cutoff (Grandfathering)
   Timestamp? returnProofEnabledFrom;
 
+  // SMS Gateway Configuration (Office Android Phone Relay)
+  bool smsGatewayEnabled;
+  String smsGatewayUrl;
+  String smsGatewayToken;
+  int smsGatewaySimSlot;
+
   Configuration({
     required this.merchBlitzStartDate,
     required this.merchBlitzEndDate,
@@ -96,6 +102,10 @@ class Configuration {
     this.storeMinimumOrderValue,
     this.storeCutoffTime,
     this.returnProofEnabledFrom,
+    this.smsGatewayEnabled = true,
+    this.smsGatewayUrl = '',
+    this.smsGatewayToken = '',
+    this.smsGatewaySimSlot = 1,
   });
 
   bool get hasStoreMinimumOrderValue => storeMinimumOrderValue != null && storeMinimumOrderValue! > 0;
@@ -167,6 +177,10 @@ class Configuration {
         productSortMode: 'srp',
         subCategories: const [],
         returnProofEnabledFrom: null,
+        smsGatewayEnabled: true,
+        smsGatewayUrl: '',
+        smsGatewayToken: '',
+        smsGatewaySimSlot: 1,
       );
 
   Configuration.fromJson(Map<String, Object?> json)
@@ -224,6 +238,10 @@ class Configuration {
           storeMinimumOrderValue: (json['storeMinimumOrderValue'] as num?)?.toDouble(),
           storeCutoffTime: json['storeCutoffTime'] as String?,
           returnProofEnabledFrom: json['returnProofEnabledFrom'] as Timestamp?,
+          smsGatewayEnabled: json['smsGatewayEnabled'] as bool? ?? true,
+          smsGatewayUrl: json['smsGatewayUrl'] as String? ?? '',
+          smsGatewayToken: json['smsGatewayToken'] as String? ?? '',
+          smsGatewaySimSlot: (json['smsGatewaySimSlot'] as num?)?.toInt() ?? 1,
         );
 
   Configuration copyWith({
@@ -263,6 +281,10 @@ class Configuration {
     bool clearStoreCutoffTime = false,
     Timestamp? returnProofEnabledFrom,
     bool clearReturnProofEnabledFrom = false,
+    bool? smsGatewayEnabled,
+    String? smsGatewayUrl,
+    String? smsGatewayToken,
+    int? smsGatewaySimSlot,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -298,6 +320,10 @@ class Configuration {
       storeMinimumOrderValue: clearStoreMinimumOrderValue ? null : (storeMinimumOrderValue ?? this.storeMinimumOrderValue),
       storeCutoffTime: clearStoreCutoffTime ? null : (storeCutoffTime ?? this.storeCutoffTime),
       returnProofEnabledFrom: clearReturnProofEnabledFrom ? null : (returnProofEnabledFrom ?? this.returnProofEnabledFrom),
+      smsGatewayEnabled: smsGatewayEnabled ?? this.smsGatewayEnabled,
+      smsGatewayUrl: smsGatewayUrl ?? this.smsGatewayUrl,
+      smsGatewayToken: smsGatewayToken ?? this.smsGatewayToken,
+      smsGatewaySimSlot: smsGatewaySimSlot ?? this.smsGatewaySimSlot,
     );
   }
 
@@ -337,6 +363,10 @@ class Configuration {
       if (storeMinimumOrderValue != null) 'storeMinimumOrderValue': storeMinimumOrderValue,
       if (storeCutoffTime != null) 'storeCutoffTime': storeCutoffTime,
       if (returnProofEnabledFrom != null) 'returnProofEnabledFrom': returnProofEnabledFrom,
+      'smsGatewayEnabled': smsGatewayEnabled,
+      'smsGatewayUrl': smsGatewayUrl,
+      'smsGatewayToken': smsGatewayToken,
+      'smsGatewaySimSlot': smsGatewaySimSlot,
     };
   }
 }

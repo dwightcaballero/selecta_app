@@ -1,5 +1,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import axios from "axios";
 
 admin.initializeApp();
 
@@ -654,4 +655,263 @@ export const sendQueuedNotification = regionalFunctions
       });
     }
   });
+
+/**
+ * Normalizes phone numbers to international standard +639XXXXXXXXX for Philippine telcos.
+ */
+export function normalizePhoneNumber(raw: string): string {
+  let cleaned = raw.replace(/[^0-9+]/g, "");
+  if (cleaned.startsWith("+63")) {
+    return cleaned;
+  }
+  if (cleaned.startsWith("639") && cleaned.length === 12) {
+    return "+" + cleaned;
+  }
+  if (cleaned.startsWith("09") && cleaned.length === 11) {
+    return "+63" + cleaned.substring(1);
+  }
+  if (cleaned.startsWith("9") && cleaned.length === 10) {
+    return "+63" + cleaned;
+  }
+  return cleaned;
+}
+
+/**
+ * Retrieves SMS Gateway configuration from Firestore app_config, falling back
+ * to functions config or process environment variables.
+ */
+async function getSmsGatewayConfig() {
+  let enabled = true;
+  let url = process.env.SMS_GATEWAY_URL || (functions.config().sms_gateway?.url as string | undefined) || "";
+  let token = process.env.SMS_GATEWAY_TOKEN || (functions.config().sms_gateway?.token as string | undefined) || "";
+  let simSlot = 1;
+
+  try {
+    const configSnap = await db.collection("configurations").doc("app_config").get();
+    if (configSnap.exists) {
+      const data = configSnap.data();
+      if (data) {
+        if (typeof data.smsGatewayEnabled === "boolean") {
+          enabled = data.smsGatewayEnabled;
+        }
+        if (typeof data.smsGatewayUrl === "string" && data.smsGatewayUrl.trim().length > 0) {
+          url = data.smsGatewayUrl.trim();
+        }
+        if (typeof data.smsGatewayToken === "string" && data.smsGatewayToken.trim().length > 0) {
+          token = data.smsGatewayToken.trim();
+        }
+        if (typeof data.smsGatewaySimSlot === "number" && data.smsGatewaySimSlot > 0) {
+          simSlot = data.smsGatewaySimSlot;
+        }
+      }
+    }
+  } catch (err: any) {
+    functions.logger.warn("Could not read app_config for SMS gateway, using fallback envs:", err?.message);
+  }
+
+  return { enabled, url, token, simSlot };
+}
+
+/**
+ * Formats the Authorization header value (handles Basic, Bearer, or raw tokens).
+ */
+export function formatAuthHeader(token: string): string | undefined {
+  if (!token) return undefined;
+  if (token.startsWith("Basic ") || token.startsWith("Bearer ")) {
+    return token;
+  }
+  // If token has colon (user:pass), assume Basic base64
+  if (token.includes(":")) {
+    return `Basic ${Buffer.from(token).toString("base64")}`;
+  }
+  return `Bearer ${token}`;
+}
+
+/**
+ * 7. dispatchSms
+ * Callable Cloud Function: Relays SMS requests to an office Android SMS Gateway phone.
+ * Passes Google Play compliance by eliminating SEND_SMS permissions from client apps.
+ */
+export const dispatchSms = regionalFunctions
+  .runWith(FUNCTION_OPTS)
+  .https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Must be authenticated to send SMS."
+      );
+    }
+
+    const rawPhone = String(data?.phoneNumber ?? "").trim();
+    const message = String(data?.message ?? "").trim();
+    const storeId = data?.storeId ? String(data.storeId) : null;
+    const storeName = data?.storeName ? String(data.storeName) : null;
+    const category = data?.category ? String(data.category) : "general";
+
+    if (!rawPhone || !message) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Both 'phoneNumber' and 'message' are required."
+      );
+    }
+
+    const formattedNumber = normalizePhoneNumber(rawPhone);
+    const { enabled, url, token, simSlot } = await getSmsGatewayConfig();
+
+    if (!enabled || !url) {
+      functions.logger.info("SMS Gateway is not configured or disabled, signaling client fallback.");
+      return {
+        success: false,
+        error: "gateway_not_configured",
+        allowDeviceFallback: true,
+      };
+    }
+
+    // Determine target endpoint URL
+    const targetUrl = url.endsWith("/message")
+      ? url
+      : `${url.replace(/\/+$/, "")}/message`;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    const authHeader = formatAuthHeader(token);
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    }
+
+    try {
+      const response = await axios.post(
+        targetUrl,
+        {
+          phoneNumbers: [formattedNumber],
+          message: message,
+          simNumber: simSlot,
+        },
+        {
+          headers,
+          timeout: 10000, // 10 second timeout
+        }
+      );
+
+      // Audit log to Firestore sms_logs
+      await db.collection("sms_logs").add({
+        senderUid: context.auth.uid,
+        senderEmail: context.auth.token.email || null,
+        recipientPhone: formattedNumber,
+        messagePreview: message.length > 160 ? `${message.slice(0, 157)}...` : message,
+        storeId,
+        storeName,
+        category,
+        status: "sent",
+        gatewayResponse: response.data || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        success: true,
+        messageId: response.data?.id || "sent",
+      };
+    } catch (error: any) {
+      const errorMsg = error?.response?.data?.message || error?.message || "Unknown error";
+      functions.logger.error("SMS Gateway dispatch failed", {
+        targetUrl,
+        error: errorMsg,
+        recipient: formattedNumber,
+      });
+
+      // Audit log failure to Firestore sms_logs
+      await db.collection("sms_logs").add({
+        senderUid: context.auth.uid,
+        senderEmail: context.auth.token.email || null,
+        recipientPhone: formattedNumber,
+        messagePreview: message.length > 160 ? `${message.slice(0, 157)}...` : message,
+        storeId,
+        storeName,
+        category,
+        status: "failed",
+        errorMessage: String(errorMsg).slice(0, 300),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        success: false,
+        error: "gateway_unreachable",
+        allowDeviceFallback: true,
+        details: errorMsg,
+      };
+    }
+  });
+
+/**
+ * 8. checkSmsGatewayHealth
+ * Callable Cloud Function: Health check endpoint to test connection to the Gateway phone.
+ */
+export const checkSmsGatewayHealth = regionalFunctions
+  .runWith(FUNCTION_OPTS)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Must be authenticated to check SMS Gateway health."
+      );
+    }
+
+    const { enabled, url, token } = await getSmsGatewayConfig();
+    if (!enabled || !url) {
+      return {
+        online: false,
+        enabled: false,
+        status: "Gateway not configured or disabled in system settings.",
+      };
+    }
+
+    const baseUrl = url.replace(/\/message$/, "").replace(/\/+$/, "");
+    const headers: Record<string, string> = {};
+    const authHeader = formatAuthHeader(token);
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    }
+
+    const startTime = Date.now();
+    try {
+      // Try /health or base URL
+      await axios.get(`${baseUrl}/health`, {
+        headers,
+        timeout: 5000,
+        validateStatus: (status) => status < 500, // consider 200-499 as reachable
+      });
+      const latencyMs = Date.now() - startTime;
+      return {
+        online: true,
+        enabled: true,
+        latencyMs,
+        status: "Gateway is online and responding.",
+      };
+    } catch (healthErr: any) {
+      // Try root ping if /health wasn't available
+      try {
+        await axios.get(baseUrl, {
+          headers,
+          timeout: 5000,
+          validateStatus: (status) => status < 500,
+        });
+        const latencyMs = Date.now() - startTime;
+        return {
+          online: true,
+          enabled: true,
+          latencyMs,
+          status: "Gateway is reachable.",
+        };
+      } catch (rootErr: any) {
+        return {
+          online: false,
+          enabled: true,
+          status: `Gateway unreachable: ${rootErr?.message || healthErr?.message}`,
+        };
+      }
+    }
+  });
+
 
