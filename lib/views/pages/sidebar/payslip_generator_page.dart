@@ -10,6 +10,7 @@ import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
+import 'package:selecta_ops/views/widgets/attendance/weekly_timesheet_card.dart';
 
 class PayslipGeneratorPage extends StatefulWidget {
   final String dealerName;
@@ -498,6 +499,20 @@ class _PayslipGeneratorPageState extends State<PayslipGeneratorPage> {
                             ),
 
                             const SizedBox(height: 14),
+
+                            if (_selectedSalesman != null) ...[
+                              WeeklyTimesheetCard(
+                                salesmanUsername: _selectedSalesman!.username,
+                                startDate: _weekStart,
+                                endDate: _weekEnd,
+                                onApplyCalculatedDays: (calculatedDays) {
+                                  setState(() {
+                                    _daysWorkedController.text = calculatedDays.toString();
+                                  });
+                                },
+                              ),
+                              const SizedBox(height: 14),
+                            ],
 
                             // Days Worked
                             TextFormField(

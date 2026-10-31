@@ -68,6 +68,13 @@ class Configuration {
   String smsGatewayToken;
   int smsGatewaySimSlot;
 
+  // Time & Attendance Geofence Configuration
+  bool attendanceEnabled;
+  double? depotLatitude;
+  double? depotLongitude;
+  double depotRadiusMeters;
+  String depotAddress;
+
   Configuration({
     required this.merchBlitzStartDate,
     required this.merchBlitzEndDate,
@@ -106,7 +113,14 @@ class Configuration {
     this.smsGatewayUrl = '',
     this.smsGatewayToken = '',
     this.smsGatewaySimSlot = 1,
+    this.attendanceEnabled = true,
+    this.depotLatitude,
+    this.depotLongitude,
+    this.depotRadiusMeters = 300.0,
+    this.depotAddress = '',
   });
+
+  bool get hasDepotGeofence => depotLatitude != null && depotLongitude != null;
 
   bool get hasStoreMinimumOrderValue => storeMinimumOrderValue != null && storeMinimumOrderValue! > 0;
   bool get hasStoreCutoffTime => storeCutoffTime != null && storeCutoffTime!.trim().isNotEmpty;
@@ -181,6 +195,11 @@ class Configuration {
         smsGatewayUrl: '',
         smsGatewayToken: '',
         smsGatewaySimSlot: 1,
+        attendanceEnabled: true,
+        depotLatitude: null,
+        depotLongitude: null,
+        depotRadiusMeters: 300.0,
+        depotAddress: '',
       );
 
   Configuration.fromJson(Map<String, Object?> json)
@@ -242,6 +261,11 @@ class Configuration {
           smsGatewayUrl: json['smsGatewayUrl'] as String? ?? '',
           smsGatewayToken: json['smsGatewayToken'] as String? ?? '',
           smsGatewaySimSlot: (json['smsGatewaySimSlot'] as num?)?.toInt() ?? 1,
+          attendanceEnabled: json['attendanceEnabled'] as bool? ?? true,
+          depotLatitude: (json['depotLatitude'] as num?)?.toDouble(),
+          depotLongitude: (json['depotLongitude'] as num?)?.toDouble(),
+          depotRadiusMeters: (json['depotRadiusMeters'] as num?)?.toDouble() ?? 300.0,
+          depotAddress: json['depotAddress'] as String? ?? '',
         );
 
   Configuration copyWith({
@@ -285,6 +309,13 @@ class Configuration {
     String? smsGatewayUrl,
     String? smsGatewayToken,
     int? smsGatewaySimSlot,
+    bool? attendanceEnabled,
+    double? depotLatitude,
+    bool clearDepotLatitude = false,
+    double? depotLongitude,
+    bool clearDepotLongitude = false,
+    double? depotRadiusMeters,
+    String? depotAddress,
   }) {
     return Configuration(
       merchBlitzStartDate: merchBlitzStartDate ?? this.merchBlitzStartDate,
@@ -324,6 +355,11 @@ class Configuration {
       smsGatewayUrl: smsGatewayUrl ?? this.smsGatewayUrl,
       smsGatewayToken: smsGatewayToken ?? this.smsGatewayToken,
       smsGatewaySimSlot: smsGatewaySimSlot ?? this.smsGatewaySimSlot,
+      attendanceEnabled: attendanceEnabled ?? this.attendanceEnabled,
+      depotLatitude: clearDepotLatitude ? null : (depotLatitude ?? this.depotLatitude),
+      depotLongitude: clearDepotLongitude ? null : (depotLongitude ?? this.depotLongitude),
+      depotRadiusMeters: depotRadiusMeters ?? this.depotRadiusMeters,
+      depotAddress: depotAddress ?? this.depotAddress,
     );
   }
 
@@ -367,6 +403,11 @@ class Configuration {
       'smsGatewayUrl': smsGatewayUrl,
       'smsGatewayToken': smsGatewayToken,
       'smsGatewaySimSlot': smsGatewaySimSlot,
+      'attendanceEnabled': attendanceEnabled,
+      if (depotLatitude != null) 'depotLatitude': depotLatitude,
+      if (depotLongitude != null) 'depotLongitude': depotLongitude,
+      'depotRadiusMeters': depotRadiusMeters,
+      'depotAddress': depotAddress,
     };
   }
 }

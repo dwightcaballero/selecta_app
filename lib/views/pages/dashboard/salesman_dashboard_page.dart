@@ -27,13 +27,18 @@ import 'package:selecta_ops/views/pages/sidebar/payslip_list_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/products_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/tasklist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
+import 'package:intl/intl.dart';
+import 'package:selecta_ops/services/app_update_service.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
-import 'package:selecta_ops/services/app_update_service.dart';
+import 'package:selecta_ops/controllers/attendance_controller.dart';
+import 'package:selecta_ops/models/attendance.dart';
+import 'package:selecta_ops/views/widgets/attendance/clock_in_gate_dialog.dart';
+import 'package:selecta_ops/views/widgets/attendance/clock_out_dialog.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_welcome_banner.dart';
 import 'package:selecta_ops/views/widgets/exit_guard.dart';
 
@@ -48,6 +53,8 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
   final GlobalKey<ScaffoldState> _homeScaffoldKey = GlobalKey<ScaffoldState>();
   // Controller managing data syncing, live count streams, role switching, and user state
   final DashboardController _controller = DashboardController();
+  final AttendanceController _attendanceController = AttendanceController();
+  bool _hasPromptedClockIn = false;
 
   late final Stream<int> _tasksCountStream;
   late final Stream<int> _merchBlitzCountStream;
@@ -129,6 +136,31 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
     if (state == AppLifecycleState.resumed) {
       _autoSyncIfStaleOrRequested();
       NotificationBadgeService().refresh(NotificationAudience.salesman);
+      _checkAndPromptClockIn();
+    }
+  }
+
+  Future<void> _checkAndPromptClockIn() async {
+    if (_currentUser == null || !mounted || _hasPromptedClockIn) return;
+    try {
+      final config = await _attendanceController.getConfiguration();
+      if (!config.attendanceEnabled) return;
+
+      final att = await _attendanceController.getTodayAttendance(_currentUser!.username);
+      if (att == null || !att.isClockedIn) {
+        _hasPromptedClockIn = true;
+        if (mounted) {
+          await ClockInGateDialog.show(
+            context,
+            salesman: _currentUser!,
+            onClockedIn: () {
+              if (mounted) setState(() {});
+            },
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error checking clock-in: $e');
     }
   }
 
@@ -164,6 +196,7 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
           _isLoading = false;
         });
         AppUpdateService.checkAndPromptUpdate(context, silent: true);
+        _checkAndPromptClockIn();
       }
 
       // Stale-While-Revalidate: Silently sync in background if cache is stale or missing
@@ -354,6 +387,162 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
       isSyncing: _isSyncing,
       onSyncTap: () => _syncDashboard(force: true),
       onSecretTap: _showSecretRoleSwitchDialog,
+    );
+  }
+
+  Widget _buildAttendanceSection() {
+    if (_currentUser == null) return const SizedBox.shrink();
+    return StreamBuilder<Attendance?>(
+      stream: _attendanceController.streamTodayAttendance(_currentUser!.username),
+      builder: (context, snapshot) {
+        final attendance = snapshot.data;
+        return _buildAttendanceCard(attendance);
+      },
+    );
+  }
+
+  Widget _buildAttendanceCard(Attendance? attendance) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isClockedIn = attendance != null && attendance.isClockedIn;
+    final isClockedOut = attendance != null && attendance.isClockedOut;
+    final isApprovedIn = attendance != null && attendance.clockInStatus == AttendanceStatus.approved;
+
+    Color cardBorder;
+    Color iconBg;
+    IconData icon;
+    Color iconColor;
+    String title;
+    String subtitle;
+    Widget? actionWidget;
+
+    if (!isClockedIn) {
+      cardBorder = const Color(0xFFEF4444).withValues(alpha: 0.4);
+      iconBg = const Color(0xFFEF4444).withValues(alpha: 0.12);
+      icon = Icons.access_time_rounded;
+      iconColor = const Color(0xFFEF4444);
+      title = 'Not Clocked In Today';
+      subtitle = 'You must clock in to log your work hours for today.';
+      actionWidget = ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF10B981),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          visualDensity: VisualDensity.compact,
+        ),
+        icon: const Icon(Icons.login_rounded, size: 16),
+        label: const Text('Clock In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+        onPressed: () {
+          if (_currentUser != null) {
+            ClockInGateDialog.show(
+              context,
+              salesman: _currentUser!,
+              onClockedIn: () => setState(() {}),
+            );
+          }
+        },
+      );
+    } else if (!isClockedOut) {
+      final inTimeStr = attendance.clockInTime != null
+          ? DateFormat('hh:mm a').format(attendance.clockInTime!.toDate())
+          : '';
+      cardBorder = isApprovedIn
+          ? const Color(0xFF10B981).withValues(alpha: 0.5)
+          : const Color(0xFFF59E0B).withValues(alpha: 0.5);
+      iconBg = isApprovedIn
+          ? const Color(0xFF10B981).withValues(alpha: 0.12)
+          : const Color(0xFFF59E0B).withValues(alpha: 0.12);
+      icon = Icons.login_rounded;
+      iconColor = isApprovedIn ? const Color(0xFF10B981) : const Color(0xFFF59E0B);
+      title = 'Clocked In: $inTimeStr';
+      subtitle = isApprovedIn
+          ? 'Approved by Dealer • Active on duty'
+          : 'Pending Dealer Confirmation • Active on duty';
+      actionWidget = OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFFEF4444),
+          side: const BorderSide(color: Color(0xFFEF4444)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          visualDensity: VisualDensity.compact,
+        ),
+        icon: const Icon(Icons.logout_rounded, size: 15),
+        label: const Text('Clock Out', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+        onPressed: () {
+          if (_currentUser != null) {
+            ClockOutDialog.show(
+              context,
+              salesman: _currentUser!,
+              currentAttendance: attendance,
+              onClockedOut: () => setState(() {}),
+            );
+          }
+        },
+      );
+    } else {
+      final outTimeStr = attendance.clockOutTime != null
+          ? DateFormat('hh:mm a').format(attendance.clockOutTime!.toDate())
+          : '';
+      cardBorder = colorScheme.outlineVariant.withValues(alpha: 0.6);
+      iconBg = colorScheme.surfaceContainerHighest;
+      icon = Icons.check_circle_rounded;
+      iconColor = const Color(0xFF10B981);
+      title = 'Clocked Out at $outTimeStr';
+      subtitle = '${attendance.totalHours} hrs worked • ${attendance.dayCredit} Day Credit';
+      actionWidget = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          'Completed',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cardBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          actionWidget,
+        ],
+      ),
     );
   }
 
@@ -653,6 +842,9 @@ class _SalesmanDashboardPageState extends State<SalesmanDashboardPage> with Widg
                   children: [
                     // 1. Salesman Welcome Banner
                     _buildWelcomeBanner(),
+
+                    // Attendance Status Card
+                    _buildAttendanceSection(),
 
                     const SizedBox(height: 20),
 

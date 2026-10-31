@@ -84,6 +84,11 @@ class ConfigurationController {
     String? smsGatewayUrl,
     String? smsGatewayToken,
     int? smsGatewaySimSlot,
+    bool? attendanceEnabled,
+    double? depotLatitude,
+    double? depotLongitude,
+    double? depotRadiusMeters,
+    String? depotAddress,
   }) async {
     if (endDate.isBefore(startDate)) {
       throw ArgumentError('Merch Blitz End Date must be after or equal to the Start Date.');
@@ -111,6 +116,11 @@ class ConfigurationController {
     final finalSmsGatewayUrl = (smsGatewayUrl ?? originalConfig?.smsGatewayUrl ?? '').trim();
     final finalSmsGatewayToken = (smsGatewayToken ?? originalConfig?.smsGatewayToken ?? '').trim();
     final finalSmsGatewaySimSlot = smsGatewaySimSlot ?? originalConfig?.smsGatewaySimSlot ?? 1;
+    final finalAttendanceEnabled = attendanceEnabled ?? originalConfig?.attendanceEnabled ?? true;
+    final finalDepotLatitude = depotLatitude ?? originalConfig?.depotLatitude;
+    final finalDepotLongitude = depotLongitude ?? originalConfig?.depotLongitude;
+    final finalDepotRadiusMeters = depotRadiusMeters ?? originalConfig?.depotRadiusMeters ?? 300.0;
+    final finalDepotAddress = (depotAddress ?? originalConfig?.depotAddress ?? '').trim();
 
     final config = Configuration(
       merchBlitzStartDate: newStartDateTs,
@@ -139,6 +149,22 @@ class ConfigurationController {
       smsGatewayUrl: finalSmsGatewayUrl,
       smsGatewayToken: finalSmsGatewayToken,
       smsGatewaySimSlot: finalSmsGatewaySimSlot,
+      unitApprovalThreshold: originalConfig?.unitApprovalThreshold ?? 10,
+      blindCountEnabled: originalConfig?.blindCountEnabled ?? true,
+      recountThreshold: originalConfig?.recountThreshold ?? 5,
+      maxAdjustmentsPerUser24h: originalConfig?.maxAdjustmentsPerUser24h ?? 5,
+      maxAdjustmentsPerProduct7d: originalConfig?.maxAdjustmentsPerProduct7d ?? 3,
+      maxWriteOffPercentage: originalConfig?.maxWriteOffPercentage ?? 10.0,
+      repeatedShortPickThreshold: originalConfig?.repeatedShortPickThreshold ?? 3,
+      lastStockAuditAt: originalConfig?.lastStockAuditAt,
+      storeMinimumOrderValue: originalConfig?.storeMinimumOrderValue,
+      storeCutoffTime: originalConfig?.storeCutoffTime,
+      returnProofEnabledFrom: originalConfig?.returnProofEnabledFrom,
+      attendanceEnabled: finalAttendanceEnabled,
+      depotLatitude: finalDepotLatitude,
+      depotLongitude: finalDepotLongitude,
+      depotRadiusMeters: finalDepotRadiusMeters,
+      depotAddress: finalDepotAddress,
     );
 
     await _configService.saveConfiguration(config);

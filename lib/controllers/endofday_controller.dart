@@ -4,6 +4,8 @@ import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/dto/endofday_dto.dart';
 import 'package:selecta_ops/models/breakdown.dart';
+import 'package:selecta_ops/models/attendance.dart';
+import 'package:selecta_ops/services/attendance_service.dart';
 import 'package:selecta_ops/services/auth_service.dart';
 import 'package:selecta_ops/services/breakdown_service.dart';
 import 'package:selecta_ops/services/endofday_services.dart';
@@ -15,12 +17,14 @@ class EndOfDaySnapshot {
   final Breakdown breakdown;
   final String breakdownId;
   final bool isDealer;
+  final List<Attendance> unclockedSalesmen;
 
   const EndOfDaySnapshot({
     required this.endOfDayData,
     required this.breakdown,
     required this.breakdownId,
     required this.isDealer,
+    this.unclockedSalesmen = const [],
   });
 }
 
@@ -58,14 +62,17 @@ class EndOfDayController {
   final EndofdayServices _endOfDayService;
   final BreakdownService _breakdownService;
   final InventoryService _inventoryService;
+  final AttendanceService _attendanceService;
 
   EndOfDayController({
     EndofdayServices? endOfDayService,
     BreakdownService? breakdownService,
     InventoryService? inventoryService,
+    AttendanceService? attendanceService,
   })  : _endOfDayService = endOfDayService ?? EndofdayServices(),
         _breakdownService = breakdownService ?? BreakdownService(),
-        _inventoryService = inventoryService ?? InventoryService();
+        _inventoryService = inventoryService ?? InventoryService(),
+        _attendanceService = attendanceService ?? AttendanceService();
 
   /// Checks if the active user is a dealer
   Future<bool> checkIsDealer() async {
@@ -144,11 +151,21 @@ class EndOfDayController {
     breakdown.breakdownDate = Timestamp.fromDate(date);
     breakdown.expectedAmount = endOfDayData.expectedcashonhand;
 
+    final currentUser = await KVariables.getUser();
+    final dealerName = currentUser?.dealerName ?? '';
+    final unclockedSalesmen = dealerName.isNotEmpty
+        ? await _attendanceService.getUnclockedSalesmenForDate(
+            dealerName: dealerName,
+            date: date,
+          )
+        : <Attendance>[];
+
     return EndOfDaySnapshot(
       endOfDayData: endOfDayData,
       breakdown: breakdown,
       breakdownId: breakdownId,
       isDealer: isDealer,
+      unclockedSalesmen: unclockedSalesmen,
     );
   }
 
@@ -159,6 +176,7 @@ class EndOfDayController {
     DateTime? currentDate,
     DateTime? oldestUnverifiedDate,
     bool isDealer = false,
+    List<Attendance> unclockedSalesmen = const [],
   }) {
     if (endOfDayData.totaldelivery == 0 && breakdownId.isEmpty) {
       throw Exception('No deliveries recorded for this date');
@@ -173,6 +191,13 @@ class EndOfDayController {
           .map((s) => s.storeName)
           .join(', ');
       throw Exception('Proof of return not yet confirmed by warehouse for: $unconfirmedStores');
+    }
+    // Attendance gate: All clocked-in salesmen on duty must clock out before cash breakdown
+    if (unclockedSalesmen.isNotEmpty) {
+      final pendingNames = unclockedSalesmen.map((a) => a.salesmanUsername).join(', ');
+      throw Exception(
+        'Cannot open Cash Breakdown: All salesmen must clock out first. Pending clock-out: $pendingNames',
+      );
     }
   }
 

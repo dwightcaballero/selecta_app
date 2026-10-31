@@ -26,6 +26,8 @@ import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
 import 'package:selecta_ops/views/widgets/ai_chat_modal.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/controllers/attendance_controller.dart';
+import 'package:selecta_ops/views/widgets/attendance/dealer_attendance_sheet.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_drawer.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_kpi_section.dart';
 import 'package:selecta_ops/views/widgets/dashboard/dashboard_quick_access.dart';
@@ -46,6 +48,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   final GlobalKey<ScaffoldState> _phoneScaffoldKey = GlobalKey<ScaffoldState>();
   // Controller handling dashboard sync, data caching, live count streams, and role switching
   final DashboardController _controller = DashboardController();
+  final AttendanceController _attendanceController = AttendanceController();
 
   late final Stream<int> _tasksCountStream;
   late final Stream<int> _merchBlitzCountStream;
@@ -507,6 +510,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                       onNavigate: _navigateToPage,
                     ),
 
+                  // 1b. Dealer Salesman Attendance Banner
+                  if (isDealer && _currentUser != null)
+                    _buildDealerAttendanceBanner(),
+
                   // 2. Quick Access Section
                   _buildSectionHeader('Quick Access', 'Orders, credits, van operations, and scouting'),
                   DashboardQuickAccessGrid(
@@ -544,6 +551,109 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         return Badge.count(
           count: count,
           child: Icon(icon),
+        );
+      },
+    );
+  }
+
+  Widget _buildDealerAttendanceBanner() {
+    if (_currentUser == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return StreamBuilder<int>(
+      stream: _attendanceController.streamPendingCount(
+        _currentUser!.dealerName,
+        DateTime.now(),
+      ),
+      builder: (context, snapshot) {
+        final pendingCount = snapshot.data ?? 0;
+        final hasPending = pendingCount > 0;
+
+        return Card(
+          elevation: 0,
+          color: hasPending
+              ? const Color(0xFFF59E0B).withValues(alpha: 0.12)
+              : colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(
+              color: hasPending
+                  ? const Color(0xFFF59E0B).withValues(alpha: 0.5)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => DealerAttendanceSheet.show(context, dealer: _currentUser!),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: hasPending
+                          ? const Color(0xFFF59E0B).withValues(alpha: 0.2)
+                          : colorScheme.primary.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      hasPending ? Icons.notification_important_rounded : Icons.badge_outlined,
+                      color: hasPending ? const Color(0xFFD97706) : colorScheme.primary,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Salesman Attendance',
+                              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            if (hasPending) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEF4444),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$pendingCount Pending',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          hasPending
+                              ? '$pendingCount request(s) awaiting your confirmation.'
+                              : 'All salesmen attendances up to date. Tap to view crew timecards.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );

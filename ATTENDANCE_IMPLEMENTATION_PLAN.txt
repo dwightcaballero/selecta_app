@@ -1,0 +1,279 @@
+================================================================================
+    SALESMAN TIME & ATTENDANCE (CLOCK-IN / CLOCK-OUT) IMPLEMENTATION PLAN
+================================================================================
+Target Project: Selecta Ops (Mobile Flutter Application)
+Date Created: October 31, 2026
+Version: 1.0.0
+Author: Google DeepMind Antigravity Pair Programmer
+
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY & BUSINESS REQUIREMENTS
+--------------------------------------------------------------------------------
+This document outlines the end-to-end design and implementation plan for the 
+Salesman Attendance System in Selecta Ops.
+
+Based on operational review and customer confirmations:
+1. Morning Clock-In Gate (Optimistic Auto-Unlock):
+   - When a salesman launches the app for the first time each day, they are 
+     prompted to clock in.
+   - Captures GPS coordinates and verifies location against the dealer's depot 
+     geofence.
+   - Once clocked in, the record enters "Pending Confirmation", but the app 
+     immediately unlocks (Optimistic Access) so early-morning van loading, 
+     picklist verification, and delivery operations are never stalled by dealer 
+     transit/sleep delays.
+2. Dealer Clock-In / Clock-Out Confirmation:
+   - Dealers receive instant push notifications and have a dedicated 
+     one-tap approval sheet (with "Approve All" and individual actions).
+3. End-of-Day (EOD) Cash Breakdown Gate:
+   - For single-vehicle operations, all clocked-in salesmen on duty for the day 
+     must clock out before anyone can view or edit the Cash Breakdown.
+   - Guarantees no salesman leaves without clocking out and ensures complete 
+     crew accountability before final money reconciliation.
+4. Payroll Integration (Weekly Timesheet in Payslip Generator):
+   - Dealer views daily clock-in, clock-out, total hours, and day credits for the 
+     selected week directly inside PayslipGeneratorPage.
+   - Uses standard day credit calculation:
+       * >= 6.0 hours worked = 1.0 day credit
+       * 4.0 to < 6.0 hours worked = 0.5 day credit (half-day)
+       * < 4.0 hours worked = 0.0 day credit
+   - Dealer retains full manual override capability for days worked and credits.
+
+--------------------------------------------------------------------------------
+2. DATA ARCHITECTURE & FIRESTORE SCHEMA
+--------------------------------------------------------------------------------
+
+A. Firestore Collection: `attendances`
+   Document ID Format: `att_{YYYY-MM-DD}_{salesmanUsername}`
+   Ensures exactly one attendance document per salesman per operational day.
+
+   Fields:
+   - id: String (e.g., 'att_2026-10-31_juan_dc')
+   - dealerName: String (e.g., 'Selecta North Hub')
+   - salesmanUsername: String (e.g., 'juan_dc')
+   - salesmanFullName: String (e.g., 'Juan Dela Cruz')
+   - date: Timestamp (start of day normalized)
+   - dateString: String (e.g., '2026-10-31')
+   
+   Clock-In Details:
+   - clockInTime: Timestamp?
+   - clockInLatitude: double?
+   - clockInLongitude: double?
+   - clockInDistanceToDepot: double? (meters)
+   - clockInWithinGeofence: bool
+   - clockInStatus: String ('pending' | 'approved' | 'rejected')
+   - clockInApprovedBy: String?
+   - clockInApprovedAt: Timestamp?
+
+   Clock-Out Details:
+   - clockOutTime: Timestamp?
+   - clockOutLatitude: double?
+   - clockOutLongitude: double?
+   - clockOutDistanceToDepot: double? (meters)
+   - clockOutWithinGeofence: bool
+   - clockOutStatus: String ('pending' | 'approved' | 'rejected')
+   - clockOutApprovedBy: String?
+   - clockOutApprovedAt: Timestamp?
+
+   Summary & Payroll Metrics:
+   - totalHours: double (e.g., 9.75)
+   - dayCredit: double (calculated: 1.0, 0.5, or 0.0)
+   - dealerOverrideCredit: double? (if dealer manually edited day credit)
+   - overrideRemarks: String?
+   - isCompleted: bool (true once clocked out)
+   - createdAt: Timestamp
+   - updatedAt: Timestamp
+
+B. Configuration Update (`configurations` collection):
+   Depot Geofencing Settings:
+   - depotLatitude: double? (e.g., 14.5995)
+   - depotLongitude: double? (e.g., 120.9842)
+   - depotRadiusMeters: double (default: 300.0 meters)
+   - depotAddress: String (human-readable warehouse address)
+   - attendanceEnabled: bool (default: true)
+
+--------------------------------------------------------------------------------
+3. DETAILED WORKFLOW & UX DESIGN
+--------------------------------------------------------------------------------
+
+WORKFLOW 1: MORNING CLOCK-IN GATE (SALESMAN)
+1. Salesman opens the app.
+2. `SalesmanDashboardPage` verifies if an attendance document exists for 
+   `today` under `att_{today}_{username}`.
+3. If not clocked in:
+   - A non-dismissible `ClockInDialog` or `ClockInGateSheet` is displayed.
+   - Shows current time, live GPS acquisition status, and depot distance indicator:
+       * Green badge: "At Depot (Within 50m)"
+       * Orange badge: "Off-Depot (420m away - will be logged for dealer review)"
+   - Salesman taps "Clock In":
+       * Fetches high-accuracy GPS coordinates via `Geolocator`.
+       * Creates/updates `attendances` doc with status `pending`.
+       * Sends FCM push notification to Dealer:
+         "Salesman Juan Dela Cruz clocked in at 06:45 AM (At Depot)."
+       * Closes sheet and immediately unlocks the dashboard.
+4. Top status chip on Salesman Dashboard:
+   - Displays: "🟢 Clocked In: 06:45 AM (Pending Approval)"
+   - Salesman can tap this chip at any time to view their day's timecard.
+
+WORKFLOW 2: END-OF-DAY (EOD) CASH BREAKDOWN LOCK
+1. Salesman finishes deliveries and navigates to `EndofdayPage`.
+2. `EndOfDayController.validateBeforeBreakdown()` checks attendance status:
+   - Queries `attendances` for `dateString == selectedDate` and `dealerName`.
+   - Checks if any salesman who clocked in has NOT yet clocked out.
+3. If any clocked-in salesman has not clocked out:
+   - The "View/Edit Cash Breakdown" button is disabled or intercepted.
+   - Shows blocking warning dialog / bottom banner:
+     "⚠️ Cash Breakdown Locked: All salesmen must clock out before cash breakdown 
+      can be opened.
+      Pending Clock-Out:
+      • Juan Dela Cruz (Active since 06:45 AM)
+      • Pedro Santos (Active since 07:05 AM)"
+   - Includes a direct "Clock Out Now" button for the logged-in salesman.
+4. Salesman taps "Clock Out":
+   - Captures GPS location and depot distance.
+   - Computes `totalHours` and standard `dayCredit`.
+   - Updates document with `clockOutTime` and `isCompleted = true`.
+   - Sends notification to Dealer.
+5. Once all salesmen on duty are clocked out:
+   - "Cash Breakdown" immediately unlocks and can be edited/settled as normal.
+
+WORKFLOW 3: DEALER REVIEW & CONFIRMATIONS
+1. Dealer Dashboard has an "Attendance Status" widget / appbar badge:
+   - E.g., "Attendance: 2 Clock-Ins Pending Approval".
+2. Tapping opens `AttendanceManagementSheet`:
+   - Lists today's salesmen with:
+       * Clock-in time & depot proximity badge (e.g., "At Depot" vs "3.2 km away").
+       * Clock-out time & total duration.
+       * Status chip (Pending, Approved, Rejected).
+   - "Approve All" action button for rapid 1-tap morning approval.
+   - Individual "Approve" and "Reject" buttons.
+3. When dealer approves:
+   - Document updated with `clockInApprovedBy = dealerUsername`, `clockInStatus = 'approved'`.
+   - Salesman's chip turns solid green: "🟢 Clocked In: 06:45 AM (Approved)".
+
+WORKFLOW 4: PAYROLL / TIMESHEET IN PAYSLIP GENERATOR
+1. In `PayslipGeneratorPage`, dealer selects a week and salesman.
+2. The page loads the 7-day attendance records for that week.
+3. Above the "Days Worked" field, an interactive `WeeklyTimesheetCard` is rendered:
+   - Lists Monday to Sunday:
+       * Day & Date
+       * Clock-In & Clock-Out times
+       * Total Hours
+       * Calculated Day Credit (1.0, 0.5, or 0.0)
+       * Approval Status chip
+   - Shows "Auto-Calculate Days" button:
+       * Sums the credits (e.g., 5 days @ 1.0 + 1 day @ 0.5 = 5.5 days).
+       * Populates `_daysWorkedController.text = '5.5'`.
+   - Dealer can tap any day row to manually adjust the credit or add notes
+     (e.g., granting full day credit for a 5-hour breakdown or excused duty).
+
+--------------------------------------------------------------------------------
+4. SOURCE CODE FILE MANIFEST & PLANNED MODIFICATIONS
+--------------------------------------------------------------------------------
+
+A. New Files to Create:
+1. `lib/models/attendance.dart`
+   - Complete data model with `fromJson`, `toJson`, `fromSnapshot`, copyWith,
+     and standard day credit computation helper methods.
+2. `lib/services/attendance_service.dart`
+   - Firestore CRUD, query by date, query active unclocked salesmen, stream 
+     daily attendances, batch approval, weekly timesheet range query.
+3. `lib/controllers/attendance_controller.dart`
+   - Encapsulates GPS fetching, permission checks, depot distance calculation,
+     optimistic unlock state, and business validation.
+4. `lib/views/widgets/attendance/clock_in_gate_dialog.dart`
+   - Clean, modern modal prompting salesman to clock in with GPS indicator.
+5. `lib/views/widgets/attendance/clock_out_dialog.dart`
+   - Clock-out modal with time summary, location confirmation, and sign-off.
+6. `lib/views/widgets/attendance/dealer_attendance_sheet.dart`
+   - Dealer sheet to review today's crew attendance, view GPS distance, and 
+     approve/reject clock-ins/outs with "Approve All" capability.
+7. `lib/views/widgets/attendance/weekly_timesheet_card.dart`
+   - Timesheet widget embedded inside `PayslipGeneratorPage` displaying daily 
+     breakdown, duration, day credits, and "Auto-Calculate Days" button.
+
+B. Existing Files to Modify:
+1. `lib/models/configuration.dart`
+   - Add depot location fields (`depotLatitude`, `depotLongitude`, 
+     `depotRadiusMeters`, `depotAddress`, `attendanceEnabled`).
+2. `lib/views/pages/sidebar/superadmin_page.dart` (or Settings)
+   - Add UI for Dealer/Admin to set depot coordinates (with current GPS picker).
+3. `lib/views/pages/dashboard/salesman_dashboard_page.dart`
+   - Trigger morning clock-in check on app start.
+   - Display attendance status pill in header/appbar.
+4. `lib/controllers/endofday_controller.dart`
+   - In `validateBeforeBreakdown()`, inject validation rule verifying that all 
+     clocked-in salesmen for the date have clocked out.
+5. `lib/views/pages/sidebar/endofday_page.dart`
+   - Display crew clock-out status banner and disable/guide cash breakdown 
+     access if any salesman is still clocked in. Provide quick clock-out trigger.
+6. `lib/views/dashboard_page.dart` (Dealer Dashboard)
+   - Add Attendance quick-action chip / badge on dealer home with pending count.
+7. `lib/views/pages/sidebar/payslip_generator_page.dart`
+   - Integrate `WeeklyTimesheetCard` and wire "Auto-Calculate Days Worked" into 
+     the existing `_daysWorkedController`.
+8. `lib/services/push_notification_service.dart`
+   - Add helper methods for Attendance notification topics / alerts.
+
+--------------------------------------------------------------------------------
+5. STEP-BY-STEP IMPLEMENTATION PHASES
+--------------------------------------------------------------------------------
+
+PHASE 1: Core Foundation & Data Layer
+- Implement `Attendance` model with standard credit rules (>=6h=1.0, 4-6h=0.5, <4h=0.0).
+- Update `Configuration` model with depot geofence fields.
+- Implement `AttendanceService` with Firestore queries and transactions.
+- Implement `AttendanceController` with GPS acquisition and geofence checking.
+
+PHASE 2: Salesman Morning Clock-In (Optimistic Unlock)
+- Build `ClockInGateDialog` with real-time GPS location check.
+- Wire check into `SalesmanDashboardPage.initState` and resume lifecycle.
+- Implement optimistic unlock with background sync to Firestore and Dealer notification.
+- Add status chip to Salesman Dashboard.
+
+PHASE 3: End-of-Day (EOD) Cash Breakdown Gate
+- Update `EndOfDayController.validateBeforeBreakdown` to query active unclocked salesmen.
+- In `EndofdayPage`, add Attendance status card showing crew clock-in/out status.
+- Implement `ClockOutDialog` allowing salesman to clock out directly from EOD or dashboard.
+- Verify that Cash Breakdown cannot proceed until all salesmen are clocked out.
+
+PHASE 4: Dealer Approval Dashboard & Notifications
+- Add Attendance Status badge on Dealer Dashboard (`DashboardPage`).
+- Build `DealerAttendanceSheet` with "Approve All" and individual approval actions.
+- Connect FCM push notifications for clock-in and clock-out events.
+
+PHASE 5: Payroll Timesheet & Auto-Calculation
+- Build `WeeklyTimesheetCard` component.
+- Integrate into `PayslipGeneratorPage` above the Days Worked field.
+- Add "Auto-Calculate Days Worked" button syncing with `_daysWorkedController`.
+- Allow dealer click-to-edit day credits with remarks.
+
+PHASE 6: Verification, Static Analysis & Testing
+- Run `dart analyze` across all modified and new files.
+- Verify GPS location permissions and fallbacks on physical Android/iOS devices.
+- Verify edge cases:
+    * Salesman opens app offline (persisted Firestore cache).
+    * Salesman tries to open EOD breakdown while teammate is clocked in.
+    * Dealer adjusts timesheet day credits during payroll creation.
+    * Past unverified EOD dates (grandfathering rule so historical records aren't blocked).
+
+--------------------------------------------------------------------------------
+6. RISK MITIGATION & EDGE CASES
+--------------------------------------------------------------------------------
+1. GPS Disabled or Permission Denied:
+   - If GPS permission is denied or location is temporarily unavailable, allow 
+     clock-in with an "Off-GPS / Location Unavailable" flag rather than blocking 
+     operations. Flagged for dealer review.
+2. Historical Dates in End-of-Day:
+   - When viewing an old past date in EOD, do not block cash breakdown if 
+     the date was before the attendance feature launch date (grandfathering).
+3. Dealer Absent or Inactive:
+   - Because of Optimistic Auto-Unlock, salesman operations are never halted 
+     if the dealer is unavailable to approve immediately.
+4. Single-Vehicle Teammates:
+   - In EOD page, the crew list clearly shows who hasn't clocked out so they 
+     can quickly remind each other or clock out together before counting cash.
+
+================================================================================
+END OF IMPLEMENTATION PLAN
+================================================================================

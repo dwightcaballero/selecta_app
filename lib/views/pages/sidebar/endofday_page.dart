@@ -3,6 +3,7 @@ import 'package:selecta_ops/controllers/endofday_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/data/responsive.dart';
 import 'package:selecta_ops/dto/endofday_dto.dart';
+import 'package:selecta_ops/models/attendance.dart';
 import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/models/unverified_summary.dart';
 import 'package:selecta_ops/views/pages/sidebar/breakdown_page.dart';
@@ -51,6 +52,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
       : DateTime.now();
 
   UnverifiedSummary _unverifiedSummary = UnverifiedSummary.empty;
+  List<Attendance> _unclockedSalesmen = [];
 
   @override
   void initState() {
@@ -88,6 +90,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
           endOfDayData = snapshot.endOfDayData;
           breakdown = snapshot.breakdown;
           breakdownID = snapshot.breakdownId;
+          _unclockedSalesmen = snapshot.unclockedSalesmen;
         });
       }
     } catch (e) {
@@ -105,6 +108,7 @@ class _EndofdayPageState extends State<EndofdayPage> {
         currentDate: _selectedDate,
         oldestUnverifiedDate: _unverifiedSummary.oldest,
         isDealer: _isDealer,
+        unclockedSalesmen: _unclockedSalesmen,
       );
     } catch (e) {
       ShowMessage.error(context, e.toString().replaceAll('Exception: ', ''));
@@ -1158,15 +1162,47 @@ class _EndofdayPageState extends State<EndofdayPage> {
     final bool isReturnGated = !_isDealer && endOfDayData.hasUnconfirmedReturnProof;
     final bool hasBreakdown = breakdownID.isNotEmpty;
     final bool hasNoDeliveries = endOfDayData.totaldelivery == 0;
-    final bool isRecordDisabled = (!hasBreakdown && hasNoDeliveries) || hasPending || isReturnGated;
+    final bool hasUnclockedSalesmen = _unclockedSalesmen.isNotEmpty;
+    final bool isRecordDisabled =
+        (!hasBreakdown && hasNoDeliveries) || hasPending || isReturnGated || hasUnclockedSalesmen;
+
+    Widget? attendanceBanner;
+    if (hasUnclockedSalesmen) {
+      final names = _unclockedSalesmen.map((s) => s.salesmanUsername).join(', ');
+      attendanceBanner = Container(
+        margin: const EdgeInsets.only(bottom: 8.0),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_clock_outlined, color: Color(0xFFEF4444), size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Breakdown locked: All salesmen must clock out first (Active: $names)',
+                style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444), fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     final actionButton = AsyncFilledButton.icon(
       onPressed: isRecordDisabled ? null : validateBeforeBreakdown,
       style: FilledButton.styleFrom(
         minimumSize: const Size(double.infinity, 50.0),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        backgroundColor: (hasPending || isReturnGated) ? colorScheme.surfaceContainerHighest : null,
-        foregroundColor: (hasPending || isReturnGated) ? colorScheme.onSurfaceVariant : null,
+        backgroundColor: (hasPending || isReturnGated || hasUnclockedSalesmen)
+            ? colorScheme.surfaceContainerHighest
+            : null,
+        foregroundColor: (hasPending || isReturnGated || hasUnclockedSalesmen)
+            ? colorScheme.onSurfaceVariant
+            : null,
       ),
       icon: Icon(
         (!hasBreakdown && hasNoDeliveries)
@@ -1175,7 +1211,9 @@ class _EndofdayPageState extends State<EndofdayPage> {
                 ? Icons.lock_outline
                 : (isReturnGated
                     ? Icons.lock_clock_outlined
-                    : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined))),
+                    : (hasUnclockedSalesmen
+                        ? Icons.timer_off_outlined
+                        : (hasBreakdown ? Icons.visibility_outlined : Icons.calculate_outlined)))),
         size: 20,
       ),
       label: Text(
@@ -1185,7 +1223,9 @@ class _EndofdayPageState extends State<EndofdayPage> {
                 ? 'Settle ${endOfDayData.pendingstatus} ${endOfDayData.pendingstatus == 1 ? "Pending" : "Pendings"} to Continue'
                 : (isReturnGated
                     ? 'Waiting for Warehouse Return Confirmation'
-                    : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown'))),
+                    : (hasUnclockedSalesmen
+                        ? 'All Salesmen Must Clock Out First'
+                        : (hasBreakdown ? 'View Cash Breakdown' : 'Record Cash Breakdown')))),
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
       ),
     );
@@ -1193,7 +1233,13 @@ class _EndofdayPageState extends State<EndofdayPage> {
     if (isEmbedded) {
       return Padding(
         padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
-        child: actionButton,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ?attendanceBanner,
+            actionButton,
+          ],
+        ),
       );
     }
 
@@ -1205,7 +1251,13 @@ class _EndofdayPageState extends State<EndofdayPage> {
           border: Border(top: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6), width: 1.0)),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), offset: const Offset(0, -2), blurRadius: 6)],
         ),
-        child: actionButton,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ?attendanceBanner,
+            actionButton,
+          ],
+        ),
       ),
     );
   }

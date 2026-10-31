@@ -10,7 +10,10 @@ import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:intl/intl.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:selecta_ops/views/widgets/digital_receipt_dialog.dart';
+import 'package:selecta_ops/views/widgets/full_screen_location_picker_dialog.dart';
 
 /// Presentation page for configuring app-wide settings such as Merch Blitz campaign schedules.
 class ConfigurationPage extends StatefulWidget {
@@ -50,6 +53,10 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   late final TextEditingController _creditSmsTemplateController;
   late final TextEditingController _smsGatewayUrlController;
   late final TextEditingController _smsGatewayTokenController;
+  late final TextEditingController _depotAddressController;
+  late final TextEditingController _depotRadiusController;
+  late final TextEditingController _depotLatitudeController;
+  late final TextEditingController _depotLongitudeController;
 
   // State for collapsible cards
   bool _isMerchBlitzExpanded = false;
@@ -60,6 +67,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
   bool _isPrinterExpanded = false;
   bool _isProductSortExpanded = false;
   bool _isPromosExpanded = false;
+  bool _isAttendanceExpanded = false;
+
+  // Attendance & Depot Geofence settings
+  bool _attendanceEnabled = true;
+  bool _isCapturingDepotGps = false;
 
   // SMS Gateway settings
   bool _smsGatewayEnabled = true;
@@ -76,7 +88,8 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       _isWarehouseExpanded &&
       _isPrinterExpanded &&
       _isProductSortExpanded &&
-      _isPromosExpanded;
+      _isPromosExpanded &&
+      _isAttendanceExpanded;
 
   void _toggleAllSections() {
     final shouldExpand = !_allExpanded;
@@ -89,6 +102,7 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       _isPrinterExpanded = shouldExpand;
       _isProductSortExpanded = shouldExpand;
       _isPromosExpanded = shouldExpand;
+      _isAttendanceExpanded = shouldExpand;
     });
   }
 
@@ -110,6 +124,10 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
       if (mounted) setState(() {});
     });
     _smsGatewayTokenController = TextEditingController();
+    _depotAddressController = TextEditingController();
+    _depotRadiusController = TextEditingController(text: '300');
+    _depotLatitudeController = TextEditingController();
+    _depotLongitudeController = TextEditingController();
     _loadConfiguration();
   }
 
@@ -121,6 +139,10 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     _creditSmsTemplateController.dispose();
     _smsGatewayUrlController.dispose();
     _smsGatewayTokenController.dispose();
+    _depotAddressController.dispose();
+    _depotRadiusController.dispose();
+    _depotLatitudeController.dispose();
+    _depotLongitudeController.dispose();
     super.dispose();
   }
 
@@ -152,6 +174,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
           _smsGatewayUrlController.text = result.config.smsGatewayUrl;
           _smsGatewayTokenController.text = result.config.smsGatewayToken;
           _smsGatewaySimSlot = result.config.smsGatewaySimSlot;
+          _attendanceEnabled = result.config.attendanceEnabled;
+          _depotAddressController.text = result.config.depotAddress;
+          _depotRadiusController.text = result.config.depotRadiusMeters.toStringAsFixed(0);
+          _depotLatitudeController.text = result.config.depotLatitude != null ? result.config.depotLatitude.toString() : '';
+          _depotLongitudeController.text = result.config.depotLongitude != null ? result.config.depotLongitude.toString() : '';
           _isLoading = false;
         });
       }
@@ -248,6 +275,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
         smsGatewayUrl: _smsGatewayUrlController.text.trim(),
         smsGatewayToken: _smsGatewayTokenController.text.trim(),
         smsGatewaySimSlot: _smsGatewaySimSlot,
+        attendanceEnabled: _attendanceEnabled,
+        depotLatitude: double.tryParse(_depotLatitudeController.text.trim()),
+        depotLongitude: double.tryParse(_depotLongitudeController.text.trim()),
+        depotRadiusMeters: double.tryParse(_depotRadiusController.text.trim()) ?? 300.0,
+        depotAddress: _depotAddressController.text.trim(),
       );
 
       _configExistsInDb = true;
@@ -1108,6 +1140,172 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
     );
   }
 
+  Future<void> _captureCurrentGpsForDepot() async {
+    setState(() => _isCapturingDepotGps = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) ShowMessage.error(context, 'Location services are disabled.');
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) ShowMessage.error(context, 'Location permissions are denied.');
+          return;
+        }
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      if (mounted) {
+        setState(() {
+          _depotLatitudeController.text = pos.latitude.toStringAsFixed(6);
+          _depotLongitudeController.text = pos.longitude.toStringAsFixed(6);
+        });
+        ShowMessage.success(context, 'Depot coordinates set to current location.');
+      }
+    } catch (e) {
+      if (mounted) ShowMessage.error(context, 'Could not retrieve GPS: $e');
+    } finally {
+      if (mounted) setState(() => _isCapturingDepotGps = false);
+    }
+  }
+
+  Future<void> _pickDepotLocationOnMap() async {
+    final currentLat = double.tryParse(_depotLatitudeController.text.trim()) ?? 14.5995;
+    final currentLng = double.tryParse(_depotLongitudeController.text.trim()) ?? 120.9842;
+
+    final picked = await Navigator.of(context).push<LatLng>(
+      MaterialPageRoute(
+        builder: (ctx) => FullScreenLocationPickerDialog(
+          initialLocation: LatLng(currentLat, currentLng),
+        ),
+      ),
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _depotLatitudeController.text = picked.latitude.toStringAsFixed(6);
+        _depotLongitudeController.text = picked.longitude.toStringAsFixed(6);
+      });
+    }
+  }
+
+  Widget _buildAttendanceDepotCard(ColorScheme colorScheme) {
+    final hasCoords = _depotLatitudeController.text.isNotEmpty && _depotLongitudeController.text.isNotEmpty;
+    final badgeText = !_attendanceEnabled
+        ? 'Disabled'
+        : hasCoords
+            ? '${_depotRadiusController.text}m Geofence'
+            : 'No GPS Set';
+    final badgeColor = !_attendanceEnabled
+        ? Colors.grey
+        : hasCoords
+            ? const Color(0xFF10B981)
+            : const Color(0xFFF59E0B);
+
+    return _buildCollapsibleSectionCard(
+      isExpanded: _isAttendanceExpanded,
+      onToggle: () => setState(() => _isAttendanceExpanded = !_isAttendanceExpanded),
+      icon: Icons.access_time_filled_rounded,
+      iconColor: const Color(0xFF3B82F6),
+      title: 'Time & Attendance (Depot Geofence)',
+      subtitle: 'Depot location, GPS radius check, and mandatory salesman clock-in',
+      badgeText: badgeText,
+      badgeColor: badgeColor,
+      children: [
+        SwitchListTile.adaptive(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Require Salesman Attendance', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          subtitle: const Text(
+            'Force salesmen to clock in upon morning app open and clock out before End of Day cash breakdown.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          value: _attendanceEnabled,
+          activeTrackColor: const Color(0xFF3B82F6),
+          onChanged: (val) => setState(() => _attendanceEnabled = val),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _depotAddressController,
+          decoration: InputDecoration(
+            labelText: 'Depot Name / Address',
+            hintText: 'e.g. Main Warehouse, Barangay San Jose',
+            prefixIcon: const Icon(Icons.warehouse_outlined),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _depotLatitudeController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: InputDecoration(
+                  labelText: 'Depot Latitude',
+                  prefixIcon: const Icon(Icons.my_location, size: 18),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextFormField(
+                controller: _depotLongitudeController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: InputDecoration(
+                  labelText: 'Depot Longitude',
+                  prefixIcon: const Icon(Icons.location_searching, size: 18),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  isDense: true,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _depotRadiusController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Geofence Radius (meters)',
+            helperText: 'Clock-ins outside this radius will be flagged as "Off-Site"',
+            prefixIcon: const Icon(Icons.radar, size: 18),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _isCapturingDepotGps ? null : _captureCurrentGpsForDepot,
+                icon: _isCapturingDepotGps
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.gps_fixed, size: 16),
+                label: const Text('Use Current GPS'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _pickDepotLocationOnMap,
+                icon: const Icon(Icons.map, size: 16),
+                label: const Text('Pick on Map'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildThermalPrinterCard(ColorScheme colorScheme) {
     final statusText = _isPrinterConnected ? 'Connected' : 'Offline';
     final badgeText = '${_thermalPaperSize.code} • $statusText';
@@ -1714,6 +1912,11 @@ class _ConfigurationPageState extends State<ConfigurationPage> {
 
                     // Warehouse Picklist Verification Card
                     _buildWarehouseBarcodeCard(colorScheme),
+
+                    const SizedBox(height: 12),
+
+                    // Time & Attendance Depot Geofence Card
+                    _buildAttendanceDepotCard(colorScheme),
 
                     const SizedBox(height: 12),
 
