@@ -53,6 +53,25 @@ void main() {
       expect(restored.isPending, isTrue);
       expect(restored.isApproved, isFalse);
       expect(restored.delta, 60);
+      expect(restored.adjustmentMode, 'delta');
+
+      final setModeAdj = InventoryPendingAdjustment(
+        id: 'padj_102',
+        productId: 'prod_99',
+        productName: 'Magnum Almond',
+        productSource: 'selecta',
+        previousStock: 20,
+        requestedStock: 80,
+        delta: 60,
+        reason: 'Restock',
+        requestedByUid: 'staff_123',
+        requestedByName: 'Staff Member',
+        requestedAt: now,
+        adjustmentMode: 'set',
+      );
+      expect(setModeAdj.toJson()['adjustmentMode'], 'set');
+      final restoredSetMode = InventoryPendingAdjustment.fromJson('padj_102', setModeAdj.toJson());
+      expect(restoredSetMode.adjustmentMode, 'set');
     });
 
     test('Threshold approval requirement identifies delta exceeding configured unitApprovalThreshold', () {
@@ -62,6 +81,32 @@ void main() {
 
       expect(smallDelta > threshold, isFalse);
       expect(largeDelta > threshold, isTrue);
+    });
+
+    test('InventoryItem physical vs projected available stock separation', () {
+      final item = InventoryItem(
+        id: 'prod_test',
+        productName: 'Test Ice Cream',
+        imageUrl: '',
+        barcode: '',
+        buyingPrice: 20,
+        sellingPrice: 30,
+        isActive: true,
+        stockQuantity: 50, // Physical stock on hand in freezer
+        incomingQuantity: 30, // Unreceived supplier PO shipment
+        reservedQuantity: 15, // Booked customer pre-sell orders
+        preOrderQuantity: 0,
+        lowStockThreshold: 10,
+        maxStock: 100,
+        source: InventoryProductSource.selecta,
+        category: 'Bulk',
+      );
+
+      // physicalAvailableStock = stockQuantity - reservedQuantity = 50 - 15 = 35
+      expect(item.physicalAvailableStock, 35);
+      // projectedAvailableStock = (stockQuantity + incomingQuantity) - reservedQuantity = (50 + 30) - 15 = 65
+      expect(item.projectedAvailableStock, 65);
+      expect(item.netPhysicalStock, 35);
     });
   });
 

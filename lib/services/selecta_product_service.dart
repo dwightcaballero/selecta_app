@@ -1109,12 +1109,27 @@ class SelectaProductService {
       await batch.commit();
     }
 
-    // Remove local products that were deleted from the master admin catalog
+    // Remove or archive local products that were deleted from the master admin catalog
     final deletedDocs = existingSnap.docs.where((d) => !remoteIds.contains(d.id)).toList();
     if (deletedDocs.isNotEmpty) {
       final deleteBatch = _firestore.batch();
       for (final doc in deletedDocs) {
-        deleteBatch.delete(doc.reference);
+        final data = doc.data();
+        final stock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+        final reserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
+        final incoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
+
+        // If the dealer still has physical, reserved, or incoming stock, do not delete the record.
+        // Instead, archive and deactivate it to preserve inventory ledger continuity.
+        if (stock > 0 || reserved > 0 || incoming > 0) {
+          deleteBatch.update(doc.reference, {
+            'isActive': false,
+            'isDiscontinued': true,
+            'lastUpdatedDate': Timestamp.now(),
+          });
+        } else {
+          deleteBatch.delete(doc.reference);
+        }
       }
       await deleteBatch.commit();
     }

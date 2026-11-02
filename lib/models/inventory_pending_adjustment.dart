@@ -18,6 +18,7 @@ class InventoryPendingAdjustment {
   final String requestedByName;
   final DateTime requestedAt;
   final String status; // 'pending', 'approved', 'rejected'
+  final String adjustmentMode; // 'set' | 'delta'
   final String? reviewedByUid;
   final String? reviewedByName;
   final DateTime? reviewedAt;
@@ -38,6 +39,7 @@ class InventoryPendingAdjustment {
     required this.requestedByName,
     required this.requestedAt,
     this.status = 'pending',
+    this.adjustmentMode = 'delta',
     this.reviewedByUid,
     this.reviewedByName,
     this.reviewedAt,
@@ -64,6 +66,7 @@ class InventoryPendingAdjustment {
       requestedByName: json['requestedByName'] as String? ?? 'Dealer',
       requestedAt: (json['requestedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       status: json['status'] as String? ?? 'pending',
+      adjustmentMode: json['adjustmentMode'] as String? ?? 'delta',
       reviewedByUid: json['reviewedByUid'] as String?,
       reviewedByName: json['reviewedByName'] as String?,
       reviewedAt: (json['reviewedAt'] as Timestamp?)?.toDate(),
@@ -85,6 +88,7 @@ class InventoryPendingAdjustment {
         'requestedByName': requestedByName,
         'requestedAt': Timestamp.fromDate(requestedAt),
         'status': status,
+        'adjustmentMode': adjustmentMode,
         if (reviewedByUid != null) 'reviewedByUid': reviewedByUid,
         if (reviewedByName != null) 'reviewedByName': reviewedByName,
         if (reviewedAt != null) 'reviewedAt': Timestamp.fromDate(reviewedAt!),

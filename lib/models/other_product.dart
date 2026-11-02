@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class OtherProduct {
+  String id;
   String productName;
   String imageUrl;
   String barcode;
@@ -14,6 +15,7 @@ class OtherProduct {
   Timestamp? updatedAt;
 
   OtherProduct({
+    this.id = '',
     required this.productName,
     required this.imageUrl,
     this.barcode = '',
@@ -28,6 +30,7 @@ class OtherProduct {
   });
 
   static OtherProduct empty() => OtherProduct(
+        id: '',
         productName: '',
         imageUrl: '',
         barcode: '',
@@ -39,8 +42,9 @@ class OtherProduct {
         lowStockThreshold: 10,
       );
 
-  factory OtherProduct.fromJson(Map<String, Object?> json) {
+  factory OtherProduct.fromJson(Map<String, Object?> json, {String id = ''}) {
     return OtherProduct(
+      id: id.isNotEmpty ? id : (json['id'] as String? ?? ''),
       productName: json['productName'] as String? ?? '',
       imageUrl: json['imageUrl'] as String? ?? '',
       barcode: (json['barcode'] as String? ?? '').trim(),
@@ -59,6 +63,7 @@ class OtherProduct {
     if (document.data() != null) {
       final data = document.data()!;
       return OtherProduct(
+        id: document.id,
         productName: data['productName'] ?? '',
         imageUrl: data['imageUrl'] ?? '',
         barcode: (data['barcode'] as String? ?? '').trim(),
@@ -76,6 +81,7 @@ class OtherProduct {
   }
 
   OtherProduct copyWith({
+    String? id,
     String? productName,
     String? imageUrl,
     String? barcode,
@@ -89,6 +95,7 @@ class OtherProduct {
     Timestamp? updatedAt,
   }) {
     return OtherProduct(
+      id: id ?? this.id,
       productName: productName ?? this.productName,
       imageUrl: imageUrl ?? this.imageUrl,
       barcode: barcode ?? this.barcode,
@@ -124,8 +131,12 @@ class OtherProduct {
   double get marginPercent =>
       buyingPrice > 0 ? ((sellingPrice - buyingPrice) / buyingPrice) * 100 : 0;
 
-  int get availableQuantity =>
+  int get physicalAvailableStock =>
       (stockQuantity - reservedQuantity) < 0 ? 0 : (stockQuantity - reservedQuantity);
+
+  int get projectedAvailableStock => physicalAvailableStock;
+
+  int get availableQuantity => physicalAvailableStock;
 
   bool get isOutOfStock => stockQuantity <= 0;
 

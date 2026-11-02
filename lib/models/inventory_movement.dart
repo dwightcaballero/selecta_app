@@ -158,6 +158,14 @@ class InventoryItem {
   /// Physical unreserved stock in the warehouse (Current Stock - Reserved Stock).
   int get netPhysicalStock => stockQuantity - reservedQuantity;
 
+  /// Physical available on-hand stock ready for sale today: (stockQuantity - reservedQuantity).clamp(0, infinity).
+  int get physicalAvailableStock =>
+      (stockQuantity - reservedQuantity) < 0 ? 0 : (stockQuantity - reservedQuantity);
+
+  /// Projected available stock once incoming supplier POs physically arrive: ((stockQuantity + incomingQuantity) - reservedQuantity).clamp(0, infinity).
+  int get projectedAvailableStock =>
+      ((stockQuantity + incomingQuantity) - reservedQuantity) < 0 ? 0 : ((stockQuantity + incomingQuantity) - reservedQuantity);
+
   /// Available stock = Current stock + Incoming Stock - Reserved stock.
   /// NOTE: As intended, pre-orders for future delivery do NOT deduct from available quantity.
   int get availableQuantity =>

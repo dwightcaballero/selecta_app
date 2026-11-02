@@ -295,5 +295,71 @@ void main() {
       expect(delivery.items.first.sellingPrice, 35.0);
       expect(delivery.items.first.isPicked, isTrue);
     });
+
+    test('Settlement deduplication: Dealer-approved return does NOT restock returned units a second time', () {
+      final item = const OrderItem(
+        productId: 'prod_double_restock_guard',
+        productName: 'Double Dutch Tub',
+        sellingPrice: 150.0,
+        orderedQuantity: 10,
+        pickedQuantity: 10,
+        returnedQuantity: 4,
+      );
+
+      // Order with isInventoryDeducted=true whose return was ALREADY approved by dealer
+      final delivery = Delivery.empty().copyWith(
+        storeName: 'Store Approved Return',
+        transactionStatus: DeliveryStatus.delivered,
+        orderAmount: 900.0,
+        originalOrderAmount: 1500.0,
+        returnAmount: 600.0,
+        items: [item],
+        isInventoryReserved: false,
+        isInventoryDeducted: true,
+        isInventorySettled: false,
+        isReturnApprovedByDealer: true, // Dealer already replenished/quarantined stock
+        createdDate: Timestamp.now(),
+      );
+
+      final plan = InventoryService.computeSettlement([
+        (id: 'del_dealer_approved', delivery: delivery),
+      ]);
+
+      // Because isReturnApprovedByDealer is true, computeSettlement must NOT restock the 4 returned units
+      final delta = plan.getDelta('prod_double_restock_guard');
+      expect(delta, isNull, reason: 'Stock should not be adjusted since returned units were already approved and handled');
+      expect(plan.totalLegacyRestockedUnits, 0);
+    });
+
+    test('Settlement deduplication: Full return already approved by dealer does NOT duplicate restock', () {
+      final item = const OrderItem(
+        productId: 'prod_full_return_approved',
+        productName: 'Magnum Gold',
+        sellingPrice: 70.0,
+        orderedQuantity: 8,
+        pickedQuantity: 8,
+        returnedQuantity: 0,
+      );
+
+      final delivery = Delivery.empty().copyWith(
+        storeName: 'Store Full Return Approved',
+        transactionStatus: DeliveryStatus.returned,
+        orderAmount: 560.0,
+        items: [item],
+        isInventoryReserved: false,
+        isInventoryDeducted: true,
+        isInventorySettled: false,
+        isReturnApprovedByDealer: true, // Dealer already handled return in return_receiving_page
+        createdDate: Timestamp.now(),
+      );
+
+      final plan = InventoryService.computeSettlement([
+        (id: 'del_full_ret_approved', delivery: delivery),
+      ]);
+
+      final delta = plan.getDelta('prod_full_return_approved');
+      expect(delta, isNull, reason: 'Full return already restocked by dealer must not be restocked again');
+      expect(plan.totalLegacyRestockedUnits, 0);
+    });
   });
 }

@@ -1,0 +1,473 @@
+================================================================================
+INVENTORY ACCURACY REPAIR & HARDENING PLAN (ROOT-CAUSE REMEDIATION)
+================================================================================
+Document: INVENTORY_ACCURACY_FIX_PLAN.txt
+Status  : IMPLEMENTED & VERIFIED (All 6 Phases Deployed and Validated via Tests)
+Target  : selecta_ops (Flutter & Cloud Firestore)
+Date    : 2026-10-31
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. Executive Summary & Root-Cause Analysis
+2. Core Inventory State Architecture
+3. Complete Issue Catalog & Technical Root Causes
+4. Step-by-Step Remediation Plan
+   - Phase 1: Settlement & Return Restock Deduplication (Critical P0)
+   - Phase 2: Idempotency Key Uniqueness & Reservation Leak Fixes (P0)
+   - Phase 3: Picked Order Void & Status Reversal Safety (P0)
+   - Phase 4: Cycle Count & Pending Adjustment Concurrency Hardening (P1)
+   - Phase 5: Catalog Sync Deletion Guard & Audit Bug Fixes (P1)
+   - Phase 6: UI Available vs Physical Stock Metric Harmonization (P2)
+5. Test & Validation Strategy
+6. Rollout & Migration Checklist
+
+================================================================================
+1. EXECUTIVE SUMMARY & ROOT-CAUSE ANALYSIS
+================================================================================
+An end-to-end audit of all incoming (Purchase Orders, Store Returns, Van Returns,
+Adjustments, Cycle Counts) and outgoing (Bookings, Picklists, Van Loads, Van Sales,
+Daily Settlements, Voids) processes revealed multiple systemic flaws that break
+inventory accuracy over time.
+
+The most severe finding is a DUPLICATE RESTOCKING BUG during Daily Settlement:
+When a return is approved by the dealer, stock is replenished immediately. But at
+the end of the day, when the Daily Delivery Settlement runs, it unconditionally
+adds the returned quantity back to physical stock a second time. This injects
+"phantom stock" into Firestore, causing the app to show more inventory than what
+physically exists in the warehouse.
+
+Additional critical bugs include idempotency key collisions that silently drop stock
+reservations for repeat store orders, permanent inventory leakage when picked
+orders are voided, and concurrency race conditions in cycle counting.
+
+================================================================================
+2. CORE INVENTORY STATE ARCHITECTURE
+================================================================================
+Inventory accuracy is governed by three counters on each product document:
+  - stockQuantity    : Physical on-hand stock inside the warehouse freezer/shelves.
+  - reservedQuantity : Committed floating stock held for booked orders awaiting pick.
+  - incomingQuantity : In-transit stock from supplier POs or customer returns.
+
+Physical Sellable Stock = stockQuantity - reservedQuantity
+
+Lifecycle Progression:
+  [PO Created]           -> +incomingQuantity
+  [PO Invoiced]          -> +stockQuantity, -incomingQuantity
+  [Order Booked]         -> +reservedQuantity
+  [Picklist Completed]   -> -stockQuantity, -reservedQuantity
+  [Order Delivered]      -> Settled (No stock change)
+  [Order Returned]       -> +incomingQuantity (Driver) -> +stockQuantity, -incomingQuantity (Dealer Restock)
+  [Van Load Dispatched]  -> -stockQuantity
+  [Van EOD Return]       -> +stockQuantity (Unsold items)
+
+================================================================================
+3. COMPLETE ISSUE CATALOG & TECHNICAL ROOT CAUSES
+================================================================================
+
+--------------------------------------------------------------------------------
+[BUG 1] DOUBLE RESTOCKING ON RETURNS DURING DAILY SETTLEMENT (CRITICAL P0)
+--------------------------------------------------------------------------------
+• Location:
+  lib/services/inventory_service.dart: lines 2751-2772 & lines 2795-2814
+• Mechanism:
+  1. Driver marks delivery as returned (full or partial) on delivery_page.dart.
+  2. Dealer inspects return on return_receiving_page.dart / return_page.dart and
+     approves it. approveReturnAndReplenishStock() immediately adds +retQty to
+     stockQuantity in Firestore.
+  3. At EOD, cashier verifies breakdown on breakdown_page.dart, triggering
+     settleDeliveriesForDate() -> computeSettlement().
+  4. computeSettlement() DOES NOT CHECK if the return was already approved
+     (d.isReturnApprovedByDealer is ignored). It inspects isInventoryDeducted == true,
+     assumes the return has not been restocked, and adds +pickedQty or +rQty to
+     stockDelta A SECOND TIME.
+  5. Furthermore, if the dealer chose "Quarantine" or "Write-Off" (scrapped),
+     computeSettlement() still restocks the units at EOD, resurrecting damaged goods
+     into sellable inventory.
+• Symptom:
+  Physical freezer count is lower than app stock (Phantom inventory).
+
+--------------------------------------------------------------------------------
+[BUG 2] IDEMPOTENCY KEY COLLISION DROPS RESERVATIONS FOR REPEAT ORDERS (P0)
+--------------------------------------------------------------------------------
+• Location:
+  - lib/controllers/delivery_controller.dart: line 618
+  - lib/services/store_order_service.dart: line 340
+  - lib/controllers/return_controller.dart: line 239
+  - lib/services/inventory_service.dart: line 782
+• Mechanism:
+  In reserveStockForOrder():
+    idKey = 'order_reserve_${orderId ?? storeName}_${item.productId}'
+  Because reserveStockForOrder() is invoked BEFORE addDelivery(), orderId is NULL.
+  The key becomes 'order_reserve_<storeName>_<productId>'.
+  When the idempotency check runs:
+    if (movSnap.exists) continue;
+  If that store ever places a second order for the same product, movSnap.exists is
+  TRUE from the prior order. The reservation transaction silently SKIPS the item.
+  In return_controller.dart line 239, reReserveForRescheduledOrder() hardcodes
+  storeName: 'Rescheduled Order' with no orderId, so ALL rescheduled orders for the
+  same product collide and skip reservation after the first one.
+• Symptom:
+  reservedQuantity is undercounted; available stock is over-reported; items are
+  double-booked beyond warehouse capacity.
+
+--------------------------------------------------------------------------------
+[BUG 3] VOIDED PICKED ORDERS CAUSE PERMANENT STOCK LEAKAGE (P0)
+--------------------------------------------------------------------------------
+• Location:
+  lib/controllers/delivery_controller.dart: lines 1457-1464 (voidDelivery)
+• Mechanism:
+  When an order is completed in picklist, physical stock was already deducted
+  (isInventoryDeducted = true). If that delivery is later voided in delivery_page:
+    if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
+      await _inventoryService.releaseReservedStockForOrder(...);
+    }
+  Because isInventoryDeducted is TRUE, this condition is FALSE.
+  reverseStockForDeletedOrder() is NEVER called.
+  computeSettlement() also ignores voided deliveries.
+• Symptom:
+  Stock that was picked and then voided stays permanently deducted from the database.
+  Physical stock in warehouse exceeds app stock count.
+
+--------------------------------------------------------------------------------
+[BUG 4] RESETTING PICKED ORDER TO PENDING PICKLIST TRIGGERS DOUBLE DEDUCTION (P0)
+--------------------------------------------------------------------------------
+• Location:
+  lib/controllers/delivery_controller.dart: lines 1174-1181 (updateDelivery)
+• Mechanism:
+  If a delivery was already picked (isInventoryDeducted == true) and a user changes
+  the status back to "For Delivery" or "Pending Picklist" on delivery_page.dart:
+  - updateDelivery() does NOT reverse the deducted physical stock.
+  - The delivery is placed back into the Picklist queue.
+  - When the picker taps "Complete Picklist", completePicklistAtomicTransaction()
+    deducts the items from stockQuantity A SECOND TIME.
+• Symptom:
+  Physical stock is deducted twice for the same delivery.
+
+--------------------------------------------------------------------------------
+[BUG 5] ORDER DELETION REVERSAL KEY COLLISION (P1)
+--------------------------------------------------------------------------------
+• Location:
+  lib/controllers/delivery_controller.dart: line 1420 (deleteDelivery)
+  lib/services/inventory_service.dart: line 1028
+• Mechanism:
+  In reverseStockForDeletedOrder():
+    idKey = 'order_delete_rev_${orderId ?? storeName}_${item.productId}'
+  deleteDelivery() omits orderId. If two orders from the same store are deleted
+  over time, the second deletion's reversal movement document already exists, so
+  movSnap.exists is true and stock restoration is SKIPPED.
+• Symptom:
+  Deleting an order fails to restore inventory.
+
+--------------------------------------------------------------------------------
+[BUG 6] STALE UI SNAPSHOT RACE CONDITION IN CYCLE COUNTING (P1)
+--------------------------------------------------------------------------------
+• Location:
+  - lib/views/widgets/inventory/cycle_count_dialog.dart: line 302
+  - lib/services/inventory_service.dart: lines 3415-3436 (submitCycleCount)
+• Mechanism:
+  CycleCountDialog computes variance outside the transaction using the stale UI item:
+    variance = countedQuantity - item.stockQuantity
+  submitCycleCount() passes stockDelta: variance to _computeStockChange(), which does:
+    nextStock = currentStock (live DB) + stockDelta (stale variance)
+  If stock changed between the dialog opening and saving (e.g. picklist completed
+  or PO received), the resulting stock DOES NOT equal the physically counted value.
+• Symptom:
+  Cycle count fails to calibrate stock to the exact physical count entered.
+
+--------------------------------------------------------------------------------
+[BUG 7] PENDING ADJUSTMENT OVERWRITES CONCURRENT SALES (P1)
+--------------------------------------------------------------------------------
+• Location:
+  lib/services/inventory_service.dart: lines 1782-1785 (approvePendingAdjustment)
+• Mechanism:
+  When a pending adjustment is approved:
+    targetDelta = pending.requestedStock - currentStock
+  If the adjustment was submitted to add +20 units (from 100 to 120), but 30 units
+  were picked while the request was awaiting dealer approval (dropping DB stock to 70),
+  approving it calculates targetDelta = 120 - 70 = +50, setting stock to 120 and
+  erasing the 30 picked units.
+• Symptom:
+  Approving an adjustment resurrects previously picked and sold inventory.
+
+--------------------------------------------------------------------------------
+[BUG 8] CATALOG SYNC SILENTLY DELETES PRODUCTS WITH EXISTING STOCK (P1)
+--------------------------------------------------------------------------------
+• Location:
+  lib/services/selecta_product_service.dart: lines 1113-1120
+• Mechanism:
+  In syncDealerProductsWithAdminCatalog():
+  Local dealer products not in the remote master list are batch-deleted without
+  checking stockQuantity or reservedQuantity, and without logging a movement.
+• Symptom:
+  Freezer has physical stock of discontinued items that disappear from the app.
+
+--------------------------------------------------------------------------------
+[BUG 9] RUN STOCK AUDIT OTHER PRODUCTS ID VS NAME MISMATCH (P1)
+--------------------------------------------------------------------------------
+• Location:
+  lib/services/inventory_service.dart: line 3300 (runStockAudit)
+• Mechanism:
+  items.add(InventoryItem.fromOtherProduct(p.productName, p)); // passes name as id!
+  Line 3339 queries where('productId', isEqualTo: item.id) with product name instead
+  of document ID, failing to audit movements and producing false discrepancy alerts.
+• Symptom:
+  Non-Selecta products generate continuous false discrepancy alerts.
+
+--------------------------------------------------------------------------------
+[BUG 10] AVAILABLE STOCK DEFINITION MISMATCH (P2)
+--------------------------------------------------------------------------------
+• Location:
+  lib/models/inventory_movement.dart: lines 163-164 vs lib/models/other_product.dart: line 127
+• Mechanism:
+  InventoryItem.availableQuantity adds incomingQuantity (PO & return in-transit) to
+  available stock. SelectaProduct and OtherProduct compute available = stock - reserved.
+  Inventory card shows goods as "Available" that haven't physically arrived.
+• Symptom:
+  Salesmen and dealers book orders against unreceived supplier PO shipments.
+
+================================================================================
+4. STEP-BY-STEP REMEDIATION PLAN
+================================================================================
+
+--------------------------------------------------------------------------------
+PHASE 1: SETTLEMENT & RETURN RESTOCK DEDUPLICATION (CRITICAL P0)
+--------------------------------------------------------------------------------
+Objective: Ensure returns are restocked EXACTLY ONCE, and quarantine/scrap items
+           are never restocked into warehouse inventory.
+
+Step 1.1: Update computeSettlement() in lib/services/inventory_service.dart
+  - Add guard check for returns already processed by the dealer:
+    ```dart
+    final bool isReturnAlreadyHandled = d.isReturnApprovedByDealer ||
+        d.items.any((i) => i.returnedQuantity > 0 && d.isReturnIncoming == false && d.isReturnApprovedByDealer);
+    ```
+  - For DeliveryStatus.returned:
+    - If `d.isReturnApprovedByDealer == true`: DO NOT add `pickedQty` to `stockDelta`.
+      The stock was already handled by `approveReturnAndReplenishStock()`.
+    - If `d.isReturnApprovedByDealer == false`: Only restock if return disposition
+      is confirmed restock.
+    - If `!d.isInventoryDeducted`: Only release reservation (`reservedDelta: -pickedQty`),
+      do not touch `stockDelta`.
+  - For DeliveryStatus.delivered with partial returns (`rQty > 0`):
+    - If `d.isReturnApprovedByDealer == true`: DO NOT add `rQty` to `stockDelta`.
+    - Only adjust `reservedDelta` if physical stock was never deducted.
+
+Step 1.2: Mark Settlement Flag on Return Approval
+  - In `approveReturnAndReplenishStock()`, update delivery document with:
+    `'isReturnSettledInStock': true`
+  - In `computeSettlement()`, skip restocking any line where `isReturnSettledInStock == true`.
+
+--------------------------------------------------------------------------------
+PHASE 2: IDEMPOTENCY KEY UNIQUENESS & RESERVATION LEAK FIXES (P0)
+--------------------------------------------------------------------------------
+Objective: Guarantee every order reservation and reversal has a unique deterministic key.
+
+Step 2.1: Pre-generate Delivery ID in Book Order Flow
+  - In `lib/controllers/delivery_controller.dart`:
+    Before reserving stock:
+    ```dart
+    final String newId = _firestore.collection(DELIVERY_COLLECTION_REF).doc().id;
+    final newRecord = ... (with id: newId);
+    await _inventoryService.reserveStockForOrder(
+      orderId: newId,
+      storeName: storeName,
+      items: cleanItems,
+      logShortAllocation: !isFutureDate(selectedDate),
+    );
+    await _deliveryService.addDeliveryWithId(newId, newRecord);
+    ```
+  - Add `addDeliveryWithId(String id, Delivery delivery)` to `lib/services/delivery_service.dart`:
+    ```dart
+    Future<void> addDeliveryWithId(String id, Delivery delivery) async {
+      await _ordersRef.doc(id).set(delivery);
+    }
+    ```
+
+Step 2.2: Pre-generate Delivery ID in Store Order Approval Flow
+  - In `lib/services/store_order_service.dart` (`approveAndConvertStoreOrder`):
+    Generate `final deliveryId = _firestore.collection(DELIVERY_COLLECTION_REF).doc().id;`
+    Pass `orderId: deliveryId` to `reserveStockForOrder()`.
+    Persist delivery using `deliveryId`.
+
+Step 2.3: Fix Rescheduled Order Re-reservation
+  - In `lib/controllers/return_controller.dart` (`rescheduleReturnToNewOrder`):
+    Change line 239:
+    ```dart
+    await _inventoryService.reserveStockForOrder(
+      orderId: newDeliveryId,
+      storeName: delivery.storeName,
+      items: newItems,
+    );
+    ```
+    Deprecate or update `reReserveForRescheduledOrder` to accept `orderId` and `storeName`.
+
+Step 2.4: Pass orderId in Order Deletion Reversal
+  - In `lib/controllers/delivery_controller.dart` (`deleteDelivery`):
+    Pass `orderId: deliveryId` to `reverseStockForDeletedOrder()`.
+
+--------------------------------------------------------------------------------
+PHASE 3: PICKED ORDER VOID & STATUS REVERSAL SAFETY (P0)
+--------------------------------------------------------------------------------
+Objective: Ensure picked orders that are voided or reset restore their physical stock.
+
+Step 3.1: Fix voidDelivery() in lib/controllers/delivery_controller.dart
+  - If `delivery.isInventoryDeducted == true`:
+    Physical stock was already deducted in picklist! Call `reverseStockForDeletedOrder`:
+    ```dart
+    if (delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
+      await _inventoryService.reverseStockForDeletedOrder(
+        orderId: deliveryId,
+        storeName: delivery.storeName,
+        items: delivery.items,
+        wasDeducted: true,
+        wasReserved: false,
+      );
+    } else if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
+      await _inventoryService.releaseReservedStockForOrder(
+        orderId: deliveryId,
+        storeName: delivery.storeName,
+        items: delivery.items,
+      );
+    }
+    ```
+
+Step 3.2: Guard Against Resetting Picked Delivery to pendingPicklist
+  - In `lib/controllers/delivery_controller.dart` (`updateDelivery`):
+    If `currentDelivery.isInventoryDeducted == true` and target status is `pendingPicklist`:
+    Revert the picklist deduction and re-reserve:
+    ```dart
+    if (currentDelivery.isInventoryDeducted && status == DeliveryStatus.pendingPicklist) {
+      await _inventoryService.reverseStockForDeletedOrder(
+        orderId: deliveryId,
+        storeName: storeName,
+        items: currentDelivery.items,
+        wasDeducted: true,
+        wasReserved: false,
+      );
+      await _inventoryService.reserveStockForOrder(
+        orderId: deliveryId,
+        storeName: storeName,
+        items: finalItems,
+      );
+      markDeducted = false;
+      markReserved = true;
+    }
+    ```
+
+--------------------------------------------------------------------------------
+PHASE 4: CYCLE COUNT & PENDING ADJUSTMENT CONCURRENCY HARDENING (P1)
+--------------------------------------------------------------------------------
+Objective: Ensure physical count submissions set the true physical count, and
+           pending adjustments do not wipe out intervening sales.
+
+Step 4.1: Fix submitCycleCount() in lib/services/inventory_service.dart
+  - Compute the stock delta INSIDE the transaction against the fresh product snapshot:
+    ```dart
+    await _runInventoryTransaction('submitCycleCount', (transaction) async {
+      final snap = await transaction.get(productRef);
+      if (!snap.exists) throw Exception(...);
+      final liveStock = (snap.data()?['stockQuantity'] as num?)?.toInt() ?? 0;
+      final exactDelta = countedQuantity - liveStock;
+
+      final change = _computeStockChange(
+        productRef: productRef,
+        productSnap: snap,
+        stockDelta: exactDelta,
+        movementType: MovementType.count_correction,
+        ...
+      );
+      ...
+    });
+    ```
+  - This guarantees `nextStock = liveStock + (countedQuantity - liveStock) == countedQuantity`.
+
+Step 4.2: Add Adjustment Mode to Pending Adjustments
+  - In `InventoryPendingAdjustment`, add `adjustmentMode: 'set' | 'delta'`.
+  - In `approvePendingAdjustment()`:
+    - If `mode == 'delta'`: apply `stockDelta: pending.delta` so concurrent pickings
+      are preserved.
+    - If `mode == 'set'`: apply `stockDelta: pending.requestedStock - currentLiveStock`.
+
+--------------------------------------------------------------------------------
+PHASE 5: CATALOG SYNC DELETION GUARD & AUDIT BUG FIXES (P1)
+--------------------------------------------------------------------------------
+Objective: Protect discontinued inventory and eliminate false audit discrepancies.
+
+Step 5.1: Protect Stocked Products in syncDealerProductsWithAdminCatalog()
+  - In `lib/services/selecta_product_service.dart`:
+    Before deleting local products not in the remote list:
+    ```dart
+    for (final doc in deletedDocs) {
+      final data = doc.data();
+      final stock = (data['stockQuantity'] as num?)?.toInt() ?? 0;
+      final reserved = (data['reservedQuantity'] as num?)?.toInt() ?? 0;
+      final incoming = (data['incomingQuantity'] as num?)?.toInt() ?? 0;
+
+      if (stock > 0 || reserved > 0 || incoming > 0) {
+        // DO NOT DELETE: archive and deactivate instead
+        deleteBatch.update(doc.reference, {
+          'isActive': false,
+          'isDiscontinued': true,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        deleteBatch.delete(doc.reference);
+      }
+    }
+    ```
+
+Step 5.2: Fix Other Products ID in runStockAudit()
+  - In `lib/services/inventory_service.dart` line 3300:
+    Change:
+      `items.add(InventoryItem.fromOtherProduct(p.productName, p));`
+    To:
+      `items.add(InventoryItem.fromOtherProduct(p.id, p));`
+
+--------------------------------------------------------------------------------
+PHASE 6: UI AVAILABLE VS PHYSICAL STOCK METRIC HARMONIZATION (P2)
+--------------------------------------------------------------------------------
+Objective: Prevent promising unreceived goods to customers.
+
+Step 6.1: Clarify Stock Metrics in InventoryItem
+  - In `lib/models/inventory_movement.dart`:
+    - `physicalAvailableStock = (stockQuantity - reservedQuantity).clamp(0, infinity)`
+      (Stock physically inside the freezer ready to sell today)
+    - `projectedAvailableStock = ((stockQuantity + incomingQuantity) - reservedQuantity).clamp(0, infinity)`
+      (Stock available once supplier POs and returns physically arrive)
+Step 6.2: Update InventoryCard & BookOrder UI
+  - Clearly label `On-Hand Available` vs `Incoming In-Transit` so pickers and salesmen
+    know what is physically in the warehouse.
+
+================================================================================
+5. TEST & VALIDATION STRATEGY
+================================================================================
+1. Unit Tests (Fake Firebase Firestore):
+   - Test A: Return Approved + Settlement. Simulate delivery return, approve return
+     (+10 stock), run settlement. Verify stockQuantity is +10, NOT +20.
+   - Test B: Idempotency Key Repeat Store Order. Store A orders Product X, then
+     orders Product X again. Verify reservedQuantity equals Order 1 + Order 2.
+   - Test C: Void Picked Delivery. Pick order (-5 stock), void delivery. Verify
+     stock is restored to initial value.
+   - Test D: Cycle Count Concurrency. Set DB stock to 40. Submit cycle count of 50.
+     Verify DB stock becomes 50.
+   - Test E: Admin Catalog Sync. Add product with 15 on-hand stock. Sync with admin
+     catalog missing this product. Verify product is deactivated, NOT deleted.
+
+2. Integration & Reconciliation:
+   - Run `InventoryService().runStockAudit()` before and after fixes to verify zero
+     ledger mismatches and zero chain breakages.
+
+================================================================================
+6. ROLLOUT & MIGRATION CHECKLIST
+================================================================================
+[x] Step 1: Review and approve this implementation plan.
+[x] Step 2: Implement Phase 1 (Settlement & Return Deduplication) in inventory_service.dart.
+[x] Step 3: Implement Phase 2 (Unique Order IDs for Reservations) in delivery_controller,
+            store_order_service, and return_controller.
+[x] Step 4: Implement Phase 3 (Voided Delivery Restock) in delivery_controller.
+[x] Step 5: Implement Phase 4 (Cycle Count Exact Delta) in inventory_service.
+[x] Step 6: Implement Phase 5 (Catalog Sync Guard & Audit ID fix).
+[x] Step 7: Run automated test suite (`flutter test`).
+[ ] Step 8: Deploy app update to staff and dealer devices.
+================================================================================

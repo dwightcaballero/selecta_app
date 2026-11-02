@@ -236,7 +236,11 @@ class ReturnController {
 
     // 3. Re-reserve floating inventory for the rescheduled items
     if (newItems.isNotEmpty) {
-      await _inventoryService.reReserveForRescheduledOrder(newItems);
+      await _inventoryService.reReserveForRescheduledOrder(
+        newItems,
+        orderId: newDeliveryId,
+        storeName: delivery.storeName,
+      );
     }
 
     // 4. Update original delivery as rescheduled

@@ -25,6 +25,10 @@ class DeliveryService {
     return docRef.id;
   }
 
+  Future<void> addDeliveryWithId(String id, Delivery delivery) async {
+    await _ordersRef.doc(id).set(delivery);
+  }
+
   Future<void> updateDelivery(String deliveryID, Delivery delivery) async {
     await _ordersRef.doc(deliveryID).update(delivery.toJson());
   }
@@ -42,6 +46,7 @@ class DeliveryService {
     await _ordersRef.doc(deliveryID).update({
       DeliveryModelString.transactionStatus: DeliveryStatus.voided,
       DeliveryModelString.isInventoryReserved: false,
+      DeliveryModelString.isInventoryDeducted: false,
       DeliveryModelString.voidReason: reason,
       DeliveryModelString.voidedBy: voidedBy,
       DeliveryModelString.voidedDate: Timestamp.now(),

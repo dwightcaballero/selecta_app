@@ -335,14 +335,17 @@ class StoreOrderService {
       storeOrderId: orderId,
     );
 
-    // Reserve stock via InventoryService
+    final deliveryId = _firestore.collection(DELIVERY_COLLECTION_REF).doc().id;
+
+    // Reserve stock via InventoryService with unique deterministic orderId
     await _inventoryService.reserveStockForOrder(
+      orderId: deliveryId,
       storeName: currentOrder.storeName,
       items: deliveryOrderItems,
     );
 
-    // Save Delivery document
-    final deliveryId = await _deliveryService.addDelivery(newDelivery);
+    // Save Delivery document with pre-generated ID
+    await _deliveryService.addDeliveryWithId(deliveryId, newDelivery);
 
     // 4. Update store_order record
     final now = Timestamp.now();

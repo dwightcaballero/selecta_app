@@ -1780,7 +1780,13 @@ class InventoryService {
       final pSnap = await transaction.get(productRef);
       if (!pSnap.exists) throw Exception('Product "${pending.productName}" not found.');
       final currentStock = (pSnap.data()?['stockQuantity'] as num?)?.toInt() ?? 0;
-      final targetDelta = pending.requestedStock - currentStock;
+      final int targetDelta;
+      if (pending.adjustmentMode == 'set') {
+        targetDelta = pending.requestedStock - currentStock;
+      } else {
+        // Delta mode: preserve concurrent sales and picks that occurred while awaiting dealer approval
+        targetDelta = pending.delta;
+      }
 
       final change = _computeStockChange(
         productRef: productRef,
@@ -2752,22 +2758,27 @@ class InventoryService {
             // Legacy workflow: stock was already deducted at picklist completion
             totalReturnedUnits += rQty;
             if (rQty > 0) {
-              totalLegacyRestockedUnits += rQty;
-              addDelta(
-                source: item.productSource,
-                productId: item.productId,
-                productName: item.productName,
-                stockDelta: rQty,
-                reservedDelta: 0,
-              );
-              movements.add(SettlementMovementPlan(
-                productId: item.productId,
-                productName: item.productName,
-                productSource: item.productSource,
-                delta: rQty,
-                reason: 'Return Restocked (Legacy Order)',
-                notes: 'Store: ${d.storeName} (Restocked: $rQty)',
-              ));
+              // If dealer already approved the return (approveReturnAndReplenishStock),
+              // returned units have already been restocked or quarantined/written off.
+              // Do NOT restock again during settlement to prevent phantom duplicate inventory.
+              if (!d.isReturnApprovedByDealer) {
+                totalLegacyRestockedUnits += rQty;
+                addDelta(
+                  source: item.productSource,
+                  productId: item.productId,
+                  productName: item.productName,
+                  stockDelta: rQty,
+                  reservedDelta: 0,
+                );
+                movements.add(SettlementMovementPlan(
+                  productId: item.productId,
+                  productName: item.productName,
+                  productSource: item.productSource,
+                  delta: rQty,
+                  reason: 'Return Restocked (Legacy Order)',
+                  notes: 'Store: ${d.storeName} (Restocked: $rQty)',
+                ));
+              }
             }
           }
         }
@@ -2792,23 +2803,26 @@ class InventoryService {
               reservedDelta: -pickedQty,
             );
           } else {
-            // Legacy workflow: stock was already deducted at picklist! We must restock physical stock
-            totalLegacyRestockedUnits += pickedQty;
-            addDelta(
-              source: item.productSource,
-              productId: item.productId,
-              productName: item.productName,
-              stockDelta: pickedQty,
-              reservedDelta: 0,
-            );
-            movements.add(SettlementMovementPlan(
-              productId: item.productId,
-              productName: item.productName,
-              productSource: item.productSource,
-              delta: pickedQty,
-              reason: 'Return Restocked (Legacy Order)',
-              notes: 'Store: ${d.storeName} (Restocked: $pickedQty)',
-            ));
+            // Legacy workflow: stock was already deducted at picklist!
+            // Only restock physical stock if dealer has not already approved the return.
+            if (!d.isReturnApprovedByDealer) {
+              totalLegacyRestockedUnits += pickedQty;
+              addDelta(
+                source: item.productSource,
+                productId: item.productId,
+                productName: item.productName,
+                stockDelta: pickedQty,
+                reservedDelta: 0,
+              );
+              movements.add(SettlementMovementPlan(
+                productId: item.productId,
+                productName: item.productName,
+                productSource: item.productSource,
+                delta: pickedQty,
+                reason: 'Return Restocked (Legacy Order)',
+                notes: 'Store: ${d.storeName} (Restocked: $pickedQty)',
+              ));
+            }
           }
         }
       }
@@ -3108,8 +3122,16 @@ class InventoryService {
 
   /// Re-reserves floating inventory (`reservedQuantity`) for an order created when rescheduling
   /// a verified returned delivery.
-  Future<void> reReserveForRescheduledOrder(List<OrderItem> items) async {
-    await reserveStockForOrder(storeName: 'Rescheduled Order', items: items);
+  Future<void> reReserveForRescheduledOrder(
+    List<OrderItem> items, {
+    String? orderId,
+    String? storeName,
+  }) async {
+    await reserveStockForOrder(
+      orderId: orderId,
+      storeName: storeName ?? 'Rescheduled Order',
+      items: items,
+    );
   }
 
   /// Retrieves paginated inventory movements with optional multi-attribute filters.
@@ -3297,7 +3319,7 @@ class InventoryService {
       }
       final otherList = await ProductCatalogCache().getOtherProducts();
       for (final p in otherList) {
-        items.add(InventoryItem.fromOtherProduct(p.productName, p));
+        items.add(InventoryItem.fromOtherProduct(p.id, p));
       }
     }
 
@@ -3412,7 +3434,8 @@ class InventoryService {
     int countRound = 1,
     int? systemQuantityAtStart,
   }) async {
-    final variance = countedQuantity - item.stockQuantity;
+    int liveStockAtCommit = item.stockQuantity;
+    int exactVariance = countedQuantity - item.stockQuantity;
     final actor = await _resolveActor();
     final appVersion = await _resolveAppVersion();
     final now = Timestamp.now();
@@ -3430,17 +3453,22 @@ class InventoryService {
         throw Exception('Product "${item.productName}" not found.');
       }
 
+      final liveStock = (snap.data()?['stockQuantity'] as num?)?.toInt() ?? 0;
+      final exactDelta = countedQuantity - liveStock;
+      liveStockAtCommit = liveStock;
+      exactVariance = exactDelta;
+
       final change = _computeStockChange(
         productRef: productRef,
         productSnap: snap,
-        stockDelta: variance,
+        stockDelta: exactDelta,
         movementType: MovementType.count_correction,
         reasonCode: ReasonCode.count_correction,
         referenceType: ReferenceType.manual,
         reason: 'Physical Cycle Count Correction',
         notes: notes.isNotEmpty
             ? notes
-            : 'Cycle count adjusted by ${variance >= 0 ? "+$variance" : "$variance"} (Counted: $countedQuantity)',
+            : 'Cycle count adjusted by ${exactDelta >= 0 ? "+$exactDelta" : "$exactDelta"} (Counted: $countedQuantity, Prior: $liveStock)',
         allowClamping: false,
         actorUid: actor.uid,
         actorRole: actor.role,
@@ -3449,7 +3477,7 @@ class InventoryService {
         timestamp: now,
         isBlind: isBlind,
         countRound: countRound,
-        systemQuantityAtStart: systemQuantityAtStart ?? item.stockQuantity,
+        systemQuantityAtStart: systemQuantityAtStart ?? liveStock,
       );
 
       transaction.update(productRef, change.productUpdates);
@@ -3463,9 +3491,9 @@ class InventoryService {
         'productId': item.id,
         'productName': item.productName,
         'productSource': item.productSource,
-        'systemStock': item.stockQuantity,
+        'systemStock': liveStockAtCommit,
         'countedStock': countedQuantity,
-        'variance': variance,
+        'variance': exactVariance,
         'notes': notes,
         'countedBy': actor.name,
         'countedByUid': actor.uid,

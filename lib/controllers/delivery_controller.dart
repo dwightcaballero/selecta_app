@@ -614,15 +614,18 @@ class DeliveryController {
       isInventoryDeducted: false,
     );
 
+    final String newId = FirebaseFirestore.instance.collection(DELIVERY_COLLECTION_REF).doc().id;
+
     // 1. Reserve floating inventory for all booked orders (today and future dates)
     await _inventoryService.reserveStockForOrder(
+      orderId: newId,
       storeName: storeName,
       items: cleanItems,
       logShortAllocation: !isFutureDate(selectedDate),
     );
 
-    // 2. Persist unified transaction in `delivery` collection
-    final String newId = await _deliveryService.addDelivery(newRecord);
+    // 2. Persist unified transaction in `delivery` collection using pre-generated unique ID
+    await _deliveryService.addDeliveryWithId(newId, newRecord);
 
     // 3. Write audit log
     await Helperfunctions.logCreate(storeName, newRecord.toJson(), page: AppPages.bookOrder);
@@ -1170,6 +1173,9 @@ class DeliveryController {
     double finalDiscountAmount = currentDelivery.discountAmount;
     List<AppliedPromo> finalAppliedPromos = currentDelivery.appliedPromos;
 
+    bool markDeducted = currentDelivery.isInventoryDeducted;
+    bool markReserved = currentDelivery.isInventoryReserved;
+
     switch (status) {
       case DeliveryStatus.pendingPicklist:
       case DeliveryStatus.pending:
@@ -1178,6 +1184,25 @@ class DeliveryController {
         returnAmount = 0;
         finalItems = currentDelivery.items.map((i) => i.copyWith(returnedQuantity: 0)).toList();
         finalOriginalOrderAmount = null;
+
+        // If the order was already picked (physical stock was deducted),
+        // restore physical stock and re-reserve floating inventory so it can be picked again safely.
+        if (currentDelivery.isInventoryDeducted) {
+          await _inventoryService.reverseStockForDeletedOrder(
+            orderId: deliveryId,
+            storeName: storeName,
+            items: currentDelivery.items,
+            wasDeducted: true,
+            wasReserved: false,
+          );
+          await _inventoryService.reserveStockForOrder(
+            orderId: deliveryId,
+            storeName: storeName,
+            items: finalItems,
+          );
+          markDeducted = false;
+          markReserved = true;
+        }
         break;
 
       case DeliveryStatus.delivered:
@@ -1259,6 +1284,8 @@ class DeliveryController {
       cashAmount: cashAmount,
       onlineAmount: onlineAmount,
       items: finalItems,
+      isInventoryDeducted: markDeducted,
+      isInventoryReserved: markReserved,
       isReturnIncoming: markReturnIncoming,
       isReturnApprovedByDealer: false,
       deliveryDate: selectedDate != null ? Timestamp.fromDate(selectedDate) : currentDelivery.deliveryDate,
@@ -1418,6 +1445,7 @@ class DeliveryController {
 
     if (delivery.items.isNotEmpty) {
       await _inventoryService.reverseStockForDeletedOrder(
+        orderId: deliveryId,
         storeName: delivery.storeName,
         items: delivery.items,
         wasDeducted: delivery.isInventoryDeducted,
@@ -1454,9 +1482,18 @@ class DeliveryController {
 
     final currentUser = authService.value.currentUser?.displayName ?? 'Dealer';
 
-    // Release floating stock reservation
-    if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
+    // Restore physical stock if already picked, or release floating stock reservation if only reserved
+    if (delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
+      await _inventoryService.reverseStockForDeletedOrder(
+        orderId: deliveryId,
+        storeName: delivery.storeName,
+        items: delivery.items,
+        wasDeducted: true,
+        wasReserved: false,
+      );
+    } else if (delivery.isInventoryReserved && !delivery.isInventoryDeducted && delivery.items.isNotEmpty) {
       await _inventoryService.releaseReservedStockForOrder(
+        orderId: deliveryId,
         storeName: delivery.storeName,
         items: delivery.items,
       );
