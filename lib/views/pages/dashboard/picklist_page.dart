@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
@@ -85,7 +86,7 @@ class _PicklistPageState extends State<PicklistPage> {
   }
 
   void _subscribeInventory() {
-    _inventorySub = InventoryService().getActiveInventoryStream().listen((items) {
+    _inventorySub = InventoryService().getActiveInventoryStream().handleError(FirestoreStreamErrors.handler('PicklistInventory')).listen((items) {
       if (!mounted) return;
       final idMap = <String, int>{};
       final nameMap = <String, int>{};

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
@@ -69,7 +70,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
   }
 
   void _subscribeStores() {
-    _storesSub = HapiStoreService().getListHapiStoresAsStream().listen((snapshot) {
+    _storesSub = HapiStoreService().getListHapiStoresAsStream().handleError(FirestoreStreamErrors.handler('PicklistListStores')).listen((snapshot) {
       if (!mounted) return;
       final map = <String, Hapistore>{};
       final docIds = <String, String>{};
@@ -88,7 +89,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
   }
 
   void _subscribeInventory() {
-    _inventorySub = InventoryService().getActiveInventoryStream().listen((items) {
+    _inventorySub = InventoryService().getActiveInventoryStream().handleError(FirestoreStreamErrors.handler('PicklistListInventory')).listen((items) {
       if (!mounted) return;
       final byId = <String, int>{};
       final byName = <String, int>{};
@@ -285,7 +286,7 @@ class _PicklistListPageState extends State<PicklistListPage> {
   void prefetchData() async {
     final dealer = await _controller.checkIsDealer();
     if (dealer && _returnedCountSub == null) {
-      _returnedCountSub = _controller.getActiveReturnedDeliveriesCountStream().listen((count) {
+      _returnedCountSub = _controller.getActiveReturnedDeliveriesCountStream().handleError(FirestoreStreamErrors.handler('PicklistListReturnedCount')).listen((count) {
         if (mounted) setState(() => returnedDeliveryCount = count);
       });
     } else if (!dealer) {

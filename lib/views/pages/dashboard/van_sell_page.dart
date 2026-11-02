@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -77,7 +78,7 @@ class _VanSellPageState extends State<VanSellPage> {
   }
 
   void _subscribeActiveVanLoad() {
-    _vanLoadSub = _controller.streamActiveVanLoad().listen((load) {
+    _vanLoadSub = _controller.streamActiveVanLoad().handleError(FirestoreStreamErrors.handler('VanSellActiveLoad')).listen((load) {
       if (!mounted) return;
       setState(() {
         _activeVanLoad = load;

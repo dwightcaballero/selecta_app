@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
@@ -75,7 +76,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   }
 
   void _subscribeStores() {
-    _storesSub = HapiStoreService().getListHapiStoresAsStream().listen((snapshot) {
+    _storesSub = HapiStoreService().getListHapiStoresAsStream().handleError(FirestoreStreamErrors.handler('DeliveryListStores')).listen((snapshot) {
       if (!mounted) return;
       final map = <String, Hapistore>{};
       final docIds = <String, String>{};
@@ -95,7 +96,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
   void prefetchData() async {
     final dealer = await _controller.checkIsDealer();
     if (dealer && _returnedCountSub == null) {
-      _returnedCountSub = _controller.getActiveReturnedDeliveriesCountStream().listen((count) {
+      _returnedCountSub = _controller.getActiveReturnedDeliveriesCountStream().handleError(FirestoreStreamErrors.handler('DeliveryListReturnedCount')).listen((count) {
         if (mounted) setState(() => returnedDeliveryCount = count);
       });
     } else if (!dealer) {

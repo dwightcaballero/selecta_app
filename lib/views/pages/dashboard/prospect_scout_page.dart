@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -114,7 +115,7 @@ class _ProspectScoutPageState extends State<ProspectScoutPage> with SingleTicker
     }
 
     _routesSubscription?.cancel();
-    _routesSubscription = _trackingService.getRoutesStreamByRange(startDate: start, endDate: end, onlyDueForRescout: onlyDue).listen((routes) {
+    _routesSubscription = _trackingService.getRoutesStreamByRange(startDate: start, endDate: end, onlyDueForRescout: onlyDue).handleError(FirestoreStreamErrors.handler('ProspectScoutRoutes')).listen((routes) {
       if (mounted) {
         setState(() {
           _scoutedRoutes = routes;

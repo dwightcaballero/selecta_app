@@ -11,6 +11,7 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/notifiers.dart';
 import 'package:selecta_ops/firebase_options.dart';
 import 'package:selecta_ops/services/error_log_service.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:selecta_ops/services/push_notification_service.dart';
 import 'package:selecta_ops/theme/app_theme.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
@@ -75,6 +76,11 @@ void main() async {
   };
 
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    // Listener errors left unhandled by a stream consumer are recoverable.
+    if (error is FirebaseException) {
+      FirestoreStreamErrors.report(error, stack, source: 'Unhandled');
+      return true;
+    }
     if (!kIsWeb) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
     }

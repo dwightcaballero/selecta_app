@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:flutter/services.dart';
 import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/controllers/inventory_controller.dart';
@@ -136,7 +137,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     _inventoryStream = _inventoryController.getActiveInventoryStream();
     _selectedDate = widget.initialDate ?? DateTime.now();
 
-    _promosSub = _deliveryController.promoService.streamActivePromos().listen((promos) {
+    _promosSub = _deliveryController.promoService.streamActivePromos().handleError(FirestoreStreamErrors.handler('BookOrderPromos')).listen((promos) {
       if (mounted) {
         setState(() => _activePromos = promos);
       }

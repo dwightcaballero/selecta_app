@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:selecta_ops/controllers/dashboard_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/helperfunctions.dart';
@@ -97,7 +98,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _activeReturnsCountStream = _controller.getActiveReturnsCountStream();
     _unverifiedBreakdownsCountStream = _controller.getUnverifiedBreakdownsCountStream();
     _unverifiedSummaryStream = _controller.getUnverifiedSummaryStream();
-    _configSubscription = ConfigurationService().getConfigurationStream().listen((config) {
+    _configSubscription = ConfigurationService().getConfigurationStream().handleError(FirestoreStreamErrors.handler('DashboardConfig')).listen((config) {
       if (mounted && config != null) {
         setState(() {
           _configuration = config;
@@ -276,6 +277,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           context,
           message: 'Signing out...',
           task: () async {
+            await _configSubscription?.cancel();
             await _controller.signOut();
           },
         );

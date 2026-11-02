@@ -383,10 +383,14 @@ class HapiStoreService {
       configSub = ConfigurationService().getConfigurationStream().listen((cfg) {
         currentConfig = cfg ?? Configuration.empty();
         emitCount();
+      }, onError: (Object e, StackTrace s) {
+        if (!controller.isClosed) controller.addError(e, s);
       });
       storesSub = _hapistoresRef.limit(250).snapshots().listen((snap) {
         currentStoresSnapshot = snap;
         emitCount();
+      }, onError: (Object e, StackTrace s) {
+        if (!controller.isClosed) controller.addError(e, s);
       });
     };
 

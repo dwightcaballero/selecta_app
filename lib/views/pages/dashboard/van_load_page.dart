@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:selecta_ops/services/firestore_stream_errors.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -108,7 +109,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
   }
 
   void _subscribeInventory() {
-    _inventorySub = _inventoryController.getActiveInventoryStream().listen((items) {
+    _inventorySub = _inventoryController.getActiveInventoryStream().handleError(FirestoreStreamErrors.handler('VanLoadInventory')).listen((items) {
       if (!mounted) return;
       setState(() {
         _allInventoryItems = items.where((i) => i.isActive).toList();
@@ -120,7 +121,7 @@ class _VanLoadPageState extends State<VanLoadPage> {
     if (widget.initialVanLoadId != null) {
       _loadSpecificVanLoad(widget.initialVanLoadId!);
     } else {
-      _activeLoadSub = _vanLoadController.streamActiveVanLoad().listen((activeLoad) {
+      _activeLoadSub = _vanLoadController.streamActiveVanLoad().handleError(FirestoreStreamErrors.handler('VanLoadActiveLoad')).listen((activeLoad) {
         if (!mounted) return;
         if (!_isCreatingNew) {
           setState(() {
