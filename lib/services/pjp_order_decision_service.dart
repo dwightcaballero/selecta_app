@@ -100,4 +100,60 @@ class PjpOrderDecisionService {
     }
     return null;
   }
+
+  /// Records that the store ordered via POS+ (external Android app).
+  /// No Delivery record is created — this is purely a PJP pass-through flag.
+  Future<String> recordOrderedInPosPlus({
+    required String storeName,
+    required String createdBy,
+  }) async {
+    final docRef = await _collection.add({
+      'storeName': storeName,
+      'decision': 'ordered_in_pos_plus',
+      'reason': 'Ordered in POS+',
+      'date': Timestamp.now(),
+      'createdBy': createdBy,
+      'createdAt': Timestamp.now(),
+    });
+    return docRef.id;
+  }
+
+  /// Checks if an 'ordered_in_pos_plus' decision was recorded for this store today.
+  Future<PjpOrderDecision?> getTodayPosOrderDecision(String storeName) async {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day, 0, 0, 0);
+    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    try {
+      final snapshot = await _collection
+          .where('storeName', isEqualTo: storeName)
+          .where('decision', isEqualTo: 'ordered_in_pos_plus')
+          .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .where('date', isLessThanOrEqualTo: Timestamp.fromDate(endOfDay))
+          .orderBy('date', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        return PjpOrderDecision.fromSnapshot(snapshot.docs.first);
+      }
+    } catch (_) {
+      try {
+        final snapshot = await _collection
+            .where('storeName', isEqualTo: storeName)
+            .where('decision', isEqualTo: 'ordered_in_pos_plus')
+            .limit(10)
+            .get();
+
+        for (final doc in snapshot.docs) {
+          final decision = PjpOrderDecision.fromSnapshot(doc);
+          final dt = decision.date.toDate();
+          if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+            return decision;
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
 }

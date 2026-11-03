@@ -10,7 +10,6 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:selecta_ops/models/placement_report_models.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
-import 'package:selecta_ops/services/placement_report_builder.dart';
 
 /// Calculation result for table column widths fitting on A4 landscape.
 class ColumnWidthsResult {
@@ -28,8 +27,7 @@ class ColumnWidthsResult {
     required this.fitsOnPage,
   });
 
-  double get totalTableWidth =>
-      storeWidth + (productColWidth > 0 ? productColWidth : 0) + scoreWidth + newProductWidth;
+  double get totalTableWidth => storeWidth + (productColWidth > 0 ? productColWidth : 0) + scoreWidth + newProductWidth;
 }
 
 /// Service for generating, printing, sharing, and saving the Monthly Placement Report PDF.
@@ -73,13 +71,11 @@ class PlacementReportPdfService {
       );
     }
 
-    double productColWidth =
-        (usableWidth - storeWidth - scoreWidth - newProductWidth) / productColumnCount;
+    double productColWidth = (usableWidth - storeWidth - scoreWidth - newProductWidth) / productColumnCount;
 
     if (productColWidth <= 34.0) {
       storeWidth = 120.0;
-      productColWidth =
-          (usableWidth - storeWidth - scoreWidth - newProductWidth) / productColumnCount;
+      productColWidth = (usableWidth - storeWidth - scoreWidth - newProductWidth) / productColumnCount;
     }
 
     final fitsOnPage = productColWidth >= 34.0;
@@ -94,10 +90,7 @@ class PlacementReportPdfService {
   }
 
   /// Preloads and downsizes product images to ~160px width JPEG (quality 75).
-  static Future<Map<String, Uint8List>> preloadAndProcessImages(
-    List<String> imageUrls, {
-    void Function(int current, int total)? onProgress,
-  }) async {
+  static Future<Map<String, Uint8List>> preloadAndProcessImages(List<String> imageUrls, {void Function(int current, int total)? onProgress}) async {
     final distinctUrls = imageUrls.where((u) => u.trim().isNotEmpty).toSet().toList();
     final result = <String, Uint8List>{};
     if (distinctUrls.isEmpty) return result;
@@ -107,25 +100,27 @@ class PlacementReportPdfService {
 
     for (int i = 0; i < distinctUrls.length; i += batchSize) {
       final batch = distinctUrls.sublist(i, (i + batchSize).clamp(0, distinctUrls.length));
-      await Future.wait(batch.map((url) async {
-        try {
-          final uri = Uri.parse(url);
-          final response = await http.get(uri).timeout(const Duration(seconds: 8));
-          if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
-            final decoded = img.decodeImage(response.bodyBytes);
-            if (decoded != null) {
-              final resized = decoded.width > 160 ? img.copyResize(decoded, width: 160) : decoded;
-              final jpgBytes = Uint8List.fromList(img.encodeJpg(resized, quality: 75));
-              result[url] = jpgBytes;
+      await Future.wait(
+        batch.map((url) async {
+          try {
+            final uri = Uri.parse(url);
+            final response = await http.get(uri).timeout(const Duration(seconds: 8));
+            if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+              final decoded = img.decodeImage(response.bodyBytes);
+              if (decoded != null) {
+                final resized = decoded.width > 160 ? img.copyResize(decoded, width: 160) : decoded;
+                final jpgBytes = Uint8List.fromList(img.encodeJpg(resized, quality: 75));
+                result[url] = jpgBytes;
+              }
             }
+          } catch (_) {
+            // Fallback: Image omitted from map, placeholder will be rendered
+          } finally {
+            completed++;
+            onProgress?.call(completed, distinctUrls.length);
           }
-        } catch (_) {
-          // Fallback: Image omitted from map, placeholder will be rendered
-        } finally {
-          completed++;
-          onProgress?.call(completed, distinctUrls.length);
-        }
-      }));
+        }),
+      );
     }
 
     return result;
@@ -190,15 +185,9 @@ class PlacementReportPdfService {
           pageFormat: PdfPageFormat.a4.landscape,
           margin: const pw.EdgeInsets.all(24),
           header: (pw.Context context) => _buildDayHeaderBand(section, data, logoImage),
-          footer: (pw.Context context) => _buildPageFooter(
-            context,
-            data,
-            centerText: 'PJP: ${section.day.toUpperCase()}',
-          ),
+          footer: (pw.Context context) => _buildPageFooter(context, data, centerText: 'PJP: ${section.day.toUpperCase()}'),
           build: (pw.Context context) {
-            return [
-              _buildDayTable(section, data.columns, widths, imageMap, data.newProducts),
-            ];
+            return [_buildDayTable(section, data.columns, widths, imageMap, data.newProducts)];
           },
         ),
       );
@@ -216,15 +205,9 @@ class PlacementReportPdfService {
             pageFormat: PdfPageFormat.a4.landscape,
             margin: const pw.EdgeInsets.all(24),
             header: (pw.Context context) => _buildPitchHeaderBand(day, data, logoImage),
-            footer: (pw.Context context) => _buildPageFooter(
-              context,
-              data,
-              centerText: 'PITCH LIST - ${day.toUpperCase()}',
-            ),
+            footer: (pw.Context context) => _buildPageFooter(context, data, centerText: 'PITCH LIST - ${day.toUpperCase()}'),
             build: (pw.Context context) {
-              return [
-                _buildPitchListTable(dayPitchItems, widths.storeWidth, imageMap),
-              ];
+              return [_buildPitchListTable(dayPitchItems, widths.storeWidth, imageMap)];
             },
           ),
         );
@@ -262,30 +245,16 @@ class PlacementReportPdfService {
       alignment: pw.Alignment.center,
       child: pw.Text(
         '-',
-        style: pw.TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: pw.FontWeight.bold,
-        ),
+        style: pw.TextStyle(color: color, fontSize: 10, fontWeight: pw.FontWeight.bold),
       ),
     );
   }
 
   /// Image or placeholder box with product initials.
-  static pw.Widget _buildProductThumbnail(
-    SelectaProduct product,
-    double width,
-    double height,
-    Map<String, Uint8List> imageMap,
-  ) {
+  static pw.Widget _buildProductThumbnail(SelectaProduct product, double width, double height, Map<String, Uint8List> imageMap) {
     final imageBytes = imageMap[product.imageUrl];
     if (imageBytes != null && imageBytes.isNotEmpty) {
-      return pw.Image(
-        pw.MemoryImage(imageBytes),
-        width: width,
-        height: height,
-        fit: pw.BoxFit.contain,
-      );
+      return pw.Image(pw.MemoryImage(imageBytes), width: width, height: height, fit: pw.BoxFit.contain);
     }
 
     final initials = _getInitials(product.productName);
@@ -300,11 +269,7 @@ class PlacementReportPdfService {
       alignment: pw.Alignment.center,
       child: pw.Text(
         initials,
-        style: pw.TextStyle(
-          fontSize: (height * 0.35).clamp(5.0, 9.0),
-          fontWeight: pw.FontWeight.bold,
-          color: PdfColors.grey700,
-        ),
+        style: pw.TextStyle(fontSize: (height * 0.35).clamp(5.0, 9.0), fontWeight: pw.FontWeight.bold, color: PdfColors.grey700),
       ),
     );
   }
@@ -322,11 +287,7 @@ class PlacementReportPdfService {
   // Header Bands & Footers
   // ==========================================
 
-  static pw.Widget _buildDayHeaderBand(
-    PlacementReportDaySection section,
-    PlacementReportData data,
-    pw.ImageProvider? logoImage,
-  ) {
+  static pw.Widget _buildDayHeaderBand(PlacementReportDaySection section, PlacementReportData data, pw.ImageProvider? logoImage) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 6),
       padding: const pw.EdgeInsets.only(bottom: 4),
@@ -340,28 +301,17 @@ class PlacementReportPdfService {
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              if (logoImage != null) ...[
-                pw.Image(logoImage, width: 22, height: 22),
-                pw.SizedBox(width: 6),
-              ],
+              if (logoImage != null) ...[pw.Image(logoImage, width: 22, height: 22), pw.SizedBox(width: 6)],
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
                     _clean(data.companyName.toUpperCase()),
-                    style: pw.TextStyle(
-                      fontSize: 10,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.red800,
-                    ),
+                    style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.red800),
                   ),
                   pw.Text(
                     'MONTHLY PLACEMENT REPORT - ${_monthYearFormat.format(data.month).toUpperCase()}',
-                    style: pw.TextStyle(
-                      fontSize: 8,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.grey800,
-                    ),
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
                   ),
                 ],
               ),
@@ -376,11 +326,7 @@ class PlacementReportPdfService {
             ),
             child: pw.Text(
               'PJP: ${section.day.toUpperCase()}  |  ${section.totalStores} stores  |  Placement ${section.dayPlacementPercentage.toStringAsFixed(0)}%',
-              style: pw.TextStyle(
-                fontSize: 8.5,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.red900,
-              ),
+              style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.red900),
             ),
           ),
         ],
@@ -388,11 +334,7 @@ class PlacementReportPdfService {
     );
   }
 
-  static pw.Widget _buildPitchHeaderBand(
-    String day,
-    PlacementReportData data,
-    pw.ImageProvider? logoImage,
-  ) {
+  static pw.Widget _buildPitchHeaderBand(String day, PlacementReportData data, pw.ImageProvider? logoImage) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 8),
       padding: const pw.EdgeInsets.only(bottom: 4),
@@ -406,28 +348,17 @@ class PlacementReportPdfService {
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              if (logoImage != null) ...[
-                pw.Image(logoImage, width: 22, height: 22),
-                pw.SizedBox(width: 6),
-              ],
+              if (logoImage != null) ...[pw.Image(logoImage, width: 22, height: 22), pw.SizedBox(width: 6)],
               pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
                     _clean(data.companyName.toUpperCase()),
-                    style: pw.TextStyle(
-                      fontSize: 10,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blue800,
-                    ),
+                    style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800),
                   ),
                   pw.Text(
                     'PITCH LIST (OPPORTUNITY TARGETS) - ${_monthYearFormat.format(data.month).toUpperCase()}',
-                    style: pw.TextStyle(
-                      fontSize: 8,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.grey800,
-                    ),
+                    style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
                   ),
                 ],
               ),
@@ -442,11 +373,7 @@ class PlacementReportPdfService {
             ),
             child: pw.Text(
               'PJP: ${day.toUpperCase()}',
-              style: pw.TextStyle(
-                fontSize: 8.5,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.blue900,
-              ),
+              style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
             ),
           ),
         ],
@@ -454,11 +381,7 @@ class PlacementReportPdfService {
     );
   }
 
-  static pw.Widget _buildPageFooter(
-    pw.Context context,
-    PlacementReportData data, {
-    required String centerText,
-  }) {
+  static pw.Widget _buildPageFooter(pw.Context context, PlacementReportData data, {required String centerText}) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(top: 6),
       padding: const pw.EdgeInsets.only(top: 4),
@@ -476,10 +399,7 @@ class PlacementReportPdfService {
             centerText,
             style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700),
           ),
-          pw.Text(
-            'Page ${context.pageNumber} of ${context.pagesCount}',
-            style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
-          ),
+          pw.Text('Page ${context.pageNumber} of ${context.pagesCount}', style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600)),
         ],
       ),
     );
@@ -496,9 +416,7 @@ class PlacementReportPdfService {
     Map<String, Uint8List> imageMap,
     List<SelectaProduct> newProducts,
   ) {
-    final columnWidthMap = <int, pw.TableColumnWidth>{
-      0: pw.FixedColumnWidth(widths.storeWidth),
-    };
+    final columnWidthMap = <int, pw.TableColumnWidth>{0: pw.FixedColumnWidth(widths.storeWidth)};
     for (int i = 0; i < columns.length; i++) {
       columnWidthMap[i + 1] = pw.FixedColumnWidth(widths.productColWidth);
     }
@@ -547,17 +465,10 @@ class PlacementReportPdfService {
             children: [
               pw.Text(
                 'STORE',
-                style: pw.TextStyle(
-                  fontSize: 8.5,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.grey900,
-                ),
+                style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
               ),
               pw.SizedBox(height: 2),
-              pw.Text(
-                'PJP Sequence Order',
-                style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600),
-              ),
+              pw.Text('PJP Sequence Order', style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600)),
             ],
           ),
         ),
@@ -589,11 +500,7 @@ class PlacementReportPdfService {
                   _clean(col.label),
                   maxLines: 3,
                   textAlign: pw.TextAlign.center,
-                  style: pw.TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.grey900,
-                  ),
+                  style: pw.TextStyle(fontSize: fontSize, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
                 ),
               ],
             ),
@@ -607,14 +514,8 @@ class PlacementReportPdfService {
           child: pw.Column(
             mainAxisAlignment: pw.MainAxisAlignment.center,
             children: [
-              pw.Text(
-                'Score',
-                style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.Text(
-                'Target',
-                style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey600),
-              ),
+              pw.Text('Score', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+              pw.Text('Target', style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey600)),
             ],
           ),
         ),
@@ -635,10 +536,7 @@ class PlacementReportPdfService {
                 'NEW PRODUCT',
                 style: pw.TextStyle(fontSize: 6, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800),
               ),
-              pw.Text(
-                'ordered?',
-                style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey700),
-              ),
+              pw.Text('ordered?', style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey700)),
             ],
           ),
         ),
@@ -646,10 +544,7 @@ class PlacementReportPdfService {
     );
   }
 
-  static pw.Widget _buildNewProductThumbnailsHeader(
-    List<SelectaProduct> newProducts,
-    Map<String, Uint8List> imageMap,
-  ) {
+  static pw.Widget _buildNewProductThumbnailsHeader(List<SelectaProduct> newProducts, Map<String, Uint8List> imageMap) {
     if (newProducts.isEmpty) {
       return pw.Container(
         height: 16,
@@ -665,10 +560,7 @@ class PlacementReportPdfService {
     return pw.Row(
       mainAxisAlignment: pw.MainAxisAlignment.center,
       children: [
-        for (int i = 0; i < showCount; i++) ...[
-          if (i > 0) pw.SizedBox(width: 2),
-          _buildProductThumbnail(newProducts[i], 16, 16, imageMap),
-        ],
+        for (int i = 0; i < showCount; i++) ...[if (i > 0) pw.SizedBox(width: 2), _buildProductThumbnail(newProducts[i], 16, 16, imageMap)],
         if (remainingCount > 0) ...[
           pw.SizedBox(width: 2),
           pw.Container(
@@ -690,10 +582,7 @@ class PlacementReportPdfService {
     );
   }
 
-  static pw.TableRow _buildTableDataRow(
-    PlacementReportRow row,
-    List<PlacementReportColumn> columns,
-  ) {
+  static pw.TableRow _buildTableDataRow(PlacementReportRow row, List<PlacementReportColumn> columns) {
     final isEven = row.sequenceNumber % 2 == 0;
     final rowColor = isEven ? PdfColors.grey50 : PdfColors.white;
 
@@ -711,19 +600,11 @@ class PlacementReportPdfService {
               pw.Text(
                 '${row.sequenceNumber}. ${_clean(row.store.storeName)}',
                 maxLines: 2,
-                style: pw.TextStyle(
-                  fontSize: 7.5,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.grey900,
-                ),
+                style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
               ),
               if (row.store.storeAddress.trim().isNotEmpty) ...[
                 pw.SizedBox(height: 1),
-                pw.Text(
-                  _clean(row.store.storeAddress),
-                  maxLines: 1,
-                  style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600),
-                ),
+                pw.Text(_clean(row.store.storeAddress), maxLines: 1, style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600)),
               ],
             ],
           ),
@@ -746,9 +627,7 @@ class PlacementReportPdfService {
             style: pw.TextStyle(
               fontSize: 7.5,
               fontWeight: pw.FontWeight.bold,
-              color: row.placedCount == row.totalCount && row.totalCount > 0
-                  ? PdfColors.green800
-                  : PdfColors.grey900,
+              color: row.placedCount == row.totalCount && row.totalCount > 0 ? PdfColors.green800 : PdfColors.grey900,
             ),
           ),
         ),
@@ -757,18 +636,13 @@ class PlacementReportPdfService {
         pw.Container(
           padding: const pw.EdgeInsets.symmetric(vertical: 4),
           alignment: pw.Alignment.center,
-          child: row.orderedNewProduct
-              ? _buildCheckmark(size: 11, color: PdfColors.blue700)
-              : _buildDash(size: 11),
+          child: row.orderedNewProduct ? _buildCheckmark(size: 11, color: PdfColors.blue700) : _buildDash(size: 11),
         ),
       ],
     );
   }
 
-  static pw.TableRow _buildTableFooterRow(
-    PlacementReportDaySection section,
-    List<PlacementReportColumn> columns,
-  ) {
+  static pw.TableRow _buildTableFooterRow(PlacementReportDaySection section, List<PlacementReportColumn> columns) {
     return pw.TableRow(
       decoration: const pw.BoxDecoration(color: PdfColors.grey200),
       children: [
@@ -820,10 +694,7 @@ class PlacementReportPdfService {
   // Cover Page Generation
   // ==========================================
 
-  static pw.Widget _buildCoverPage(
-    PlacementReportData data,
-    pw.ImageProvider? logoImage,
-  ) {
+  static pw.Widget _buildCoverPage(PlacementReportData data, pw.ImageProvider? logoImage) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -834,10 +705,7 @@ class PlacementReportPdfService {
           children: [
             pw.Row(
               children: [
-                if (logoImage != null) ...[
-                  pw.Image(logoImage, width: 36, height: 36),
-                  pw.SizedBox(width: 10),
-                ],
+                if (logoImage != null) ...[pw.Image(logoImage, width: 36, height: 36), pw.SizedBox(width: 10)],
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
@@ -1018,10 +886,7 @@ class PlacementReportPdfService {
                     pw.SizedBox(height: 10),
                     pw.Container(
                       padding: const pw.EdgeInsets.all(6),
-                      decoration: const pw.BoxDecoration(
-                        color: PdfColors.white,
-                        borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
-                      ),
+                      decoration: const pw.BoxDecoration(color: PdfColors.white, borderRadius: pw.BorderRadius.all(pw.Radius.circular(4))),
                       child: pw.Text(
                         'Client-safe document: Displays brand presence and product opportunities without exposing dealer pricing or credit details.',
                         style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey600),
@@ -1065,11 +930,7 @@ class PlacementReportPdfService {
               style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: color),
             ),
             pw.SizedBox(height: 2),
-            pw.Text(
-              subtext,
-              maxLines: 1,
-              style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey700),
-            ),
+            pw.Text(subtext, maxLines: 1, style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey700)),
           ],
         ),
       ),
@@ -1109,13 +970,7 @@ class PlacementReportPdfService {
               child: pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Expanded(
-                    child: pw.Text(
-                      _clean(item.column.label),
-                      maxLines: 1,
-                      style: const pw.TextStyle(fontSize: 7),
-                    ),
-                  ),
+                  pw.Expanded(child: pw.Text(_clean(item.column.label), maxLines: 1, style: const pw.TextStyle(fontSize: 7))),
                   pw.Text(
                     '${item.placedStores} / ${item.totalStores} stores (${item.coveragePercentage.toStringAsFixed(0)}%)',
                     style: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800),
@@ -1128,11 +983,7 @@ class PlacementReportPdfService {
     );
   }
 
-  static pw.Widget _buildLegendItem({
-    required pw.Widget icon,
-    required String label,
-    required String description,
-  }) {
+  static pw.Widget _buildLegendItem({required pw.Widget icon, required String label, required String description}) {
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -1146,10 +997,7 @@ class PlacementReportPdfService {
                 label,
                 style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900),
               ),
-              pw.Text(
-                description,
-                style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey700),
-              ),
+              pw.Text(description, style: const pw.TextStyle(fontSize: 6.5, color: PdfColors.grey700)),
             ],
           ),
         ),
@@ -1161,17 +1009,10 @@ class PlacementReportPdfService {
   // Pitch List Table Generation
   // ==========================================
 
-  static pw.Widget _buildPitchListTable(
-    List<PlacementReportPitchItem> dayPitchItems,
-    double storeWidth,
-    Map<String, Uint8List> imageMap,
-  ) {
+  static pw.Widget _buildPitchListTable(List<PlacementReportPitchItem> dayPitchItems, double storeWidth, Map<String, Uint8List> imageMap) {
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-      columnWidths: {
-        0: pw.FixedColumnWidth(storeWidth),
-        1: const pw.FlexColumnWidth(),
-      },
+      columnWidths: {0: pw.FixedColumnWidth(storeWidth), 1: const pw.FlexColumnWidth()},
       children: [
         // Header
         pw.TableRow(
@@ -1205,18 +1046,10 @@ class PlacementReportPdfService {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(
-                      _clean(item.store.storeName),
-                      maxLines: 2,
-                      style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold),
-                    ),
+                    pw.Text(_clean(item.store.storeName), maxLines: 2, style: pw.TextStyle(fontSize: 7.5, fontWeight: pw.FontWeight.bold)),
                     if (item.store.storeAddress.isNotEmpty) ...[
                       pw.SizedBox(height: 1),
-                      pw.Text(
-                        _clean(item.store.storeAddress),
-                        maxLines: 1,
-                        style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600),
-                      ),
+                      pw.Text(_clean(item.store.storeAddress), maxLines: 1, style: const pw.TextStyle(fontSize: 6, color: PdfColors.grey600)),
                     ],
                   ],
                 ),
@@ -1230,11 +1063,7 @@ class PlacementReportPdfService {
                         padding: const pw.EdgeInsets.symmetric(vertical: 4),
                         child: pw.Text(
                           'All Best Sellers placed (100% complete)',
-                          style: pw.TextStyle(
-                            fontSize: 7,
-                            color: PdfColors.green700,
-                            fontStyle: pw.FontStyle.italic,
-                          ),
+                          style: pw.TextStyle(fontSize: 7, color: PdfColors.green700, fontStyle: pw.FontStyle.italic),
                         ),
                       )
                     : pw.Column(
@@ -1242,20 +1071,10 @@ class PlacementReportPdfService {
                         children: [
                           pw.Text(
                             'Focus Pitch: ${item.nextToPitch.map((c) => _clean(c.label)).join('  |  ')}',
-                            style: pw.TextStyle(
-                              fontSize: 6.5,
-                              fontWeight: pw.FontWeight.bold,
-                              color: PdfColors.blue900,
-                            ),
+                            style: pw.TextStyle(fontSize: 6.5, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
                           ),
                           pw.SizedBox(height: 3),
-                          pw.Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            children: item.missingColumns
-                                .map((c) => _buildPitchProductChip(c, imageMap))
-                                .toList(),
-                          ),
+                          pw.Wrap(spacing: 4, runSpacing: 4, children: item.missingColumns.map((c) => _buildPitchProductChip(c, imageMap)).toList()),
                         ],
                       ),
               ),
@@ -1265,10 +1084,7 @@ class PlacementReportPdfService {
     );
   }
 
-  static pw.Widget _buildPitchProductChip(
-    PlacementReportColumn col,
-    Map<String, Uint8List> imageMap,
-  ) {
+  static pw.Widget _buildPitchProductChip(PlacementReportColumn col, Map<String, Uint8List> imageMap) {
     return pw.Container(
       width: 78,
       padding: const pw.EdgeInsets.all(3),
@@ -1282,11 +1098,7 @@ class PlacementReportPdfService {
           _buildProductThumbnail(col.primaryProduct, 18, 18, imageMap),
           pw.SizedBox(width: 3),
           pw.Expanded(
-            child: pw.Text(
-              _clean(col.label),
-              maxLines: 2,
-              style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey900),
-            ),
+            child: pw.Text(_clean(col.label), maxLines: 2, style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey900)),
           ),
         ],
       ),
@@ -1304,16 +1116,10 @@ class PlacementReportPdfService {
     bool includePitchList = true,
     Map<String, Uint8List>? preloadedImages,
   }) async {
-    final pdfBytes = await generatePdf(
-      data,
-      includeCover: includeCover,
-      includePitchList: includePitchList,
-      preloadedImages: preloadedImages,
-    );
+    final pdfBytes = await generatePdf(data, includeCover: includeCover, includePitchList: includePitchList, preloadedImages: preloadedImages);
 
     final directory = await getApplicationDocumentsDirectory();
-    final yearMonth =
-        '${data.month.year}-${data.month.month.toString().padLeft(2, '0')}';
+    final yearMonth = '${data.month.year}-${data.month.month.toString().padLeft(2, '0')}';
     final fileName = 'PlacementReport_$yearMonth.pdf';
 
     final file = File('${directory.path}/$fileName');
@@ -1332,15 +1138,9 @@ class PlacementReportPdfService {
     Map<String, Uint8List>? preloadedImages,
   }) async {
     try {
-      final pdfBytes = await generatePdf(
-        data,
-        includeCover: includeCover,
-        includePitchList: includePitchList,
-        preloadedImages: preloadedImages,
-      );
+      final pdfBytes = await generatePdf(data, includeCover: includeCover, includePitchList: includePitchList, preloadedImages: preloadedImages);
 
-      final yearMonth =
-          '${data.month.year}-${data.month.month.toString().padLeft(2, '0')}';
+      final yearMonth = '${data.month.year}-${data.month.month.toString().padLeft(2, '0')}';
       final fileName = 'PlacementReport_$yearMonth.pdf';
 
       await Printing.layoutPdf(
@@ -1350,12 +1150,7 @@ class PlacementReportPdfService {
         dynamicLayout: false,
       );
     } catch (_) {
-      await saveAndOpenPdf(
-        data,
-        includeCover: includeCover,
-        includePitchList: includePitchList,
-        preloadedImages: preloadedImages,
-      );
+      await saveAndOpenPdf(data, includeCover: includeCover, includePitchList: includePitchList, preloadedImages: preloadedImages);
     }
   }
 
@@ -1367,28 +1162,14 @@ class PlacementReportPdfService {
     Map<String, Uint8List>? preloadedImages,
   }) async {
     try {
-      final pdfBytes = await generatePdf(
-        data,
-        includeCover: includeCover,
-        includePitchList: includePitchList,
-        preloadedImages: preloadedImages,
-      );
+      final pdfBytes = await generatePdf(data, includeCover: includeCover, includePitchList: includePitchList, preloadedImages: preloadedImages);
 
-      final yearMonth =
-          '${data.month.year}-${data.month.month.toString().padLeft(2, '0')}';
+      final yearMonth = '${data.month.year}-${data.month.month.toString().padLeft(2, '0')}';
       final fileName = 'PlacementReport_$yearMonth.pdf';
 
-      await Printing.sharePdf(
-        bytes: pdfBytes,
-        filename: fileName,
-      );
+      await Printing.sharePdf(bytes: pdfBytes, filename: fileName);
     } catch (_) {
-      await saveAndOpenPdf(
-        data,
-        includeCover: includeCover,
-        includePitchList: includePitchList,
-        preloadedImages: preloadedImages,
-      );
+      await saveAndOpenPdf(data, includeCover: includeCover, includePitchList: includePitchList, preloadedImages: preloadedImages);
     }
   }
 }

@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:selecta_ops/data/constants.dart';
-import 'package:selecta_ops/data/helperfunctions.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/placement.dart';
@@ -12,12 +11,7 @@ import 'package:selecta_ops/services/placement_report_builder.dart';
 void main() {
   group('PlacementReportBuilder Tests', () {
     // Helper to create test products
-    SelectaProduct makeProduct({
-      required String id,
-      required String name,
-      required String category,
-      required double price,
-    }) {
+    SelectaProduct makeProduct({required String id, required String name, required String category, required double price}) {
       return SelectaProduct(
         id: id,
         itemCode: id,
@@ -39,10 +33,7 @@ void main() {
       final p5 = makeProduct(id: '5', name: 'Alpha Piece 35', category: 'By Piece', price: 35.0);
       final p6 = makeProduct(id: '6', name: 'Beta Plain (No SRP)', category: 'By Piece', price: 20.0);
 
-      final columns = PlacementReportBuilder.buildColumns(
-        bestSellers: [p1, p2, p3, p4, p5, p6],
-        pairs: const [],
-      );
+      final columns = PlacementReportBuilder.buildColumns(bestSellers: [p1, p2, p3, p4, p5, p6], pairs: const []);
 
       final columnLabels = columns.map((c) => c.label).toList();
 
@@ -67,10 +58,7 @@ void main() {
 
       final pair = const PlacementPair(product1: 'Cornetto Choc 35', product2: 'Cornetto Van 35');
 
-      final columns = PlacementReportBuilder.buildColumns(
-        bestSellers: [p1, p2, p3],
-        pairs: [pair],
-      );
+      final columns = PlacementReportBuilder.buildColumns(bestSellers: [p1, p2, p3], pairs: [pair]);
 
       // p1 and p2 should merge into 1 column
       expect(columns.length, 2);
@@ -106,10 +94,7 @@ void main() {
 
       final pair = const PlacementPair(product1: 'Piece Stick 40', product2: 'Case Tub 120');
 
-      final columns = PlacementReportBuilder.buildColumns(
-        bestSellers: [pCase, pPiece],
-        pairs: [pair],
-      );
+      final columns = PlacementReportBuilder.buildColumns(bestSellers: [pCase, pPiece], pairs: [pair]);
 
       expect(columns.length, 1);
       // Fixed comparator puts By Case first
@@ -123,10 +108,7 @@ void main() {
       // p2 is NOT in best sellers list
       final pair = const PlacementPair(product1: 'Best Seller Twin 30', product2: 'Non Best Seller Partner');
 
-      final columns = PlacementReportBuilder.buildColumns(
-        bestSellers: [p1],
-        pairs: [pair],
-      );
+      final columns = PlacementReportBuilder.buildColumns(bestSellers: [p1], pairs: [pair]);
 
       expect(columns.length, 1);
       expect(columns[0].isPair, isFalse);
@@ -152,18 +134,26 @@ void main() {
     });
 
     test('Store sort: pjpSequence ascending; null sequence last alphabetical by name', () {
-      final s1 = Hapistore.empty()..storeName = 'Zeta Store'..pjpSequence = 2;
-      final s2 = Hapistore.empty()..storeName = 'Alpha Store'..pjpSequence = null;
-      final s3 = Hapistore.empty()..storeName = 'Gamma Store'..pjpSequence = 1;
-      final s4 = Hapistore.empty()..storeName = 'Beta Store'..pjpSequence = null;
+      final s1 = Hapistore.empty()
+        ..storeName = 'Zeta Store'
+        ..pjpSequence = 2;
+      final s2 = Hapistore.empty()
+        ..storeName = 'Alpha Store'
+        ..pjpSequence = null;
+      final s3 = Hapistore.empty()
+        ..storeName = 'Gamma Store'
+        ..pjpSequence = 1;
+      final s4 = Hapistore.empty()
+        ..storeName = 'Beta Store'
+        ..pjpSequence = null;
 
       final sorted = PlacementReportBuilder.sortStoresForDay([s1, s2, s3, s4]);
 
       expect(sorted.map((s) => s.storeName).toList(), [
         'Gamma Store', // seq 1
-        'Zeta Store',  // seq 2
+        'Zeta Store', // seq 2
         'Alpha Store', // null seq, A-Z
-        'Beta Store',  // null seq, A-Z
+        'Beta Store', // null seq, A-Z
       ]);
     });
 
@@ -253,15 +243,7 @@ void main() {
         ..items = [itemEmptyTag];
 
       final qualifyingStores = PlacementReportBuilder.findStoresWithNewProductOrders(
-        deliveries: [
-          deliv1,
-          deliv2Pending,
-          deliv3Voided,
-          deliv4Returned,
-          deliv5FreeOnly,
-          deliv6NetZero,
-          deliv7CatalogLookup,
-        ],
+        deliveries: [deliv1, deliv2Pending, deliv3Voided, deliv4Returned, deliv5FreeOnly, deliv6NetZero, deliv7CatalogLookup],
         productTagsById: {'np4': ProductTag.newProduct},
       );
 
@@ -278,13 +260,14 @@ void main() {
       final p1 = makeProduct(id: '1', name: 'Product A 50', category: 'By Piece', price: 50.0);
       final p2 = makeProduct(id: '2', name: 'Product B 60', category: 'By Piece', price: 60.0);
 
-      final columns = PlacementReportBuilder.buildColumns(
-        bestSellers: [p1, p2],
-        pairs: const [],
-      );
+      final columns = PlacementReportBuilder.buildColumns(bestSellers: [p1, p2], pairs: const []);
 
-      final store1 = Hapistore.empty()..storeName = 'Store 1'..pjpSequence = 1;
-      final store2 = Hapistore.empty()..storeName = 'Store 2 (No Placement)'..pjpSequence = 2;
+      final store1 = Hapistore.empty()
+        ..storeName = 'Store 1'
+        ..pjpSequence = 1;
+      final store2 = Hapistore.empty()
+        ..storeName = 'Store 2 (No Placement)'
+        ..pjpSequence = 2;
 
       final pl1 = Placement.empty()
         ..id = 'pl1'
@@ -307,11 +290,7 @@ void main() {
       expect(rows[1].totalCount, 2);
       expect(rows[1].orderedNewProduct, isFalse);
 
-      final section = PlacementReportBuilder.buildDaySection(
-        day: 'Monday',
-        rows: rows,
-        columns: columns,
-      );
+      final section = PlacementReportBuilder.buildDaySection(day: 'Monday', rows: rows, columns: columns);
 
       expect(section.totalStores, 2);
       expect(section.dayPlacedTargets, 1);
@@ -322,10 +301,7 @@ void main() {
       expect(section.newProductOrderedCount, 1);
 
       // Pitch list
-      final pitchList = PlacementReportBuilder.buildPitchList(
-        sections: [section],
-        columns: columns,
-      );
+      final pitchList = PlacementReportBuilder.buildPitchList(sections: [section], columns: columns);
       expect(pitchList.length, 2);
       // Store 1 is missing Product B
       expect(pitchList[0].missingColumns.map((c) => c.label), ['Product B 60']);
@@ -335,16 +311,9 @@ void main() {
 
     test('Zero-store day section handles 0 gracefully', () {
       final p1 = makeProduct(id: '1', name: 'Product A 50', category: 'By Piece', price: 50.0);
-      final columns = PlacementReportBuilder.buildColumns(
-        bestSellers: [p1],
-        pairs: const [],
-      );
+      final columns = PlacementReportBuilder.buildColumns(bestSellers: [p1], pairs: const []);
 
-      final emptySection = PlacementReportBuilder.buildDaySection(
-        day: 'Sunday',
-        rows: const [],
-        columns: columns,
-      );
+      final emptySection = PlacementReportBuilder.buildDaySection(day: 'Sunday', rows: const [], columns: columns);
 
       expect(emptySection.totalStores, 0);
       expect(emptySection.dayPlacedTargets, 0);

@@ -3,7 +3,6 @@ import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/placement_report_models.dart';
-import 'package:selecta_ops/models/selecta_product.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
@@ -19,21 +18,15 @@ class PlacementReportService {
   final SelectaProductService _selectaProductService;
   final ProductCatalogCache _catalogCache;
 
-  PlacementReportService({
-    FirebaseFirestore? firestore,
-    SelectaProductService? selectaProductService,
-    ProductCatalogCache? catalogCache,
-  })  : _customFirestore = firestore,
-        _selectaProductService = selectaProductService ?? SelectaProductService(),
-        _catalogCache = catalogCache ?? ProductCatalogCache();
+  PlacementReportService({FirebaseFirestore? firestore, SelectaProductService? selectaProductService, ProductCatalogCache? catalogCache})
+    : _customFirestore = firestore,
+      _selectaProductService = selectaProductService ?? SelectaProductService(),
+      _catalogCache = catalogCache ?? ProductCatalogCache();
 
   /// Loads, filters, and structures all data required to generate the Monthly Placement Report.
   ///
   /// Throws [StateError] if caller is not a Dealer/Admin, or if no Best Seller products exist.
-  Future<PlacementReportData> loadReportData({
-    required DateTime month,
-    required Set<String> selectedDays,
-  }) async {
+  Future<PlacementReportData> loadReportData({required DateTime month, required Set<String> selectedDays}) async {
     // 1. Role verification (defense-in-depth)
     final isDealer = await KVariables.getIsDealer();
     if (!isDealer) {
@@ -54,36 +47,24 @@ class PlacementReportService {
     final pairs = config.placementPairs;
 
     // 3. Build sorted columns
-    final columns = PlacementReportBuilder.buildColumns(
-      bestSellers: bestSellers,
-      pairs: pairs,
-    );
+    final columns = PlacementReportBuilder.buildColumns(bestSellers: bestSellers, pairs: pairs);
 
     // 4. Fetch all stores
     final allStores = await HapiStoreService.getListHapiStores();
 
     // 5. Fetch placements within the specified month
     final placements = await PlacementService.getListOfPlacementsWithinCurrentMonth(month);
-    final placementsByStore = {
-      for (final p in placements) p.storeName: p,
-    };
+    final placementsByStore = {for (final p in placements) p.storeName: p};
 
     // 6. Fetch delivered orders for the month and resolve stores with New Product orders
     final deliveredOrders = await _fetchDeliveredOrdersForMonth(month);
     final allSelecta = await _catalogCache.getSelectaProducts();
-    final productTagsById = {
-      for (final p in allSelecta) p.id: p.tag,
-    };
+    final productTagsById = {for (final p in allSelecta) p.id: p.tag};
 
-    final storesWithNewProduct = PlacementReportBuilder.findStoresWithNewProductOrders(
-      deliveries: deliveredOrders,
-      productTagsById: productTagsById,
-    );
+    final storesWithNewProduct = PlacementReportBuilder.findStoresWithNewProductOrders(deliveries: deliveredOrders, productTagsById: productTagsById);
 
     // 7. Active products tagged as New Product for header thumbnails
-    final newProducts = allSelecta
-        .where((p) => p.isActive && ProductTag.isNewProduct(p.tag))
-        .toList()
+    final newProducts = allSelecta.where((p) => p.isActive && ProductTag.isNewProduct(p.tag)).toList()
       ..sort(PlacementReportBuilder.compareReportProducts);
 
     // 8. Build sections per picked PJP day (preserving Monday..Sunday order)
@@ -91,9 +72,7 @@ class PlacementReportService {
     for (final day in PjpScheduleDays.all) {
       if (!selectedDays.contains(day)) continue;
 
-      final dayStores = allStores
-          .where((s) => (s.pjpSchedule?.trim().toLowerCase() ?? '') == day.toLowerCase())
-          .toList();
+      final dayStores = allStores.where((s) => (s.pjpSchedule?.trim().toLowerCase() ?? '') == day.toLowerCase()).toList();
 
       final sortedDayStores = PlacementReportBuilder.sortStoresForDay(dayStores);
 
@@ -105,19 +84,13 @@ class PlacementReportService {
         storesWithNewProduct: storesWithNewProduct,
       );
 
-      final section = PlacementReportBuilder.buildDaySection(
-        day: day,
-        rows: rows,
-        columns: columns,
-      );
+      final section = PlacementReportBuilder.buildDaySection(day: day, rows: rows, columns: columns);
 
       sections.add(section);
     }
 
     // 9. Summary & cover statistics
-    final totalScheduledStores = allStores
-        .where((s) => s.pjpSchedule != null && s.pjpSchedule!.trim().isNotEmpty)
-        .length;
+    final totalScheduledStores = allStores.where((s) => s.pjpSchedule != null && s.pjpSchedule!.trim().isNotEmpty).length;
     final unscheduledStoresCount = allStores.length - totalScheduledStores;
 
     final summary = PlacementReportBuilder.buildSummary(
@@ -129,16 +102,11 @@ class PlacementReportService {
     );
 
     // 10. Pitch List
-    final pitchList = PlacementReportBuilder.buildPitchList(
-      sections: sections,
-      columns: columns,
-    );
+    final pitchList = PlacementReportBuilder.buildPitchList(sections: sections, columns: columns);
 
     // 11. Company/Dealer branding
     final user = await KVariables.getUser();
-    final companyName = (user?.dealerName.trim().isNotEmpty ?? false)
-        ? user!.dealerName.trim()
-        : 'SELECTA DISTRIBUTION DEALER';
+    final companyName = (user?.dealerName.trim().isNotEmpty ?? false) ? user!.dealerName.trim() : 'SELECTA DISTRIBUTION DEALER';
 
     // Filter selected days in standard day order
     final orderedSelectedDays = PjpScheduleDays.all.where(selectedDays.contains).toList();
@@ -168,10 +136,7 @@ class PlacementReportService {
           .where(DeliveryModelString.deliveryDate, isLessThan: Timestamp.fromDate(startOfNextMonth))
           .get();
 
-      return snapshot.docs
-          .map((doc) => Delivery.fromJson(doc.data()))
-          .where((d) => d.transactionStatus == DeliveryStatus.delivered)
-          .toList();
+      return snapshot.docs.map((doc) => Delivery.fromJson(doc.data())).where((d) => d.transactionStatus == DeliveryStatus.delivered).toList();
     } catch (_) {
       // Fallback in case of missing index on deliveryDate
       try {
@@ -180,13 +145,10 @@ class PlacementReportService {
             .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.delivered)
             .get();
 
-        return snapshot.docs
-            .map((doc) => Delivery.fromJson(doc.data()))
-            .where((d) {
-              final date = d.deliveryDate?.toDate() ?? d.createdDate.toDate();
-              return !date.isBefore(startOfMonth) && date.isBefore(startOfNextMonth);
-            })
-            .toList();
+        return snapshot.docs.map((doc) => Delivery.fromJson(doc.data())).where((d) {
+          final date = d.deliveryDate?.toDate() ?? d.createdDate.toDate();
+          return !date.isBefore(startOfMonth) && date.isBefore(startOfNextMonth);
+        }).toList();
       } catch (_) {
         return const [];
       }

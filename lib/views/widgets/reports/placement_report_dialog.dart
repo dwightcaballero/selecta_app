@@ -219,8 +219,9 @@ class _PlacementReportDialogState extends State<PlacementReportDialog> {
     final isDealer = widget.isDealerCheck != null
         ? await widget.isDealerCheck!()
         : await KVariables.getIsDealer();
+    if (!mounted) return;
+
     if (!isDealer) {
-      if (!mounted) return;
       ShowMessage.alert(
         context,
         title: 'Permission Denied',

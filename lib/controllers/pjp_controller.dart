@@ -75,6 +75,7 @@ class BookOrderCheckResult {
   final String status;
   final bool hasBookedOrder;
   final String? noOrderReason;
+  final bool isOrderedInPosPlus;
 
   /// True if an existing pre-sold delivery order is scheduled for delivery today.
   final bool hasDeliveryToday;
@@ -93,6 +94,7 @@ class BookOrderCheckResult {
     required this.status,
     this.hasBookedOrder = false,
     this.noOrderReason,
+    this.isOrderedInPosPlus = false,
     this.hasDeliveryToday = false,
     this.deliveryToday,
     this.deliveryId,
@@ -820,6 +822,17 @@ class PjpController {
         );
       }
 
+      // Check if an "ordered in POS+" decision was recorded for this store today
+      final posPlusDecision = await _orderDecisionService.getTodayPosOrderDecision(storeName);
+      if (posPlusDecision != null) {
+        return const BookOrderCheckResult(
+          passed: true,
+          status: 'Ordered in POS+ today',
+          hasBookedOrder: true,
+          isOrderedInPosPlus: true,
+        );
+      }
+
       return const BookOrderCheckResult(
         passed: false,
         status: 'No delivery order found for today.',
@@ -832,6 +845,23 @@ class PjpController {
         status: 'Failed to verify order status: $e',
       );
     }
+  }
+
+  /// Records that the store ordered via POS+ (external Android app).
+  Future<void> recordOrderedInPosPlus({
+    required String storeName,
+    required String createdBy,
+  }) async {
+    await _orderDecisionService.recordOrderedInPosPlus(
+      storeName: storeName,
+      createdBy: createdBy,
+    );
+    await Helperfunctions.logTransaction(
+      'PJP Order Decision - $storeName',
+      'Ordered in POS+',
+      LogAction.create,
+      page: AppPages.pjp,
+    );
   }
 
   /// Records required reason for not booking an order.

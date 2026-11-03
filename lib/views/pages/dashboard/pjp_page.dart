@@ -77,7 +77,7 @@ class _PjpPageState extends State<PjpPage> {
   Delivery? _deliveryToday;
   String? _deliveryTodayId;
   bool _isVanSellToday = false;
-  bool _hasPromptedVanSell = false;
+  bool _isOrderedInPosPlus = false;
 
   String get _recommendationsButtonLabel {
     if (_isLoadingRecommendations) {
@@ -177,7 +177,7 @@ class _PjpPageState extends State<PjpPage> {
     await Future.wait([
       _checkLocation(),
       _checkScanning(),
-      _checkBookOrder(allowAutoPrompt: true),
+      _checkBookOrder(),
       _checkProofOfVisit(),
       _checkTasks(),
       _checkMerchBlitz(),
@@ -221,7 +221,7 @@ class _PjpPageState extends State<PjpPage> {
     });
   }
 
-  Future<void> _checkBookOrder({bool allowAutoPrompt = false}) async {
+  Future<void> _checkBookOrder() async {
     if (!mounted) return;
     setState(() => _isLoadingBookOrder = true);
 
@@ -234,6 +234,7 @@ class _PjpPageState extends State<PjpPage> {
       _bookOrderStatus = result.status;
       _hasBookedOrder = result.hasBookedOrder;
       _noOrderReason = result.noOrderReason;
+      _isOrderedInPosPlus = result.isOrderedInPosPlus;
       _hasDeliveryToday = result.hasDeliveryToday;
       _deliveryToday = result.deliveryToday;
       _deliveryTodayId = result.deliveryId;
@@ -241,13 +242,6 @@ class _PjpPageState extends State<PjpPage> {
     });
 
     _loadRecommendationsSummary();
-
-    if (allowAutoPrompt && !_hasPromptedVanSell && !_hasBookedOrder && !_hasDeliveryToday && _noOrderReason == null) {
-      _hasPromptedVanSell = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _onBookOrderDecisionPrompt();
-      });
-    }
   }
 
   Future<void> _loadRecommendationsSummary() async {
@@ -807,6 +801,18 @@ class _PjpPageState extends State<PjpPage> {
                 contentPadding: const EdgeInsets.symmetric(vertical: 4),
                 leading: Container(
                   padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.phone_android_rounded, color: Colors.purple),
+                ),
+                title: const Text('Ordered in POS+', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Already ordered via POS+ app, will be encoded later'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.pop(ctx, 'ordered_in_pos_plus'),
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
                   child: const Icon(Icons.do_not_disturb_on_outlined, color: Colors.orange),
                 ),
@@ -825,6 +831,8 @@ class _PjpPageState extends State<PjpPage> {
       await _onVanSellAction();
     } else if (choice == 'book_order') {
       await _onBookOrderYes();
+    } else if (choice == 'ordered_in_pos_plus') {
+      await _onOrderedInPosPlus();
     } else if (choice == 'no_order') {
       await _onBookOrderNo();
     }
@@ -873,6 +881,36 @@ class _PjpPageState extends State<PjpPage> {
 
     if (result != null && mounted) {
       ShowMessage.success(context, 'Order saved! Step marked as passed.');
+    }
+  }
+
+  Future<void> _onOrderedInPosPlus() async {
+    final confirmed = await ShowMessage.confirm(
+      context,
+      title: 'Confirm POS+ Order',
+      message: 'Mark ${_currentHapistore.storeName} as "Ordered in POS+"?\n\n'
+          'This indicates the store already placed an order via the POS+ app. '
+          'The order will be encoded in this app later.',
+      icon: Icons.phone_android_rounded,
+      confirmText: 'Confirm',
+    );
+
+    if (!confirmed || !mounted) return;
+
+    try {
+      final currentUserName = authService.value.currentUser?.displayName ?? 'Salesman';
+      await _controller.recordOrderedInPosPlus(
+        storeName: _currentHapistore.storeName,
+        createdBy: currentUserName,
+      );
+
+      if (!mounted) return;
+      ShowMessage.success(context, 'Marked as "Ordered in POS+" for ${_currentHapistore.storeName}!');
+      await _checkBookOrder();
+    } catch (e) {
+      if (mounted) {
+        ShowMessage.error(context, 'Failed to record POS+ order: $e');
+      }
     }
   }
 
@@ -1678,13 +1716,19 @@ class _PjpPageState extends State<PjpPage> {
       showActionWhenNotPassed: true,
       actionLabelWhenPassed: _hasDeliveryToday
           ? 'View Delivery'
-          : (_isVanSellToday ? 'View Receipt' : (_hasBookedOrder ? 'Add / View Order' : 'Change Decision')),
+          : (_isVanSellToday
+              ? 'View Receipt'
+              : (_isOrderedInPosPlus
+                  ? 'Change Decision'
+                  : (_hasBookedOrder ? 'Add / View Order' : 'Change Decision'))),
       showActionWhenPassed: true,
       onAction: () {
         if (_hasDeliveryToday && _deliveryToday != null) {
           _onFulfillDeliveryAction();
         } else if (_isVanSellToday && _deliveryToday != null) {
           _onFulfillDeliveryAction();
+        } else if (_isOrderedInPosPlus) {
+          _onBookOrderDecisionPrompt();
         } else if (_hasBookedOrder) {
           _onBookOrderYes();
         } else {
@@ -1812,9 +1856,11 @@ class _PjpPageState extends State<PjpPage> {
               ] else ...[
                 Text(
                   _bookOrderPassed
-                      ? (_hasBookedOrder
-                          ? 'An advance order has been booked for this store.'
-                          : 'Decision: No order booked (Reason: $_noOrderReason)')
+                      ? (_isOrderedInPosPlus
+                          ? 'Store ordered via POS+ (to be encoded later).'
+                          : (_hasBookedOrder
+                              ? 'An advance order has been booked for this store.'
+                              : 'Decision: No order booked (Reason: $_noOrderReason)'))
                       : 'No delivery order scheduled for this store today.',
                   style: TextStyle(
                     fontSize: 12,
