@@ -77,17 +77,26 @@ Uint8List _compressImageWorker(Map<String, dynamic> params) {
   final decoded = img.decodeImage(rawBytes);
   if (decoded == null) return rawBytes;
 
-  // If image already fits within maxDimension and is under 350KB, skip re-encoding
-  if (decoded.width <= maxDimension && decoded.height <= maxDimension && rawBytes.lengthInBytes <= 350 * 1024) {
+  final bool hasOrientationCorrection =
+      decoded.exif.imageIfd.hasOrientation && decoded.exif.imageIfd.orientation != 1;
+
+  // If image already fits within maxDimension, is small, and has no EXIF orientation rotation needed, skip re-encoding
+  if (!hasOrientationCorrection &&
+      decoded.width <= maxDimension &&
+      decoded.height <= maxDimension &&
+      rawBytes.lengthInBytes <= 350 * 1024) {
     return rawBytes;
   }
 
-  img.Image processed = decoded;
-  if (decoded.width > maxDimension || decoded.height > maxDimension) {
-    if (decoded.width >= decoded.height) {
-      processed = img.copyResize(decoded, width: maxDimension);
+  // Bake orientation to ensure pixels match real-world orientation and strip obsolete EXIF tags
+  final oriented = hasOrientationCorrection ? img.bakeOrientation(decoded) : decoded;
+
+  img.Image processed = oriented;
+  if (processed.width > maxDimension || processed.height > maxDimension) {
+    if (processed.width >= processed.height) {
+      processed = img.copyResize(processed, width: maxDimension);
     } else {
-      processed = img.copyResize(decoded, height: maxDimension);
+      processed = img.copyResize(processed, height: maxDimension);
     }
   }
 

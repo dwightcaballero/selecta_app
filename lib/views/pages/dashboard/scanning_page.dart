@@ -700,21 +700,21 @@ class _ScanningPageState extends State<ScanningPage> {
                 children: [
                   Container(
                     width: double.infinity,
-                    height: 200,
+                    height: 220,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      color: Colors.black.withValues(alpha: 0.05),
+                      color: const Color(0xFF18181B),
                       border: Border.all(color: colorScheme.outlineVariant.withValues(alpha: 0.7)),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: hasLocalImage
-                        ? Image.file(_imageFile!, fit: BoxFit.cover)
+                        ? Image.file(_imageFile!, fit: BoxFit.contain)
                         : Image.network(
                             _scanning.imageUrl,
-                            fit: BoxFit.cover,
+                            fit: BoxFit.contain,
                             loadingBuilder: (context, child, progress) {
                               if (progress == null) return child;
-                              return const Center(child: CircularProgressIndicator());
+                              return const Center(child: CircularProgressIndicator(color: Colors.white70));
                             },
                             errorBuilder: (_, _, _) => Center(
                               child: Column(
@@ -722,7 +722,7 @@ class _ScanningPageState extends State<ScanningPage> {
                                 children: [
                                   Icon(Icons.broken_image_outlined, size: 36, color: colorScheme.error),
                                   const SizedBox(height: 4),
-                                  const Text('Unable to load photo', style: TextStyle(fontSize: 12)),
+                                  const Text('Unable to load photo', style: TextStyle(fontSize: 12, color: Colors.white70)),
                                 ],
                               ),
                             ),
