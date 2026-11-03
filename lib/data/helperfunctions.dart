@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/data/variables.dart';
+import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/transactionlog.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/auth_service.dart';
@@ -744,5 +745,21 @@ class Helperfunctions {
 
     // Case C: Both are unassigned (or custom data is empty) -> ordered by SRP then name
     return compareBySrpAndName(nameA: nameA, priceA: priceA, nameB: nameB, priceB: priceB);
+  }
+
+  /// Compares two [Hapistore] records by their assigned PJP sequence.
+  /// Stores with an assigned pjpSequence come first (ascending),
+  /// followed by stores without a sequence, sorted alphabetically by storeName.
+  static int compareStoresByPjpSequence(Hapistore storeA, Hapistore storeB) {
+    final seqA = storeA.pjpSequence;
+    final seqB = storeB.pjpSequence;
+    if (seqA != null && seqB != null) {
+      final cmp = seqA.compareTo(seqB);
+      if (cmp != 0) return cmp;
+      return storeA.storeName.compareTo(storeB.storeName);
+    }
+    if (seqA != null) return -1;
+    if (seqB != null) return 1;
+    return storeA.storeName.compareTo(storeB.storeName);
   }
 }

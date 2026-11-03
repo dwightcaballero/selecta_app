@@ -279,12 +279,7 @@ class PjpController {
           ? b.data() as Hapistore
           : Hapistore.fromJson(b.data() as Map<String, Object?>);
 
-      final seqA = storeA.pjpSequence;
-      final seqB = storeB.pjpSequence;
-      if (seqA != null && seqB != null) return seqA.compareTo(seqB);
-      if (seqA != null) return -1;
-      if (seqB != null) return 1;
-      return storeA.storeName.compareTo(storeB.storeName);
+      return Helperfunctions.compareStoresByPjpSequence(storeA, storeB);
     });
     return sorted;
   }

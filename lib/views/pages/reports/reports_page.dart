@@ -10,6 +10,7 @@ import 'package:selecta_ops/views/pages/sidebar/transactionlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/transactionlog_page.dart';
 import 'package:selecta_ops/views/widgets/adaptive_page_body.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
+import 'package:selecta_ops/views/widgets/reports/placement_report_dialog.dart';
 
 /// Consolidated Reports & Analytics Hub.
 ///
@@ -147,6 +148,19 @@ class ReportsPage extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => const ExportReportsPage()),
               ),
             ),
+            if (isDealer) ...[
+              const SizedBox(height: 10),
+              _buildReportCard(
+                context,
+                title: 'Placement Report (PDF)',
+                subtitle: 'Printable monthly client-facing placement report by PJP day',
+                icon: Icons.picture_as_pdf_outlined,
+                iconColor: const Color(0xFFDC2626),
+                badgeText: 'Dealer',
+                badgeColor: const Color(0xFFDC2626),
+                onTap: () => PlacementReportDialog.show(context: context),
+              ),
+            ],
             const SizedBox(height: 10),
             _buildReportCard(
               context,

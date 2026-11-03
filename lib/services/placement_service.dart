@@ -60,11 +60,11 @@ class PlacementService {
     }
   }
 
-  // Get list of all placement records within the current month\
-  static Future<List<Placement>> getListOfPlacementsWithinCurrentMonth() async {
-    final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
-    final startOfNextMonth = DateTime(now.year, now.month + 1, 1);
+  // Get list of all placement records within the specified or current month
+  static Future<List<Placement>> getListOfPlacementsWithinCurrentMonth([DateTime? month]) async {
+    final target = month ?? DateTime.now();
+    final startOfMonth = DateTime(target.year, target.month, 1);
+    final startOfNextMonth = DateTime(target.year, target.month + 1, 1);
 
     final snapshot = await FirebaseFirestore.instance
         .collection(PLACEMENT_COLLECTION_REF)

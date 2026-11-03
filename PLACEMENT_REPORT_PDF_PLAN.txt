@@ -1,0 +1,354 @@
+MONTHLY PLACEMENT REPORT (PDF) - IMPLEMENTATION PLAN (FOR REVIEW)
+================================================================
+
+GOAL
+----
+A printable, client-facing PDF showing, per PJP day (one section per day,
+starting on its own page), every store scheduled that day against the Best
+Seller products, plus whether the store ordered at least one "New Product"
+(Delivered orders only) in the chosen month. Product images are shown. The
+dealer prints it and gives it to the salesman, who shows it to clients.
+
+DECISIONS (confirmed)
+---------------------
+1. Columns = Best Seller products. Paired SKUs (config.placementPairs) are
+   MERGED into one column: images side by side + combined label. The column is
+   checked when EITHER product of the pair is placed (same rule as the
+   Placement page / PlacementController.computeProgress).
+2. New Product = ONE single check/cross column (not one column per product).
+   Checked when the store has at least one New Product item on a DELIVERED
+   order in the selected month. Pending / Pending Picklist / Returned / Voided
+   do not count.
+3. Scope: ALL stores. Report is client-safe (no prices, credit, or other
+   stores' data).
+4. Month: user can pick the month (default = current month).
+5. PJP days: user picks the days before generating (multi-select).
+6. Extras: per-store score (e.g. 7/11), per-product coverage footer,
+   cover/summary page, and a "Pitch list" page (missing best sellers per store).
+7. Branding: app logo (assets/images/logo.png) + company name.
+8. NEW SORT RULES
+   a. Product columns: By Case first (SRP low -> high, then name), then
+      By Piece (SRP low -> high, then name), then the New Product column last.
+   b. Stores: grouped by PJP day (Monday..Sunday order, only picked days).
+      Inside a day, ordered by the day's PJP sequence (pjpSequence), exactly
+      like the PJP List page. Stores without a sequence go to the end of that
+      day, alphabetical by name. Stores with no PJP day are excluded from the
+      day pages and only counted on the cover page.
+9. PAPER / ORIENTATION (fixed): A4 LANDSCAPE (842 x 595 pt) for every page.
+   PRODUCTS RUN ACROSS THE TOP (column headers) and the LIST OF STORES RUNS DOWN
+   THE LEFT SIDE (row headers). Print-ready at 100% scale (no "fit to page"
+   needed); the layout is designed so nothing is cut off at A4 landscape.
+10. Product sort: the report always uses the FIXED order (rule 8a) and ignores
+    the dealer's "Custom Dealer Sort" setting.
+11. New Product column: one check/dash column at the END of the table; its
+    header shows small thumbnails of the current New Product items. The
+    thumbnails must fit inside that column's width (see "New Product header
+    thumbnails" below).
+12. Free promo reward items (isFreeReward) are NOT counted as a New Product
+    order.
+13. Access: DEALER ONLY (dealer and admin, via KVariables.getIsDealer()). The
+    entry is shown only inside the isDealer block of the Reports page, and the
+    dialog/service re-check the role before generating. The dealer prints it
+    and hands it to the salesman.
+
+REPORT LAYOUT (A4 landscape, products on top, stores on the left)
+-----------------------------------------------------------------
+Page 1 - Cover / Summary
+  - Logo, company name, "Monthly Placement Report - <Month Year>", date prepared
+  - Selected PJP days, total stores, overall placement % (placed targets /
+    total targets across all stores), stores that ordered a New Product (n / N)
+  - Top 3 and bottom 3 products by coverage
+  - Legend (check = placed, blank = opportunity, New Product check = ordered)
+
+Pages 2..n - One section per picked PJP day
+  Header band : "PJP: MONDAY - 18 stores - Placement 74%" + month + logo (small)
+  Table header: [ Store ] [ img+label per product column ... ] [ Score ] [ New Product ]
+  Rows        : # + store name (+ short address line, small), a check or blank per
+                product column, score "7/11", New Product check or dash.
+  Footer row  : per-product "stores placed / stores in day" and day total %.
+
+  Visual (one day page, A4 landscape):
+  +------------------------------------------------------------------------------+
+  | [LOGO] COMPANY NAME   MONTHLY PLACEMENT REPORT - NOVEMBER 2026               |
+  | PJP: MONDAY  -  18 stores  -  Placement 74%                                  |
+  +--------------+------+------+------+------+------+------+-----+---------------+
+  |              |[img] |[img] |[img] |[img] |[img] |[img] |     | NEW PRODUCT   |
+  | STORE        |Case A|Case B|Piece |Piece | Pair | ...  |Score| [img][img][+N]|
+  |              |      |      | C    | D    |A / B |      |     | ordered?      |
+  +--------------+------+------+------+------+------+------+-----+---------------+
+  | 1 Store A    |  /   |      |  /   |  /   |      | ...  | 7/11|      /        |
+  | 2 Store B    |  /   |  /   |      |      |  /   | ...  | 5/11|      -        |
+  | ...                                                                          |
+  +--------------+------+------+------+------+------+------+-----+---------------+
+  | Stores placed| 14/18| 9/18 | 12/18| 11/18| 6/18 | ...  | 74% |     8/18      |
+  +------------------------------------------------------------------------------+
+  Sort across (left->right): By Case (SRP asc) | By Piece (SRP asc) | Score | New
+  Sort down: store order of that PJP day (pjpSequence).
+
+  Width budget (A4 landscape 842 pt, margins 24 pt each side = 794 pt usable):
+    Store column ......... 150 pt (number + name + small address, wraps 2 lines)
+    Score column ......... 36 pt
+    New Product column ... 64 pt (fixed; see thumbnails below)
+    Product columns ...... remaining ~544 pt / N columns
+        12 columns -> ~45 pt each, 14 -> ~39 pt, 16 -> ~34 pt (minimum)
+  The column width is COMPUTED from N so the table never exceeds the page
+  width. Image size, label font (7 -> 5.5 pt) and label lines (max 3) scale
+  down with the column width. If N would drop below 34 pt per column, the
+  Store column shrinks to 120 pt first; beyond that the report shows a warning
+  in the dialog ("Too many Best Sellers for one A4 page width") rather than
+  letting columns overflow or split across pages.
+  Height: header ~70 pt, rows ~22 pt each (~20 rows per page after header and
+  footer); longer days continue on the next page with the header repeated.
+  - Table header repeats on every continuation page of the same day.
+  - Page footer: "Page x of y", day name, month.
+  - Use muted dash/blank (not a red X) for gaps so it does not read as a failure
+    in front of clients. The New Product column uses check / dash too.
+
+Last pages - Pitch list (per store) - also A4 landscape
+  - For each store: the missing best seller columns, each with image + name,
+    grouped by store in the same PJP-day / sequence order.
+  - Landscape layout: store name on the LEFT (fixed 150 pt column, same as the
+    grid pages), that store's missing products across the row to the right
+    (images 28 pt + 2-line label), wrapping to a second line within the same
+    row when needed. Rows keep the PJP-day order; each day starts on a new page.
+  - One-line "Next to pitch" focus (first 3 missing in sort order).
+
+DATA SOURCES (existing code reused)
+-----------------------------------
+- Stores        : HapiStoreService.getListHapiStores() -> group by
+                  Hapistore.pjpSchedule (single day per store), PjpScheduleDays.all.
+- Best sellers  : SelectaProductService.getBestSellerProducts() (active, tag
+                  ProductTag.bestSeller; has admin-catalog fallback).
+- Fallback      : If no Best Sellers exist, the report is blocked with a message
+                  (do NOT fall back to the legacy 12 cotc names; the report needs
+                  images and categories).
+- Pairs         : ConfigurationService().getConfiguration().placementPairs
+- Placements    : collection 'placement'; match by storeName and
+                  deliveryDate within the chosen month; use placedProductNames
+                  plus legacy cotc flags (same logic as
+                  PlacementController.loadBestSellerPlacements).
+- New Product   : Delivered orders (collection DELIVERY_COLLECTION_REF) within
+                  the chosen month; OrderItem.tag == ProductTag.newProduct.
+- Images        : product imageUrl (SelectaProduct / OrderItem).
+
+NEW CODE
+--------
+1. lib/services/placement_report_service.dart  (data load + aggregation, no UI)
+   - loadReportData(DateTime month, Set<String> days) -> PlacementReportData
+   - Month-aware placement query: add an optional `DateTime month` param to
+     PlacementService.getListOfPlacementsWithinCurrentMonth (default = now) so
+     existing callers are unchanged.
+   - Month-aware Delivered query: ONE query on deliveryDate range
+     [firstOfMonth, firstOfNextMonth), filter transactionStatus == Delivered
+     CLIENT-SIDE. This avoids needing a new composite index
+     (existing index is storeName + transactionStatus + deliveryDate).
+     Fall back to createdDate when deliveryDate is null (as DeliveryService does).
+   - Build Set<String> of store names that ordered a New Product.
+2. lib/models/placement_report_models.dart  (pure Dart value classes)
+   - PlacementReportColumn { label, List<SelectaProduct> products (1 or 2),
+     category, srpSortKey }
+   - PlacementReportRow { Hapistore store, Map<columnKey,bool> placed,
+     placedCount, totalCount, orderedNewProduct }
+   - PlacementReportDaySection { day, rows, per-column coverage, day %}
+   - PlacementReportData { month, columns, sections, cover stats, pitch list }
+3. lib/services/placement_report_builder.dart  (PURE functions, unit tested)
+   - buildColumns(bestSellers, pairs)   -> merged + sorted columns
+   - sortStoresForDay(stores)           -> pjpSequence, then name
+   - buildRows(...), computeCoverage(...), buildPitchList(...)
+   - hasNewProductOrder(deliveries)     -> Set<storeName>
+4. lib/services/placement_report_pdf_service.dart  (PDF rendering)
+   - generate(PlacementReportData) -> Uint8List using pdf + printing
+   - printOrShare(...) via Printing.layoutPdf / Printing.sharePdf, with
+     save-and-open fallback (same pattern as payslip_pdf_service.dart)
+5. lib/views/widgets/reports/placement_report_dialog.dart
+   - Month picker (default current month; no future months)
+   - PJP days multi-select (chips) with "Select all"; days with 0 stores are
+     shown greyed out with "(0)" and unchecked by default
+   - Optional toggles: Cover page, Pitch list (both on by default)
+   - "Generate PDF" with progress (loading images X/Y), Print and Share buttons
+6. Entry point: reports_page.dart, new card "Placement Report (PDF)" in the
+   Data Export section, wrapped in `if (isDealer) ...[ ]` (the existing Export
+   Reports card there is not gated, so this card needs its own gate). Salesmen
+   do not see it. The dialog/service also re-check KVariables.getIsDealer()
+   before generating (defense in depth).
+
+SORT LOGIC (new rule 8a) - details
+----------------------------------
+Do NOT use Helperfunctions.compareProducts here; that honors the dealer's
+custom product-sort mode. This report uses a FIXED order requested for printed
+client material:
+  rank 0 = By Case, rank 1 = By Piece (Helperfunctions.compareCategoryHierarchy)
+  then Helperfunctions.compareBySrpAndName (SRP extracted from the name, with
+  selling price as fallback), then name.
+Merged pair column: placed at the position of its FIRST member after sorting
+the members with the same comparator; the column's category is that member's
+category. The label is "A / B" (images side by side, both small).
+New Product column: always last, outside the sorted list.
+
+STORE LOGIC (new rule 8b) - details
+-----------------------------------
+- Sections follow PjpScheduleDays.all order, restricted to the picked days.
+- Within a day: pjpSequence ascending; null sequence last, by name. Extract
+  the existing comparator in PjpController.sortStoreDocs into a pure helper
+  (e.g. Helperfunctions.compareStoresByPjpSequence) and reuse it in both the
+  PJP List and the report, so both always agree. No behavior change to PJP List.
+- Stores with no pjpSchedule are excluded from the per-day sections (they have
+  no day). They are counted on the cover page as "Unscheduled stores: n" so the
+  gap is visible.
+- Row numbers (1, 2, 3...) follow this order, restart per day.
+
+NEW PRODUCT CHECK - details
+---------------------------
+A store is checked if any Delivery in the month where:
+  - transactionStatus == Delivered
+  - item.tag == "New Product"
+  - item is not isFreeReward (free promo rewards are not an order decision)
+  - net quantity (pickedQuantity - returnedQuantity) > 0
+If an old OrderItem has an empty tag, look up the product's CURRENT tag by
+productId from the catalog cache (ProductCatalogCache) before deciding.
+Match deliveries to stores by storeName (same key used by Placement).
+
+PAIR + SCORE LOGIC
+------------------
+- Reuse PlacementController.computeProgress for slot grouping so the report
+  score equals the score on the Placement page.
+- Score per store = placed target slots / total target slots (a merged pair is
+  one slot). Overall % = sum placed / sum total across included stores.
+- Coverage footer per column = rows where that column is placed / rows in day.
+
+IMAGES / PDF SPECIFICS
+----------------------
+- Collect distinct image URLs from the columns (plus the New Product thumbnails
+  if used, see open points). Download each ONCE with http (already in
+  pubspec) with a timeout (8 s) and limited concurrency (6). Reuse via
+  DefaultCacheManager / cached_network_image's cache when already cached.
+- Decode and downscale with the `image` package (already in pubspec) to ~160 px
+  wide JPEG (quality ~75) before pw.MemoryImage, so the PDF stays small
+  (target < 3 MB for ~12 columns x 6 days).
+- On failure/empty URL: draw a grey placeholder box with the product initials.
+- Do the downloading/resizing off the UI thread (compute / Isolate where
+  possible; the PDF assembly itself can run in an isolate if the build is slow).
+- Fonts: default PDF Helvetica has no check glyph. Draw the check as a vector
+  path (pw.CustomPaint) so no font dependency is needed. For store names with
+  non-Latin characters, bundle NotoSans (Regular/Bold) under assets/fonts and
+  register as pw.Font.ttf; fall back to Helvetica if loading fails.
+- Page: PdfPageFormat.a4.landscape (842 x 595 pt) for ALL pages (cover, day
+  pages, pitch list), margins 24 pt. Do not use the device/printer default
+  format; Printing.layoutPdf is called with format = a4.landscape and
+  dynamicLayout false so the printer dialog keeps A4 landscape at 100%.
+  Column width computed from the column count per the width budget above.
+  Fixed column widths (pw.FixedColumnWidth) for Store/Score/New Product and
+  equal widths for product columns; no pw.FlexColumnWidth so print width is
+  deterministic.
+
+New Product header thumbnails (fit the page width)
+- The New Product column has a FIXED width (64 pt) regardless of how many
+  Best Seller columns exist, so the table width never changes.
+- Thumbnails are laid out in a pw.Wrap/Row inside that width: size 16 pt, 2 pt
+  gap -> up to 3 thumbnails per row (3 x 16 + 2 x 2 = 52 pt <= 60 pt content).
+- Show up to 3 thumbnails; when there are more than 3 New Products, show the
+  first 2 plus a "+N" chip (so the row still fits). The order is the same SRP
+  order (Case then Piece).
+- Under the thumbnails: label "NEW PRODUCT" (6 pt) and "ordered?" (5.5 pt).
+- If there are no products tagged New Product, the column is still printed
+  with a dash for every store and a note on the cover "No New Product tagged".
+- All thumbnails go through the same image cache/downscale pipeline.
+- Use pw.MultiPage + pw.Table with repeated header (header row via a
+  header builder) so long days flow across pages with the header repeated.
+- Each day starts a new page (pw.NewPage) so the salesman can hand a single
+  day's pages to a client.
+- Web: Firebase Storage images may fail due to CORS; the placeholder path covers
+  this. Verify on Android/iOS first (primary targets).
+
+PERFORMANCE / COST
+------------------
+- Reads: stores (cached), placements (1 month-range query), deliveries (1
+  month-range query), best sellers (1 query), config (1). No per-store reads.
+- Ask for a confirm before generating when stores > ~150.
+
+EDGE CASES
+----------
+- Store with no placement doc for the month -> all blank, score 0/N (shown, not
+  hidden).
+- Past months show whatever was recorded then; a pair/tag change made later
+  affects the past report (live data). Note shown on the cover: "Based on data as
+  of <generated date>".
+- Best Seller list changes mid-month -> the report uses the current list.
+- Duplicate store names -> match by storeName like existing code; documented.
+- Zero best sellers, zero stores in picked days, or no days picked -> friendly
+  message, no PDF.
+- Month picked is in the future -> disallowed.
+- Product has no image -> placeholder.
+- Very long store names -> wrap to 2 lines, then ellipsis.
+- Timezone: month boundaries computed in device local time.
+
+TESTING
+-------
+Unit (test/placement_report_builder_test.dart):
+- Column sort: By Case (SRP asc) -> By Piece (SRP asc) -> ties by name;
+  products without SRP in the name fall back to selling price.
+- Pair merge: one column, label "A / B", placed if either; pair with members in
+  different categories; pair where only one member is a Best Seller.
+- Store sort: pjpSequence order; null sequence last by name; day order.
+- New Product: Delivered counts; Pending/Voided/Returned do not; free reward
+  excluded; fully returned qty excluded; month boundaries (last day 23:59 and
+  first day of next month); empty tag + catalog lookup.
+- Score and coverage math incl. pairs; zero-store day; store without placement.
+Widget (test/placement_report_dialog_test.dart):
+- Day picker defaults, disabled empty days, month picker limits.
+- Entry card hidden when isDealer == false, shown when true.
+PDF smoke test:
+- Every page size is exactly A4 landscape (842 x 595 pt, width > height).
+- Layout math test: for N = 6, 12, 16 product columns the sum of fixed +
+  computed column widths <= 794 pt (usable width); N beyond the limit raises
+  the "too many columns" warning instead of overflowing.
+- New Product thumbnails: 0, 1, 3 and 5 New Products -> thumbnails + "+N" chip
+  fit within the 64 pt column.
+- Generate with fake data (images stubbed with tiny PNG) and assert bytes start
+  with %PDF and page count > 0; one run with a failing image URL to prove the
+  placeholder path.
+Manual QA:
+- Print on A4 paper in landscape at 100% scale (and "Save as PDF"); check that
+  nothing is clipped at the edges, legibility at 12+ columns, repeated headers
+  on long days, store list on the left, products across the top, and image
+  sharpness at print size.
+
+PHASES
+------
+1. Pure models + builder + comparators + unit tests (no UI, no network).
+2. Data service (month-aware placement + delivered queries) + tests with a fake
+   Firestore.
+3. PDF service: table, cover, footers, check glyph, placeholders, image pipeline.
+4. Dialog + Reports page entry; print/share wiring.
+5. Pitch list pages, polish, large-data and low-memory checks, QA on devices.
+
+FILES TOUCHED
+-------------
+New    : lib/services/placement_report_service.dart
+         lib/services/placement_report_builder.dart
+         lib/services/placement_report_pdf_service.dart
+         lib/models/placement_report_models.dart
+         lib/views/widgets/reports/placement_report_dialog.dart
+         test/placement_report_builder_test.dart
+         test/placement_report_dialog_test.dart
+Edited : lib/services/placement_service.dart      (optional month param)
+         lib/controllers/pjp_controller.dart      (use shared store comparator)
+         lib/data/helperfunctions.dart            (compareStoresByPjpSequence)
+         lib/views/pages/reports/reports_page.dart(new card)
+         pubspec.yaml                             (only if bundling NotoSans)
+
+OPEN POINTS FOR YOUR REVIEW
+---------------------------
+All earlier open points are now resolved (see DECISIONS 8-13):
+  1. Fixed product sort, ignores Custom Dealer Sort ............ CONFIRMED
+  2. New Product thumbnails in header, must fit page width ..... CONFIRMED
+  3. Stores grouped by PJP day, ordered by pjpSequence ......... CONFIRMED
+  4. Free reward items not counted as New Product .............. CONFIRMED
+  5. Dealer only (dealer + admin) .............................. CONFIRMED
+  6. A4 landscape, products on top, stores on the left ......... CONFIRMED
+
+Remaining small items (defaults will be used unless you say otherwise):
+  a. File name: PlacementReport_<YYYY-MM>.pdf
+  b. If the Best Seller count is so large that columns would be narrower than
+     34 pt, the dialog warns and asks you to reduce Best Seller tags (the
+     report will not overflow or shrink below legible size).
