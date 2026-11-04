@@ -117,5 +117,5 @@ To guarantee the app operates completely within the Firebase Blaze free tier lim
 
 ## Version
 
-Current: 1.0.0+59
+Current: 1.0.0+60
 
