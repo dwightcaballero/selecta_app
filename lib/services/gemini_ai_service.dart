@@ -4,7 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
 import 'package:selecta_ops/models/supplier_product_mapping.dart';
+import 'package:selecta_ops/models/configuration.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
+import 'package:selecta_ops/services/error_log_service.dart';
 import 'package:selecta_ops/services/image_slicing_service.dart';
 import 'package:selecta_ops/services/ai/ai_provider_chain.dart';
 import 'package:selecta_ops/services/ai/gemini_text_provider.dart';
@@ -275,9 +277,8 @@ class AiScanTimingTracker {
 /// including remote key fetching, master enable/disable, and quota tracking/enforcement.
 class GeminiAiService {
   static const List<String> _candidateModels = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
   ];
   @visibleForTesting
   static List<String> get candidateModels => List.unmodifiable(_candidateModels);
@@ -305,6 +306,8 @@ class GeminiAiService {
   ChatSession? _chatSession;
   String? _cachedApiKey;
   String? _cachedGroqApiKey;
+  String? _cachedTextModelGemini;
+  String? _cachedTextModelGroq;
   String? _cachedContextPrompt;
   AiStatusCheck? _cachedStatusCheck;
   DateTime? _lastStatusCheckTime;
@@ -313,10 +316,17 @@ class GeminiAiService {
 
   late AiProviderChain _providerChain = AiProviderChain(
     providers: [
-      GeminiTextProvider(getApiKey: getEffectiveApiKeySync),
-      GroqTextProvider(getApiKey: getEffectiveGroqApiKeySync),
+      GeminiTextProvider(getApiKey: getEffectiveApiKeySync, getModel: getEffectiveTextModelGeminiSync),
+      GroqTextProvider(getApiKey: getEffectiveGroqApiKeySync, getModel: getEffectiveTextModelGroqSync),
     ],
-  );
+  )..onModelNotFound = _logModelNotFound;
+
+  void _logModelNotFound(String providerId, String message) {
+    ErrorLogService.logError(
+      action: 'AI model unavailable ($providerId)',
+      error: message,
+    );
+  }
 
   late AiScanPipeline _pipeline = AiScanPipeline(
     providerChain: _providerChain,
@@ -340,6 +350,13 @@ class GeminiAiService {
 
   String getEffectiveApiKeySync() => _cachedApiKey ?? '';
   String getEffectiveGroqApiKeySync() => _cachedGroqApiKey ?? '';
+  String getEffectiveTextModelGeminiSync() => _cachedTextModelGemini ?? '';
+  String getEffectiveTextModelGroqSync() => _cachedTextModelGroq ?? '';
+
+  void _cacheTextModels(Configuration config) {
+    _cachedTextModelGemini = config.textModelGemini.trim();
+    _cachedTextModelGroq = config.textModelGroq.trim();
+  }
 
   /// Returns user-facing name of the currently active LLM provider.
   String get activeProviderDisplayName {
@@ -363,6 +380,7 @@ class GeminiAiService {
     }
 
     final config = await _configService.getConfiguration();
+    _cacheTextModels(config);
 
     // 1. Check if disabled globally
     if (!config.aiEnabled) {
@@ -479,6 +497,7 @@ class GeminiAiService {
     // 1. Fetch from Firestore shared configuration (so 1 key works for all users)
     try {
       final config = await _configService.getConfiguration();
+      _cacheTextModels(config);
       if (config.geminiApiKey.isNotEmpty) {
         _cachedApiKey = config.geminiApiKey.trim();
         return _cachedApiKey;
@@ -509,6 +528,7 @@ class GeminiAiService {
 
     try {
       final config = await _configService.getConfiguration();
+      _cacheTextModels(config);
       if (config.groqApiKey.isNotEmpty) {
         _cachedGroqApiKey = config.groqApiKey.trim();
         return _cachedGroqApiKey;
@@ -527,6 +547,8 @@ class GeminiAiService {
   void invalidateCachedKey() {
     _cachedApiKey = null;
     _cachedGroqApiKey = null;
+    _cachedTextModelGemini = null;
+    _cachedTextModelGroq = null;
     _model = null;
     _chatSession = null;
     _chatHistory.clear();

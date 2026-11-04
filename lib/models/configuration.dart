@@ -83,8 +83,8 @@ class Configuration {
     this.groqApiKey = '',
     this.aiScanMode = 'hybrid',
     this.aiProviderOrder = const ['gemini', 'groq'],
-    this.textModelGemini = 'gemini-2.0-flash',
-    this.textModelGroq = 'llama-3.3-70b-versatile',
+    this.textModelGemini = 'gemini-3.6-flash',
+    this.textModelGroq = 'openai/gpt-oss-120b',
     this.aiMonthlyRequestLimit = 3000,
     this.superAdminPasswordHash = '',
     this.salesTarget = 1000000.0,
@@ -167,8 +167,8 @@ class Configuration {
         groqApiKey: '',
         aiScanMode: 'hybrid',
         aiProviderOrder: const ['gemini', 'groq'],
-        textModelGemini: 'gemini-2.0-flash',
-        textModelGroq: 'llama-3.3-70b-versatile',
+        textModelGemini: 'gemini-3.6-flash',
+        textModelGroq: 'openai/gpt-oss-120b',
         aiMonthlyRequestLimit: 3000,
         superAdminPasswordHash: '',
         salesTarget: 1000000.0,
@@ -202,6 +202,22 @@ class Configuration {
         depotAddress: '',
       );
 
+  static const Set<String> _retiredGeminiModels = {
+    'gemini-1.5-flash',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+  };
+  static const Set<String> _retiredGroqModels = {
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+  };
+
+  /// Falls back to [fallback] when the stored model is missing or has been retired by the provider.
+  static String _migrateTextModel(String? stored, String fallback, Set<String> retired) {
+    final value = stored?.trim() ?? '';
+    return value.isEmpty || retired.contains(value) ? fallback : value;
+  }
+
   Configuration.fromJson(Map<String, Object?> json)
       : this(
           merchBlitzStartDate: (json['merchBlitzStartDate'] is Timestamp)
@@ -221,8 +237,8 @@ class Configuration {
           aiProviderOrder: (json['aiProviderOrder'] is List)
               ? (json['aiProviderOrder'] as List).map((e) => e.toString()).toList()
               : const ['gemini', 'groq'],
-          textModelGemini: json['textModelGemini'] as String? ?? 'gemini-2.0-flash',
-          textModelGroq: json['textModelGroq'] as String? ?? 'llama-3.3-70b-versatile',
+          textModelGemini: _migrateTextModel(json['textModelGemini'] as String?, 'gemini-3.6-flash', _retiredGeminiModels),
+          textModelGroq: _migrateTextModel(json['textModelGroq'] as String?, 'openai/gpt-oss-120b', _retiredGroqModels),
           aiMonthlyRequestLimit: (json['aiMonthlyRequestLimit'] as num?)?.toInt() ?? 3000,
           superAdminPasswordHash: json['superAdminPasswordHash'] as String? ?? '',
           salesTarget: (json['salesTarget'] as num?)?.toDouble() ?? 1000000.0,

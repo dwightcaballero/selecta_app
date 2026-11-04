@@ -39,6 +39,8 @@ class AiProviderException implements Exception {
   final bool isRateLimit;
   final bool isAuthError;
   final bool isOverloaded;
+  /// The configured model was retired, renamed, or is not accessible to this key.
+  final bool isModelNotFound;
   final Duration? retryAfter;
 
   AiProviderException({
@@ -48,6 +50,7 @@ class AiProviderException implements Exception {
     this.isRateLimit = false,
     this.isAuthError = false,
     this.isOverloaded = false,
+    this.isModelNotFound = false,
     this.retryAfter,
   });
 

@@ -15,9 +15,8 @@ void main() {
     });
 
     test('GeminiAiService candidateModels uses verified flash models and reasonable visionTimeout', () {
-      expect(GeminiAiService.candidateModels, contains('gemini-2.5-flash'));
-      expect(GeminiAiService.candidateModels, contains('gemini-2.0-flash'));
-      expect(GeminiAiService.candidateModels, contains('gemini-1.5-flash'));
+      expect(GeminiAiService.candidateModels, contains('gemini-3.6-flash'));
+      expect(GeminiAiService.candidateModels, contains('gemini-3.5-flash-lite'));
       expect(GeminiAiService.candidateModels, isNot(contains('gemini-3.8-flash')));
       expect(GeminiAiService.visionTimeout, const Duration(seconds: 45));
     });

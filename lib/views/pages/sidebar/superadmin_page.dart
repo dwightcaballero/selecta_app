@@ -16,6 +16,7 @@ import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/users.dart';
 import 'package:selecta_ops/services/user_services.dart';
+import 'package:selecta_ops/services/ai/ai_model_health_checker.dart';
 import 'package:selecta_ops/services/ai/gemini_text_provider.dart';
 import 'package:selecta_ops/services/ai/groq_text_provider.dart';
 
@@ -34,6 +35,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
 
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _groqApiKeyController = TextEditingController();
+  final TextEditingController _geminiModelController = TextEditingController(text: GeminiTextProvider.defaultModel);
+  final TextEditingController _groqModelController = TextEditingController(text: GroqTextProvider.defaultModel);
   final TextEditingController _monthlyLimitController = TextEditingController(text: '1000');
   final TextEditingController _newAdminPasswordController = TextEditingController();
   final TextEditingController _confirmAdminPasswordController = TextEditingController();
@@ -51,6 +54,11 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   String _primaryProvider = 'gemini';
   bool _isTestingGemini = false;
   bool _isTestingGroq = false;
+  final AiModelHealthChecker _modelHealthChecker = AiModelHealthChecker();
+  AiModelCheckResult? _geminiModelCheck;
+  AiModelCheckResult? _groqModelCheck;
+  bool _isCheckingGeminiModel = false;
+  bool _isCheckingGroqModel = false;
   int _currentMonthUsage = 0;
   String _currentRole = BusinessRole.dealer;
   bool _isLoading = true;
@@ -69,6 +77,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
   void dispose() {
     _apiKeyController.dispose();
     _groqApiKeyController.dispose();
+    _geminiModelController.dispose();
+    _groqModelController.dispose();
     _monthlyLimitController.dispose();
     _newAdminPasswordController.dispose();
     _confirmAdminPasswordController.dispose();
@@ -94,6 +104,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
           _monthlyLimitController.text = configResult.config.aiMonthlyRequestLimit.toString();
           _apiKeyController.text = apiKey ?? configResult.config.geminiApiKey;
           _groqApiKeyController.text = groqKey ?? configResult.config.groqApiKey;
+          _geminiModelController.text = configResult.config.textModelGemini;
+          _groqModelController.text = configResult.config.textModelGroq;
           _aiScanMode = configResult.config.aiScanMode;
           _primaryProvider = configResult.config.aiProviderOrder.isNotEmpty
               ? configResult.config.aiProviderOrder.first
@@ -104,6 +116,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
           _adminPasswordIsSet = configResult.config.superAdminPasswordHash.isNotEmpty;
           _isLoading = false;
         });
+        if (_apiKeyController.text.trim().isNotEmpty) _verifyGeminiModel();
+        if (_groqApiKeyController.text.trim().isNotEmpty) _verifyGroqModel();
       }
     } catch (e) {
       if (mounted) {
@@ -582,6 +596,8 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
         groqApiKey: _groqApiKeyController.text.trim(),
         aiScanMode: _aiScanMode,
         aiProviderOrder: providerOrder,
+        textModelGemini: _modelOrDefault(_geminiModelController, GeminiTextProvider.defaultModel),
+        textModelGroq: _modelOrDefault(_groqModelController, GroqTextProvider.defaultModel),
         aiMonthlyRequestLimit: monthlyLimit,
       );
 
@@ -605,6 +621,68 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     }
   }
 
+  Future<void> _verifyGeminiModel() async {
+    setState(() => _isCheckingGeminiModel = true);
+    final result = await _modelHealthChecker.checkGemini(
+      _apiKeyController.text,
+      _modelOrDefault(_geminiModelController, GeminiTextProvider.defaultModel),
+    );
+    if (mounted) {
+      setState(() {
+        _geminiModelCheck = result;
+        _isCheckingGeminiModel = false;
+      });
+    }
+  }
+
+  Future<void> _verifyGroqModel() async {
+    setState(() => _isCheckingGroqModel = true);
+    final result = await _modelHealthChecker.checkGroq(
+      _groqApiKeyController.text,
+      _modelOrDefault(_groqModelController, GroqTextProvider.defaultModel),
+    );
+    if (mounted) {
+      setState(() {
+        _groqModelCheck = result;
+        _isCheckingGroqModel = false;
+      });
+    }
+  }
+
+  InputDecoration _modelDecoration({
+    required String label,
+    required String hint,
+    required AiModelCheckResult? check,
+    required bool isChecking,
+    required VoidCallback onVerify,
+  }) {
+    final failed = check != null && !check.isOk;
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      prefixIcon: const Icon(Icons.memory_rounded, size: 20),
+      errorText: failed ? check.message : null,
+      errorMaxLines: 3,
+      helperText: check != null && check.isOk ? '✅ ${check.message}' : null,
+      suffixIcon: isChecking
+          ? const Padding(
+              padding: EdgeInsets.all(14),
+              child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          : IconButton(
+              tooltip: 'Verify model',
+              icon: const Icon(Icons.verified_outlined, size: 20),
+              onPressed: onVerify,
+            ),
+    );
+  }
+
+  String _modelOrDefault(TextEditingController controller, String fallback) {
+    final value = controller.text.trim();
+    return value.isEmpty ? fallback : value;
+  }
+
   Future<void> _testGeminiConnection() async {
     final key = _apiKeyController.text.trim();
     if (key.isEmpty) {
@@ -613,7 +691,10 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     }
     setState(() => _isTestingGemini = true);
     try {
-      final provider = GeminiTextProvider(getApiKey: () => key);
+      final provider = GeminiTextProvider(
+        getApiKey: () => key,
+        model: _modelOrDefault(_geminiModelController, GeminiTextProvider.defaultModel),
+      );
       final res = await provider.generateJson(
         'Respond with {"status": "ok", "provider": "gemini"}',
         schemaHint: '{"status": string, "provider": string}',
@@ -639,7 +720,10 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     }
     setState(() => _isTestingGroq = true);
     try {
-      final provider = GroqTextProvider(getApiKey: () => key);
+      final provider = GroqTextProvider(
+        getApiKey: () => key,
+        model: _modelOrDefault(_groqModelController, GroqTextProvider.defaultModel),
+      );
       final res = await provider.generateJson(
         'Respond with {"status": "ok", "provider": "groq"}',
         schemaHint: '{"status": string, "provider": string}',
@@ -1116,6 +1200,19 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             ),
                           ),
 
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _geminiModelController,
+                            onChanged: (_) => setState(() => _geminiModelCheck = null),
+                            decoration: _modelDecoration(
+                              label: 'Gemini Model',
+                              hint: GeminiTextProvider.defaultModel,
+                              check: _geminiModelCheck,
+                              isChecking: _isCheckingGeminiModel,
+                              onVerify: _verifyGeminiModel,
+                            ),
+                          ),
+
                           const SizedBox(height: 14),
 
                           // Groq API Key Field + Test Connection
@@ -1142,6 +1239,18 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                                   ),
                                 ],
                               ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _groqModelController,
+                            onChanged: (_) => setState(() => _groqModelCheck = null),
+                            decoration: _modelDecoration(
+                              label: 'Groq Model',
+                              hint: GroqTextProvider.defaultModel,
+                              check: _groqModelCheck,
+                              isChecking: _isCheckingGroqModel,
+                              onVerify: _verifyGroqModel,
                             ),
                           ),
                           const SizedBox(height: 6),

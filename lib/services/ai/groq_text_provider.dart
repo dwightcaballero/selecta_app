@@ -7,14 +7,27 @@ import 'package:selecta_ops/services/ai/text_llm_provider.dart';
 /// (`https://api.groq.com/openai/v1/chat/completions`).
 class GroqTextProvider implements TextLlmProvider {
   final String Function() getApiKey;
-  final String model;
+  final String? _pinnedModel;
+  final String Function()? getModel;
   final http.Client _client;
 
   GroqTextProvider({
     required this.getApiKey,
-    this.model = 'llama-3.3-70b-versatile',
+    String? model,
+    this.getModel,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+  }) : _pinnedModel = model,
+       _client = client ?? http.Client();
+
+  /// Explicit [model] wins; otherwise [getModel] is read at call time so config changes apply without a restart.
+  String get model {
+    final explicit = _pinnedModel?.trim() ?? '';
+    if (explicit.isNotEmpty) return explicit;
+    final configured = getModel?.call().trim() ?? '';
+    return configured.isNotEmpty ? configured : defaultModel;
+  }
+
+  static const String defaultModel = 'openai/gpt-oss-120b';
 
   @override
   String get id => 'groq';
@@ -223,6 +236,11 @@ class GroqTextProvider implements TextLlmProvider {
     final isRateLimit = code == 429;
     final isAuth = code == 401 || code == 403;
     final isOverloaded = code == 503 || code == 500 || code == 504 || message.toLowerCase().contains('overloaded');
+    final isModelNotFound = code == 404 || response.body.contains('model_not_found');
+    if (isModelNotFound) {
+      message = 'Groq model "$model" is unavailable (retired or renamed). '
+          'Update it in Superadmin > AI settings. Details: $message';
+    }
 
     throw AiProviderException(
       providerId: id,
@@ -231,6 +249,7 @@ class GroqTextProvider implements TextLlmProvider {
       isRateLimit: isRateLimit,
       isAuthError: isAuth,
       isOverloaded: isOverloaded,
+      isModelNotFound: isModelNotFound,
       retryAfter: retryAfter,
     );
   }

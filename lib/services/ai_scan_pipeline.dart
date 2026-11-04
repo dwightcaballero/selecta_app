@@ -31,9 +31,11 @@ class AiScanPipeline {
               providers: [
                 GeminiTextProvider(
                   getApiKey: () => GeminiAiService().getEffectiveApiKeySync(),
+                  getModel: () => GeminiAiService().getEffectiveTextModelGeminiSync(),
                 ),
                 GroqTextProvider(
                   getApiKey: () => GeminiAiService().getEffectiveGroqApiKeySync(),
+                  getModel: () => GeminiAiService().getEffectiveTextModelGroqSync(),
                 ),
               ],
             );

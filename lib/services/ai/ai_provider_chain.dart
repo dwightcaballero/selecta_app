@@ -68,6 +68,12 @@ class AiProviderChain {
 
   String? lastUsedProviderId;
 
+  /// How long a provider is skipped after reporting that its configured model no longer exists.
+  static const Duration modelNotFoundCooldown = Duration(minutes: 10);
+
+  /// Invoked when a provider reports its model is retired/unavailable, so callers can surface it.
+  void Function(String providerId, String message)? onModelNotFound;
+
   AiProviderChain({List<TextLlmProvider>? providers}) {
     if (providers != null) {
       for (final p in providers) {
@@ -124,6 +130,16 @@ class AiProviderChain {
     return null;
   }
 
+  void _recordProviderFailure(String id, ProviderCircuitState circuit, AiProviderException e) {
+    if (e.isModelNotFound) {
+      circuit.recordFailure(duration: modelNotFoundCooldown);
+      debugPrint('AiProviderChain: Provider $id model is unavailable: ${e.message}');
+      onModelNotFound?.call(id, e.message);
+    } else if (e.isRateLimit || e.isOverloaded) {
+      circuit.recordFailure(duration: e.retryAfter);
+    }
+  }
+
   /// Executes [generateJson] through the provider chain in order of [providerOrder].
   Future<String> generateJson(
     String prompt, {
@@ -159,9 +175,7 @@ class AiProviderChain {
         return result;
       } on AiProviderException catch (e) {
         errors.add('$id: ${e.message}');
-        if (e.isRateLimit || e.isOverloaded) {
-          circuit.recordFailure(duration: e.retryAfter);
-        }
+        _recordProviderFailure(id, circuit, e);
         debugPrint('AiProviderChain: Provider $id failed: ${e.message}. Trying next provider in chain...');
       } catch (e) {
         errors.add('$id: $e');
@@ -211,9 +225,7 @@ class AiProviderChain {
         return result;
       } on AiProviderException catch (e) {
         errors.add('$id: ${e.message}');
-        if (e.isRateLimit || e.isOverloaded) {
-          circuit.recordFailure(duration: e.retryAfter);
-        }
+        _recordProviderFailure(id, circuit, e);
         debugPrint('AiProviderChain: Provider $id chat failed: ${e.message}. Trying next provider...');
       } catch (e) {
         errors.add('$id: $e');

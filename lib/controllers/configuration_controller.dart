@@ -110,8 +110,8 @@ class ConfigurationController {
     final finalGroqApiKey = (groqApiKey ?? originalConfig?.groqApiKey ?? '').trim();
     final finalAiScanMode = aiScanMode ?? originalConfig?.aiScanMode ?? 'hybrid';
     final finalProviderOrder = aiProviderOrder ?? originalConfig?.aiProviderOrder ?? const ['gemini', 'groq'];
-    final finalTextModelGemini = textModelGemini ?? originalConfig?.textModelGemini ?? 'gemini-2.0-flash';
-    final finalTextModelGroq = textModelGroq ?? originalConfig?.textModelGroq ?? 'llama-3.3-70b-versatile';
+    final finalTextModelGemini = textModelGemini ?? originalConfig?.textModelGemini ?? 'gemini-3.6-flash';
+    final finalTextModelGroq = textModelGroq ?? originalConfig?.textModelGroq ?? 'openai/gpt-oss-120b';
     final finalSmsGatewayEnabled = smsGatewayEnabled ?? originalConfig?.smsGatewayEnabled ?? true;
     final finalSmsGatewayUrl = (smsGatewayUrl ?? originalConfig?.smsGatewayUrl ?? '').trim();
     final finalSmsGatewayToken = (smsGatewayToken ?? originalConfig?.smsGatewayToken ?? '').trim();
