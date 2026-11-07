@@ -371,7 +371,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
     if (newQty > maxAllowed && maxAllowed >= 0) {
       final incomingInfo = item.incomingQuantity > 0 ? ' (including ${item.incomingQuantity} incoming via PO)' : '';
-      final reservedInfo = item.reservedQuantity > 0 ? ' (${item.reservedQuantity} reserved in pending picklists)' : '';
+      final reservedInfo = item.reservedForToday > 0 ? ' (${item.reservedForToday} reserved in pending picklists for today)' : '';
       ShowMessage.error(context, 'Only $maxAllowed available for "${item.productName}"$incomingInfo$reservedInfo.');
     }
 
@@ -646,7 +646,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         ),
                       ],
 
-                      if (item.reservedQuantity > 0) ...[
+                      if (item.reservedForToday > 0) ...[
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -657,8 +657,28 @@ class _BookOrderPageState extends State<BookOrderPage> {
                               const SizedBox(width: 5),
                               Expanded(
                                 child: Text(
-                                  '${item.reservedQuantity} reserved in pending picklists (${item.stockQuantity} on hand)',
+                                  '${item.reservedForToday} reserved in pending picklists for today (${item.stockQuantity} on hand)',
                                   style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFD97706)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      if (item.preOrderQuantity > 0) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: const Color(0xFF7C3AED).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.event_note_outlined, size: 14, color: Color(0xFF7C3AED)),
+                              const SizedBox(width: 5),
+                              Expanded(
+                                child: Text(
+                                  '${item.preOrderQuantity} reserved for future pre-orders (not counted against today\'s stock)',
+                                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF7C3AED)),
                                 ),
                               ),
                             ],

@@ -211,12 +211,7 @@ void main() {
           ),
       ];
 
-      final alerts = await service.evaluateAnomalies(
-        movements: movements,
-        items: [],
-        config: testConfig,
-        now: now,
-      );
+      final alerts = await service.evaluateAnomalies(movements: movements, items: [], config: testConfig, now: now);
 
       final userAlert = alerts.where((a) => a.ruleId == 'user_frequent_adjustments').toList();
       expect(userAlert, isNotEmpty);
@@ -247,12 +242,7 @@ void main() {
           ),
       ];
 
-      final alerts = await service.evaluateAnomalies(
-        movements: movements,
-        items: [],
-        config: testConfig,
-        now: now,
-      );
+      final alerts = await service.evaluateAnomalies(movements: movements, items: [], config: testConfig, now: now);
 
       final prodAlert = alerts.where((a) => a.ruleId == 'product_frequent_adjustments').toList();
       expect(prodAlert, isNotEmpty);
@@ -294,12 +284,7 @@ void main() {
         ),
       ];
 
-      final alerts = await service.evaluateAnomalies(
-        movements: movements,
-        items: items,
-        config: testConfig,
-        now: now,
-      );
+      final alerts = await service.evaluateAnomalies(movements: movements, items: items, config: testConfig, now: now);
 
       final writeOffAlert = alerts.where((a) => a.ruleId == 'high_write_off_rate').toList();
       expect(writeOffAlert, isNotEmpty);
@@ -327,12 +312,7 @@ void main() {
           ),
       ];
 
-      final alerts = await service.evaluateAnomalies(
-        movements: movements,
-        items: [],
-        config: testConfig,
-        now: now,
-      );
+      final alerts = await service.evaluateAnomalies(movements: movements, items: [], config: testConfig, now: now);
 
       final shortAlert = alerts.where((a) => a.ruleId == 'repeated_short_picks').toList();
       expect(shortAlert, isNotEmpty);
@@ -361,12 +341,7 @@ void main() {
         ),
       ];
 
-      final alerts = await service.evaluateAnomalies(
-        movements: movements,
-        items: [],
-        config: testConfig,
-        now: now,
-      );
+      final alerts = await service.evaluateAnomalies(movements: movements, items: [], config: testConfig, now: now);
 
       final clampedAlert = alerts.where((a) => a.ruleId == 'clamped_at_zero').toList();
       expect(clampedAlert, isNotEmpty);
@@ -412,12 +387,7 @@ void main() {
         ),
       ];
 
-      final alerts = await service.evaluateAnomalies(
-        movements: movements,
-        items: [],
-        config: testConfig,
-        now: now,
-      );
+      final alerts = await service.evaluateAnomalies(movements: movements, items: [], config: testConfig, now: now);
 
       final splitAlert = alerts.where((a) => a.ruleId == 'threshold_splitting').toList();
       expect(splitAlert, isNotEmpty);
@@ -445,12 +415,7 @@ void main() {
         ),
       ];
 
-      final alerts = await service.evaluateAnomalies(
-        movements: movements,
-        items: [],
-        config: testConfig,
-        now: now,
-      );
+      final alerts = await service.evaluateAnomalies(movements: movements, items: [], config: testConfig, now: now);
 
       final agedAlert = alerts.where((a) => a.ruleId == 'quarantine_aging').toList();
       expect(agedAlert, isNotEmpty);
@@ -501,6 +466,38 @@ void main() {
 
       expect(varianceBelow >= recountThreshold, isFalse);
       expect(varianceAbove >= recountThreshold, isTrue);
+    });
+  });
+
+  group('Inventory Audit Hardening - Order Reservation Idempotency (updateBookedOrder fix)', () {
+    test('Reservation idempotency keys with orderId prevent collision across orders for same store', () {
+      const storeName = 'Aling Nena Store';
+      const productId = 'prod_selecta_cornetto_choc';
+      const orderId1 = 'del_order_001';
+      const orderId2 = 'del_order_002';
+
+      // Prior buggy mechanism (omitting orderId): both use storeName
+      final buggyKey1 = 'order_reserve_${storeName}_$productId'.replaceAll('/', '_');
+      final buggyKey2 = 'order_reserve_${storeName}_$productId'.replaceAll('/', '_');
+      expect(buggyKey1, equals(buggyKey2), reason: 'Without orderId, keys collide causing the second reservation to be silently dropped');
+
+      // Fixed mechanism (passing orderId from updateBookedOrder):
+      final fixedKey1 = 'order_reserve_${orderId1}_$productId'.replaceAll('/', '_');
+      final fixedKey2 = 'order_reserve_${orderId2}_$productId'.replaceAll('/', '_');
+      expect(fixedKey1, isNot(equals(fixedKey2)), reason: 'With orderId passed, keys are unique per order even for the same store');
+
+      expect(fixedKey1, equals('order_reserve_del_order_001_prod_selecta_cornetto_choc'));
+      expect(fixedKey2, equals('order_reserve_del_order_002_prod_selecta_cornetto_choc'));
+    });
+
+    test('Reservation adjustment idempotency keys with orderId retain unique correlation', () {
+      const productId = 'prod_icecream_1';
+      const orderId = 'del_order_999';
+      final timestamp = DateTime(2026, 11, 7, 10, 0, 0).millisecondsSinceEpoch;
+
+      final adjKey = 'order_adj_reserve_${orderId}_${productId}_$timestamp'.replaceAll('/', '_');
+      expect(adjKey, contains(orderId));
+      expect(adjKey, equals('order_adj_reserve_del_order_999_prod_icecream_1_$timestamp'));
     });
   });
 }

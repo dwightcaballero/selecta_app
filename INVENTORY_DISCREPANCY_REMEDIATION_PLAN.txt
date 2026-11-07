@@ -1,0 +1,284 @@
+================================================================================
+INVENTORY DISCREPANCY REMEDIATION - FULL IMPLEMENTATION PLAN (FOR REVIEW)
+================================================================================
+Status  : DRAFT - awaiting your approval before any code is changed
+Scope   : Everything recommended in the prior review (security rules, residual
+          code bug, and verification of the INVENTORY_AUDIT_HARDENING_PLAN.txt
+          backlog).
+
+--------------------------------------------------------------------------------
+IMPORTANT UPDATE SINCE THE LAST REVIEW
+--------------------------------------------------------------------------------
+Before writing this plan I re-verified every item against the ACTUAL current
+code (not just the planning docs). Result: most of INVENTORY_AUDIT_HARDENING_
+PLAN.txt Part A and Part B has ALREADY been implemented in the Dart code - the
+plan .txt file itself was just never updated to reflect it. Re-implementing
+those would be redundant and risky (could reintroduce bugs). The real,
+confirmed-remaining work is much smaller than originally scoped:
+
+  1. The deployed Firestore security rules are wide open (critical, confirmed).
+  2. One residual idempotency bug in updateBookedOrder() (confirmed).
+  3. A handful of small gaps/verifications across the hardening checklist
+     (confirmed below, item by item).
+
+================================================================================
+PART 0 - VERIFICATION RESULTS (what's already done vs. actually missing)
+================================================================================
+
+A1. Ledger write validation           -> MOSTLY DONE, ONE GAP
+    firestore.rules.bak already defines a validMovement(d) helper function
+    (field types, delta == newStock - previousStock, newStock >= 0,
+    actorUid/createdBy match request.auth.uid) BUT the actual
+    `match /inventory_movements/{movementId}` rule never calls it:
+      allow create: if isAuthenticated();   <-- validMovement() not applied
+    GAP: wire validMovement(request.resource.data) into the create rule.
+
+A2. Lock down inventory_discrepancies / pending_adjustments / audit_runs
+                                        -> DONE (in firestore.rules.bak)
+    Already correctly scoped: create requires status == 'open'/'pending',
+    update restricted to dealer/admin with diff().affectedKeys().hasOnly(...),
+    delete: false. Just needs to go live (see Part 1).
+
+A3. Detect edits that bypass the ledger -> DONE
+    - firestore.rules.bak already denies non-dealer/admin writes to
+      stockQuantity/reservedQuantity/incomingQuantity on selecta_products and
+      other_products (diff().affectedKeys().hasAny([...]) guard).
+    - lib/services/inventory_service.dart:3682 checkAndRunScheduledAudit()
+      runs runStockAudit() automatically if >=24h since last run (config
+      lastStockAuditAt), and is already wired into
+      lib/views/pages/sidebar/inventory_page.dart:58 (initState).
+    - lib/services/selecta_product_service.dart admin catalog sync
+      (~line 1007) explicitly PRESERVES stockQuantity/reservedQuantity instead
+      of overwriting it. Confirmed safe.
+    No code gap found. Just needs the rules to go live (Part 1).
+
+A4. Read-then-batch stock writers -> DONE / NO BYPASS FOUND
+    Audited every _firestore.batch() call site in lib/ (16 total):
+      - inventory_service.dart (2): discrepancy bulk-write, snapshot
+        bulk-write - no prior stock read, not a bypass risk.
+      - selecta_product_service.dart (4): catalog/admin sync - confirmed they
+        only touch productName/pricing/metadata fields or explicitly PRESERVE
+        stock fields, never compute a stock delta.
+      - delivery_service.dart (4), badorder_batch_service.dart (3),
+        hapistore_service.dart (2), attendance_service.dart (1): grepped for
+        stockQuantity/reservedQuantity/incomingQuantity - zero matches. None
+        of these touch stock fields.
+    No code changes required for A4.
+
+A5. Server timestamps -> DONE
+    lib/models/inventory_movement.dart:706 -
+      'createdAt': forFirestore ? FieldValue.serverTimestamp() : createdAt
+    Used by the central recording helper. No gap.
+
+A6. Fail-closed actor / dealer approval -> DONE
+    lib/services/inventory_service.dart:557,565 - _resolveActor() defaults to
+    role 'Unknown' (not 'Dealer') when lookup fails or auth is missing.
+    Lines 1634-1635, 1760-1761, 1824-1825 explicitly throw StateError
+    ('Unauthorized...') unless actor.role is 'dealer' or 'superadmin', for
+    manual adjustment, approve, and reject respectively.
+    approvePendingAdjustment() already branches on adjustmentMode == 'set' vs
+    delta (line ~1784), preventing the "approval wipes concurrent sales" bug.
+    unitApprovalThreshold already exists in configuration (line 546).
+    No gap.
+
+B1. Daily stock snapshot -> DONE
+    lib/services/inventory_service.dart:3511-3625 - createDailySnapshot(),
+    getStockAsOfDate(), reconciliation helpers against inventory_snapshots/
+    {date}/items/{productId}. Rules for this collection exist in
+    firestore.rules.bak. No gap other than going live.
+
+B2. Blind cycle counts -> DONE
+    lib/views/widgets/inventory/cycle_count_dialog.dart - _blindCountEnabled
+    (from config.blindCountEnabled), hides system stock while counting,
+    enforces recount when variance exceeds _recountThreshold on round 1,
+    records isBlind/countRound/systemQuantityAtStart. No gap.
+
+B3. Anomaly alerts -> DONE
+    lib/services/inventory_alert_service.dart exists, writes to
+    inventory_alerts, wired into
+    lib/views/widgets/inventory/inventory_exceptions_sheet.dart. Rules exist
+    in firestore.rules.bak. No gap other than going live.
+
+B4. Offline safety / idempotency -> DONE (widely applied)
+    60 idempotencyKey/idKey occurrences across inventory_service.dart writers
+    (reserve, release, pick, void, van load/return, cycle count, settlement,
+    etc.), using deterministic doc IDs so retries/replays don't double-post.
+    No gap found requiring new code.
+
+--------------------------------------------------------------------------------
+NEWLY DISCOVERED GAP - collections missing from the hardened rules file
+--------------------------------------------------------------------------------
+firestore.rules.bak ends with a catch-all "deny everything else" rule. I
+diffed every Firestore collection actually used in lib/ against what
+firestore.rules.bak covers. Six collections are used in the app but have NO
+explicit rule in the .bak file, so copying it verbatim would silently BREAK
+these features the moment it goes live:
+    - attendances       (lib/services/attendance_service.dart)
+    - cycle_counts       (lib/services/inventory_service.dart:3490 - cycle
+                          count audit history, separate from the movement
+                          ledger)
+    - badorder_batch     (lib/services/badorder_batch_service.dart)
+    - van_loads          (lib/services/van_load_service.dart)
+    - payslips           (lib/services/payslip_service.dart - salary data)
+    - promos             (lib/views/pages/sidebar/admin_promos_page.dart,
+                          lib/services/promo_service.dart - admin-managed)
+These must get explicit rules added (Part 1, Step 1.3) before the rules file
+is restored, matched to their actual sensitivity/usage pattern.
+
+================================================================================
+PART 1 - PRIORITY 0: RESTORE FIRESTORE SECURITY RULES (do first)
+================================================================================
+Objective: close the "allow read, write: if true" hole without breaking any
+existing feature.
+
+Step 1.1: Start from firestore.rules.bak (376 lines) as the new
+          firestore.rules - it already has correct, specific rules for
+          products, users, deliveries, POs, proof of visit/return, store
+          orders/self-ordering, the full inventory ledger/discrepancy/
+          snapshot/alert collections, notifications, fcm_tokens, error_logs,
+          and gemini usage tracking.
+
+Step 1.2: Fix the one gap inside it: wire validMovement() into the
+          inventory_movements create rule:
+            allow create: if isAuthenticated() && validMovement(request.resource.data);
+          (keep update/delete: false)
+
+Step 1.3: Add explicit rules for the 6 collections missing from the .bak file,
+          matched to how they're actually used:
+   - match /attendances/{attendanceId}   { allow read, write: if isStaff(); }
+     (time-in/out records; any authenticated staff member reads/writes their
+     own flow today per attendance_service.dart - confirm no per-user scoping
+     is needed before locking further)
+   - match /cycle_counts/{countId}       { allow read: if isStaff();
+                                            allow create: if isDealerOrAdmin();
+                                            allow update, delete: if false; }
+     (append-only audit history, mirrors inventory_movements style)
+   - match /badorder_batch/{batchId}     { allow read, write: if isStaff(); }
+   - match /van_loads/{loadId}           { allow read, write: if isStaff(); }
+   - match /payslips/{payslipId}         { allow read: if isDealerOrAdmin() ||
+                                              isOwner(resource.data.userId);
+                                            allow write: if isDealerOrAdmin(); }
+     (salary data - restrict read to the owning employee + dealer/admin;
+     NEEDS YOUR CONFIRMATION that payslip docs store a `userId` field we can
+     match against request.auth.uid - will verify exact field name before
+     implementing)
+   - match /promos/{promoId}             { allow read: if isAuthenticated();
+                                            allow write: if isDealerOrAdmin(); }
+     (admin_promos_page.dart is an admin management screen; store/dealer
+     apps only need read access to active promos)
+
+Step 1.4: Delete firestore.rules.bak once firestore.rules has been replaced
+          (or rename it to firestore.rules.pre-hardening.bak for one release
+          as a rollback reference, then remove it in a follow-up).
+
+Step 1.5: Validate with the Firestore emulator before deploy:
+          `firebase emulators:start --only firestore` and run through:
+            - dealer can create a manual adjustment movement; non-dealer
+              manual adjustment attempt is rejected (app already blocks this,
+              rules now back it up).
+            - non-dealer cannot update/delete an inventory_movements doc.
+            - non-dealer cannot directly edit stockQuantity on a product doc.
+            - store user can still submit/cancel their own store_orders.
+            - attendance clock-in/out, van load, cycle count, payslip view,
+              and promo read/management all still work end-to-end for the
+              relevant roles.
+          If the project has existing rules tests (check test/ for a rules
+          test harness), extend them with cases for the 6 newly-added
+          collections and the validMovement() wiring; otherwise add a minimal
+          emulator test file.
+
+Step 1.6: Deploy: `firebase deploy --only firestore:rules` (after staging
+          validation). This is a server-side-only change - no app rebuild is
+          required for the rules fix itself, so it can go out immediately
+          once validated, independent of the app-code changes below.
+
+RISK NOTE: Once live, any app version that was relying on the open rules to
+paper over a bug (e.g., a direct client write that should have gone through
+InventoryService) will start failing loudly instead of silently corrupting
+data. That is the intended effect, but means Step 1.5's manual QA pass across
+all major flows (book order, picklist, van load, returns, settlement,
+adjustments, catalog sync, attendance, payslips, promos) is mandatory before
+Step 1.6.
+
+================================================================================
+PART 2 - PRIORITY 0: FIX RESIDUAL IDEMPOTENCY BUG
+================================================================================
+File: lib/controllers/delivery_controller.dart, updateBookedOrder() (~line
+655-667)
+
+Current:
+    } else if (!currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
+      await _inventoryService.reserveStockForOrder(
+        storeName: storeName,
+        items: cleanItems,
+        logShortAllocation: !isFutureDate(selectedDate),
+      );
+    }
+
+Fix: pass the known deliveryId so the idempotency key is unique per order
+(matches every other call site fixed in the original Phase 2 patch):
+    await _inventoryService.reserveStockForOrder(
+      orderId: deliveryId,
+      storeName: storeName,
+      items: cleanItems,
+      logShortAllocation: !isFutureDate(selectedDate),
+    );
+
+Test: unit test reproducing Bug 2's mechanism against this specific call path
+- two different orders for the same store/product, where the second order's
+  reservation should not be silently skipped because of a colliding key
+  generated from storeName alone.
+
+================================================================================
+PART 3 - TESTING & VALIDATION
+================================================================================
+1. `flutter test` - full existing suite must stay green (includes
+   test/inventory_audit_service_test.dart, test/inventory_movement_model_test.dart,
+   test/inventory_audit_hardening_test.dart and any others touching inventory).
+2. New test: updateBookedOrder() idempotency fix (Part 2).
+3. Firestore emulator rules tests (Part 1, Step 1.5) for: inventory_movements
+   validMovement + immutability, product stock-field bypass guard, the 6
+   newly-added collections, and a regression pass on existing rules tests if
+   any exist already.
+4. Manual smoke test on a staging/emulator project covering: book order,
+   picklist complete, void delivery, van load/return, return approval + EOD
+   settlement, manual stock adjustment (dealer and non-dealer), cycle count
+   (blind + recount), catalog sync, attendance clock-in/out, van load, payslip
+   view, promo CRUD.
+
+================================================================================
+PART 4 - ROLLOUT ORDER
+================================================================================
+1. Implement Part 1 (rules) + Part 2 (code fix) together in one branch.
+2. Run Part 3 validation (emulator + flutter test).
+3. Deploy rules first (Step 1.6) - server-side only, immediate protection.
+4. Ship the app update containing the updateBookedOrder() fix through the
+   normal release process.
+5. AFTER both are live: run a one-time reconciliation - trigger
+   runStockAudit() (or wait for the automatic 24h scheduled run) and review
+   inventory_discrepancies, then perform a physical count for any flagged
+   product to re-baseline stockQuantity. This corrects any drift that
+   happened while the rules were open or before the idempotency fix shipped;
+   the code/rules fixes only prevent *future* drift.
+
+================================================================================
+OPEN QUESTIONS FOR YOU BEFORE I IMPLEMENT
+================================================================================
+1. Payslips rule (Step 1.3): please confirm the exact field name on a payslip
+   document that identifies the employee it belongs to (e.g. `userId`,
+   `employeeId`, `uid`) so read access can be scoped correctly instead of
+   left as isStaff()-wide (which would let any employee read any other
+   employee's salary data).
+2. Attendances rule: is isStaff() (any authenticated staff) read/write
+   sufficient, or should attendance writes be restricted to the owning
+   user's own record (isOwner-style check)?
+3. OK to delete firestore.rules.bak after the swap, or would you prefer to
+   keep it renamed as a rollback reference for one release cycle?
+4. Any objection to deploying the Firestore rules fix (Part 1) ahead of /
+   independent from the app code fix (Part 2), given it's the more urgent,
+   server-side-only change?
+
+Once you confirm the open questions (or tell me to use my best judgement),
+I will implement Part 1 and Part 2, run the validation in Part 3, and report
+back before any production deploy.
+================================================================================

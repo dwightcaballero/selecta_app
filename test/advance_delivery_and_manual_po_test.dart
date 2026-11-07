@@ -387,6 +387,102 @@ void main() {
     });
   });
 
+  group("Today's Stock Availability Excludes Future-Date Reservations", () {
+    test('availableQuantity for a today-delivery order = stock on hand - reserved for today only', () {
+      // Stock on hand: 20. A large future pre-order (tomorrow) reserved 15 units from the
+      // shared pool, while only 5 units are actually reserved for today's pending picklists.
+      final item = InventoryItem(
+        id: 'today_avail_1',
+        productName: 'P20 CREAMDAE CUPS CHOCO',
+        imageUrl: '',
+        buyingPrice: 15.0,
+        sellingPrice: 20.0,
+        isActive: true,
+        stockQuantity: 20,
+        reservedQuantity: 20, // 5 (today) + 15 (tomorrow's pre-order), as persisted by reserveStockForOrder
+        preOrderQuantity: 15, // the future-only portion of reservedQuantity
+        lowStockThreshold: 2,
+        source: InventoryProductSource.selecta,
+        category: 'By Case',
+      );
+
+      expect(item.reservedForToday, equals(5), reason: 'Future pre-order units must be excluded from reserved-for-today');
+      // Must be (stock on hand - reserved for today) = 20 - 5 = 15, NOT 20 - 20 = 0.
+      expect(item.availableQuantity, equals(15));
+      expect(item.isAvailableOutOfStock, isFalse);
+    });
+
+    test('reservedForToday never exceeds reservedQuantity when preOrderQuantity is 0', () {
+      final item = InventoryItem(
+        id: 'today_avail_2',
+        productName: 'No future pre-orders',
+        imageUrl: '',
+        buyingPrice: 10.0,
+        sellingPrice: 15.0,
+        isActive: true,
+        stockQuantity: 10,
+        reservedQuantity: 4,
+        preOrderQuantity: 0,
+        lowStockThreshold: 2,
+        source: InventoryProductSource.selecta,
+        category: 'By Piece',
+      );
+
+      expect(item.reservedForToday, equals(4));
+      expect(item.availableQuantity, equals(6));
+    });
+
+    test('all future pre-order units entirely offset reservedQuantity, floored at zero', () {
+      final item = InventoryItem(
+        id: 'today_avail_3',
+        productName: 'Entirely future-reserved',
+        imageUrl: '',
+        buyingPrice: 10.0,
+        sellingPrice: 15.0,
+        isActive: true,
+        stockQuantity: 10,
+        reservedQuantity: 8,
+        preOrderQuantity: 8, // all reservedQuantity is for future dates; none for today
+        lowStockThreshold: 2,
+        source: InventoryProductSource.selecta,
+        category: 'By Piece',
+      );
+
+      expect(item.reservedForToday, equals(0));
+      expect(item.availableQuantity, equals(10));
+    });
+
+    test('restock planning (isLowStock / suggestedRestockQuantity) still accounts for ALL reservations, today + future', () {
+      // Even though today's booking availability should ignore future pre-orders, restocking
+      // decisions must still cover stock already committed to those future pre-orders.
+      final item = InventoryItem(
+        id: 'restock_still_total',
+        productName: 'Needs restock despite today availability looking fine',
+        imageUrl: '',
+        buyingPrice: 10.0,
+        sellingPrice: 15.0,
+        isActive: true,
+        stockQuantity: 20,
+        reservedQuantity: 19, // 1 for today + 18 for a big future pre-order
+        preOrderQuantity: 18,
+        lowStockThreshold: 5,
+        maxStock: 40,
+        source: InventoryProductSource.selecta,
+        category: 'By Piece',
+      );
+
+      // Today's availability looks healthy (future reservation excluded).
+      expect(item.availableQuantity, equals(19)); // 20 - reservedForToday(1)
+
+      // But restock planning must still see the item as low/needing restock, because the
+      // future pre-order WILL consume physical stock once fulfilled.
+      expect(item.netPhysicalStock, equals(1)); // 20 - reservedQuantity(19)
+      expect(item.isLowStock, isTrue);
+      expect(item.isNeedsRestock, isTrue);
+      expect(item.suggestedRestockQuantity, greaterThan(0));
+    });
+  });
+
   group('Pre-Order Inventory & Strict Available Calculation Tests', () {
     test('preOrderShortage is based on pre-order minus current warehouse stock', () {
       final itemWithPreOrder = InventoryItem(
@@ -398,14 +494,20 @@ void main() {
         isActive: true,
         stockQuantity: 10,
         incomingQuantity: 5,
-        reservedQuantity: 3,
-        preOrderQuantity: 20, // 20 units pre-ordered for future dates
+        // 23 total reserved = 3 held for today's/past pending picklists + 20 held for future pre-orders.
+        reservedQuantity: 23,
+        preOrderQuantity: 20, // 20 units pre-ordered for future (tomorrow+) dates, a subset of reservedQuantity
         lowStockThreshold: 2,
         source: InventoryProductSource.selecta,
         category: 'By Piece',
       );
 
-      // Available = (10 + 5) - 3 = 12 (must NOT be affected by preOrderQuantity!)
+      // reservedForToday excludes the future-only portion: 23 - 20 = 3.
+      expect(itemWithPreOrder.reservedForToday, equals(3));
+
+      // Available-for-today = (10 + 5) - 3 = 12. Must NOT be further reduced by the
+      // 20 units already held for future pre-orders (fixes availability wrongly showing as
+      // low/zero today just because a large future pre-order was booked).
       expect(itemWithPreOrder.availableQuantity, equals(12));
       expect(itemWithPreOrder.preOrderQuantity, equals(20));
 

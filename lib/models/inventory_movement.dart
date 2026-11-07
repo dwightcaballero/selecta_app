@@ -156,20 +156,33 @@ class InventoryItem {
   int get onHandQuantity => stockQuantity;
 
   /// Physical unreserved stock in the warehouse (Current Stock - Reserved Stock).
+  /// Includes reservations held for future (tomorrow+) pre-orders; used for restock planning,
+  /// where upcoming commitments must still be accounted for.
   int get netPhysicalStock => stockQuantity - reservedQuantity;
 
-  /// Physical available on-hand stock ready for sale today: (stockQuantity - reservedQuantity).clamp(0, infinity).
+  /// Portion of [reservedQuantity] attributable to orders with a delivery date of
+  /// today or earlier. Excludes reservations held for strictly-future (tomorrow or
+  /// later) pre-orders, which are tracked separately via [preOrderQuantity] and must
+  /// not block stock from being booked/sold for today's delivery.
+  int get reservedForToday {
+    final diff = reservedQuantity - preOrderQuantity;
+    if (diff < 0) return 0;
+    return diff > reservedQuantity ? reservedQuantity : diff;
+  }
+
+  /// Physical available on-hand stock ready for sale today: (stockQuantity - reservedForToday).clamp(0, infinity).
   int get physicalAvailableStock =>
-      (stockQuantity - reservedQuantity) < 0 ? 0 : (stockQuantity - reservedQuantity);
+      (stockQuantity - reservedForToday) < 0 ? 0 : (stockQuantity - reservedForToday);
 
-  /// Projected available stock once incoming supplier POs physically arrive: ((stockQuantity + incomingQuantity) - reservedQuantity).clamp(0, infinity).
+  /// Projected available stock once incoming supplier POs physically arrive: ((stockQuantity + incomingQuantity) - reservedForToday).clamp(0, infinity).
   int get projectedAvailableStock =>
-      ((stockQuantity + incomingQuantity) - reservedQuantity) < 0 ? 0 : ((stockQuantity + incomingQuantity) - reservedQuantity);
+      ((stockQuantity + incomingQuantity) - reservedForToday) < 0 ? 0 : ((stockQuantity + incomingQuantity) - reservedForToday);
 
-  /// Available stock = Current stock + Incoming Stock - Reserved stock.
-  /// NOTE: As intended, pre-orders for future delivery do NOT deduct from available quantity.
+  /// Available stock for an order/delivery dated today (or earlier) = Current stock + Incoming
+  /// Stock - reservations held for today/past orders. Reservations held for strictly-future
+  /// (tomorrow+) pre-orders are excluded via [reservedForToday] so they do not block today's booking.
   int get availableQuantity =>
-      ((stockQuantity + incomingQuantity) - reservedQuantity) < 0 ? 0 : ((stockQuantity + incomingQuantity) - reservedQuantity);
+      ((stockQuantity + incomingQuantity) - reservedForToday) < 0 ? 0 : ((stockQuantity + incomingQuantity) - reservedForToday);
 
   /// Shortage quantity based on pre-orders minus current stock on the warehouse (actual stock).
   int get preOrderShortage => (preOrderQuantity - stockQuantity) > 0 ? (preOrderQuantity - stockQuantity) : 0;
@@ -224,10 +237,14 @@ class InventoryItem {
 
   /// Target restock quantity: exclusive to Selecta products.
   /// Uses maxStock if configured (> 0), otherwise falls back to (lowStockThreshold * 2).
+  /// Deliberately uses total [reservedQuantity] (today + future), not [availableQuantity],
+  /// since restocking must still cover stock already committed to future pre-orders.
   int get suggestedRestockQuantity {
     if (source != InventoryProductSource.selecta) return 0;
     final target = maxStock > 0 ? maxStock : (lowStockThreshold * 2);
-    final deficit = target - availableQuantity;
+    final totalAvailableIncludingFuture =
+        ((stockQuantity + incomingQuantity) - reservedQuantity) < 0 ? 0 : ((stockQuantity + incomingQuantity) - reservedQuantity);
+    final deficit = target - totalAvailableIncludingFuture;
     return deficit > 0 ? deficit : 0;
   }
 

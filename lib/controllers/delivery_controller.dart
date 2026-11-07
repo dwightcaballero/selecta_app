@@ -655,12 +655,14 @@ class DeliveryController {
     // Adjust reserved floating inventory for order update regardless of delivery date
     if (currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
       await _inventoryService.adjustReservedStockForOrderUpdate(
+        orderId: deliveryId,
         storeName: storeName,
         oldItems: currentDelivery.items,
         newItems: cleanItems,
       );
     } else if (!currentDelivery.isInventoryReserved && !currentDelivery.isInventoryDeducted) {
       await _inventoryService.reserveStockForOrder(
+        orderId: deliveryId,
         storeName: storeName,
         items: cleanItems,
         logShortAllocation: !isFutureDate(selectedDate),
