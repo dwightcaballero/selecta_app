@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/controllers/pjp_controller.dart';
+import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/proof_of_visit.dart';
+import 'package:selecta_ops/models/scanning.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
 import 'package:selecta_ops/services/delivery_service.dart';
 import 'package:selecta_ops/services/hapistore_service.dart';
@@ -16,7 +18,13 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class FakeHapiStoreService extends Fake implements HapiStoreService {}
-class FakeScanningServices extends Fake implements ScanningServices {}
+class FakeScanningServices extends Fake implements ScanningServices {
+  final Map<String, Scanning> scanningsByBarcode = {};
+  @override
+  Future<Scanning?> getScanningByBarcode(String barcode) async {
+    return scanningsByBarcode[barcode];
+  }
+}
 class FakeTasksService extends Fake implements TasksService {}
 class FakeConfigurationService extends Fake implements ConfigurationService {}
 class FakeDeliveryService extends Fake implements DeliveryService {}
@@ -239,6 +247,39 @@ void main() {
       final result = await controller.checkLocation(storeWithoutLocation);
       expect(result.passed, isFalse, reason: 'Store with null coordinates must not pass location check');
       expect(result.status, contains('No store location saved'));
+    });
+
+    test('PjpController.getScanningByBarcode delegates to scanningService correctly', () async {
+      final fakeScanning = FakeScanningServices();
+      fakeScanning.scanningsByBarcode['BC_TEST_101'] = Scanning(
+        id: 'scan_101',
+        barcode: 'BC_TEST_101',
+        storeName: 'Test Store Alpha',
+        scannedDate: null,
+        scannedBy: '',
+        status: ScanningStatus.notScanned,
+      );
+
+      final controller = PjpController(
+        hapiStoreService: FakeHapiStoreService(),
+        scanningService: fakeScanning,
+        tasksService: FakeTasksService(),
+        configurationService: FakeConfigurationService(),
+        deliveryService: FakeDeliveryService(),
+        proofOfVisitService: FakeProofOfVisitService(),
+        orderDecisionService: FakePjpOrderDecisionService(),
+        placementService: FakePlacementService(),
+        selectaProductService: FakeSelectaProductService(),
+        inventoryService: FakeInventoryService(),
+      );
+
+      final existing = await controller.getScanningByBarcode('BC_TEST_101');
+      expect(existing, isNotNull);
+      expect(existing!.barcode, 'BC_TEST_101');
+      expect(existing.storeName, 'Test Store Alpha');
+
+      final notFound = await controller.getScanningByBarcode('UNKNOWN_BARCODE');
+      expect(notFound, isNull);
     });
   });
 }

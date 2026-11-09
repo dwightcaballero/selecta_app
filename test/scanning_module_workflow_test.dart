@@ -1,8 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:selecta_ops/controllers/scanning_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/scanning.dart';
 import 'package:selecta_ops/services/scanning_services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class FakeScanningServicesForWorkflow extends Fake implements ScanningServices {
+  final Map<String, Scanning> db = {};
+
+  @override
+  Future<Scanning?> getScanningByBarcode(String barcode) async {
+    return db[barcode];
+  }
+
+  @override
+  Future<void> saveScanning(Scanning scanning) async {
+    db[scanning.barcode] = scanning;
+  }
+}
 
 void main() {
   group('Scanning Model & Image Serialization', () {
@@ -260,6 +275,28 @@ void main() {
 
       // Pullout does not require photo
       expect(isPhotoValidForStatus(status: ScanningStatus.pullout, imageUrl: '', hasLocalFile: false), isTrue);
+    });
+
+    test('Salesman is prevented from creating new barcode record not existing in database', () async {
+      final fakeService = FakeScanningServicesForWorkflow();
+      final controller = ScanningController(scanningService: fakeService);
+
+      final emptyRecord = Scanning.empty();
+      expect(
+        () => controller.saveScanningRecord(
+          existing: emptyRecord,
+          barcode: 'BARCODE_UNKNOWN_123',
+          storeName: 'Test Store',
+          status: ScanningStatus.pending,
+          imageUrl: 'https://example.com/photo.jpg',
+          isDealer: false,
+        ),
+        throwsA(isA<Exception>().having(
+          (e) => e.toString(),
+          'message',
+          contains('Only dealers are authorized to create new barcode records'),
+        )),
+      );
     });
   });
 }

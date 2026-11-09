@@ -505,6 +505,9 @@ class _PjpPageState extends State<PjpPage> {
     if (scannedBarcode == null || scannedBarcode.isEmpty || !mounted) return;
 
     final trimmed = scannedBarcode.trim();
+    final isDealer = await _controller.checkIsDealer();
+    if (!mounted) return;
+
     // Check if scanned barcode belongs to this store
     final existingIndex = _storeScannings.indexWhere(
       (s) => s.barcode.trim().toLowerCase() == trimmed.toLowerCase(),
@@ -522,49 +525,116 @@ class _PjpPageState extends State<PjpPage> {
           ),
         ),
       );
-    } else if (_storeScannings.isNotEmpty) {
-      // Barcode does not match existing assigned freezers for this store
-      final registerNew = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.info_outline, color: Colors.orange),
-              SizedBox(width: 8),
-              Expanded(child: Text('Unregistered Freezer')),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Scanned barcode "$trimmed" is not in the assigned freezers for ${_currentHapistore.storeName}.',
-                style: const TextStyle(fontSize: 13.5),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Assigned freezers: ${_storeScannings.map((s) => s.barcode).join(', ')}',
-                style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 12),
-              const Text('Do you want to register this barcode as an additional freezer for this store?'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Register Freezer'),
-            ),
-          ],
-        ),
-      );
+      if (!mounted) return;
+      await _checkScanning();
+      return;
+    }
 
-      if (registerNew == true && mounted) {
+    // Barcode was not found in this store's assigned list: verify database status
+    final existingInDb = await _controller.getScanningByBarcode(trimmed);
+    if (!mounted) return;
+
+    // Case 1: Barcode does not exist in the database
+    if (existingInDb == null) {
+      if (!isDealer) {
+        // Salesman is not allowed to create a new scanning or barcode record
+        ShowMessage.error(
+          context,
+          'Barcode "$trimmed" does not exist in the database. Only dealers are allowed to create new barcodes.',
+        );
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.error_outline_rounded, color: Colors.red),
+                SizedBox(width: 8),
+                Expanded(child: Text('Barcode Not Found')),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Scanned barcode "$trimmed" does not exist in the database.',
+                  style: const TextStyle(fontSize: 13.5),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Salesmen cannot create or register new barcodes. Dealers are the only ones authorized to register new barcodes.',
+                  style: TextStyle(fontSize: 12.5, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      // Dealer is authorized to register this new barcode
+      if (_storeScannings.isNotEmpty) {
+        final registerNew = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange),
+                SizedBox(width: 8),
+                Expanded(child: Text('Unregistered Freezer')),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Scanned barcode "$trimmed" is not in the assigned freezers for ${_currentHapistore.storeName}.',
+                  style: const TextStyle(fontSize: 13.5),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Assigned freezers: ${_storeScannings.map((s) => s.barcode).join(', ')}',
+                  style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 12),
+                const Text('Do you want to register this barcode as an additional freezer for this store?'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Register Freezer'),
+              ),
+            ],
+          ),
+        );
+
+        if (registerNew == true && mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ScanningPage(
+                initialBarcode: trimmed,
+                initialStoreName: _currentHapistore.storeName,
+                isEditing: false,
+              ),
+            ),
+          );
+        }
+      } else {
+        // Store has no barcodes assigned yet: dealer registers this scanned barcode
         await Navigator.push(
           context,
           MaterialPageRoute(
@@ -576,18 +646,111 @@ class _PjpPageState extends State<PjpPage> {
           ),
         );
       }
-    } else {
-      // Store has no barcodes assigned yet: register this scanned barcode
+
+      if (!mounted) return;
+      await _checkScanning();
+      return;
+    }
+
+    // Case 2: Barcode exists in the database
+    final currentStoreNormalized = _currentHapistore.storeName.trim().toLowerCase();
+    final dbStoreNormalized = existingInDb.storeName.trim().toLowerCase();
+
+    if (dbStoreNormalized == currentStoreNormalized) {
+      // Belongs to this store (e.g. newly synced)
       await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => ScanningPage(
-            initialBarcode: trimmed,
+            initialBarcode: existingInDb.barcode,
             initialStoreName: _currentHapistore.storeName,
-            isEditing: false,
+            isEditing: true,
           ),
         ),
       );
+    } else if (dbStoreNormalized.isNotEmpty) {
+      // Barcode belongs to a different store
+      if (!isDealer) {
+        ShowMessage.error(
+          context,
+          'Barcode "$trimmed" is already registered to "${existingInDb.storeName}".',
+        );
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                SizedBox(width: 8),
+                Expanded(child: Text('Freezer Assigned Elsewhere')),
+              ],
+            ),
+            content: Text(
+              'Barcode "$trimmed" is already assigned to "${existingInDb.storeName}". Only dealers can reassign freezers.',
+              style: const TextStyle(fontSize: 13.5),
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        final reassign = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Reassign Freezer'),
+            content: Text(
+              'Barcode "$trimmed" is currently assigned to "${existingInDb.storeName}". Do you want to open and reassign it to "${_currentHapistore.storeName}"?',
+              style: const TextStyle(fontSize: 13.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Open Record'),
+              ),
+            ],
+          ),
+        );
+        if (reassign == true && mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ScanningPage(
+                initialBarcode: trimmed,
+                initialStoreName: _currentHapistore.storeName,
+                isEditing: true,
+              ),
+            ),
+          );
+        }
+      }
+    } else {
+      // Pullout or unassigned barcode in DB
+      if (!isDealer) {
+        ShowMessage.error(
+          context,
+          'Barcode "$trimmed" is marked as Pullout. Only dealers can assign freezers.',
+        );
+      } else {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ScanningPage(
+              initialBarcode: trimmed,
+              initialStoreName: _currentHapistore.storeName,
+              isEditing: true,
+            ),
+          ),
+        );
+      }
     }
 
     if (!mounted) return;

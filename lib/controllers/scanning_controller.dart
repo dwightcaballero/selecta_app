@@ -178,6 +178,13 @@ class ScanningController {
     }
 
     final existingInDb = await _scanningService.getScanningByBarcode(trimmedBarcode);
+    final bool isNewRecord = existing.id.isEmpty && existingInDb == null;
+
+    // Role check: Only dealers are authorized to create new barcode records
+    if (isNewRecord && !isDealer) {
+      throw Exception('Only dealers are authorized to create new barcode records.');
+    }
+
     if (existing.id.isEmpty && existingInDb != null) {
       throw Exception('Barcode "$trimmedBarcode" already exists in the database.');
     }
@@ -228,7 +235,6 @@ class ScanningController {
       imageUrl: (status == ScanningStatus.notScanned || status == ScanningStatus.pullout) ? '' : finalImageUrl,
     );
 
-    final bool isNewRecord = existing.id.isEmpty;
     await _scanningService.saveScanning(newRecord);
 
     if (isNewRecord) {

@@ -56,6 +56,7 @@ class _ScanningPageState extends State<ScanningPage> {
 
   bool get _hasUnsavedChanges {
     if (!_hasCheckedDatabase) return false;
+    if (!_isDealer && _scanning.id.isEmpty) return false;
     if (_imageFile != null) return true;
     final initialStore = _scanning.storeName.isNotEmpty ? _scanning.storeName : (widget.initialStoreName ?? '');
     final initialStatus = _scanning.status.isEmpty ? ScanningStatus.notScanned : _scanning.status;
@@ -82,6 +83,7 @@ class _ScanningPageState extends State<ScanningPage> {
 
     final Scanning scanning;
     final String selectedStatus;
+    final bool notFoundForSalesman = !isDealer && found == null;
 
     if (found != null) {
       scanning = found;
@@ -110,6 +112,17 @@ class _ScanningPageState extends State<ScanningPage> {
         _imageFile = null;
         _hasCheckedDatabase = true;
       });
+
+      if (notFoundForSalesman && barcodeToLoad.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ShowMessage.error(
+              context,
+              'Barcode "$barcodeToLoad" does not exist in the database. Only dealers are allowed to create new barcodes.',
+            );
+          }
+        });
+      }
     }
   }
 
@@ -122,11 +135,24 @@ class _ScanningPageState extends State<ScanningPage> {
   Future<void> _rescanBarcode() async {
     final scanned = await Navigator.push<String>(context, MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()));
     if (scanned != null && scanned.trim().isNotEmpty && mounted) {
+      final trimmed = scanned.trim();
+      if (!_isDealer) {
+        final found = await _controller.getScanningByBarcode(trimmed);
+        if (found == null) {
+          if (!mounted) return;
+          ShowMessage.error(
+            context,
+            'Barcode "$trimmed" does not exist in the database. Only dealers are allowed to create new barcodes.',
+          );
+          return;
+        }
+      }
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => ScanningPage(
-            initialBarcode: scanned.trim(),
+            initialBarcode: trimmed,
             initialStoreName: _dropdownHapiStore.text,
             isEditing: false,
           ),
@@ -216,6 +242,12 @@ class _ScanningPageState extends State<ScanningPage> {
       return;
     }
 
+    // Role verification: only dealers are authorized to create new barcode records
+    if (_scanning.id.isEmpty && !_isDealer) {
+      ShowMessage.error(context, 'Only dealers are authorized to create new barcode records.');
+      return;
+    }
+
     // Role verification: only dealers can mark status as scanned
     if (_selectedStatus == ScanningStatus.scanned && !_isDealer) {
       ShowMessage.error(context, 'Only dealers are authorized to mark a barcode as Scanned.');
@@ -240,6 +272,13 @@ class _ScanningPageState extends State<ScanningPage> {
       if (duplicateCheck != null && _scanning.id.isNotEmpty && duplicateCheck.id != _scanning.id) {
         if (!mounted) return;
         ShowMessage.error(context, 'This barcode is already assigned to another record in the database.');
+        return;
+      }
+
+      // If record does not exist in DB and user is not a dealer
+      if (duplicateCheck == null && _scanning.id.isEmpty && !_isDealer) {
+        if (!mounted) return;
+        ShowMessage.error(context, 'Barcode "$trimmedBarcode" does not exist in the database. Only dealers are authorized to create new barcode records.');
         return;
       }
 
@@ -360,6 +399,42 @@ class _ScanningPageState extends State<ScanningPage> {
 
   Widget _buildWorkflowBanner() {
     final colorScheme = Theme.of(context).colorScheme;
+
+    // Show error banner when a salesman opens an unregistered barcode
+    if (_hasCheckedDatabase && _scanning.id.isEmpty && !_isDealer) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.error_outline_rounded, color: Colors.red, size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Barcode Not Found - Creation Restricted',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.red),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'This barcode is not registered in the database. Salesmen are not allowed to create new scanning or barcode records. Dealers are the only ones allowed to create new barcodes.',
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     // Show banner when a dealer opens a pending record and it was marked as scanned
     if (_hasCheckedDatabase && _scanning.status == ScanningStatus.pending && _isDealer) {
@@ -606,24 +681,48 @@ class _ScanningPageState extends State<ScanningPage> {
             ),
           ] else if (_hasCheckedDatabase && _scanning.id.isEmpty) ...[
             const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(color: colorScheme.tertiaryContainer.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(10)),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline_rounded, size: 18, color: colorScheme.onTertiaryContainer),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'This is a new barcode and is not yet registered in the database.',
-                      style: TextStyle(fontSize: 12, color: colorScheme.onTertiaryContainer, fontWeight: FontWeight.w500),
+            if (!_isDealer)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.error_outline_rounded, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'This barcode is not registered in the database. Creation is restricted to dealers.',
+                        style: TextStyle(fontSize: 12, color: Colors.red, fontWeight: FontWeight.w600),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(color: colorScheme.tertiaryContainer.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(10)),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 18, color: colorScheme.onTertiaryContainer),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'This is a new barcode and is not yet registered in the database.',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onTertiaryContainer, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
           ],
         ],
       ),
@@ -632,16 +731,17 @@ class _ScanningPageState extends State<ScanningPage> {
 
   Widget _buildStoreCard() {
     final isPullout = _selectedStatus == ScanningStatus.pullout;
+    final isCreationBlocked = !_isDealer && _scanning.id.isEmpty;
 
     return _buildSectionCard(
       title: 'Target Store',
       icon: Icons.storefront_outlined,
       child: HapistorePickerField(
         controller: _dropdownHapiStore,
-        enabled: !isPullout,
+        enabled: !isPullout && !isCreationBlocked,
         label: isPullout ? 'Store unassigned (Pullout)' : 'Target Store',
         validator: (value) {
-          if (!isPullout && (value == null || value.trim().isEmpty)) {
+          if (!isPullout && !isCreationBlocked && (value == null || value.trim().isEmpty)) {
             return 'Target Store is required';
           }
           return null;
@@ -658,6 +758,7 @@ class _ScanningPageState extends State<ScanningPage> {
     final hasRemoteImage = _scanning.imageUrl.isNotEmpty;
     final hasAnyImage = hasLocalImage || hasRemoteImage;
     final isPhotoRequired = _selectedStatus == ScanningStatus.pending || _selectedStatus == ScanningStatus.scanned;
+    final isCreationBlocked = !_isDealer && _scanning.id.isEmpty;
 
     return _buildSectionCard(
       title: 'Freezer Photo',
@@ -795,7 +896,7 @@ class _ScanningPageState extends State<ScanningPage> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _pickImage(ImageSource.camera),
+                  onPressed: (!_hasCheckedDatabase || isCreationBlocked) ? null : () => _pickImage(ImageSource.camera),
                   icon: const Icon(Icons.camera_alt_outlined, size: 18),
                   label: Text(hasAnyImage ? 'Retake' : 'Camera'),
                   style: OutlinedButton.styleFrom(
@@ -807,7 +908,7 @@ class _ScanningPageState extends State<ScanningPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _pickImage(ImageSource.gallery),
+                  onPressed: (!_hasCheckedDatabase || isCreationBlocked) ? null : () => _pickImage(ImageSource.gallery),
                   icon: const Icon(Icons.photo_library_outlined, size: 18),
                   label: const Text('Gallery'),
                   style: OutlinedButton.styleFrom(
@@ -865,14 +966,19 @@ class _ScanningPageState extends State<ScanningPage> {
   }) {
     final isSelected = _selectedStatus == value;
     final colorScheme = Theme.of(context).colorScheme;
+    final isCreationBlocked = !_isDealer && _scanning.id.isEmpty;
 
     return Expanded(
       child: InkWell(
-        onTap: enabled
-            ? () => setState(() => _selectedStatus = value)
-            : () {
-                ShowMessage.error(context, 'Only dealers are authorized to mark a barcode as Scanned.');
-              },
+        onTap: isCreationBlocked
+            ? () {
+                ShowMessage.error(context, 'Only dealers are authorized to create new barcode records.');
+              }
+            : (enabled
+                ? () => setState(() => _selectedStatus = value)
+                : () {
+                    ShowMessage.error(context, 'Only dealers are authorized to mark a barcode as Scanned.');
+                  }),
         borderRadius: BorderRadius.circular(10),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
@@ -1129,25 +1235,38 @@ class _ScanningPageState extends State<ScanningPage> {
               const SizedBox(height: 12),
               _buildStatusCard(),
               const SizedBox(height: 20),
-              AsyncFilledButton.icon(
-                onPressed: !_hasCheckedDatabase ? null : _onSave,
-                icon: const Icon(Icons.check_circle_outline_rounded, size: 20, color: Colors.white),
-                label: Text(
-                  _selectedStatus == ScanningStatus.scanned
-                      ? 'Confirm & Mark Scanned'
-                      : (_selectedStatus == ScanningStatus.pending ? 'Save as Pending' : 'Save Record'),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                  backgroundColor: _selectedStatus == ScanningStatus.scanned
-                      ? Colors.green.shade700
-                      : (_selectedStatus == ScanningStatus.pending
-                          ? Colors.amber.shade800
-                          : Theme.of(context).colorScheme.primary),
-                  disabledBackgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+              Builder(
+                builder: (context) {
+                  final isCreationBlocked = !_isDealer && _scanning.id.isEmpty;
+                  return AsyncFilledButton.icon(
+                    onPressed: (!_hasCheckedDatabase || isCreationBlocked) ? null : _onSave,
+                    icon: Icon(
+                      isCreationBlocked ? Icons.block_rounded : Icons.check_circle_outline_rounded,
+                      size: 20,
+                      color: Colors.white,
+                    ),
+                    label: Text(
+                      isCreationBlocked
+                          ? 'Creation Restricted to Dealers'
+                          : (_selectedStatus == ScanningStatus.scanned
+                              ? 'Confirm & Mark Scanned'
+                              : (_selectedStatus == ScanningStatus.pending ? 'Save as Pending' : 'Save Record')),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                      backgroundColor: isCreationBlocked
+                          ? Colors.grey.shade600
+                          : (_selectedStatus == ScanningStatus.scanned
+                              ? Colors.green.shade700
+                              : (_selectedStatus == ScanningStatus.pending
+                                  ? Colors.amber.shade800
+                                  : Theme.of(context).colorScheme.primary)),
+                      disabledBackgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  );
+                },
               ),
             ],
           ),

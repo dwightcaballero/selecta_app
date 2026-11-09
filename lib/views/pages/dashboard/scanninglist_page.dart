@@ -5,6 +5,7 @@ import 'package:selecta_ops/data/variables.dart';
 import 'package:selecta_ops/models/hapistore.dart';
 import 'package:selecta_ops/models/scanning.dart';
 import 'package:selecta_ops/views/pages/dashboard/scanning_page.dart';
+import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/views/widgets/barcodescanner_widget.dart';
 import 'package:selecta_ops/views/widgets/imageviewer_page.dart';
@@ -179,10 +180,24 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
 
     if (barcode == null || barcode.isEmpty || !mounted) return;
 
+    final trimmed = barcode.trim();
+    if (!_isDealer) {
+      final found = await _controller.getScanningByBarcode(trimmed);
+      if (found == null) {
+        if (!mounted) return;
+        ShowMessage.error(
+          context,
+          'Barcode "$trimmed" does not exist in the database. Only dealers are allowed to create new barcodes.',
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ScanningPage(initialBarcode: barcode!, initialStoreName: storeName),
+        builder: (context) => ScanningPage(initialBarcode: trimmed, initialStoreName: storeName),
       ),
     );
     prefetchData();
@@ -192,7 +207,21 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     final barcode = await Navigator.push<String>(context, MaterialPageRoute(builder: (context) => const BarcodeScannerWidget()));
     if (barcode == null || barcode.isEmpty || !mounted) return;
 
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => ScanningPage(initialBarcode: barcode)));
+    final trimmed = barcode.trim();
+    if (!_isDealer) {
+      final found = await _controller.getScanningByBarcode(trimmed);
+      if (found == null) {
+        if (!mounted) return;
+        ShowMessage.error(
+          context,
+          'Barcode "$trimmed" does not exist in the database. Only dealers are allowed to create new barcodes.',
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => ScanningPage(initialBarcode: trimmed)));
     prefetchData();
   }
 
@@ -200,7 +229,22 @@ class _ScanninglistPageState extends State<ScanninglistPage> {
     final barcode = await showDialog<String>(context: context, builder: (context) => const _ManualBarcodeDialog());
 
     if (barcode == null || !mounted) return;
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => ScanningPage(initialBarcode: barcode)));
+
+    final trimmed = barcode.trim();
+    if (!_isDealer) {
+      final found = await _controller.getScanningByBarcode(trimmed);
+      if (found == null) {
+        if (!mounted) return;
+        ShowMessage.error(
+          context,
+          'Barcode "$trimmed" does not exist in the database. Only dealers are allowed to create new barcodes.',
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => ScanningPage(initialBarcode: trimmed)));
     prefetchData();
   }
 

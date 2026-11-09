@@ -592,6 +592,11 @@ class PjpController {
     }
   }
 
+  /// Fetches an existing scanning record by barcode.
+  Future<Scanning?> getScanningByBarcode(String barcode) async {
+    return await _scanningService.getScanningByBarcode(barcode);
+  }
+
   /// Verifies store product placement status.
   Future<PlacementCheckResult> checkPlacement({
     required Hapistore store,
