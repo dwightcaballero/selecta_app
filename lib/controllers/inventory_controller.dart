@@ -229,4 +229,10 @@ class InventoryController {
   /// Streams open discrepancy count for badges.
   Stream<int> getOpenDiscrepanciesCountStream() =>
       _service.getOpenDiscrepanciesCountStream();
+
+  /// Permanently resets inventory: zeroes all stock and wipes all movement/audit history
+  /// so the dealer can start a brand-new cycle. Irreversible; [confirmationPhrase] must
+  /// exactly equal "RESET INVENTORY".
+  Future<Map<String, dynamic>> resetInventory({required String confirmationPhrase}) =>
+      _service.resetInventory(confirmationPhrase: confirmationPhrase);
 }

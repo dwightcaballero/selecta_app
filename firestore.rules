@@ -331,6 +331,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // System-level audit log (e.g. resetInventory) - written only by Admin SDK Cloud
+    // Functions, which bypass these rules; clients may read but never write directly.
+    match /system_audit_log/{logId} {
+      allow read: if isDealerOrAdmin();
+      allow write: if false;
+    }
+
     // FCM Notification Device Tokens
     match /fcm_tokens/{tokenId} {
       allow read, write: if isAuthenticated();

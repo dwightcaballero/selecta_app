@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:selecta_ops/controllers/configuration_controller.dart';
 import 'package:selecta_ops/controllers/dashboard_controller.dart';
+import 'package:selecta_ops/controllers/inventory_controller.dart';
 import 'package:selecta_ops/data/constants.dart';
 import 'package:selecta_ops/models/configuration.dart';
 import 'package:selecta_ops/services/configuration_service.dart';
@@ -32,6 +33,7 @@ class SuperAdminPage extends StatefulWidget {
 class _SuperAdminPageState extends State<SuperAdminPage> {
   final ConfigurationController _configController = ConfigurationController();
   final DashboardController _dashboardController = DashboardController();
+  final InventoryController _inventoryController = InventoryController();
 
   final TextEditingController _apiKeyController = TextEditingController();
   final TextEditingController _groqApiKeyController = TextEditingController();
@@ -230,6 +232,87 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       if (modalCtx.mounted) {
         ShowMessage.error(modalCtx, 'Failed to delete account: $e');
       }
+    }
+  }
+
+  static const String _resetInventoryConfirmationPhrase = 'RESET INVENTORY';
+
+  /// Shows a typed-confirmation dialog, then (if confirmed) permanently wipes all
+  /// inventory movement/audit history and zeroes stock on every product via the
+  /// resetInventory Cloud Function. Irreversible — requires typing an exact phrase.
+  Future<void> _handleResetInventory() async {
+    final confirmController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final isMatch = confirmController.text.trim() == _resetInventoryConfirmationPhrase;
+            return PopScope(
+              canPop: false,
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                icon: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.delete_forever_rounded, color: Colors.red, size: 32),
+                ),
+                title: const Text('Reset Inventory', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'This permanently deletes ALL inventory movement history, discrepancies, audit runs, snapshots, and cycle counts, '
+                      'zeroes stock/incoming/reserved quantities on every product, and cancels/closes any open purchase orders, '
+                      'deliveries, and van loads.\n\nThis action CANNOT be undone.',
+                      style: TextStyle(fontSize: 13.5),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Type "$_resetInventoryConfirmationPhrase" to confirm:', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: confirmController,
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: InputDecoration(
+                        hintText: _resetInventoryConfirmationPhrase,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: isMatch ? () => Navigator.of(dialogContext).pop(true) : null,
+                    child: const Text('Reset Inventory'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    confirmController.dispose();
+
+    if (confirmed != true || !mounted) return;
+
+    final result = await ShowMessage.runWithLoading<Map<String, dynamic>>(
+      context,
+      message: 'Resetting inventory, please wait...',
+      task: () => _inventoryController.resetInventory(confirmationPhrase: _resetInventoryConfirmationPhrase),
+    );
+    if (mounted && result != null) {
+      ShowMessage.success(context, 'Inventory reset complete. All products are now at zero stock.');
     }
   }
 
@@ -943,6 +1026,62 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                               _adminPasswordIsSet ? 'Change Admin Password' : 'Set Admin Password',
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                             ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // 1c. Reset Inventory (Danger Zone) Card
+                  Card(
+                    elevation: 0,
+                    color: colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: Colors.red.withValues(alpha: 0.4)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                                child: const Icon(Icons.delete_forever_rounded, size: 22, color: Colors.red),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Reset Inventory', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Danger Zone: permanently wipes all movement/audit history and zeroes all stock so the dealer can start anew',
+                                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 28),
+                          AsyncFilledButton.icon(
+                            onPressed: _handleResetInventory,
+                            loadingLabel: 'Resetting...',
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 48),
+                              backgroundColor: Colors.red.shade600,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.delete_forever_rounded, size: 20),
+                            label: const Text('Reset Inventory', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                           ),
                         ],
                       ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -4019,6 +4020,31 @@ class InventoryService {
       'resolvedBy': actor.name,
       'resolvedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  /// Permanently resets inventory: zeroes stock on every product and wipes all movement,
+  /// discrepancy, audit, and snapshot history so the dealer can start a brand-new cycle.
+  ///
+  /// This is irreversible and runs server-side via Cloud Function, because the audit
+  /// ledger collections are immutable from the client by design (see firestore.rules).
+  /// [confirmationPhrase] must exactly equal "RESET INVENTORY".
+  Future<Map<String, dynamic>> resetInventory({required String confirmationPhrase}) async {
+    final functions = FirebaseFunctions.instanceFor(region: 'asia-east1');
+    try {
+      final response = await functions.httpsCallable('resetInventory').call<dynamic>({
+        'confirm': confirmationPhrase,
+      });
+      return Map<String, dynamic>.from(response.data as Map? ?? {});
+    } on FirebaseFunctionsException catch (e) {
+      throw FormatException(_functionErrorMessage(e, 'resetInventory'));
+    }
+  }
+
+  String _functionErrorMessage(FirebaseFunctionsException e, String functionName) {
+    if (e.code == 'not-found') {
+      return 'The "$functionName" cloud function is not deployed. Deploy it with: firebase deploy --only functions:$functionName';
+    }
+    return e.message ?? 'Cloud function "$functionName" failed (${e.code}).';
   }
 }
 

@@ -18,6 +18,14 @@ const FUNCTION_OPTS: functions.RuntimeOptions = {
   memory: "256MB",
 };
 
+// Heavier resource profile for bulk/maintenance operations that touch entire collections
+// (e.g. resetInventory), which can run well past the default 30s timeout.
+const BULK_FUNCTION_OPTS: functions.RuntimeOptions = {
+  maxInstances: 2,
+  timeoutSeconds: 540,
+  memory: "512MB",
+};
+
 /**
  * Staff profiles are not always stored under their auth uid (the app adds them
  * with auto-generated ids), so fall back to a lookup by the token's email.
@@ -911,6 +919,221 @@ export const checkSmsGatewayHealth = regionalFunctions
           status: `Gateway unreachable: ${rootErr?.message || healthErr?.message}`,
         };
       }
+    }
+  });
+
+/**
+ * Confirmation phrase the caller must pass verbatim to acknowledge the
+ * irreversible, destructive nature of resetInventory.
+ */
+const RESET_INVENTORY_CONFIRMATION_PHRASE = "RESET INVENTORY";
+
+/** Collections holding only immutable audit/history records that get fully wiped on reset. */
+const RESET_INVENTORY_HISTORY_COLLECTIONS = [
+  "inventory_movements",
+  "inventory_pending_adjustments",
+  "inventory_discrepancies",
+  "inventory_audit_runs",
+  "inventory_snapshots",
+  "cycle_counts",
+  "inventory_alerts",
+];
+
+/**
+ * Commits Firestore writes for a list of docs in chunks of <=450 to stay under
+ * the 500-operation batch limit, returning the number of documents updated.
+ */
+async function commitInChunks(
+  docs: FirebaseFirestore.QueryDocumentSnapshot[],
+  apply: (
+    batch: FirebaseFirestore.WriteBatch,
+    doc: FirebaseFirestore.QueryDocumentSnapshot
+  ) => void
+): Promise<number> {
+  const CHUNK_SIZE = 450;
+  let committed = 0;
+  for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+    const batch = db.batch();
+    const slice = docs.slice(i, i + CHUNK_SIZE);
+    for (const doc of slice) {
+      apply(batch, doc);
+    }
+    await batch.commit();
+    committed += slice.length;
+  }
+  return committed;
+}
+
+/**
+ * 9. resetInventory
+ * Callable Cloud Function: Permanently wipes all inventory movement/audit history
+ * and zeroes stock across every product so a dealer can start a fresh cycle.
+ *
+ * Runs via the Admin SDK because Firestore rules make the audit ledger collections
+ * (inventory_movements, inventory_pending_adjustments, inventory_discrepancies,
+ * inventory_audit_runs, inventory_snapshots, cycle_counts, inventory_alerts)
+ * strictly immutable (`allow update, delete: if false`) for every client role —
+ * by design, the client app can never perform this operation directly.
+ *
+ * Also closes out open purchase orders / deliveries so their live-computed
+ * incoming/reserved quantities (see InventoryService.getActiveInventoryStream
+ * and getFloatingStockStream in the Flutter app) don't repopulate immediately
+ * after the reset.
+ */
+export const resetInventory = regionalFunctions
+  .runWith(BULK_FUNCTION_OPTS)
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        "unauthenticated",
+        "Must be authenticated to reset inventory."
+      );
+    }
+
+    const callerData = await getCallerProfile(context);
+    const callerRole = callerData?.role || context.auth.token.role;
+
+    if (callerRole !== "Dealer" && callerRole !== "Admin" && callerRole !== "Super Admin") {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only Dealers or Admins can reset inventory."
+      );
+    }
+
+    const confirm = String(data?.confirm ?? "");
+    if (confirm !== RESET_INVENTORY_CONFIRMATION_PHRASE) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        `Confirmation phrase must exactly match "${RESET_INVENTORY_CONFIRMATION_PHRASE}".`
+      );
+    }
+
+    const now = admin.firestore.Timestamp.now();
+    const actorUid = context.auth.uid;
+    const actorName =
+      (callerData?.username as string | undefined) ||
+      (callerData?.email as string | undefined) ||
+      context.auth.token.email ||
+      actorUid;
+
+    const summary: Record<string, number> = {
+      cancelledPurchaseOrders: 0,
+      closedDeliveries: 0,
+      cancelledVanLoads: 0,
+      resetSelectaProducts: 0,
+      resetOtherProducts: 0,
+    };
+    for (const name of RESET_INVENTORY_HISTORY_COLLECTIONS) {
+      summary[`deleted_${name}`] = 0;
+    }
+
+    try {
+      // Step 1: Close out open Purchase Orders so they stop contributing "incoming" stock.
+      // Incoming quantity is live-computed from isInventoryReplenished === false (see
+      // InventoryService.getActiveInventoryStream / getFloatingStockStream).
+      const poSnap = await db.collection("purchaseorders").get();
+      const openPoDocs = poSnap.docs.filter((doc) => {
+        const d = doc.data();
+        return (d.isInventoryReplenished as boolean | undefined) !== true;
+      });
+      summary.cancelledPurchaseOrders = await commitInChunks(openPoDocs, (batch, doc) => {
+        batch.update(doc.ref, {
+          isInventoryReplenished: true,
+          status: "cancelled",
+          cancelledAt: now,
+          cancelledBy: actorName,
+          cancelledReason: "Inventory reset",
+        });
+      });
+
+      // Step 2: Close out open/undelivered Deliveries and unsettled reservations/returns so
+      // they stop contributing "reserved" (outgoing) or return-driven "incoming" stock.
+      const deliverySnap = await db.collection("delivery").get();
+      const deliveryDocsToClose = deliverySnap.docs.filter((doc) => {
+        const d = doc.data();
+        const transactionStatus = (d.transactionStatus as string | undefined) ?? "";
+        const isReserved = (d.isInventoryReserved as boolean | undefined) === true;
+        const isSettled = (d.isInventorySettled as boolean | undefined) === true;
+        const isReturnApproved = (d.isReturnApprovedByDealer as boolean | undefined) === true;
+        const isReturnIncoming = (d.isReturnIncoming as boolean | undefined) === true;
+        const isOpenOrder =
+          transactionStatus === "Pending Picklist" || transactionStatus === "Pending";
+        const hasUnsettledReservation = isReserved && !isSettled;
+        const hasUnapprovedReturn =
+          !isReturnApproved && (transactionStatus === "Returned" || isReturnIncoming);
+        return isOpenOrder || hasUnsettledReservation || hasUnapprovedReturn;
+      });
+      summary.closedDeliveries = await commitInChunks(deliveryDocsToClose, (batch, doc) => {
+        const d = doc.data();
+        const transactionStatus = (d.transactionStatus as string | undefined) ?? "";
+        const isOpenOrder =
+          transactionStatus === "Pending Picklist" || transactionStatus === "Pending";
+        const update: Record<string, unknown> = {
+          isInventorySettled: true,
+          inventorySettledDate: now,
+          inventorySettledBy: actorName,
+          isReturnApprovedByDealer: true,
+          returnApprovedDate: now,
+          returnApprovedBy: actorName,
+          inventoryResetNote: "Closed by inventory reset",
+        };
+        if (isOpenOrder) {
+          update.transactionStatus = "Voided";
+        }
+        batch.update(doc.ref, update);
+      });
+
+      // Step 3: Close out open Van Loads (VanLoadStatus has no "cancelled" value, so mark
+      // them "completed" — the terminal state existing filters already treat as inactive).
+      const vanLoadSnap = await db.collection("van_loads").get();
+      const openVanLoads = vanLoadSnap.docs.filter((doc) => {
+        const status = (doc.data().status as string | undefined) ?? "";
+        return status !== "completed";
+      });
+      summary.cancelledVanLoads = await commitInChunks(openVanLoads, (batch, doc) => {
+        batch.update(doc.ref, {
+          status: "completed",
+          resetNote: "Auto-closed by inventory reset",
+          resetAt: now,
+        });
+      });
+
+      // Step 4: Permanently delete all inventory audit/history collections. These are
+      // append-only / immutable from the client (see firestore.rules), so only the
+      // Admin SDK can remove them.
+      for (const name of RESET_INVENTORY_HISTORY_COLLECTIONS) {
+        const countSnap = await db.collection(name).count().get();
+        summary[`deleted_${name}`] = countSnap.data().count;
+        await db.recursiveDelete(db.collection(name));
+      }
+
+      // Step 5: Zero out stock fields across every product so the dealer starts at zero.
+      const selectaSnap = await db.collection("selecta_products").get();
+      summary.resetSelectaProducts = await commitInChunks(selectaSnap.docs, (batch, doc) => {
+        batch.update(doc.ref, { stockQuantity: 0, incomingQuantity: 0, reservedQuantity: 0 });
+      });
+
+      const otherSnap = await db.collection("other_products").get();
+      summary.resetOtherProducts = await commitInChunks(otherSnap.docs, (batch, doc) => {
+        batch.update(doc.ref, { stockQuantity: 0, incomingQuantity: 0, reservedQuantity: 0 });
+      });
+
+      // Step 6: Record that the reset happened, since inventory_movements (the normal audit
+      // trail) is now empty and can no longer answer "why is stock zero?" on its own.
+      await db.collection("system_audit_log").add({
+        action: "resetInventory",
+        performedByUid: actorUid,
+        performedByName: actorName,
+        performedAt: now,
+        summary,
+      });
+
+      return { success: true, summary };
+    } catch (error: any) {
+      throw new functions.https.HttpsError(
+        "internal",
+        error?.message || "Inventory reset failed."
+      );
     }
   });
 
