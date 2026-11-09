@@ -2984,6 +2984,21 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                     ),
                   ),
 
+                  if (_isEditing && _isPending)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.tonalIcon(
+                            onPressed: () => _openManualPoPicker(allInventory),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add Products'),
+                          ),
+                        ),
+                      ),
+                    ),
+
                   // Extracted Document Lines List (Numbered in exact document sequence) - Collapsible
                   if (_showItemsList)
                     SliverPadding(
