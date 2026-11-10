@@ -238,21 +238,10 @@ class DeliveryService {
     }
   }
 
+  /// Counts returned deliveries requiring dealer action (not yet rescheduled and not yet finalized).
+  /// Preserved for backwards compatibility, delegates to [getCountActiveReturnedDeliveries].
   static Future<int?> getCountReturnedDeliveriesOnOtherDays() async {
-    var currentDate = DateTime.now();
-    final startOfDay = DateTime(currentDate.year, currentDate.month, currentDate.day, 0, 0, 0);
-
-    var snapshot = await FirebaseFirestore.instance
-        .collection(DELIVERY_COLLECTION_REF)
-        .where(DeliveryModelString.transactionStatus, isEqualTo: DeliveryStatus.returned)
-        .where(DeliveryModelString.lastupdatedDate, isLessThan: startOfDay)
-        .get();
-
-    return snapshot.docs.where((doc) {
-      final data = doc.data();
-      return data[DeliveryModelString.isRescheduled] != true &&
-          data[DeliveryModelString.isReturnFinalized] != true;
-    }).length;
+    return await getCountActiveReturnedDeliveries();
   }
 
   // Get list delivery within the month of the current year

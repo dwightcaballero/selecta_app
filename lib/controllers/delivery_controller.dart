@@ -189,9 +189,15 @@ class DeliveryController {
     return _deliveryService.getPendingPicklistCountStream(date: date);
   }
 
+  /// Fetches the count of active returned deliveries that need attention/rescheduling.
+  Future<int> getActiveReturnedDeliveriesCount() async {
+    return await DeliveryService.getCountActiveReturnedDeliveries();
+  }
+
   /// Fetches the count of returned deliveries from past days that need attention/rescheduling.
+  /// Preserved for backwards compatibility, delegates to [getActiveReturnedDeliveriesCount].
   Future<int?> getCountReturnedDeliveriesOnOtherDays() async {
-    return await DeliveryService.getCountReturnedDeliveriesOnOtherDays();
+    return await getActiveReturnedDeliveriesCount();
   }
 
   /// Real-time stream of the count of returned deliveries requiring dealer action.

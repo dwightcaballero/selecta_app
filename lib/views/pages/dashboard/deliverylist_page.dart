@@ -103,7 +103,7 @@ class _DeliveryListPageState extends State<DeliveryListPage> {
       _returnedCountSub?.cancel();
       _returnedCountSub = null;
     }
-    final count = dealer ? await _controller.getCountReturnedDeliveriesOnOtherDays() : 0;
+    final count = dealer ? await _controller.getActiveReturnedDeliveriesCount() : 0;
     if (mounted) {
       setState(() {
         isDealer = dealer;
