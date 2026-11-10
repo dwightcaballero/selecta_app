@@ -570,6 +570,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       ),
       builder: (context, snapshot) {
         final pendingCount = snapshot.data ?? 0;
+        if (pendingCount <= 0) return const SizedBox.shrink();
         final hasPending = pendingCount > 0;
 
         return Card(
