@@ -29,6 +29,7 @@ class _WeeklyTimesheetCardState extends State<WeeklyTimesheetCard> {
   bool _isLoading = true;
   List<Attendance> _attendances = [];
   bool _isExpanded = true;
+  String? _error;
 
   @override
   void initState() {
@@ -47,7 +48,10 @@ class _WeeklyTimesheetCardState extends State<WeeklyTimesheetCard> {
   }
 
   Future<void> _fetchTimesheet() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
       final list = await _controller.getWeeklyTimesheet(
         salesmanUsername: widget.salesmanUsername,
@@ -60,8 +64,15 @@ class _WeeklyTimesheetCardState extends State<WeeklyTimesheetCard> {
           _isLoading = false;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+    } catch (e) {
+      debugPrint('Failed to load weekly timesheet: $e');
+      if (mounted) {
+        setState(() {
+          _attendances = [];
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -140,6 +151,8 @@ class _WeeklyTimesheetCardState extends State<WeeklyTimesheetCard> {
                         Text(
                           _isLoading
                               ? 'Loading timecards...'
+                              : _error != null
+                              ? 'Failed to load attendance'
                               : 'Total: ${totalDays.toStringAsFixed(1)} days worked this week',
                           style: TextStyle(
                             fontSize: 11,
@@ -177,6 +190,19 @@ class _WeeklyTimesheetCardState extends State<WeeklyTimesheetCard> {
               const Padding(
                 padding: EdgeInsets.all(24.0),
                 child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      'Could not load attendance. Please try again.',
+                      style: TextStyle(fontSize: 12, color: colorScheme.error),
+                    ),
+                    TextButton(onPressed: _fetchTimesheet, child: const Text('Retry')),
+                  ],
+                ),
               )
             else
               ListView.separated(
