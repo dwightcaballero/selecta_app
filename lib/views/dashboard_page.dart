@@ -17,6 +17,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:selecta_ops/services/notification_badge_service.dart';
 import 'package:selecta_ops/services/offline_sync_service.dart';
 import 'package:selecta_ops/services/push_notification_service.dart';
+import 'package:selecta_ops/views/pages/dashboard/book_order_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/deliverylist_page.dart';
 import 'package:selecta_ops/views/pages/dashboard/picklist_list_page.dart';
 import 'package:selecta_ops/views/pages/others/auth_page.dart';
@@ -24,7 +25,6 @@ import 'package:selecta_ops/views/pages/others/notifications_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/inventory_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/purchaseorderlist_page.dart';
 import 'package:selecta_ops/views/pages/sidebar/superadmin_page.dart';
-import 'package:selecta_ops/views/widgets/ai_chat_modal.dart';
 import 'package:selecta_ops/views/widgets/alert_widget.dart';
 import 'package:selecta_ops/views/widgets/appbar_widget.dart';
 import 'package:selecta_ops/controllers/attendance_controller.dart';
@@ -98,7 +98,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _activeReturnsCountStream = _controller.getActiveReturnsCountStream();
     _unverifiedBreakdownsCountStream = _controller.getUnverifiedBreakdownsCountStream();
     _unverifiedSummaryStream = _controller.getUnverifiedSummaryStream();
-    _configSubscription = ConfigurationService().getConfigurationStream().handleError(FirestoreStreamErrors.handler('DashboardConfig')).listen((config) {
+    _configSubscription = ConfigurationService().getConfigurationStream().handleError(FirestoreStreamErrors.handler('DashboardConfig')).listen((
+      config,
+    ) {
       if (mounted && config != null) {
         setState(() {
           _configuration = config;
@@ -125,9 +127,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(n.title ?? 'Notification', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                    if (n.body != null && n.body!.isNotEmpty)
-                      Text(n.body!, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                    Text(
+                      n.title ?? 'Notification',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    if (n.body != null && n.body!.isNotEmpty) Text(n.body!, style: const TextStyle(fontSize: 12, color: Colors.white70)),
                   ],
                 ),
               ),
@@ -328,9 +332,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
     if (isWide) {
       _rightPaneNavKey.currentState?.popUntil((route) => route.isFirst);
-      await _rightPaneNavKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => page),
-      );
+      await _rightPaneNavKey.currentState?.push(MaterialPageRoute(builder: (_) => page));
       if (mounted) await _refreshDashboardIfNeeded();
       return;
     }
@@ -444,11 +446,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   }
 
   // ── Shared sidebar props helper ─────────────────────────────────────────
-  DashboardSidebar _buildSidebar({
-    bool includeTabs = false,
-    int? currentTabIndex,
-    VoidCallback? onCollapse,
-  }) => DashboardSidebar(
+  DashboardSidebar _buildSidebar({bool includeTabs = false, int? currentTabIndex, VoidCallback? onCollapse}) => DashboardSidebar(
     currentUser: _currentUser,
     isDealer: isDealer,
     isSyncing: isSyncing,
@@ -513,11 +511,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                     ),
 
                   // 1b. Dealer Salesman Attendance Banner
-                  if (isDealer && _currentUser != null)
-                    _buildDealerAttendanceBanner(),
+                  if (isDealer && _currentUser != null) _buildDealerAttendanceBanner(),
 
                   // 2. Quick Access Section
-                  _buildSectionHeader('Quick Access', 'Orders, credits, van operations, and scouting'),
+                  _buildSectionHeader('Quick Access', 'Returns, credits, and reporting'),
                   DashboardQuickAccessGrid(
                     dashboardDTO: dashboardDTO,
                     pendingPicklistsCountStream: _pendingPicklistsCountStream,
@@ -539,21 +536,14 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     );
   }
 
-  Widget _buildBadge({
-    required Stream<int> stream,
-    required int initialCount,
-    required IconData icon,
-  }) {
+  Widget _buildBadge({required Stream<int> stream, required int initialCount, required IconData icon}) {
     return StreamBuilder<int>(
       stream: stream,
       initialData: initialCount,
       builder: (context, snapshot) {
         final count = snapshot.data ?? 0;
         if (count <= 0) return Icon(icon);
-        return Badge.count(
-          count: count,
-          child: Icon(icon),
-        );
+        return Badge.count(count: count, child: Icon(icon));
       },
     );
   }
@@ -564,10 +554,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     final colorScheme = theme.colorScheme;
 
     return StreamBuilder<int>(
-      stream: _attendanceController.streamPendingCount(
-        _currentUser!.dealerName,
-        DateTime.now(),
-      ),
+      stream: _attendanceController.streamPendingCount(_currentUser!.dealerName, DateTime.now()),
       builder: (context, snapshot) {
         final pendingCount = snapshot.data ?? 0;
         if (pendingCount <= 0) return const SizedBox.shrink();
@@ -575,16 +562,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
         return Card(
           elevation: 0,
-          color: hasPending
-              ? const Color(0xFFF59E0B).withValues(alpha: 0.12)
-              : colorScheme.surface,
+          color: hasPending ? const Color(0xFFF59E0B).withValues(alpha: 0.12) : colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: hasPending
-                  ? const Color(0xFFF59E0B).withValues(alpha: 0.5)
-                  : colorScheme.outlineVariant.withValues(alpha: 0.6),
-            ),
+            side: BorderSide(color: hasPending ? const Color(0xFFF59E0B).withValues(alpha: 0.5) : colorScheme.outlineVariant.withValues(alpha: 0.6)),
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
@@ -597,9 +578,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: hasPending
-                          ? const Color(0xFFF59E0B).withValues(alpha: 0.2)
-                          : colorScheme.primary.withValues(alpha: 0.1),
+                      color: hasPending ? const Color(0xFFF59E0B).withValues(alpha: 0.2) : colorScheme.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -615,25 +594,15 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                       children: [
                         Row(
                           children: [
-                            Text(
-                              'Salesman Attendance',
-                              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
-                            ),
+                            Text('Salesman Attendance', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
                             if (hasPending) ...[
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEF4444),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
+                                decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(10)),
                                 child: Text(
                                   '$pendingCount Pending',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ],
@@ -644,10 +613,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                           hasPending
                               ? '$pendingCount request(s) awaiting your confirmation.'
                               : 'All salesmen attendances up to date. Tap to view crew timecards.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
-                            fontSize: 11,
-                          ),
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75), fontSize: 11),
                         ),
                       ],
                     ),
@@ -664,35 +630,15 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   /// Bottom NavigationBar destinations — 5 tabs with live count badges
   List<NavigationDestination> _navDestinations() => [
-    const NavigationDestination(
-      icon: Icon(Icons.dashboard_outlined),
-      selectedIcon: Icon(Icons.dashboard_rounded),
-      label: 'Home',
-    ),
+    const NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: 'Home'),
     NavigationDestination(
-      icon: _buildBadge(
-        stream: _purchaseOrdersAwaitingCountStream,
-        initialCount: 0,
-        icon: Icons.inventory_2_outlined,
-      ),
-      selectedIcon: _buildBadge(
-        stream: _purchaseOrdersAwaitingCountStream,
-        initialCount: 0,
-        icon: Icons.inventory_2_rounded,
-      ),
+      icon: _buildBadge(stream: _purchaseOrdersAwaitingCountStream, initialCount: 0, icon: Icons.inventory_2_outlined),
+      selectedIcon: _buildBadge(stream: _purchaseOrdersAwaitingCountStream, initialCount: 0, icon: Icons.inventory_2_rounded),
       label: 'Restock',
     ),
-    const NavigationDestination(
-      icon: Icon(Icons.warehouse_outlined),
-      selectedIcon: Icon(Icons.warehouse_rounded),
-      label: 'Inventory',
-    ),
+    const NavigationDestination(icon: Icon(Icons.warehouse_outlined), selectedIcon: Icon(Icons.warehouse_rounded), label: 'Inventory'),
     NavigationDestination(
-      icon: _buildBadge(
-        stream: _pendingPicklistsCountStream,
-        initialCount: dashboardDTO.pendingPicklistCount,
-        icon: Icons.fact_check_outlined,
-      ),
+      icon: _buildBadge(stream: _pendingPicklistsCountStream, initialCount: dashboardDTO.pendingPicklistCount, icon: Icons.fact_check_outlined),
       selectedIcon: _buildBadge(
         stream: _pendingPicklistsCountStream,
         initialCount: dashboardDTO.pendingPicklistCount,
@@ -701,11 +647,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       label: 'PickLists',
     ),
     NavigationDestination(
-      icon: _buildBadge(
-        stream: _pendingDeliveriesCountStream,
-        initialCount: dashboardDTO.pendingDeliveryCount,
-        icon: Icons.local_shipping_outlined,
-      ),
+      icon: _buildBadge(stream: _pendingDeliveriesCountStream, initialCount: dashboardDTO.pendingDeliveryCount, icon: Icons.local_shipping_outlined),
       selectedIcon: _buildBadge(
         stream: _pendingDeliveriesCountStream,
         initialCount: dashboardDTO.pendingDeliveryCount,
@@ -717,35 +659,15 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   /// NavigationRail destinations for tablet
   List<NavigationRailDestination> _navRailDestinations() => [
-    const NavigationRailDestination(
-      icon: Icon(Icons.dashboard_outlined),
-      selectedIcon: Icon(Icons.dashboard_rounded),
-      label: Text('Home'),
-    ),
+    const NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard_rounded), label: Text('Home')),
     NavigationRailDestination(
-      icon: _buildBadge(
-        stream: _purchaseOrdersAwaitingCountStream,
-        initialCount: 0,
-        icon: Icons.inventory_2_outlined,
-      ),
-      selectedIcon: _buildBadge(
-        stream: _purchaseOrdersAwaitingCountStream,
-        initialCount: 0,
-        icon: Icons.inventory_2_rounded,
-      ),
+      icon: _buildBadge(stream: _purchaseOrdersAwaitingCountStream, initialCount: 0, icon: Icons.inventory_2_outlined),
+      selectedIcon: _buildBadge(stream: _purchaseOrdersAwaitingCountStream, initialCount: 0, icon: Icons.inventory_2_rounded),
       label: const Text('Restock'),
     ),
-    const NavigationRailDestination(
-      icon: Icon(Icons.warehouse_outlined),
-      selectedIcon: Icon(Icons.warehouse_rounded),
-      label: Text('Inventory'),
-    ),
+    const NavigationRailDestination(icon: Icon(Icons.warehouse_outlined), selectedIcon: Icon(Icons.warehouse_rounded), label: Text('Inventory')),
     NavigationRailDestination(
-      icon: _buildBadge(
-        stream: _pendingPicklistsCountStream,
-        initialCount: dashboardDTO.pendingPicklistCount,
-        icon: Icons.fact_check_outlined,
-      ),
+      icon: _buildBadge(stream: _pendingPicklistsCountStream, initialCount: dashboardDTO.pendingPicklistCount, icon: Icons.fact_check_outlined),
       selectedIcon: _buildBadge(
         stream: _pendingPicklistsCountStream,
         initialCount: dashboardDTO.pendingPicklistCount,
@@ -754,11 +676,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       label: const Text('PickLists'),
     ),
     NavigationRailDestination(
-      icon: _buildBadge(
-        stream: _pendingDeliveriesCountStream,
-        initialCount: dashboardDTO.pendingDeliveryCount,
-        icon: Icons.local_shipping_outlined,
-      ),
+      icon: _buildBadge(stream: _pendingDeliveriesCountStream, initialCount: dashboardDTO.pendingDeliveryCount, icon: Icons.local_shipping_outlined),
       selectedIcon: _buildBadge(
         stream: _pendingDeliveriesCountStream,
         initialCount: dashboardDTO.pendingDeliveryCount,
@@ -829,11 +747,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       drawer: isWideLandscape ? null : _buildDrawer(),
       floatingActionButton: FloatingActionButton.extended(
         heroTag: null,
-        onPressed: () => AiChatModal.show(context, dashboardDTO: dashboardDTO, userRole: isDealer ? 'Dealer' : 'Salesman'),
+        onPressed: () => _navigateToPage(const BookOrderPage()),
         backgroundColor: colorScheme.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.auto_awesome, size: 20),
-        label: const Text('Ask Sedy', style: TextStyle(fontWeight: FontWeight.bold)),
+        icon: const Icon(Icons.add_shopping_cart, size: 20),
+        label: const Text('Book Order', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: _buildDashboardBody(),
     );
@@ -843,11 +761,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     IconButton(
       icon: ValueListenableBuilder<int>(
         valueListenable: NotificationBadgeService().unreadCount,
-        builder: (_, count, child) => Badge(
-          isLabelVisible: count > 0,
-          label: Text(count > 9 ? '9+' : '$count'),
-          child: child,
-        ),
+        builder: (_, count, child) => Badge(isLabelVisible: count > 0, label: Text(count > 9 ? '9+' : '$count'), child: child),
         child: const Icon(Icons.notifications_outlined, color: Colors.white),
       ),
       onPressed: () => _navigateToPage(const NotificationsPage(roles: NotificationAudience.dealer)),
@@ -923,10 +837,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                         builder: (navContext) => ValueListenableBuilder<int>(
                           valueListenable: _dashboardVersionNotifier,
                           builder: (context, version, child) {
-                            return IndexedStack(
-                              index: _currentTabIndex,
-                              children: _buildTabPages(context, isWideLandscape: true),
-                            );
+                            return IndexedStack(index: _currentTabIndex, children: _buildTabPages(context, isWideLandscape: true));
                           },
                         ),
                       );
@@ -944,21 +855,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                     left: isSecondaryOpen ? 62 : 14,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: colorScheme.brightness == Brightness.dark
-                            ? const Color(0xFF28303F)
-                            : Colors.white.withValues(alpha: 0.22),
+                        color: colorScheme.brightness == Brightness.dark ? const Color(0xFF28303F) : Colors.white.withValues(alpha: 0.22),
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.35),
-                          width: 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 1),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 6, offset: const Offset(0, 2))],
                       ),
                       child: IconButton(
                         icon: const Icon(Icons.menu_rounded, size: 20, color: Colors.white),
@@ -997,10 +897,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
             ),
             const VerticalDivider(width: 1, thickness: 1),
             Expanded(
-              child: IndexedStack(
-                index: _currentTabIndex,
-                children: _buildTabPages(context, isWideLandscape: false),
-              ),
+              child: IndexedStack(index: _currentTabIndex, children: _buildTabPages(context, isWideLandscape: false)),
             ),
           ],
         ),
@@ -1010,10 +907,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       content = Scaffold(
         key: _phoneScaffoldKey,
         drawer: _buildDrawer(),
-        body: IndexedStack(
-          index: _currentTabIndex,
-          children: _buildTabPages(context, isWideLandscape: false),
-        ),
+        body: IndexedStack(index: _currentTabIndex, children: _buildTabPages(context, isWideLandscape: false)),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentTabIndex,
           height: 65,
@@ -1026,10 +920,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       );
     }
 
-    return ExitGuard(
-      onBackIntercept: _handleBackPress,
-      child: content,
-    );
+    return ExitGuard(onBackIntercept: _handleBackPress, child: content);
   }
 }
 
