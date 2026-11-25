@@ -28,6 +28,7 @@ A Flutter mobile application for **Selecta field sales operations**, serving two
 ### AI & Smart Features
 - 🤖 **Ask Sedy (Gemini AI)** — In-app AI assistant for operational insights
 - 📄 **Invoice AI Scanning** — AI-powered invoice-to-PO reconciliation using Gemini Vision
+- 📦 **Manual PO Receiving** — Use “Receive with exceptions” when scanning is unavailable. Enter received quantities and reasons for shortages; missing quantities are closed, not carried forward. The app posts stock and clears incoming quantities together, retains the original receipt lines, and applies the existing automatic overpayment calculation. The invoice remains unverified until the dealer confirms its details; verification does not add stock again. If the credit has already been settled, its amount cannot be changed during verification.
 
 ### Settings & Admin
 - 🔐 **Role-Based Access** — Dealer and Salesman views with separate permissions
@@ -118,4 +119,3 @@ To guarantee the app operates completely within the Firebase Blaze free tier lim
 ## Version
 
 Current: 1.0.0+61
-

@@ -44,6 +44,59 @@ class PurchaseOrderController {
   final PurchaseOrderService _service = PurchaseOrderService();
   final InventoryService _inventoryService = InventoryService();
 
+  Future<void> receiveManually({
+    required String purchaseOrderId,
+    required Purchaseorder order,
+    required List<ManualReceiptLine> lines,
+    required DateTime receivedDate,
+    required String reference,
+  }) => _inventoryService.receivePurchaseOrderManually(
+    purchaseOrderId: purchaseOrderId,
+    expectedOrder: order,
+    lines: lines,
+    receivedDate: receivedDate,
+    invoiceNumber: reference,
+  );
+
+  Future<void> verifyManualInvoice({
+    required String purchaseOrderId,
+    required String invoiceNumber,
+    required double invoiceAmount,
+    required DateTime invoiceDate,
+    required String imagePath,
+  }) async {
+    if (invoiceNumber.trim().isEmpty || !invoiceAmount.isFinite || invoiceAmount <= 0) {
+      throw StateError('Enter an invoice number and an amount greater than zero.');
+    }
+    final ref = FirebaseFirestore.instance.collection(PURCHASEORDER_COLLECTION_REF).doc(purchaseOrderId);
+    final user = authService.value.currentUser?.displayName ?? 'User';
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snap = await transaction.get(ref);
+      if (!snap.exists) throw StateError('Purchase order no longer exists.');
+      final order = Purchaseorder.fromJson(snap.data()!);
+      if (!order.invoiceVerificationPending) {
+        throw StateError('This invoice was already verified. Reopen the purchase order.');
+      }
+      final difference = order.orderAmount - invoiceAmount;
+      final credit = difference > 0.009 ? double.parse(difference.toStringAsFixed(2)) : 0.0;
+      if (order.isSettled == true && credit != order.overpayment) {
+        throw StateError('The existing credit has already been settled. Its amount cannot be changed here.');
+      }
+      transaction.update(ref, {
+        'invoiceNumber': invoiceNumber.trim().toUpperCase(),
+        'invoiceAmount': invoiceAmount,
+        'invoiceDate': Timestamp.fromDate(invoiceDate),
+        if (imagePath.isNotEmpty) 'imagePath': imagePath,
+        'invoiceVerificationPending': false,
+        'overpayment': credit,
+        'isSettled': order.isSettled == true ? true : (credit > 0 ? false : null),
+        'lastUpdatedBy': user,
+        'lastupdatedDate': Timestamp.now(),
+        'lastUpdatedPage': AppPages.purchaseOrder,
+      });
+    });
+  }
+
   /// Real-time stream of purchase orders from Firestore
   Stream<QuerySnapshot> getPurchaseOrdersStream() {
     return _service.getListPurchaseordersAsStream();
@@ -77,11 +130,12 @@ class PurchaseOrderController {
     for (final doc in monthDocs) {
       final order = doc.data() as Purchaseorder;
       // "Pending" = PO created but not yet confirmed with official invoice
-      if (order.status == 'pending') {
+      if (order.status == 'pending' || order.invoiceVerificationPending) {
         pendingCount++;
-      } else if (order.isSettled == true) {
+      }
+      if (order.status != 'pending' && order.isSettled == true) {
         settledCount++;
-      } else if (order.overpayment > 0) {
+      } else if (order.status != 'pending' && order.overpayment > 0) {
         overpaymentCount++;
       }
     }
@@ -103,7 +157,7 @@ class PurchaseOrderController {
   }) {
     final filtered = docs.where((doc) {
       final order = doc.data() as Purchaseorder;
-      final isPending = order.status == 'pending';
+      final isPending = order.status == 'pending' || order.invoiceVerificationPending;
 
       bool matchesFilter = true;
       if (selectedFilter == 'Pending') {
@@ -292,12 +346,9 @@ class PurchaseOrderController {
     final currentUserDisplayName = authService.value.currentUser?.displayName ?? 'User';
 
     // Save official invoice image (overwrites digital invoice image)
-    final String imageFilePath = await Helperfunctions.updateImage(
-      context,
-      pickedImage,
-      '', // no existing network path for replacement
-      currentOrder.imagePath,
-    );
+    final String imageFilePath = pickedImage == null
+        ? currentOrder.imagePath
+        : await Helperfunctions.saveImage(context, pickedImage);
 
     // Build OrderItems from confirmed items (isPicked = true, permanent)
     final List<OrderItem> confirmedOrderItems = confirmedItems.map((ci) {
@@ -327,16 +378,6 @@ class PurchaseOrderController {
         ? double.parse(rawOverpayment.toStringAsFixed(2))
         : 0.0;
 
-    // Replenish inventory permanently for confirmed items and clear floating incoming stock from original PO
-    await _inventoryService.replenishAndClearIncomingStockForPurchaseOrder(
-      invoiceNumber: officialInvoiceNumber.isNotEmpty
-          ? officialInvoiceNumber
-          : currentOrder.invoiceNumber,
-      orderDate: officialInvoiceDate,
-      originalPoItems: currentOrder.items,
-      confirmedItems: confirmedOrderItems,
-    );
-
     // Update PO to invoiced state
     final resolvedInvoiceNumber = officialInvoiceNumber.trim().isNotEmpty
         ? officialInvoiceNumber.trim().toUpperCase()
@@ -364,7 +405,11 @@ class PurchaseOrderController {
     );
 
     final prevJson = currentOrder.toJson();
-    await _service.updatePurchaseorder(purchaseOrderId, updatedPurchaseorder);
+    await _inventoryService.receiveInvoicedPurchaseOrder(
+      purchaseOrderId: purchaseOrderId,
+      expectedOrder: currentOrder,
+      updatedOrder: updatedPurchaseorder,
+    );
     await Helperfunctions.logUpdate(
       resolvedInvoiceNumber.isNotEmpty
           ? resolvedInvoiceNumber
@@ -488,6 +533,7 @@ class PurchaseOrderController {
       await _inventoryService.revertReplenishedStockForPurchaseOrder(
         invoiceNumber: order.invoiceNumber,
         items: order.items,
+        poId: order.manualReceiptLines.isNotEmpty ? purchaseOrderId : null,
       );
     } else if (order.status == 'pending' && order.items.isNotEmpty) {
       // Release floating incoming stock

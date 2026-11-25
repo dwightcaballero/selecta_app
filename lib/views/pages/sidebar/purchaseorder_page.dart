@@ -27,6 +27,8 @@ import 'package:selecta_ops/views/widgets/purchaseorder/po_confirmed_status_card
 import 'package:selecta_ops/views/widgets/purchaseorder/po_document_line_card.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/po_reconciliation_header.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/po_phase2_confirmation_card.dart';
+import 'package:selecta_ops/views/widgets/purchaseorder/manual_receipt_dialog.dart';
+import 'package:selecta_ops/views/widgets/purchaseorder/manual_invoice_dialog.dart';
 import 'package:selecta_ops/views/widgets/purchaseorder/automated_po_suggestion_dialog.dart';
 import 'package:selecta_ops/views/pages/sidebar/purchaseorder_catalog_page.dart';
 
@@ -1521,6 +1523,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1528,7 +1531,8 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
+          child: SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1638,6 +1642,18 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
               const SizedBox(height: 12),
 
+              ListTile(
+                leading: const Icon(Icons.edit_note, color: Colors.teal),
+                title: const Text('Receive with exceptions', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Manually enter received quantities and mark missing items. No AI scan required.'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _receiveWithExceptions();
+                },
+              ),
+              const SizedBox(height: 12),
+
               // Option 2: Scan Document / Invoice
               InkWell(
                 onTap: () {
@@ -1686,10 +1702,99 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _receiveWithExceptions() async {
+    final savedItems = _buildOrderItemsFromLines();
+    final originalItems = widget.purchaseorder.items;
+    final savedNumber = widget.purchaseorder.poNumber.isNotEmpty
+        ? widget.purchaseorder.poNumber
+        : widget.purchaseorder.invoiceNumber;
+    final savedDate = widget.purchaseorder.orderDate.toDate();
+    final orderChanged = orderNumberController.text.trim().toUpperCase() != savedNumber.trim().toUpperCase() ||
+        _selectedOrderDate.year != savedDate.year ||
+        _selectedOrderDate.month != savedDate.month ||
+        _selectedOrderDate.day != savedDate.day ||
+        savedItems.length != originalItems.length ||
+        List.generate(savedItems.length, (i) => i >= originalItems.length ||
+            savedItems[i].productId != originalItems[i].productId ||
+            savedItems[i].productSource != originalItems[i].productSource ||
+            savedItems[i].effectiveQuantity != originalItems[i].effectiveQuantity ||
+            savedItems[i].buyingPrice != originalItems[i].buyingPrice).any((changed) => changed);
+    if (orderChanged) {
+      ShowMessage.warning(context, 'Save or discard changes to the purchase order before receiving it.');
+      return;
+    }
+    if (widget.purchaseorder.items.isEmpty) {
+      ShowMessage.error(context, 'No items to receive in this purchase order.');
+      return;
+    }
+    final result = await showDialog<ManualReceiptResult>(
+      context: context,
+      builder: (_) => ManualReceiptDialog(
+        items: widget.purchaseorder.items,
+        orderAmount: widget.purchaseorder.orderAmount,
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _isSaving = true);
+    Helperfunctions.showLoading(context: context, showLoading: true, message: 'Receiving delivery');
+    try {
+      await _controller.receiveManually(
+        purchaseOrderId: widget.purchaseorderID,
+        order: widget.purchaseorder,
+        lines: result.lines,
+        receivedDate: result.date,
+        reference: result.reference,
+      );
+      if (mounted) {
+        Helperfunctions.showLoading(showLoading: false);
+        ShowMessage.success(context, 'Delivery received. Short quantities were closed.');
+        Navigator.pop(context);
+      }
+    } catch (e, s) {
+      ErrorLogService.logError(page: 'PurchaseorderPage', action: 'Receive with exceptions', error: e, stackTrace: s);
+      if (mounted) ShowMessage.error(context, e.toString().replaceAll('Bad state: ', ''));
+    } finally {
+      Helperfunctions.showLoading(showLoading: false);
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _verifyManualInvoice() async {
+    final result = await showDialog<ManualInvoiceResult>(
+      context: context,
+      builder: (_) => ManualInvoiceDialog(order: widget.purchaseorder),
+    );
+    if (result == null || !mounted) return;
+    setState(() => _isSaving = true);
+    Helperfunctions.showLoading(context: context, showLoading: true, message: 'Verifying invoice');
+    try {
+      final imagePath = result.image == null ? '' : await Helperfunctions.saveImage(context, result.image!);
+      await _controller.verifyManualInvoice(
+        purchaseOrderId: widget.purchaseorderID,
+        invoiceNumber: result.number,
+        invoiceAmount: result.amount,
+        invoiceDate: result.date,
+        imagePath: imagePath,
+      );
+      if (mounted) {
+        Helperfunctions.showLoading(showLoading: false);
+        ShowMessage.success(context, 'Invoice verified. Inventory was not changed.');
+        Navigator.pop(context);
+      }
+    } catch (e, s) {
+      ErrorLogService.logError(page: 'PurchaseorderPage', action: 'Verify manual invoice', error: e, stackTrace: s);
+      if (mounted) ShowMessage.error(context, e.toString().replaceAll('Bad state: ', ''));
+    } finally {
+      Helperfunctions.showLoading(showLoading: false);
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   Future<void> _confirmReceiveEverything(List<InventoryItem> allInventory) async {
@@ -2290,6 +2395,7 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
       isComparingWithAi: _isComparingWithAi,
       onShowOfficialInvoiceSourcePicker: _showOfficialInvoiceSourcePicker,
       onReceiveEverything: () => _confirmReceiveEverything(allInventory),
+      onReceiveWithExceptions: _receiveWithExceptions,
       onRemoveOfficialInvoiceImage: (i) {
         setState(() {
           _officialInvoiceImages.removeAt(i);
@@ -2342,7 +2448,18 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
 
   // Phase 3 Confirmed / Invoiced Status Card
   Widget _buildConfirmedStatusCard() {
-    return PoConfirmedStatusCard(purchaseorder: widget.purchaseorder, currencyFormat: _currencyFormat);
+    return Column(children: [
+      PoConfirmedStatusCard(purchaseorder: widget.purchaseorder, currencyFormat: _currencyFormat),
+      if (widget.purchaseorder.invoiceVerificationPending)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: FilledButton.icon(
+            onPressed: _isSaving ? null : _verifyManualInvoice,
+            icon: const Icon(Icons.receipt_long),
+            label: const Text('Verify / attach invoice'),
+          ),
+        ),
+    ]);
   }
 
   Future<void> _pickOrderDate() async {
@@ -2669,7 +2786,9 @@ class _PurchaseorderPageState extends State<PurchaseorderPage> {
         child: Scaffold(
           appBar: CustomAppbar(
             title: 'Purchase Order',
-            subtitle: 'Invoiced — $poRef$invRef',
+            subtitle: widget.purchaseorder.invoiceVerificationPending
+                ? 'Manually received — invoice unverified — $poRef'
+                : 'Invoiced — $poRef$invRef',
             onBackPressed: isLocked ? () => ShowMessage.warning(context, 'Operation in progress. Please wait.') : null,
           ),
           bottomNavigationBar: ScreenSize.isTabletLandscape(context) ? null : _buildStickyBottomBar([]),

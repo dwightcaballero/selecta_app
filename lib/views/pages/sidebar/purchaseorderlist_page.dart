@@ -362,7 +362,11 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
     String badgeText;
     IconData badgeIcon;
 
-    if (isPending) {
+    if (order.invoiceVerificationPending) {
+      badgeColor = Colors.orange.shade800;
+      badgeText = 'Invoice unverified';
+      badgeIcon = Icons.fact_check_outlined;
+    } else if (isPending) {
       badgeColor = Colors.orange.shade800;
       badgeText = 'Pending';
       badgeIcon = Icons.hourglass_top_rounded;
@@ -407,7 +411,7 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
-                            isPending ? 'P.O. Date: $orderDateStr' : 'Inv Date: $invoiceDateStr',
+                            isPending || order.invoiceVerificationPending ? 'P.O. Date: $orderDateStr' : 'Inv Date: $invoiceDateStr',
                             style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -455,14 +459,20 @@ class _PurchaseorderlistPageState extends State<PurchaseorderlistPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          isInvoiced
+                          isInvoiced && !order.invoiceVerificationPending
                               ? (invoiceNumber.isNotEmpty ? 'Invoice #$invoiceNumber' : 'PO #${poNumber.isNotEmpty ? poNumber : order.invoiceNumber}')
                               : (poNumber.isNotEmpty ? 'PO #$poNumber' : 'Pending PO'),
                           style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: colorScheme.onSurface),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        if (isInvoiced && order.invoiceAmount > 0) ...[
+                        if (order.invoiceVerificationPending) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Manually received; invoice unverified',
+                            style: TextStyle(fontSize: 11.5, fontStyle: FontStyle.italic, color: Colors.orange.shade800),
+                          ),
+                        ] else if (isInvoiced && order.invoiceAmount > 0) ...[
                           const SizedBox(height: 2),
                           Text(
                             'Invoiced: ${Helperfunctions.formatDoubleAmountForDisplay(order.invoiceAmount)}',

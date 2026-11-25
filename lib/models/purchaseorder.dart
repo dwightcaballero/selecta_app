@@ -1,6 +1,30 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:selecta_ops/models/delivery.dart';
 
+class ManualReceiptLine {
+  const ManualReceiptLine({
+    required this.item,
+    required this.receivedQuantity,
+    this.shortageReason = '',
+  });
+
+  final OrderItem item;
+  final int receivedQuantity;
+  final String shortageReason;
+
+  factory ManualReceiptLine.fromJson(Map<String, dynamic> json) => ManualReceiptLine(
+    item: OrderItem.fromJson(Map<String, dynamic>.from(json['item'] as Map)),
+    receivedQuantity: (json['receivedQuantity'] as num).toInt(),
+    shortageReason: json['shortageReason'] as String? ?? '',
+  );
+
+  Map<String, Object?> toJson() => {
+    'item': item.toJson(),
+    'receivedQuantity': receivedQuantity,
+    'shortageReason': shortageReason,
+  };
+}
+
 class Purchaseorder {
   Purchaseorder({
     this.poNumber = '',
@@ -21,6 +45,12 @@ class Purchaseorder {
     this.items = const [],
     this.isInventoryReplenished = false,
     this.status = 'pending',
+    this.manualReceiptLines = const [],
+    this.manualReceiptDate,
+    this.manualReceiptRecordedAt,
+    this.manualReceiptRecordedBy = '',
+    this.manualReceiptRecordedByUid = '',
+    this.invoiceVerificationPending = false,
   });
 
   Purchaseorder.fromJson(Map<String, Object?> json)
@@ -47,6 +77,14 @@ class Purchaseorder {
             : const [],
         isInventoryReplenished: json['isInventoryReplenished'] as bool? ?? false,
         status: json['status'] as String? ?? 'pending',
+        manualReceiptLines: (json['manualReceiptLines'] as List<dynamic>? ?? [])
+            .map((e) => ManualReceiptLine.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+        manualReceiptDate: json['manualReceiptDate'] as Timestamp?,
+        manualReceiptRecordedAt: json['manualReceiptRecordedAt'] as Timestamp?,
+        manualReceiptRecordedBy: json['manualReceiptRecordedBy'] as String? ?? '',
+        manualReceiptRecordedByUid: json['manualReceiptRecordedByUid'] as String? ?? '',
+        invoiceVerificationPending: json['invoiceVerificationPending'] as bool? ?? false,
       );
 
   factory Purchaseorder.fromSnapshot(DocumentSnapshot<Map<String, dynamic>> document) {
@@ -75,6 +113,14 @@ class Purchaseorder {
             : const [],
         isInventoryReplenished: data?['isInventoryReplenished'] as bool? ?? false,
         status: data?['status'] as String? ?? 'pending',
+        manualReceiptLines: (data?['manualReceiptLines'] as List<dynamic>? ?? [])
+            .map((e) => ManualReceiptLine.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+        manualReceiptDate: data?['manualReceiptDate'] as Timestamp?,
+        manualReceiptRecordedAt: data?['manualReceiptRecordedAt'] as Timestamp?,
+        manualReceiptRecordedBy: data?['manualReceiptRecordedBy'] as String? ?? '',
+        manualReceiptRecordedByUid: data?['manualReceiptRecordedByUid'] as String? ?? '',
+        invoiceVerificationPending: data?['invoiceVerificationPending'] as bool? ?? false,
       );
     } else {
       return Purchaseorder.empty();
@@ -98,6 +144,16 @@ class Purchaseorder {
   String lastUpdatedPage;
   List<OrderItem> items;
   bool isInventoryReplenished;
+  List<ManualReceiptLine> manualReceiptLines;
+  Timestamp? manualReceiptDate;
+  Timestamp? manualReceiptRecordedAt;
+  String manualReceiptRecordedBy;
+  String manualReceiptRecordedByUid;
+  bool invoiceVerificationPending;
+  double get manualReceiptValue => manualReceiptLines.fold<double>(
+    0,
+    (total, line) => total + line.receivedQuantity * line.item.buyingPrice,
+  );
 
   /// Workflow status: 'pending' (PO created, stocks not arrived yet)
   /// or 'invoiced' / 'confirmed' (official invoice attached, inventory permanently replenished).
@@ -143,6 +199,12 @@ class Purchaseorder {
     List<OrderItem>? items,
     bool? isInventoryReplenished,
     String? status,
+    List<ManualReceiptLine>? manualReceiptLines,
+    Timestamp? manualReceiptDate,
+    Timestamp? manualReceiptRecordedAt,
+    String? manualReceiptRecordedBy,
+    String? manualReceiptRecordedByUid,
+    bool? invoiceVerificationPending,
   }) {
     return Purchaseorder(
       poNumber: poNumber ?? this.poNumber,
@@ -163,6 +225,12 @@ class Purchaseorder {
       items: items ?? this.items,
       isInventoryReplenished: isInventoryReplenished ?? this.isInventoryReplenished,
       status: status ?? this.status,
+      manualReceiptLines: manualReceiptLines ?? this.manualReceiptLines,
+      manualReceiptDate: manualReceiptDate ?? this.manualReceiptDate,
+      manualReceiptRecordedAt: manualReceiptRecordedAt ?? this.manualReceiptRecordedAt,
+      manualReceiptRecordedBy: manualReceiptRecordedBy ?? this.manualReceiptRecordedBy,
+      manualReceiptRecordedByUid: manualReceiptRecordedByUid ?? this.manualReceiptRecordedByUid,
+      invoiceVerificationPending: invoiceVerificationPending ?? this.invoiceVerificationPending,
     );
   }
 
@@ -186,6 +254,12 @@ class Purchaseorder {
       'items': items.map((e) => e.toJson()).toList(),
       'isInventoryReplenished': isInventoryReplenished,
       'status': status,
+      'manualReceiptLines': manualReceiptLines.map((e) => e.toJson()).toList(),
+      'manualReceiptDate': manualReceiptDate,
+      'manualReceiptRecordedAt': manualReceiptRecordedAt,
+      'manualReceiptRecordedBy': manualReceiptRecordedBy,
+      'manualReceiptRecordedByUid': manualReceiptRecordedByUid,
+      'invoiceVerificationPending': invoiceVerificationPending,
     };
   }
 }

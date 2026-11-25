@@ -56,14 +56,15 @@ class SalesController {
     orders.sort((a, b) => b.invoiceDate.compareTo(a.invoiceDate));
 
     final count = orders.length;
+    final invoiceCount = orders.where((order) => !order.invoiceVerificationPending).length;
     return SalesSummary(
       purchaseOrders: orders,
       totalPurchaseOrder: purchaseOrderTotal,
       totalInvoicedSales: invoicedSalesTotal,
       totalOverpayment: overpaymentTotal,
-      totalInvoiceCount: count,
+      totalInvoiceCount: invoiceCount,
       averagePurchaseOrder: count == 0 ? 0 : purchaseOrderTotal / count,
-      averageInvoicedAmount: count == 0 ? 0 : invoicedSalesTotal / count,
+      averageInvoicedAmount: invoiceCount == 0 ? 0 : invoicedSalesTotal / invoiceCount,
       averageOverpayment: count == 0 ? 0 : overpaymentTotal / count,
     );
   }

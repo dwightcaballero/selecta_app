@@ -135,7 +135,7 @@ class ExportReportService {
             po.orderAmount.toStringAsFixed(2),
             po.invoiceAmount.toStringAsFixed(2),
             po.isSettled == true ? 'Settled' : 'Unsettled',
-            po.status,
+            po.invoiceVerificationPending ? 'Manually received; invoice unverified' : po.status,
             po.items.length,
           ]);
         }

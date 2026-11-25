@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -12,6 +13,7 @@ import 'package:selecta_ops/models/breakdown.dart';
 import 'package:selecta_ops/models/delivery.dart';
 import 'package:selecta_ops/models/floating_stock.dart';
 import 'package:selecta_ops/models/inventory_movement.dart';
+import 'package:selecta_ops/models/manual_purchase_receipt.dart';
 import 'package:selecta_ops/models/other_product.dart';
 import 'package:selecta_ops/models/purchaseorder.dart';
 import 'package:selecta_ops/models/selecta_product.dart';
@@ -1908,6 +1910,215 @@ class InventoryService {
           }
           return list;
         });
+  }
+
+  /// Posts a single, closed manual receipt together with its inventory changes.
+  Future<void> receivePurchaseOrderManually({
+    required String purchaseOrderId,
+    required Purchaseorder expectedOrder,
+    required List<ManualReceiptLine> lines,
+    required DateTime receivedDate,
+    required String invoiceNumber,
+  }) async {
+    final receipt = ManualPurchaseReceipt.prepare(expectedOrder.items, lines);
+
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final now = Timestamp.now();
+    final poRef = _firestore.collection(PURCHASEORDER_COLLECTION_REF).doc(purchaseOrderId);
+    final entries = receipt.products;
+    final productRefs = entries.map((e) => _firestore.collection(_collectionForSource(e.item.productSource)).doc(e.item.productId)).toList();
+    final movementRefs = entries.map((_) => _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc()).toList();
+    final discrepancyRefs = entries.map((_) => _firestore.collection('inventory_discrepancies').doc()).toList();
+
+    await _runInventoryTransaction('receivePurchaseOrderManually', (transaction) async {
+      final poSnap = await transaction.get(poRef);
+      if (!poSnap.exists) throw StateError('Purchase order no longer exists.');
+      final current = Purchaseorder.fromJson(poSnap.data()!);
+      if (current.status != 'pending' || current.isInventoryReplenished ||
+          current.lastupdatedDate.compareTo(expectedOrder.lastupdatedDate) != 0 ||
+          jsonEncode(current.items.map((e) => e.toJson()).toList()) !=
+              jsonEncode(expectedOrder.items.map((e) => e.toJson()).toList()) ||
+          current.orderAmount != expectedOrder.orderAmount) {
+        throw StateError('This purchase order has changed or was already received. Reopen it and try again.');
+      }
+      final products = await Future.wait(productRefs.map(transaction.get));
+      for (var i = 0; i < entries.length; i++) {
+        if (!products[i].exists) {
+          throw StateError('Product ${entries[i].item.productName} no longer exists. No stock was received.');
+        }
+      }
+      final difference = current.orderAmount - receipt.total;
+      final credit = difference > 0.009 ? double.parse(difference.toStringAsFixed(2)) : 0.0;
+      final refLabel = current.poNumber.isNotEmpty ? current.poNumber : purchaseOrderId;
+      for (var i = 0; i < entries.length; i++) {
+        final entry = entries[i];
+        final movementRef = movementRefs[i];
+        final change = _computeStockChange(
+          productRef: productRefs[i],
+          productSnap: products[i],
+          stockDelta: entry.received,
+          incomingDelta: -entry.ordered,
+          movementType: MovementType.receipt,
+          referenceType: ReferenceType.purchase_order,
+          referenceId: purchaseOrderId,
+          referenceLabel: refLabel,
+          idempotencyKey: movementRef.id,
+          correlationId: 'po_$purchaseOrderId',
+          sourceLocation: 'supplier',
+          targetLocation: 'warehouse',
+          reason: 'Manual purchase order receipt',
+          notes: 'Received ${entry.received} of ${entry.ordered}; remaining quantity closed as short.',
+          actorUid: actor.uid,
+          actorRole: actor.role,
+          actorName: actor.name,
+          appVersion: appVersion,
+          timestamp: now,
+        );
+        transaction.update(productRefs[i], change.productUpdates);
+        transaction.set(movementRef, change.movement.toJson());
+        if (entry.received < entry.ordered) {
+          final details = 'PO $refLabel short-shipment: expected ${entry.ordered}, received ${entry.received}.';
+          transaction.set(discrepancyRefs[i], {
+            'productId': entry.item.productId,
+            'productName': entry.item.productName,
+            'productSource': entry.item.productSource,
+            'discrepancyType': 'po_short_shipment',
+            'type': 'po_short_shipment',
+            'expectedValue': entry.ordered,
+            'expected': entry.ordered,
+            'actualValue': entry.received,
+            'actual': entry.received,
+            'message': details,
+            'details': details,
+            'movementId': movementRef.id,
+            'status': 'open',
+            'detectedAt': now,
+            'createdAt': now,
+          });
+        }
+      }
+      transaction.update(poRef, {
+        'items': receipt.receivedItems.map((e) => e.toJson()).toList(),
+        'manualReceiptLines': lines.map((e) => e.toJson()).toList(),
+        'manualReceiptDate': Timestamp.fromDate(receivedDate),
+        'manualReceiptRecordedAt': now,
+        'manualReceiptRecordedBy': actor.name,
+        'manualReceiptRecordedByUid': actor.uid,
+        'invoiceVerificationPending': true,
+        'invoiceNumber': invoiceNumber.trim().toUpperCase(),
+        'invoiceDate': Timestamp.fromDate(receivedDate),
+        'invoiceAmount': 0.0,
+        'overpayment': credit,
+        'isSettled': credit > 0 ? false : null,
+        'status': 'invoiced',
+        'isInventoryReplenished': true,
+        'lastUpdatedBy': actor.name,
+        'lastupdatedDate': now,
+        'lastUpdatedPage': AppPages.purchaseOrder,
+      });
+    });
+  }
+
+  /// Confirms an invoiced PO and its inventory changes in the same transaction.
+  Future<void> receiveInvoicedPurchaseOrder({
+    required String purchaseOrderId,
+    required Purchaseorder expectedOrder,
+    required Purchaseorder updatedOrder,
+  }) async {
+    final merged = <String, ({OrderItem item, int ordered, int received})>{};
+    for (final item in expectedOrder.items) {
+      if (item.productId.isEmpty || item.effectiveQuantity <= 0) {
+        throw StateError('Invalid purchase order item: ${item.productName}.');
+      }
+      final key = '${item.productSource}:${item.productId}';
+      final previous = merged[key];
+      merged[key] = (item: item, ordered: (previous?.ordered ?? 0) + item.effectiveQuantity, received: previous?.received ?? 0);
+    }
+    for (final item in updatedOrder.items) {
+      if (item.productId.isEmpty || item.effectiveQuantity <= 0) {
+        throw StateError('Invalid received item: ${item.productName}.');
+      }
+      final key = '${item.productSource}:${item.productId}';
+      final previous = merged[key];
+      merged[key] = (item: item, ordered: previous?.ordered ?? 0, received: (previous?.received ?? 0) + item.effectiveQuantity);
+    }
+    if (merged.isEmpty || merged.length > 150) {
+      throw StateError('A receipt must contain between 1 and 150 distinct products.');
+    }
+    final actor = await _resolveActor();
+    final appVersion = await _resolveAppVersion();
+    final now = Timestamp.now();
+    final poRef = _firestore.collection(PURCHASEORDER_COLLECTION_REF).doc(purchaseOrderId);
+    final entries = merged.values.toList();
+    final products = entries.map((e) => _firestore.collection(_collectionForSource(e.item.productSource)).doc(e.item.productId)).toList();
+    final movements = entries.map((_) => _firestore.collection(INVENTORY_MOVEMENTS_COLLECTION_REF).doc()).toList();
+    final discrepancies = entries.map((_) => _firestore.collection('inventory_discrepancies').doc()).toList();
+
+    await _runInventoryTransaction('receiveInvoicedPurchaseOrder', (transaction) async {
+      final poSnap = await transaction.get(poRef);
+      if (!poSnap.exists) throw StateError('Purchase order no longer exists.');
+      final current = Purchaseorder.fromJson(poSnap.data()!);
+      if (current.status != 'pending' || current.isInventoryReplenished ||
+          current.lastupdatedDate.compareTo(expectedOrder.lastupdatedDate) != 0 ||
+          jsonEncode(current.items.map((e) => e.toJson()).toList()) !=
+              jsonEncode(expectedOrder.items.map((e) => e.toJson()).toList()) ||
+          current.orderAmount != expectedOrder.orderAmount) {
+        throw StateError('This purchase order has changed or was already received. Reopen it and try again.');
+      }
+      final snapshots = await Future.wait(products.map(transaction.get));
+      for (var i = 0; i < entries.length; i++) {
+        if (!snapshots[i].exists) throw StateError('Product ${entries[i].item.productName} no longer exists. No stock was received.');
+      }
+      final label = updatedOrder.invoiceNumber.isNotEmpty ? updatedOrder.invoiceNumber : updatedOrder.poNumber;
+      for (var i = 0; i < entries.length; i++) {
+        final entry = entries[i];
+        final change = _computeStockChange(
+          productRef: products[i],
+          productSnap: snapshots[i],
+          stockDelta: entry.received,
+          incomingDelta: -entry.ordered,
+          movementType: MovementType.receipt,
+          referenceType: ReferenceType.purchase_order,
+          referenceId: purchaseOrderId,
+          referenceLabel: label,
+          idempotencyKey: movements[i].id,
+          correlationId: 'po_$purchaseOrderId',
+          sourceLocation: 'supplier',
+          targetLocation: 'warehouse',
+          reason: 'Purchase Order Replenishment',
+          notes: 'Received ${entry.received}; cleared ${entry.ordered} incoming.',
+          actorUid: actor.uid,
+          actorRole: actor.role,
+          actorName: actor.name,
+          appVersion: appVersion,
+          timestamp: now,
+        );
+        transaction.update(products[i], change.productUpdates);
+        transaction.set(movements[i], change.movement.toJson());
+        if (entry.ordered > entry.received) {
+          final details = 'PO $label short-shipment: expected ${entry.ordered}, received ${entry.received}.';
+          transaction.set(discrepancies[i], {
+            'productId': entry.item.productId,
+            'productName': entry.item.productName,
+            'productSource': entry.item.productSource,
+            'discrepancyType': 'po_short_shipment',
+            'type': 'po_short_shipment',
+            'expectedValue': entry.ordered,
+            'expected': entry.ordered,
+            'actualValue': entry.received,
+            'actual': entry.received,
+            'message': details,
+            'details': details,
+            'movementId': movements[i].id,
+            'status': 'open',
+            'detectedAt': now,
+            'createdAt': now,
+          });
+        }
+      }
+      transaction.update(poRef, updatedOrder.toJson());
+    });
   }
 
   /// Replenishes inventory stock for items received in a Purchase Order.

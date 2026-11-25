@@ -309,7 +309,9 @@ class _SalesPageState extends State<SalesPage> {
                     child: Icon(Icons.receipt_long, size: 16, color: colorScheme.primary),
                   ),
                   title: Text(
-                    order.invoiceNumber.isEmpty ? 'No Invoice #' : order.invoiceNumber,
+                    order.invoiceVerificationPending
+                        ? 'Manual receipt — invoice unverified'
+                        : (order.invoiceNumber.isEmpty ? 'No Invoice #' : order.invoiceNumber),
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                   ),
                   subtitle: Text(dateStr, style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),

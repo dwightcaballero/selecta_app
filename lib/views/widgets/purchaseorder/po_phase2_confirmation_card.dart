@@ -30,6 +30,7 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
   final void Function(PoExtractedLine line) onQuantityIncrement;
   final void Function(List<InventoryItem> allInventory, {required bool isInvoice}) onAddMissingLine;
   final VoidCallback? onReceiveEverything;
+  final VoidCallback? onReceiveWithExceptions;
   final List<InventoryItem> allInventory;
 
   const PoPhase2ConfirmationCard({
@@ -56,6 +57,7 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
     required this.onQuantityIncrement,
     required this.onAddMissingLine,
     this.onReceiveEverything,
+    this.onReceiveWithExceptions,
     required this.allInventory,
   });
 
@@ -255,6 +257,17 @@ class PoPhase2ConfirmationCard extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.done_all_rounded, size: 18),
                   label: const Text('Receive Everything (No Scanning)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                ),
+              ),
+            ],
+            if (onReceiveWithExceptions != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: isComparingWithAi ? null : onReceiveWithExceptions,
+                  icon: const Icon(Icons.edit_note, size: 18),
+                  label: const Text('Receive with exceptions (no AI)'),
                 ),
               ),
             ],

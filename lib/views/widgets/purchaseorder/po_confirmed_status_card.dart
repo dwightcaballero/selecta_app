@@ -43,7 +43,10 @@ class PoConfirmedStatusCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Purchase Order Invoiced & Replenished', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(
+                        purchaseorder.invoiceVerificationPending ? 'Manually Received — Invoice Unverified' : 'Purchase Order Invoiced & Replenished',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
                       Text('Stocks replenished into inventory permanently', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                     ],
                   ),
@@ -78,7 +81,7 @@ class PoConfirmedStatusCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Official Invoice No:'),
+                Text(purchaseorder.invoiceVerificationPending ? 'Invoice / DR Reference:' : 'Official Invoice No:'),
                 Text(
                   purchaseorder.invoiceNumber.isNotEmpty ? purchaseorder.invoiceNumber : 'N/A',
                   style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
@@ -89,7 +92,7 @@ class PoConfirmedStatusCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Invoice Date:'),
+                Text(purchaseorder.invoiceVerificationPending ? 'Received Date:' : 'Invoice Date:'),
                 Text(
                   DateFormat('MMM dd, yyyy').format(purchaseorder.invoiceDate.toDate()),
                   style: const TextStyle(fontWeight: FontWeight.bold),
@@ -100,8 +103,11 @@ class PoConfirmedStatusCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Invoice Amount:'),
-                Text(currency.format(purchaseorder.invoiceAmount), style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(purchaseorder.invoiceVerificationPending ? 'Estimated Receipt Value:' : 'Invoice Amount:'),
+                Text(
+                  currency.format(purchaseorder.invoiceVerificationPending ? purchaseorder.manualReceiptValue : purchaseorder.invoiceAmount),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
               ],
             ),
             const SizedBox(height: 6),
@@ -112,6 +118,24 @@ class PoConfirmedStatusCard extends StatelessWidget {
                 Text('${purchaseorder.items.length} products', style: const TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
+            if (purchaseorder.manualReceiptLines.isNotEmpty) ...[
+              const Divider(height: 24),
+              const Text('Manual receipt (short quantities closed)', style: TextStyle(fontWeight: FontWeight.bold)),
+              if (purchaseorder.manualReceiptRecordedAt != null)
+                Text(
+                  'Recorded by ${purchaseorder.manualReceiptRecordedBy} on '
+                  '${DateFormat('MMM dd, yyyy HH:mm').format(purchaseorder.manualReceiptRecordedAt!.toDate())}',
+                ),
+              const SizedBox(height: 8),
+              for (final line in purchaseorder.manualReceiptLines)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '${line.item.productName}: ${line.receivedQuantity} of ${line.item.effectiveQuantity} received'
+                    '${line.receivedQuantity < line.item.effectiveQuantity ? ' — ${line.shortageReason}' : ''}',
+                  ),
+                ),
+            ],
           ],
         ),
       ),
