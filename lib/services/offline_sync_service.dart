@@ -138,6 +138,7 @@ class OfflineSyncService {
     double? grossAmount,
     double discountAmount = 0.0,
     List<AppliedPromo> appliedPromos = const [],
+    bool? useAvailableInventory,
   }) async {
     final itemId = 'order_create_${DateTime.now().millisecondsSinceEpoch}';
     final newItem = OfflineSyncItem(
@@ -151,6 +152,7 @@ class OfflineSyncService {
         'grossAmount': grossAmount,
         'discountAmount': discountAmount,
         'appliedPromos': appliedPromos.map((p) => p.toJson()).toList(),
+        'useAvailableInventory': ?useAvailableInventory,
       },
       createdAt: DateTime.now(),
     );
@@ -297,6 +299,7 @@ class OfflineSyncService {
                 grossAmount: grossAmount,
                 discountAmount: discountAmount,
                 appliedPromos: appliedPromos,
+                useAvailableInventory: item.payload['useAvailableInventory'] as bool?,
               );
             }
             succeeded++;

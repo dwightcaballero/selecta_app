@@ -583,6 +583,7 @@ class DeliveryController {
     double? grossAmount,
     double discountAmount = 0.0,
     List<AppliedPromo> appliedPromos = const [],
+    bool? useAvailableInventory,
   }) async {
     final status = await checkBreakdownAndVerificationStatus(selectedDate);
     if (status.isVerified) {
@@ -627,7 +628,7 @@ class DeliveryController {
       orderId: newId,
       storeName: storeName,
       items: cleanItems,
-      logShortAllocation: !isFutureDate(selectedDate),
+      logShortAllocation: useAvailableInventory ?? !isFutureDate(selectedDate),
     );
 
     // 2. Persist unified transaction in `delivery` collection using pre-generated unique ID

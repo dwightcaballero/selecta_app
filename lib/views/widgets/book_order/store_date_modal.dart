@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:selecta_ops/views/widgets/alert_widget.dart';
+import 'package:selecta_ops/controllers/delivery_controller.dart';
 import 'package:selecta_ops/views/widgets/async_button.dart';
 import 'package:selecta_ops/views/widgets/hapistore_dropdown.dart';
 
@@ -9,11 +9,13 @@ class StoreDateModalResult {
   final String storeName;
   final DateTime selectedDate;
   final String remarks;
+  final bool useAvailableInventory;
 
   const StoreDateModalResult({
     required this.storeName,
     required this.selectedDate,
     required this.remarks,
+    required this.useAvailableInventory,
   });
 }
 
@@ -23,12 +25,16 @@ class StoreDateModal extends StatefulWidget {
   final String initialStoreName;
   final DateTime initialDate;
   final String initialRemarks;
+  final bool initialUseAvailableInventory;
+  final bool isEditing;
 
   const StoreDateModal({
     super.key,
     required this.initialStoreName,
     required this.initialDate,
     required this.initialRemarks,
+    this.initialUseAvailableInventory = true,
+    this.isEditing = false,
   });
 
   /// Static helper to display the modal bottom sheet and return the chosen configuration.
@@ -37,6 +43,8 @@ class StoreDateModal extends StatefulWidget {
     required String initialStoreName,
     required DateTime initialDate,
     required String initialRemarks,
+    bool initialUseAvailableInventory = true,
+    bool isEditing = false,
   }) {
     return showModalBottomSheet<StoreDateModalResult>(
       context: context,
@@ -47,6 +55,8 @@ class StoreDateModal extends StatefulWidget {
         initialStoreName: initialStoreName,
         initialDate: initialDate,
         initialRemarks: initialRemarks,
+        initialUseAvailableInventory: initialUseAvailableInventory,
+        isEditing: isEditing,
       ),
     );
   }
@@ -59,6 +69,8 @@ class _StoreDateModalState extends State<StoreDateModal> {
   late final TextEditingController _storeController;
   late final TextEditingController _remarksController;
   late DateTime _tempDate;
+  late bool _useAvailableInventory;
+  String? _storeError;
 
   @override
   void initState() {
@@ -66,6 +78,14 @@ class _StoreDateModalState extends State<StoreDateModal> {
     _storeController = TextEditingController(text: widget.initialStoreName);
     _remarksController = TextEditingController(text: widget.initialRemarks);
     _tempDate = widget.initialDate;
+    _useAvailableInventory = widget.initialUseAvailableInventory;
+  }
+
+  void _onDateChanged(DateTime newDate) {
+    setState(() {
+      _tempDate = newDate;
+      _useAvailableInventory = !DeliveryController.isFutureDate(newDate);
+    });
   }
 
   @override
@@ -162,9 +182,35 @@ class _StoreDateModalState extends State<StoreDateModal> {
                   label: 'Hapi Store',
                   validator: (val) => (val == null || val.trim().isEmpty) ? 'Please select a Hapi Store' : null,
                   onChanged: () {
-                    setState(() {});
+                    setState(() {
+                      if (_storeController.text.trim().isNotEmpty) {
+                        _storeError = null;
+                      }
+                    });
                   },
                 ),
+                if (_storeError != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error_outline_rounded, size: 18, color: colorScheme.onErrorContainer),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _storeError!,
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: colorScheme.onErrorContainer),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 const SizedBox(height: 18),
 
@@ -183,9 +229,7 @@ class _StoreDateModalState extends State<StoreDateModal> {
                       lastDate: DateTime(2100),
                     );
                     if (picked != null) {
-                      setState(() {
-                        _tempDate = picked;
-                      });
+                      _onDateChanged(picked);
                     }
                   },
                   borderRadius: BorderRadius.circular(12),
@@ -241,7 +285,7 @@ class _StoreDateModalState extends State<StoreDateModal> {
                       ),
                       selected: isToday,
                       selectedColor: colorScheme.primary,
-                      onSelected: (_) => setState(() => _tempDate = today),
+                      onSelected: (_) => _onDateChanged(today),
                     ),
                     const SizedBox(width: 8),
                     ChoiceChip(
@@ -255,7 +299,7 @@ class _StoreDateModalState extends State<StoreDateModal> {
                       ),
                       selected: isTomorrow,
                       selectedColor: colorScheme.primary,
-                      onSelected: (_) => setState(() => _tempDate = tomorrow),
+                      onSelected: (_) => _onDateChanged(tomorrow),
                     ),
                     const SizedBox(width: 8),
                     ActionChip(
@@ -276,14 +320,41 @@ class _StoreDateModalState extends State<StoreDateModal> {
                           lastDate: DateTime(2100),
                         );
                         if (picked != null) {
-                          setState(() {
-                            _tempDate = picked;
-                          });
+                          _onDateChanged(picked);
                         }
                       },
                     ),
                   ],
                 ),
+
+                if (!widget.isEditing) ...[
+                  const SizedBox(height: 16),
+                  Material(
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: _useAvailableInventory ? colorScheme.primary.withValues(alpha: 0.4) : colorScheme.outlineVariant,
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: SwitchListTile(
+                      value: _useAvailableInventory,
+                      onChanged: (val) => setState(() => _useAvailableInventory = val),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      title: const Text(
+                        'Use Available Inventory',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        _useAvailableInventory
+                            ? 'Order quantities are capped to currently available stock.'
+                            : 'Allow pre-ordering beyond currently available stock.',
+                        style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ),
+                ],
 
                 const SizedBox(height: 18),
 
@@ -320,7 +391,9 @@ class _StoreDateModalState extends State<StoreDateModal> {
                   onPressed: () {
                     final store = _storeController.text.trim();
                     if (store.isEmpty) {
-                      ShowMessage.error(context, 'Please select a Hapi Store first.');
+                      setState(() {
+                        _storeError = 'Please select a Hapi Store first.';
+                      });
                       return;
                     }
                     Navigator.pop(
@@ -329,6 +402,7 @@ class _StoreDateModalState extends State<StoreDateModal> {
                         storeName: store,
                         selectedDate: _tempDate,
                         remarks: _remarksController.text.trim(),
+                        useAvailableInventory: _useAvailableInventory,
                       ),
                     );
                   },

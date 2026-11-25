@@ -70,6 +70,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
   final TextEditingController _remarksController = TextEditingController();
 
   DateTime _selectedDate = DateTime.now();
+  bool _useAvailableInventory = true;
   bool _hasUserManuallyPickedDate = false;
   String _searchQuery = '';
   String _selectedCategoryFilter = 'all';
@@ -115,6 +116,8 @@ class _BookOrderPageState extends State<BookOrderPage> {
 
   bool get _isFutureDeliveryDate => DeliveryController.isFutureDate(_selectedDate);
 
+  bool get _shouldEnforceAvailableInventory => _isEditing ? !_isFutureDeliveryDate : _useAvailableInventory;
+
   bool get _hasUnsavedChanges {
     if (_isEditing) {
       if (_remarksController.text.trim() != (widget.existingDelivery?.remarks ?? '')) return true;
@@ -136,6 +139,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     super.initState();
     _inventoryStream = _inventoryController.getActiveInventoryStream();
     _selectedDate = widget.initialDate ?? DateTime.now();
+    _useAvailableInventory = !DeliveryController.isFutureDate(_selectedDate);
 
     _promosSub = _deliveryController.promoService.streamActivePromos().handleError(FirestoreStreamErrors.handler('BookOrderPromos')).listen((promos) {
       if (mounted) {
@@ -291,7 +295,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       date: _selectedDate,
       activePromos: _activePromos,
       usedCounts: _storePromoUsage,
-      availableStock: _isFutureDeliveryDate ? null : {for (final i in allInventory) i.id: _getMaxOrderableQty(i)},
+      availableStock: _shouldEnforceAvailableInventory ? {for (final i in allInventory) i.id: _getMaxOrderableQty(i)} : null,
       productBuyingPrices: {for (final i in allInventory) i.id: i.buyingPrice},
     );
   }
@@ -337,6 +341,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     final defaultDate = isDealer ? now : now.add(const Duration(days: 1));
     setState(() {
       _selectedDate = defaultDate;
+      _useAvailableInventory = !DeliveryController.isFutureDate(defaultDate);
     });
   }
 
@@ -357,9 +362,9 @@ class _BookOrderPageState extends State<BookOrderPage> {
   static const int _futureBookingCap = 99999;
 
   /// Effective available stock for this item, including any units already reserved by this order.
-  /// For future delivery dates (tomorrow or later), returns [_futureBookingCap] allowing pre-orders.
+  /// When available inventory enforcement is disabled (e.g. future pre-orders), returns [_futureBookingCap].
   int _getMaxOrderableQty(InventoryItem item) {
-    if (_isFutureDeliveryDate) return _futureBookingCap;
+    if (!_shouldEnforceAvailableInventory) return _futureBookingCap;
     final alreadyInThisOrder = _initialOrderQuantities[_itemKey(item)] ?? 0;
     return (item.availableQuantity + alreadyInThisOrder).clamp(0, 999999);
   }
@@ -561,7 +566,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     ),
                                     Text('•', style: TextStyle(color: colorScheme.outline)),
                                     Text(
-                                      _isFutureDeliveryDate
+                                      !_shouldEnforceAvailableInventory
                                           ? (item.availableQuantity > 0 ? '${item.availableQuantity} on hand' : 'No stock yet - pre-order')
                                           : '$maxAllowed available',
                                       style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
@@ -686,7 +691,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                         ),
                       ],
 
-                      if (_isFutureDeliveryDate && currentTyped > (item.availableQuantity > 0 ? item.availableQuantity : 0)) ...[
+                      if (!_shouldEnforceAvailableInventory && currentTyped > (item.availableQuantity > 0 ? item.availableQuantity : 0)) ...[
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -771,7 +776,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
                                     },
                                   ),
                                   Text(
-                                    _isFutureDeliveryDate ? 'units (pre-order)' : 'units (max $maxAllowed)',
+                                    !_shouldEnforceAvailableInventory ? 'units (pre-order)' : 'units (max $maxAllowed)',
                                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: colorScheme.onSurfaceVariant),
                                   ),
                                 ],
@@ -1288,12 +1293,12 @@ class _BookOrderPageState extends State<BookOrderPage> {
       return;
     }
 
-    if (!_isFutureDeliveryDate) {
+    if (_shouldEnforceAvailableInventory) {
       final initialCount = _selectedQuantities.values.fold<int>(0, (a, b) => a + b);
       _clampQuantitiesToAvailableStock(allInventory);
       final newCount = _selectedQuantities.values.fold<int>(0, (a, b) => a + b);
       if (newCount != initialCount) {
-        ShowMessage.error(context, 'Quantities were adjusted to match currently available stock for today.');
+        ShowMessage.error(context, 'Quantities were adjusted to match currently available stock.');
         return;
       }
     }
@@ -1361,6 +1366,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
             grossAmount: grossAmount,
             discountAmount: discountAmount,
             appliedPromos: appliedPromos,
+            useAvailableInventory: _useAvailableInventory,
           );
         }
         if (!mounted) return;
@@ -1398,6 +1404,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
               grossAmount: grossAmount,
               discountAmount: discountAmount,
               appliedPromos: appliedPromos,
+              useAvailableInventory: _useAvailableInventory,
             )
             .timeout(const Duration(seconds: 30));
         if (!mounted) return;
@@ -1438,6 +1445,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
               grossAmount: grossAmount,
               discountAmount: discountAmount,
               appliedPromos: appliedPromos,
+              useAvailableInventory: _useAvailableInventory,
             );
           }
           if (!mounted) return;
@@ -3039,19 +3047,23 @@ class _BookOrderPageState extends State<BookOrderPage> {
       initialStoreName: _storeController.text,
       initialDate: _selectedDate,
       initialRemarks: _remarksController.text,
+      initialUseAvailableInventory: _useAvailableInventory,
+      isEditing: _isEditing,
     );
 
     if (result != null && mounted) {
       final newStore = result.storeName;
       final storeChanged = _storeController.text.trim() != newStore;
       final dateChanged = _selectedDate != result.selectedDate;
+      final inventoryModeChanged = _useAvailableInventory != result.useAvailableInventory;
       setState(() {
         _storeController.text = newStore;
         _selectedDate = result.selectedDate;
         _remarksController.text = result.remarks;
+        _useAvailableInventory = result.useAvailableInventory;
         _hasUserManuallyPickedDate = true;
       });
-      if (dateChanged) {
+      if ((dateChanged || inventoryModeChanged) && _shouldEnforceAvailableInventory) {
         _clampQuantitiesToAvailableStock(_latestInventory);
       }
       if (storeChanged || dateChanged) {
@@ -3194,7 +3206,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
     final filtered = allInventory.where((item) {
       if (!item.isActive) return false;
       if (_selectedCategoryFilter == 'selected' && _getSelectedQty(item) <= 0) return false;
-      if (_hideOutOfStock && !_isFutureDeliveryDate && _getMaxOrderableQty(item) <= 0) return false;
+      if (_hideOutOfStock && _shouldEnforceAvailableInventory && _getMaxOrderableQty(item) <= 0) return false;
 
       // Category filter:
       if (_selectedCategoryFilter == 'unplaced') {
@@ -3247,13 +3259,13 @@ class _BookOrderPageState extends State<BookOrderPage> {
         emptyMessage = 'No selected products found';
       } else if (_selectedCategoryFilter == 'unplaced') {
         emptyMessage = 'All target best-sellers have already been placed for this store!';
-      } else if (_hideOutOfStock && !_isFutureDeliveryDate) {
+      } else if (_hideOutOfStock && _shouldEnforceAvailableInventory) {
         emptyMessage = 'No in-stock products found';
       } else {
         emptyMessage = 'No products found in this category';
       }
 
-      final bool hideOosActive = _hideOutOfStock && !_isFutureDeliveryDate;
+      final bool hideOosActive = _hideOutOfStock && _shouldEnforceAvailableInventory;
 
       return Center(
         child: Padding(
@@ -3465,7 +3477,7 @@ class _BookOrderPageState extends State<BookOrderPage> {
       receiptIndex: receiptNum,
       rawReceiptText: rawText,
       isCorrected: _correctedReceiptKeys.contains(key),
-      isFutureDelivery: _isFutureDeliveryDate,
+      isFutureDelivery: !_shouldEnforceAvailableInventory,
       onCorrectAi: rawText != null ? () => _showCorrectionDialog(itemKey: key, allInventory: allInventory) : null,
       onTap: () => _promptQuantityDialog(item, allInventory: allInventory),
       onIncrement: () {
